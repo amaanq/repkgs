@@ -133,12 +133,33 @@ let
         llvm;
   };
   nuSource = source "nushell";
+  rustPlatform = ps.makeRustPlatform {
+    rustc = rustBootstrap.rust;
+    cargo = rustBootstrap.rust;
+  };
+  jig = rustPlatform.buildRustPackage {
+    pname = "seed-jig";
+    version = "3.0.0";
+    src = builtins.path {
+      path = ../../ji/jig/src;
+      name = "jig-rust-src";
+      filter =
+        path: _:
+        builtins.match ".*\\.rs" path != null
+        || builtins.elem (builtins.baseNameOf path) [
+          "Cargo.toml"
+          "Cargo.lock"
+        ];
+    };
+    cargoLock.lockFile = ../../ji/jig/src/Cargo.lock;
+    auditable = false;
+    doCheck = false;
+    env.JIG_STORE_DIR = builtins.storeDir;
+    allowedReferences = [ ];
+  };
   nu =
     (ps.nushell.override {
-      rustPlatform = ps.makeRustPlatform {
-        rustc = rustBootstrap.rust;
-        cargo = rustBootstrap.rust;
-      };
+      inherit rustPlatform;
       withDefaultFeatures = false;
       additionalFeatures = _features: [
         "sqlite"
@@ -236,6 +257,7 @@ let
     cp -a ${llvm}/bin/. $out/bin/
     cp -a ${llvm}/lib/clang $out/lib/
     chmod -R u+w $out
+    cp ${jig}/bin/jig $out/bin/jig
     ${llvm}/bin/llvm-strip $out/bin/nu $out/bin/bsdtar $out/bin/toybox $out/bin/dash $out/bin/python3 ${
       toString (map (n: "$out/bin/${n}") (builtins.attrNames tools))
     }
@@ -252,6 +274,7 @@ in
 {
   inherit
     llvm
+    jig
     nu
     bsdtar
     toybox

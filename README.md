@@ -201,23 +201,24 @@ docs/             design.md (why), uptrack.md, plan.md
 tools/repkgs/     the cli (its README.md is for changing it)
 ```
 
-Four in-tree programs hold this together. **jig** (pkgs/ji/jig, C++) is what `cc` and `rustc`
-resolve to inside a build: compiler driver, cache client and ELF fixup in one binary. **jigd**
+The build tools live in this tree. **jig** (pkgs/ji/jig, Rust) is what `cc` and `rustc`
+resolve to inside a build. It provides the compiler driver, cache client and ELF fixup. **jigd**
 (pkgs/ji/jigd, Rust) is the per-machine daemon behind the socket, holding the cache and the build
 slots. **launch** and **crt-interp** are the few hundred bytes that let scripts and ELF binaries
 run from any path. **uptrack** (nu) does the updates.
 
-Work on the cache daemon with nixpkgs' Rust toolchain, without bootstrapping the package set.
+Work on the wrapper and daemon with nixpkgs' Rust toolchain, without bootstrapping the package set.
 
 ```console
-$ nix develop .#jigd --command cargo build --manifest-path pkgs/ji/jigd/src/Cargo.toml
-$ nix develop .#jigd --command cargo test --manifest-path pkgs/ji/jigd/src/Cargo.toml
+$ nix develop .#rust --command cargo build --manifest-path pkgs/ji/jig/src/Cargo.toml
+$ nix develop .#rust --command cargo build --manifest-path pkgs/ji/jigd/src/Cargo.toml
+$ nix develop .#rust --command cargo test --manifest-path pkgs/ji/jigd/src/Cargo.toml
 ```
 
 To use the local daemon through the cache commands, build it and pass its executable.
 
 ```console
-$ nix develop .#jigd --command cargo build --release --manifest-path pkgs/ji/jigd/src/Cargo.toml
+$ nix develop .#rust --command cargo build --release --manifest-path pkgs/ji/jigd/src/Cargo.toml
 $ repkgs cache start --daemon pkgs/ji/jigd/src/target/release/jigd
 $ repkgs cache status
 $ repkgs cache stop
@@ -244,6 +245,11 @@ records the trust boundary of the source seed build.
 source releases with that Clang, then uses the final compiler to build static Nu.
 `.#bootstrap-mrustc` exposes the starting compiler, and `.#bootstrap-seed` assembles the
 reusable seed. The source dependency graph contains no downloaded Rust compiler.
+
+`nix build .#bootstrap-jig -L` builds the static Rust wrapper with that same source compiler.
+Normal builds use it for the bootstrap compiler cache and each configured toolchain.
+The first jig build needs the Rust chain. Later wrapper edits rebuild jig without rebuilding
+LLVM, Rust, or Nushell. The assembled seed also includes jig.
 
 ## License
 

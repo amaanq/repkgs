@@ -1,5 +1,6 @@
 result
 result-*
+**/target/
 pkgs/ji/jig/build/
 .direnv
 !/.envrc

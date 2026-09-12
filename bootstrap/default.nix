@@ -46,14 +46,11 @@ let
   llvmSrc = source "llvm";
   recipeInputs = {
     jig = {
-      jig = builtins.path {
-        path = pkg "jig" + "/src";
-        name = "jig-src";
-      };
-      blake3 = source "blake3";
-      zstd = source "zstd";
-      inherit json_hpp;
-      inherit (builtins) storeDir;
+      prebuilt =
+        (import ../pkgs/se/seed {
+          inherit system;
+          buildSystem = system;
+        }).jig;
     };
     launch = {
       launch = pkg "launch" + "/src/launch.cc";
@@ -305,7 +302,7 @@ let
           resource = c.compiler-rt;
         };
       };
-      jig = run [ ] "jig" { inherit (c) sysroot; };
+      jig = run [ ] "jig" { };
     in
     c
     // {

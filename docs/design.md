@@ -204,16 +204,17 @@ cache, so outputs are identical either way, verifiable with CA outputs.
 
 | cached | key |
 |---|---|
-| `cc -c` objects, probe links, real links (ELF) | compiler identity + normalised args + source, then the headers/libs actually read (`-MD`, lld `--dependency-file`) and the paths looked up but absent (our clang logs them to `$JIG_ABSENT_LOG`, so a header appearing earlier on the search path is a miss) as a manifest. Store paths are masked to content identity, so a rebuilt-identical toolchain still hits. The package's own `$out` hash is a placeholder in keys and stored objects and put back on replay, so a dependency bump alone does not recompile `-DPREFIX="$out"` code |
+| `cc -c` objects, probe links, real links (ELF) | compiler path, arguments, environment and source bytes, then the headers and libraries read through `-MD` and lld's dependency file. The package's own `$out` hash is masked in keys and cached bytes and restored on replay |
 | compile failures | replayed when all inputs are known (most of configure) |
-| rustc crates, Go actions, Haskell units | dep-info + `--extern` identities, Go's action IDs, cabal's unit id |
+| rustc crates, Go actions, Haskell units | Rust dep-info, `--extern` and standard library identities, metadata flags and `env!` dependencies. Go's action IDs and cabal's unit id |
 | `config.cache`, cmake probe results, tool cache dirs | configure scripts + toolchain + deps + flags |
 
 jigd (Rust) holds a bitcask-style object store (append-only packs, in-memory index, whole-pack
 eviction, `sendfile`), remembers store-file identities so hits do not rehash headers, and hands
 out build slots so N sandboxes × `make -jN` do not oversubscribe (cc/rustc per process, go via
 `-toolexec`, ghc via `jsem`). sqlite3.c 82 s → 0.08 s, fd's 200 rlibs 218 s → 1.4 s,
-bit-identical. The cost is trust: a cache writer can inject code, hence per user and machine.
+bit-identical with the C++ wrapper. The Rust port uses stricter request keys and needs fresh
+measurements. A cache writer can supply compiler artifacts, so the cache stays per user and machine.
 
 ## Toolchain, bootstrap, cross
 
@@ -225,13 +226,9 @@ seed      static musl: nu, LLVM multicall (clang, lld, llvm-ar …), bsdtar, toy
 → pkgs/*
 ```
 
-The seed's clang compiles stage0 and stage1 and nothing that reaches a package: stage1 exists to
-give our own clang (pkgs/ll/llvm/toolchain.nu, all targets, dynamically linked so plugins can load)
-a glibc and libc++ to link against, and every target's runtime is then built by it. cmake, by its
-`./bootstrap`, is the one tool LLVM's build needs beyond the seed. Recipes are nu
-(`pkgs/*/bootstrap.nu`). musl, compiler-rt and the C++ runtimes compile from file lists without
-cmake (the one vendored generated file is compiler-rt's per-cpu builtins list). A target is five
-minutes, stage1's llvm thirty once. What differs per target is keyed
+Recipes are nu (`pkgs/*/bootstrap.nu`). musl, compiler-rt and the C++ runtimes compile from file
+lists without cmake. The source-built Rust chain compiles static jig before stage0 installs it.
+The generated source file is compiler-rt's per-cpu builtins list. What differs per target is keyed
 on object format (`platform.binfmt`: elf, macho, coff), and a libc or SDK tells compiler-rt and
 cc its header dirs and driver flags through `etc/cc/` files. RISC-V needed `-mno-relax`.
 

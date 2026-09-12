@@ -82,7 +82,13 @@ Seed assembly takes Nu from this build and strips its binaries with the source-b
 It removes store references from the tool binaries and copied data, including Python's build
 configuration. Nix rejects the seed if it retains a dependency on another store path.
 These targets do not replace the downloaded seed used by normal repkgs builds. Publishing a
-new seed and porting the jig wrapper to Rust remain separate steps.
+new seed remains separate work.
+
+`bootstrap-jig` builds the Rust compiler wrapper with the same source compiler and static musl
+target. Normal bootstrap recipes copy this binary into the cache wrapper and each configured
+toolchain. Its dependencies use the nixpkgs revision pinned in `flake.lock`, including for
+non-flake builds. Editing jig rebuilds this small binary without restarting the compiler chain.
+Seed assembly includes it alongside Nu.
 
 Once assembled, the seed can be stored and reused for ordinary package builds. Rebuilding
 the seed and checking its inputs remains separate from rebuilding an application.

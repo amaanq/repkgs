@@ -16,12 +16,16 @@ def main [installable: string = ".#bootstrap-llvm", --rust, --mrustc]: nothing -
   } | sort-by name)
   let rust_version = (open ($env.FILE_PWD | path join ../pkgs/ru/rust/sources.toml) | get pin.version)
   let nu_version = (open ($env.FILE_PWD | path join ../pkgs/nu/nushell/sources.toml) | get pin.version)
+  let jig_crates = (open --raw ($env.FILE_PWD | path join ../pkgs/ji/jig/src/Cargo.lock) | from toml
+    | get package | where source? == "registry+https://github.com/rust-lang/crates.io-index"
+    | each {|crate| $"($crate.name)-($crate.version)" })
   let rust_names = (if $rust {
-    ($rust_sources | get name) ++ [
+    ($rust_sources | get name) ++ $jig_crates ++ [
       rustc-1.90.0-src.tar.gz
       $"rust-($rust_version)-source"
       $"nushell-($nu_version)-source"
       cargo-build-hook.sh cargo-check-hook.sh cargo-install-hook.sh cargo-setup-hook.sh
+      cargo-vendor-dir
     ]
   } else if $mrustc { [rustc-1.90.0-src.tar.gz] } else { [] })
   let forbidden = ($graph | where {|entry|

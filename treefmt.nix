@@ -100,11 +100,6 @@ pkgs.treefmt.withConfig {
           "pkgs/*/*/src/*.c"
         ];
       };
-      # check only: clang-tidy with /.clang-tidy, warnings are errors
-      cpp-tidy = {
-        command = "${import ./pkgs/ji/jig/tidy.nix { inherit pkgs llvm; }}/bin/jig-tidy";
-        includes = [ "pkgs/*/*/src/*.cc" ];
-      };
       python = {
         command = "${pkgs.ruff}/bin/ruff";
         options = [ "format" ];

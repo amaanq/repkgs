@@ -27,6 +27,7 @@
         // {
           nix = import ./nix/nix { pkgs = nixpkgs.legacyPackages.${system}; };
           bootstrap-llvm = bootstrap.llvm;
+          bootstrap-jig = bootstrap.jig;
           bootstrap-rust-stage0 = bootstrap.stage0;
           bootstrap-rust = bootstrap.rust;
           bootstrap-nushell = bootstrap.nu;
@@ -42,7 +43,7 @@
       formatter = each (system: import ./treefmt.nix { pkgs = nixpkgs.legacyPackages.${system}; });
       devShells = each (system: {
         default = import ./shell.nix { pkgs = nixpkgs.legacyPackages.${system}; };
-        jigd =
+        rust =
           let
             pkgs = nixpkgs.legacyPackages.${system};
           in

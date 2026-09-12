@@ -4,9 +4,9 @@ What is not built yet. design.md describes what is.
 
 ## Source bootstrap
 
-Port jig to Rust. LLVM, the mrustc chain through Rust 1.98 and static Nushell now build without
-a downloaded Rust compiler. The assembled seed has no store references and runs after relocation.
-Rebuilding every dependency in an empty store without compiled substitutes remains separate work.
+LLVM, the mrustc chain through Rust 1.98, static Nushell and the Rust jig wrapper now build
+without a downloaded Rust compiler. The assembled seed has no store references and runs after
+relocation. Rebuild every dependency in an empty store without compiled substitutes next.
 The dependency boundary and remaining work are in [bootstrap.md](bootstrap.md).
 
 ## Compilers still taken as upstream binaries
@@ -77,6 +77,8 @@ npm/pnpm/bun, and `uptrack check` should warn when a lock names a library the se
 
 ## jig follow-ups
 
+- Measure cold builds and cache replay with the Rust wrapper. Its request keys keep exact
+  arguments and compiler paths, so the C++ wrapper's benchmark results do not carry over.
 - Teach the link shapes that still log as `linked`/`uncacheable` (libtool relinks, `@rsp`,
   multi-source lines). Cache bin and proc-macro crates in rustc mode. rustc keys must not change
   when only the vendor store path does. A recurring `compiled-error` on identical rebuilds means
