@@ -2,6 +2,12 @@
 
 What is not built yet. design.md describes what is.
 
+## Source bootstrap
+
+Build the x86-64 LLVM toolchain from the small hex0 seed, then use a pinned upstream Rust
+binary to build Rust, Nushell and Rust jig. Try mrustc after the LLVM path works.
+The dependency boundary and remaining work are in [bootstrap.md](bootstrap.md).
+
 ## Compilers still taken as upstream binaries
 
 Rule: an upstream binary is only ever `<x>-bootstrap`, a build dependency of `<x>` built from

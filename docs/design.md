@@ -17,10 +17,11 @@ ELF post-processor, **jigd** the per-machine daemon behind it (compile cache, bu
 4. **One toolchain.** One LLVM targets every platform. Cross is an argument to the set.
 5. **A compile cache under Nix.** Editing a recipe recompiles what changed, not everything after it.
 
-Constraints: stock Nix with `ca-derivations` and `dynamic-derivations`, `/nix/store`, no IFD,
-nothing fetched at eval time. glibc everywhere, musl only in the seed and stage0. nixpkgs builds
-the seed and provides dev tools, nothing else. Not goals: NixOS modules, nixpkgs compatibility,
-full-source bootstrap, GCC.
+The set uses stock Nix with `ca-derivations` and `dynamic-derivations`, `/nix/store`, no IFD
+and nothing fetched at eval time. glibc everywhere, musl only in the seed and stage0. nixpkgs
+builds the seed and provides dev tools. The [source bootstrap](bootstrap.md) starts with
+x86-64 LLVM, allowing GCC in the early compiler chain. NixOS modules, nixpkgs compatibility
+and GCC as a package-set compiler remain outside the scope.
 
 Build machines are x86_64- and aarch64-linux. riscv64, loongarch64, ppc64le, Windows (MSVC ABI
 over Microsoft's CRT and SDK) and macOS (Apple's SDK, `ld64.lld`) are cross targets. For the two

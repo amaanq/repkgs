@@ -18,21 +18,31 @@ let
     };
   };
   pkgs = ps.buildPackages;
-  # host compiler from nixpkgs, sources from our own pins so the seed and pkgs/ll/llvm agree,
-  # unpacked by nixpkgs' nu and bsdtar (a new architecture has no previous seed)
-  unpacker = pkgs.symlinkJoin {
-    name = "unpacker";
-    paths = [
-      pkgs.nushell
-      pkgs.libarchive
-    ];
-  };
+  # The LLVM build must precede Rust and Nu, including the tools that unpack its sources.
   source =
     name:
-    (import ../../../nix/sources.nix {
-      inherit unpacker;
-      system = buildSystem;
-    } (../.. + "/${builtins.substring 0 2 name}/${name}/sources.toml"));
+    let
+      manifest = builtins.fromTOML (
+        builtins.readFile (../.. + "/${builtins.substring 0 2 name}/${name}/sources.toml")
+      );
+      archive = builtins.head (builtins.filter (entry: entry.key == "default") manifest.source);
+      url =
+        builtins.replaceStrings
+          [ "{version}" "{tag}" ]
+          [
+            manifest.pin.version
+            (manifest.pin.tag or manifest.pin.version)
+          ]
+          archive.url;
+    in
+    {
+      inherit (manifest.pin) version;
+      default = (pkgs.fetchzip.override { withUnzip = false; }) {
+        name = "${name}-${manifest.pin.version}-source";
+        inherit url;
+        inherit (archive) hash;
+      };
+    };
   llvmSource = source "llvm";
   # the seed compiles stage0 and stage1 for the build machine only (bootstrap/default.nix)
   targets =
@@ -52,9 +62,12 @@ let
     src = llvmSource.default;
     patches = [ ../../ll/llvm/upstream-x86-vastart-stack-probe.patch ];
     nativeBuildInputs = [
-      pkgs.cmake
-      pkgs.ninja
-      pkgs.python3
+      pkgs.cmakeMinimal
+      (pkgs.ninja.override {
+        buildDocs = false;
+        python3 = pkgs.python3Minimal;
+      })
+      pkgs.python3Minimal
     ];
     buildInputs = [
       ps.zlib

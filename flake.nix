@@ -20,6 +20,11 @@
         import ./default.nix { inherit system; }
         // {
           nix = import ./nix/nix { pkgs = nixpkgs.legacyPackages.${system}; };
+          bootstrap-llvm =
+            (import ./pkgs/se/seed/build.nix {
+              inherit nixpkgs system;
+              buildSystem = system;
+            }).llvm;
         }
       );
       checks = each (system: import ./nix/checks.nix { inherit system nixpkgs; });

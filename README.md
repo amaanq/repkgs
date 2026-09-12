@@ -236,6 +236,10 @@ seed        static nu, clang, lld, bsdtar, toybox, make …
 
 The seed itself is reproducible from `pkgs/se/seed/build.nix`.
 
+`nix build .#bootstrap-llvm -L` builds the seed's LLVM, Clang and LLD through nixpkgs' minimal
+x86-64 bootstrap without Rust or Nushell build dependencies. [docs/bootstrap.md](docs/bootstrap.md)
+records the trust boundary and the remaining work to assemble the seed through this path.
+
 ## License
 
 MIT, see [LICENSE](LICENSE). Patches under `pkgs/` carry the license of the project they apply to.
