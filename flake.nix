@@ -17,14 +17,21 @@
     {
       packages = each (
         system:
-        import ./default.nix { inherit system; }
+        let
+          bootstrap = import ./pkgs/se/seed/build.nix {
+            inherit nixpkgs system;
+            buildSystem = system;
+          };
+        in
+        (import ./default.nix { inherit system; })
         // {
           nix = import ./nix/nix { pkgs = nixpkgs.legacyPackages.${system}; };
-          bootstrap-llvm =
-            (import ./pkgs/se/seed/build.nix {
-              inherit nixpkgs system;
-              buildSystem = system;
-            }).llvm;
+          bootstrap-llvm = bootstrap.llvm;
+          bootstrap-rust-stage0 = bootstrap.stage0;
+          bootstrap-rust = bootstrap.rust;
+          bootstrap-nushell = bootstrap.nu;
+          bootstrap-mrustc = nixpkgs.legacyPackages.${system}.mrustc-bootstrap;
+          bootstrap-seed = bootstrap.seed;
         }
       );
       checks = each (system: import ./nix/checks.nix { inherit system nixpkgs; });

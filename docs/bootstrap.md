@@ -1,8 +1,8 @@
 # Source bootstrap
 
-The first target is x86-64 Linux. Build LLVM, Clang and LLD from a small machine-code seed,
-then use a pinned upstream Rust toolchain to build Rust, Nushell and Rust jig. Evaluate mrustc
-after the LLVM path works.
+The first target is x86-64 Linux. Build LLVM, Rust and Nushell with hex0 as the only initial
+compiler executable. The current Rust and Nu path still uses a pinned upstream Rust stage0.
+The separate mrustc build is the starting point for removing it.
 
 ## LLVM
 
@@ -47,22 +47,57 @@ claiming the stricter live-bootstrap standard.
 
 ## Rust and the seed
 
-The current seed assembly still uses nixpkgs to build Nushell and the remaining static
-userland. The `bootstrap-llvm` target does not yet replace the downloaded seed used by normal
-repkgs builds.
+`bootstrap-rust` builds the pinned Rust source release using three upstream stage0 components
+from `pkgs/ru/rust-bootstrap/sources.toml`. Those are rustc, Cargo and the host standard library.
+The source-built Clang compiles the matching LLVM backend included in Rust's source release.
+The build produces a stage2 Rust compiler, Cargo and standard libraries for the GNU host and
+the musl target.
 
-The next step is to build Rust against the LLVM toolchain, with an explicitly pinned upstream
-Rust binary as the remaining language bootstrap input. That compiler then builds Nushell and
-Rust jig. The build steps before Rust must invoke their compilers directly, and cannot use
-Nushell recipes or the Rust wrapper.
+`bootstrap-nushell` uses that compiler to build our pinned Nushell source as a static musl
+executable. Its features match the normal package recipe. Shell and Python builders handle
+the steps before Nu exists. The remaining static userland and C runtime libraries still come
+from nixpkgs' source recipes.
+
+```console
+nix build .#bootstrap-rust -L
+nix build .#bootstrap-nushell -L
+nu bootstrap/audit.nu .#bootstrap-nushell --rust > /tmp/repkgs-bootstrap-inputs.json
+nix build .#bootstrap-seed -L
+```
+
+The Rust audit permits the three stage0 downloads and checks their URLs and hashes against
+the manifest. It rejects an additional nixpkgs Rust toolchain in the build dependencies.
+Nix generates the bootstrap config directly, since its general TOML converter needs Rust.
+
+Seed assembly takes Nu from this build and strips its binaries with the source-built LLVM.
+It removes store references from the tool binaries and copied data, including Python's build
+configuration. Nix rejects the seed if it retains a dependency on another store path.
+These targets do not replace the downloaded seed used by normal repkgs builds. Publishing a
+new seed and porting the jig wrapper to Rust remain separate steps.
 
 Once assembled, the seed can be stored and reused for ordinary package builds. Rebuilding
 the seed and checking its inputs remains separate from rebuilding an application.
 
-mrustc is a later milestone. The starting reference is nixpkgs' Rust 1.90 bootstrap using
-LLVM 20. It needs its own compatible LLVM build and a verified sequence of Rust releases up
-to our pin. Replacing the upstream Rust binary closes that remaining compiler bootstrap
-dependency.
+## Removing the Rust binary
+
+The pinned nixpkgs provides mrustc 0.12 and a Rust 1.90 bootstrap using LLVM 20. Its dependency
+graph reaches hex0 without a downloaded Rust compiler. Build and inspect that starting point
+with the separate target.
+
+```console
+nix build .#bootstrap-mrustc -L
+nu bootstrap/audit.nu .#bootstrap-mrustc --mrustc > /tmp/repkgs-mrustc-inputs.json
+```
+
+It is not yet connected to the current Rust and Nushell builds. The remaining work is to build
+the intermediate Rust releases, verify each compiler can build the next one and replace the
+upstream stage0 components. Our Nushell pin requires at least Rust 1.95. LLVM compatibility
+must be checked at each step.
+
+The intended compiler chain is hex0 through the C and C++ bootstrap, mrustc, successive Rust
+releases and finally Nushell. The assembled seed will still contain the tools needed for
+ordinary package builds. Reducing its compiler trust roots to hex0 does not make that runtime
+tool bundle 229 bytes or remove the host and generated-source assumptions above.
 
 ## References
 

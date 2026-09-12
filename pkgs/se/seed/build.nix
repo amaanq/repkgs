@@ -25,23 +25,28 @@ let
       manifest = builtins.fromTOML (
         builtins.readFile (../.. + "/${builtins.substring 0 2 name}/${name}/sources.toml")
       );
-      archive = builtins.head (builtins.filter (entry: entry.key == "default") manifest.source);
-      url =
-        builtins.replaceStrings
-          [ "{version}" "{tag}" ]
-          [
-            manifest.pin.version
-            (manifest.pin.tag or manifest.pin.version)
-          ]
-          archive.url;
+      fetch =
+        key:
+        let
+          archive = builtins.head (builtins.filter (entry: entry.key == key) manifest.source);
+        in
+        (pkgs.fetchzip.override { withUnzip = false; }) {
+          name = "${name}-${manifest.pin.version}-${if key == "default" then "source" else key}";
+          url =
+            builtins.replaceStrings
+              [ "{version}" "{tag}" ]
+              [
+                manifest.pin.version
+                (manifest.pin.tag or manifest.pin.version)
+              ]
+              archive.url;
+          inherit (archive) hash;
+        };
     in
     {
       inherit (manifest.pin) version;
-      default = (pkgs.fetchzip.override { withUnzip = false; }) {
-        name = "${name}-${manifest.pin.version}-source";
-        inherit url;
-        inherit (archive) hash;
-      };
+      inherit fetch;
+      default = fetch "default";
     };
   llvmSource = source "llvm";
   # the seed compiles stage0 and stage1 for the build machine only (bootstrap/default.nix)
@@ -115,7 +120,39 @@ let
     dontFixup = true;
   };
 
-  nu = ps.nushell.override { additionalFeatures = _p: [ ]; };
+  rustBootstrap = import ./rust.nix {
+    inherit ps source;
+    pkgs = import nixpkgs { system = buildSystem; };
+    llvm =
+      if cross then
+        (import ./build.nix {
+          inherit nixpkgs buildSystem;
+          system = buildSystem;
+        }).llvm
+      else
+        llvm;
+  };
+  nuSource = source "nushell";
+  nu =
+    (ps.nushell.override {
+      rustPlatform = ps.makeRustPlatform {
+        rustc = rustBootstrap.rust;
+        cargo = rustBootstrap.rust;
+      };
+      withDefaultFeatures = false;
+      additionalFeatures = _features: [
+        "sqlite"
+        "trash-support"
+        "rustls-tls"
+      ];
+    }).overrideAttrs
+      {
+        pname = "seed-nushell";
+        inherit (nuSource) version;
+        src = nuSource.default;
+        auditable = false;
+        doCheck = false;
+      };
   bsdtar = ps.libarchive;
   # nu has no ln/chmod/readlink and configure scripts need expr/tr/sed/... before anything is built
   toybox = ps.toybox.overrideAttrs (_o: {
@@ -182,7 +219,7 @@ let
     dontFixup = true;
   };
 
-  seed = pkgs.runCommand "seed-4-${system}" { } ''
+  seed = pkgs.runCommand "seed-4-${system}" { allowedReferences = [ ]; } ''
     mkdir -p $out/bin $out/lib $out/share
     cp ${nu}/bin/nu ${bsdtar}/bin/bsdtar ${toybox}/bin/toybox ${dash}/bin/dash $out/bin/
     ln -s dash $out/bin/sh
@@ -199,10 +236,10 @@ let
     cp -a ${llvm}/bin/. $out/bin/
     cp -a ${llvm}/lib/clang $out/lib/
     chmod -R u+w $out
-    ${pkgs.llvmPackages.llvm}/bin/llvm-strip $out/bin/nu $out/bin/bsdtar $out/bin/toybox $out/bin/dash $out/bin/python3 ${
+    ${llvm}/bin/llvm-strip $out/bin/nu $out/bin/bsdtar $out/bin/toybox $out/bin/dash $out/bin/python3 ${
       toString (map (n: "$out/bin/${n}") (builtins.attrNames tools))
     }
-    ${pkgs.nukeReferences}/bin/nuke-refs $out/bin/*
+    find $out -type f -exec ${pkgs.nukeReferences}/bin/nuke-refs {} +
   '';
 
   nar = pkgs.runCommand "${seed.name}.nar.xz" { nativeBuildInputs = [ pkgs.nix ]; } ''
@@ -231,4 +268,5 @@ in
     m4
     bison
     ;
+  inherit (rustBootstrap) rust stage0;
 }
