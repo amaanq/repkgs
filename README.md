@@ -203,9 +203,16 @@ tools/repkgs/     the cli (its README.md is for changing it)
 
 Four in-tree programs hold this together. **jig** (pkgs/ji/jig, C++) is what `cc` and `rustc`
 resolve to inside a build: compiler driver, cache client and ELF fixup in one binary. **jigd**
-(pkgs/ji/jigd, Go) is the per-machine daemon behind the socket, holding the cache and the build
+(pkgs/ji/jigd, Rust) is the per-machine daemon behind the socket, holding the cache and the build
 slots. **launch** and **crt-interp** are the few hundred bytes that let scripts and ELF binaries
 run from any path. **uptrack** (nu) does the updates.
+
+Work on the cache daemon with nixpkgs' Rust toolchain, without bootstrapping the package set.
+
+```console
+$ nix develop .#jigd --command cargo build --manifest-path pkgs/ji/jigd/src/Cargo.toml
+$ nix develop .#jigd --command cargo test --manifest-path pkgs/ji/jigd/src/Cargo.toml
+```
 
 ## How the bootstrap goes
 

@@ -208,7 +208,7 @@ cache, so outputs are identical either way, verifiable with CA outputs.
 | rustc crates, Go actions, Haskell units | dep-info + `--extern` identities, Go's action IDs, cabal's unit id |
 | `config.cache`, cmake probe results, tool cache dirs | configure scripts + toolchain + deps + flags |
 
-jigd (Go) holds a bitcask-style object store (append-only packs, in-memory index, whole-pack
+jigd (Rust) holds a bitcask-style object store (append-only packs, in-memory index, whole-pack
 eviction, `sendfile`), remembers store-file identities so hits do not rehash headers, and hands
 out build slots so N sandboxes × `make -jN` do not oversubscribe (cc/rustc per process, go via
 `-toolexec`, ghc via `jsem`). sqlite3.c 82 s → 0.08 s, fd's 200 rlibs 218 s → 1.4 s,

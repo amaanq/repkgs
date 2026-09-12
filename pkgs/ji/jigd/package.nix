@@ -1,13 +1,14 @@
 # host-side daemon for jig's build cache. Run outside the sandbox: jigd $XDG_RUNTIME_DIR/jigd/socket
-{ package }:
+{ package, buildPkgs }:
 package {
   name = "jigd";
-  # unix sockets and syscall.Flock
-  platforms.posix = true;
-  version = "3";
-  source = ./src;
-  uses = [ "go" ];
-  go.cgo = false;
+  version = "3.0.0";
+  source = builtins.path {
+    path = ./src;
+    name = "jigd-src";
+    filter = path: _: builtins.baseNameOf path != "target";
+  };
+  uses = [ "cargo" ];
+  cargo.tool = buildPkgs.rust-bootstrap;
   tests.version = false; # a daemon, no --version
-  phases.remove = [ "go.test" ];
 }
