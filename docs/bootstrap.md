@@ -1,8 +1,8 @@
 # Source bootstrap
 
-The first target is x86-64 Linux. Build LLVM, Rust and Nushell with hex0 as the only initial
-compiler executable. The current Rust and Nu path still uses a pinned upstream Rust stage0.
-The separate mrustc build is the starting point for removing it.
+The first target is x86-64 Linux. The source seed build connects LLVM, mrustc, successive Rust
+releases and Nushell without downloading a Rust compiler. Its compiler ancestry reaches the
+229-byte hex0 executable through nixpkgs' minimal bootstrap.
 
 ## LLVM
 
@@ -47,11 +47,19 @@ claiming the stricter live-bootstrap standard.
 
 ## Rust and the seed
 
-`bootstrap-rust` builds the pinned Rust source release using three upstream stage0 components
-from `pkgs/ru/rust-bootstrap/sources.toml`. Those are rustc, Cargo and the host standard library.
-The source-built Clang compiles the matching LLVM backend included in Rust's source release.
-The build produces a stage2 Rust compiler, Cargo and standard libraries for the GNU host and
-the musl target.
+`bootstrap-mrustc` builds Rust 1.90 and Cargo using mrustc, then rebuilds the compiler and its
+standard library with Rustc. `pkgs/se/seed/rust-chain.toml` pins the intermediate source
+releases from 1.91 through 1.97. Each builds its host compiler, Cargo and standard library
+using the preceding release and LLVM 21. Each completed release is a separate Nix output.
+
+The first handoff builds stage2 because mrustc's output includes private compiler libraries
+that conflict with the next release's stage1 Rustdoc build. Later intermediate releases
+use stage1 builds from the clean installed toolchains.
+
+`bootstrap-rust-stage0` is the last compiler in that chain. `bootstrap-rust` uses it to build
+our pinned Rust source release. The source-built Clang compiles the matching LLVM backend
+included in the final Rust release. That build produces a stage2 Rust compiler, Cargo and
+standard libraries for the GNU host and the musl target.
 
 `bootstrap-nushell` uses that compiler to build our pinned Nushell source as a static musl
 executable. Its features match the normal package recipe. Shell and Python builders handle
@@ -65,9 +73,10 @@ nu bootstrap/audit.nu .#bootstrap-nushell --rust > /tmp/repkgs-bootstrap-inputs.
 nix build .#bootstrap-seed -L
 ```
 
-The Rust audit permits the three stage0 downloads and checks their URLs and hashes against
-the manifest. It rejects an additional nixpkgs Rust toolchain in the build dependencies.
-Nix generates the bootstrap config directly, since its general TOML converter needs Rust.
+The Rust audit checks the intermediate source URLs and hashes against the manifest and
+rejects Rust binary toolchains in the build dependencies. Nix generates the bootstrap config
+directly, since its general TOML converter needs Rust. The normal package set still uses
+`pkgs/ru/rust-bootstrap/sources.toml`. The source seed build does not depend on that manifest.
 
 Seed assembly takes Nu from this build and strips its binaries with the source-built LLVM.
 It removes store references from the tool binaries and copied data, including Python's build
@@ -78,26 +87,26 @@ new seed and porting the jig wrapper to Rust remain separate steps.
 Once assembled, the seed can be stored and reused for ordinary package builds. Rebuilding
 the seed and checking its inputs remains separate from rebuilding an application.
 
-## Removing the Rust binary
+## Building the Rust chain
 
-The pinned nixpkgs provides mrustc 0.12 and a Rust 1.90 bootstrap using LLVM 20. Its dependency
-graph reaches hex0 without a downloaded Rust compiler. Build and inspect that starting point
-with the separate target.
+The pinned nixpkgs provides mrustc 0.12 and a Rust 1.90 bootstrap using LLVM 20. Build and
+inspect that starting point with the separate target, or select an intermediate compiler.
 
 ```console
 nix build .#bootstrap-mrustc -L
 nu bootstrap/audit.nu .#bootstrap-mrustc --mrustc > /tmp/repkgs-mrustc-inputs.json
+nix build .#bootstrap-rust-1_91_1 --cores 30 --max-jobs 1 -L
+nix build .#bootstrap-seed --cores 30 --max-jobs 1 --keep-failed -L
 ```
 
-It is not yet connected to the current Rust and Nushell builds. The remaining work is to build
-the intermediate Rust releases, verify each compiler can build the next one and replace the
-upstream stage0 components. Our Nushell pin requires at least Rust 1.95. LLVM compatibility
-must be checked at each step.
+Rust's supported bootstrap path uses the preceding minor release. The compiler uses unstable
+features and internals that older compilers cannot reliably build. Patch releases can be
+skipped. Our Nushell pin requires at least Rust 1.95, while the final seed compiler follows
+the repository's Rust pin.
 
-The intended compiler chain is hex0 through the C and C++ bootstrap, mrustc, successive Rust
-releases and finally Nushell. The assembled seed will still contain the tools needed for
-ordinary package builds. Reducing its compiler trust roots to hex0 does not make that runtime
-tool bundle 229 bytes or remove the host and generated-source assumptions above.
+The assembled seed still contains the tools needed for ordinary package builds. Reducing its
+compiler trust roots to hex0 does not make that runtime tool bundle 229 bytes or remove the
+host and generated-source assumptions above.
 
 ## References
 

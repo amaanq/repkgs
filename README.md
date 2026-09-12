@@ -238,12 +238,12 @@ The seed itself is reproducible from `pkgs/se/seed/build.nix`.
 
 `nix build .#bootstrap-llvm -L` builds the seed's LLVM, Clang and LLD through nixpkgs' minimal
 x86-64 bootstrap without Rust or Nushell build dependencies. [docs/bootstrap.md](docs/bootstrap.md)
-records the trust boundary and the remaining work to assemble the seed through this path.
+records the trust boundary of the source seed build.
 
-`nix build .#bootstrap-nushell -L` builds Rust from our source pin with that Clang, then uses
-the resulting compiler to build static Nu. Its remaining binary compiler input is the pinned
-upstream Rust stage0. `.#bootstrap-mrustc` exposes the Rust 1.90 source bootstrap that will
-replace it once the intermediate Rust releases are wired and verified.
+`nix build .#bootstrap-nushell -L` starts with mrustc-built Rust 1.90, builds successive Rust
+source releases with that Clang, then uses the final compiler to build static Nu.
+`.#bootstrap-mrustc` exposes the starting compiler, and `.#bootstrap-seed` assembles the
+reusable seed. The source dependency graph contains no downloaded Rust compiler.
 
 ## License
 

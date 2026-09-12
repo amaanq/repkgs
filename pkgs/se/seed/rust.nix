@@ -6,202 +6,53 @@
 }:
 let
   inherit (pkgs) lib;
-  host = pkgs.stdenv.hostPlatform.rust.rustcTarget;
-  target = ps.stdenv.hostPlatform.rust.rustcTarget;
-  cpu = pkgs.stdenv.hostPlatform.parsed.cpu.name;
-  llvmTargets = {
-    x86_64 = "X86";
-    aarch64 = "AArch64";
-    riscv64 = "RISCV";
-    loongarch64 = "LoongArch";
-    powerpc64le = "PowerPC";
-  };
-  bootstrapSource = source "rust-bootstrap";
-  rustSource = source "rust";
-  stage0 = pkgs.stdenvNoCC.mkDerivation {
-    pname = "seed-rust-stage0";
-    inherit (bootstrapSource) version;
-    dontUnpack = true;
-    nativeBuildInputs = [ pkgs.autoPatchelfHook ];
-    buildInputs = [
-      pkgs.stdenv.cc.cc.lib
-      pkgs.zlib
-    ];
-    installPhase =
-      lib.concatMapStringsSep "\n"
-        (component: ''
-          bash ${bootstrapSource.fetch "${component}-${cpu}"}/install.sh \
-            --prefix="$out" --disable-ldconfig
-          chmod -R u+w "$out"
-        '')
-        [
-          "rustc"
-          "cargo"
-          "rust-std"
-        ];
-    dontStrip = true;
-  };
-  binutils =
-    pkgs.runCommand "seed-binutils"
-      {
-        passthru = {
-          isLLVM = true;
-          inherit (llvm) version;
-        };
-      }
-      ''
-        mkdir -p $out/bin
-        for tool in ${llvm}/bin/*; do
-          ln -s "$tool" "$out/bin/$(basename "$tool")"
-        done
-        ln -s ${llvm}/bin/ld.lld $out/bin/ld
-      '';
-  bintools = pkgs.wrapBintoolsWith { bintools = binutils; };
-  cc = pkgs.wrapCCWith {
-    cc = llvm;
-    inherit bintools;
-    isClang = true;
-    gccForLibs = pkgs.stdenv.cc.cc;
-    extraBuildCommands = ''
-      echo '--target=${host} -B${bintools}/bin' >> $out/nix-support/cc-cflags
-      echo '--start-no-unused-arguments --rtlib=libgcc --unwindlib=libgcc --end-no-unused-arguments' >> $out/nix-support/cc-cflags
-      echo '-stdlib=libstdc++' >> $out/nix-support/libcxx-cxxflags
-      echo '-stdlib=libstdc++' >> $out/nix-support/libcxx-ldflags
+  buildRust = import ./rust-build.nix { inherit pkgs ps llvm; };
+  releases = (builtins.fromTOML (builtins.readFile ./rust-chain.toml)).release;
+  mrustc = pkgs.mrustc-bootstrap.overrideAttrs {
+    checkPhase = ''
+      runHook preCheck
+      run_rustc/output-1.90.0/prefix/bin/hello_world | grep -Fx 'Hello, world!'
+      runHook postCheck
     '';
   };
-  stdenv = pkgs.overrideCC pkgs.stdenv cc;
-  config = lib.generators.toINIWithGlobalSection {
-    mkKeyValue = key: value: "${key} = ${builtins.toJSON value}";
-  };
-  rust = stdenv.mkDerivation {
-    pname = "seed-rust";
+  chain =
+    lib.foldl'
+      (
+        previous: release:
+        let
+          compiler = buildRust {
+            inherit (release) version;
+            src = pkgs.fetchurl {
+              url = "https://static.rust-lang.org/dist/rustc-${release.version}-src.tar.gz";
+              inherit (release) hash;
+            };
+            stage0 = previous.compiler;
+            stage = if previous.stages == { } then 2 else 1;
+          };
+        in
+        {
+          inherit compiler;
+          stages = previous.stages // {
+            ${release.version} = compiler;
+          };
+        }
+      )
+      {
+        compiler = mrustc;
+        stages = { };
+      }
+      releases;
+  rustSource = source "rust";
+  rust = buildRust {
     inherit (rustSource) version;
     src = rustSource.default;
-    nativeBuildInputs = [
-      pkgs.python3Minimal
-      pkgs.cmakeMinimal
-      (pkgs.ninja.override {
-        buildDocs = false;
-        python3 = pkgs.python3Minimal;
-      })
-      pkgs.pkg-config
-    ];
-    buildInputs = [
-      pkgs.openssl
-      pkgs.zlib
-      pkgs.curl
-    ];
-    dontUseCmakeConfigure = true;
-    dontUpdateAutotoolsGnuConfigScripts = true;
-    dontFixLibtool = true;
-    stripDebugList = [ "bin" ];
-    env = {
-      RUSTFLAGS = "-Clinker=${cc}/bin/clang -Clinker-features=-lld -Clink-self-contained=-linker";
-      OPENSSL_NO_VENDOR = "1";
-    };
-    configurePhase = ''
-      runHook preConfigure
-      cp ${
-        pkgs.writeText "seed-rust-bootstrap.toml" (config {
-          globalSection = {
-            change-id = "ignore";
-            profile = "dist";
-          };
-          sections = {
-            llvm = {
-              download-ci-llvm = false;
-              targets = lib.concatStringsSep ";" (
-                lib.unique [
-                  llvmTargets.${cpu}
-                  llvmTargets.${ps.stdenv.hostPlatform.parsed.cpu.name}
-                ]
-              );
-              experimental-targets = "";
-              link-jobs = 2;
-              use-linker = "lld";
-            };
-            build = {
-              build = host;
-              host = [ host ];
-              target = [
-                host
-                target
-              ];
-              rustc = "${stage0}/bin/rustc";
-              cargo = "${stage0}/bin/cargo";
-              docs = false;
-              extended = true;
-              tools = [ "cargo" ];
-              vendor = true;
-              locked-deps = true;
-              optimized-compiler-builtins = false;
-              description = "repkgs";
-            };
-            install = {
-              prefix = "@out@";
-              sysconfdir = "etc";
-            };
-            rust = {
-              channel = "stable";
-              download-rustc = false;
-              remap-debuginfo = true;
-              rpath = true;
-              lld = false;
-              llvm-tools = false;
-              llvm-bitcode-linker = false;
-              codegen-tests = false;
-            };
-            "target.${host}" = {
-              cc = "${cc}/bin/clang";
-              cxx = "${cc}/bin/clang++";
-              linker = "${cc}/bin/clang";
-              ar = "${llvm}/bin/llvm-ar";
-              ranlib = "${llvm}/bin/llvm-ranlib";
-              crt-static = false;
-            };
-            "target.${target}" = {
-              cc = "${ps.stdenv.cc}/bin/${ps.stdenv.cc.targetPrefix}cc";
-              cxx = "${ps.stdenv.cc}/bin/${ps.stdenv.cc.targetPrefix}c++";
-              linker = "${ps.stdenv.cc}/bin/${ps.stdenv.cc.targetPrefix}cc";
-              ar = "${llvm}/bin/llvm-ar";
-              ranlib = "${llvm}/bin/llvm-ranlib";
-              musl-root = "${ps.stdenv.cc.libc}";
-              crt-static = true;
-            };
-            dist = {
-              compression-formats = [ "gz" ];
-              src-tarball = false;
-            };
-          };
-        })
-      } bootstrap.toml
-      substituteInPlace bootstrap.toml --replace-fail '@out@' "$out"
-      runHook postConfigure
-    '';
-    buildPhase = ''
-      runHook preBuild
-      python3 x.py build --stage 2 -j "$NIX_BUILD_CORES"
-      runHook postBuild
-    '';
-    installPhase = ''
-      runHook preInstall
-      python3 x.py install --stage 2 -j "$NIX_BUILD_CORES"
-      rm -f "$out/lib/rustlib/install.log" "$out/lib/rustlib/uninstall.sh"
-      runHook postInstall
-    '';
-    disallowedReferences = [ stage0 ];
-    passthru = {
-      inherit cc;
-      unwrapped = rust;
-      targetPlatforms = lib.unique [
-        pkgs.stdenv.hostPlatform.system
-        ps.stdenv.hostPlatform.system
-      ];
-      badTargetPlatforms = [ ];
-    };
-    meta.platforms = [ pkgs.stdenv.hostPlatform.system ];
+    stage0 = chain.compiler;
+    final = true;
+    backend = null;
   };
 in
 {
-  inherit stage0 rust;
+  inherit mrustc rust;
+  stage0 = chain.compiler;
+  rustStages = chain.stages;
 }

@@ -1,0 +1,27 @@
+[[release]]
+hash    = "sha256-ONziBdOfYVcSYfBEQjehzp7+y5cOdg2OxNlXr1tEVyM="
+version = "1.91.1"
+
+[[release]]
+hash    = "sha256-ng0sp1x+J1/cdYJVv0sDr7PWXRVDYCdGkHyTO2kBw7g="
+version = "1.92.0"
+
+[[release]]
+hash    = "sha256-TCMKRLPZyfPO+VCUNxn4OABY0nyR/aXjapqUfvAT4B8="
+version = "1.93.1"
+
+[[release]]
+hash    = "sha256-TBQqYl8S4833FsaK4Z9PYNmK0UgmJ7CFebFYOOla1RQ="
+version = "1.94.1"
+
+[[release]]
+hash    = "sha256-6puCqD5GlnU3w1ac6db6FoEcBDqW5lE3bDSecCQcpRU="
+version = "1.95.0"
+
+[[release]]
+hash    = "sha256-6QqesVOylIr6yEDb6dd7ZON2cG8oZDh+53F/dFAEO0Q="
+version = "1.96.0"
+
+[[release]]
+hash    = "sha256-YiwrQpxTy/3A3TpR0DVU6RzWPr7BkSwfVwlkDN/vGp0="
+version = "1.97.1"

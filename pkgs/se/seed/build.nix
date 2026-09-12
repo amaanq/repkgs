@@ -268,5 +268,10 @@ in
     m4
     bison
     ;
-  inherit (rustBootstrap) rust stage0;
+  inherit (rustBootstrap)
+    rust
+    stage0
+    mrustc
+    rustStages
+    ;
 }

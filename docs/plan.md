@@ -4,9 +4,9 @@ What is not built yet. design.md describes what is.
 
 ## Source bootstrap
 
-Connect the mrustc Rust 1.90 bootstrap to our current Rust pin through verified intermediate
-releases. Replace the upstream Rust stage0 in the Rust and Nushell seed builds, then port jig
-to Rust. LLVM already builds through the small hex0 seed.
+Port jig to Rust. LLVM, the mrustc chain through Rust 1.98 and static Nushell now build without
+a downloaded Rust compiler. The assembled seed has no store references and runs after relocation.
+Rebuilding every dependency in an empty store without compiled substitutes remains separate work.
 The dependency boundary and remaining work are in [bootstrap.md](bootstrap.md).
 
 ## Compilers still taken as upstream binaries

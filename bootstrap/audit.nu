@@ -1,16 +1,16 @@
 def main [installable: string = ".#bootstrap-llvm", --rust, --mrustc]: nothing -> string {
-  if $rust and $mrustc { error make {msg: "select either Rust stage0 or mrustc"} }
+  if $rust and $mrustc { error make {msg: "select either the Rust chain or mrustc"} }
   let result = (^nix derivation show --recursive $installable | complete)
   if $result.exit_code != 0 { error make {msg: $result.stderr} }
 
   let document = ($result.stdout | from json)
   if $document.version != 4 { error make {msg: "expected Nix derivation JSON version 4"} }
   let graph = ($document.derivations | transpose path drv)
-  let rust_manifest = (open ($env.FILE_PWD | path join ../pkgs/ru/rust-bootstrap/sources.toml))
-  let rust_sources = ($rust_manifest.source | where key ends-with '-x86_64' | each {|archive|
+  let rust_chain = (open ($env.FILE_PWD | path join ../pkgs/se/seed/rust-chain.toml) | get release)
+  let rust_sources = ($rust_chain | each {|archive|
     {
-      name: $"rust-bootstrap-($rust_manifest.pin.version)-($archive.key)"
-      url: ($archive.url | str replace '{version}' $rust_manifest.pin.version)
+      name: $"rustc-($archive.version)-src.tar.gz"
+      url: $"https://static.rust-lang.org/dist/rustc-($archive.version)-src.tar.gz"
       hash: $archive.hash
     }
   } | sort-by name)
@@ -18,6 +18,7 @@ def main [installable: string = ".#bootstrap-llvm", --rust, --mrustc]: nothing -
   let nu_version = (open ($env.FILE_PWD | path join ../pkgs/nu/nushell/sources.toml) | get pin.version)
   let rust_names = (if $rust {
     ($rust_sources | get name) ++ [
+      rustc-1.90.0-src.tar.gz
       $"rust-($rust_version)-source"
       $"nushell-($nu_version)-source"
       cargo-build-hook.sh cargo-check-hook.sh cargo-install-hook.sh cargo-setup-hook.sh
@@ -54,8 +55,10 @@ def main [installable: string = ".#bootstrap-llvm", --rust, --mrustc]: nothing -
     let found = ($sources | where name in ($rust_sources | get name) | each {|entry|
       {name: $entry.name, url: ($entry.urls | get 0), hash: $entry.outputs.out.hash}
     } | sort-by name)
-    if $found != $rust_sources {
-      error make {msg: "expected exactly the pinned x86-64 Rust stage0 components"}
+    let complete_chain = ($graph | any {|entry| $entry.drv.name == $"seed-rust-($rust_version)"})
+    let expected = (if $complete_chain { $rust_sources } else { $rust_sources | first ($found | length) })
+    if ($found | is-empty) or $found != $expected {
+      error make {msg: "expected a prefix of the pinned Rust source releases"}
     }
     $found
   } else { [] })
@@ -64,7 +67,7 @@ def main [installable: string = ".#bootstrap-llvm", --rust, --mrustc]: nothing -
     target: $installable
     derivations: ($graph | length)
     seed: ($seeds | first | get drv | select name outputs)
-    rust_bootstrap: $rust_inputs
+    rust_sources: $rust_inputs
     fixed_outputs: $sources
   } | to json
 }
