@@ -214,6 +214,15 @@ $ nix develop .#jigd --command cargo build --manifest-path pkgs/ji/jigd/src/Carg
 $ nix develop .#jigd --command cargo test --manifest-path pkgs/ji/jigd/src/Cargo.toml
 ```
 
+To use the local daemon through the cache commands, build it and pass its executable.
+
+```console
+$ nix develop .#jigd --command cargo build --release --manifest-path pkgs/ji/jigd/src/Cargo.toml
+$ repkgs cache start --daemon pkgs/ji/jigd/src/target/release/jigd
+$ repkgs cache status
+$ repkgs cache stop
+```
+
 ## How the bootstrap goes
 
 ```

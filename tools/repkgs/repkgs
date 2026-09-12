@@ -133,21 +133,54 @@ def "main repro" [
 def "main cache" [
   action: string # start, stop or status
   --size: int = 50 # GiB before whole packs are evicted (start)
+  --daemon: path
 ]: nothing -> nothing {
   let dir = (jigd-dir)
   let sock = $"($dir)/socket"
   let pidfile = $"($dir)/pid"
   match $action {
     "start" => {
+      if $size < 0 { fail "cache size must be nonnegative" }
       if (is-socket $sock) { print -e $"jigd already serving ($sock)"; return }
+      let executable = (if $daemon == null {
+        let build = (^nix-build (root) ...$XP -A jigd --no-out-link err> /dev/stderr | complete)
+        if $build.exit_code != 0 { fail "could not build jigd" }
+        $build.stdout | str trim | path join bin jigd
+      } else { $daemon | path expand --strict })
       mkdir $dir
-      rm -f $sock
-      let jigd = (^nix-build (root) ...$XP -A jigd --no-out-link | str trim)
-      let pid = (^sh -c $"JIGD_SIZE=($size) setsid ($jigd)/bin/jigd ($sock) >($dir)/log 2>&1 & echo $!" | str trim)
-      $pid | save -f $pidfile
-      print -e $"jigd pid ($pid), socket ($sock), log ($dir)/log"
+      let log = $"($dir)/log"
+      let pid = (^setsid --fork sh -c 'printf "%s\n" "$$"; JIGD_SIZE="$1" exec "$2" "$3" >"$4" 2>&1 < /dev/null' -- $size $executable $sock $log | str trim | into int)
+      let deadline = (date now) + 5sec
+      loop {
+        let process = (^kill -0 $pid | complete)
+        if $process.exit_code != 0 {
+          rm -f $pidfile
+          fail $"jigd failed to start\n(open --raw $log)"
+        }
+        if (is-socket $sock) {
+          $pid | into string | save -f $pidfile
+          print -e $"jigd pid ($pid), socket ($sock), log ($log)"
+          break
+        }
+        if (date now) >= $deadline {
+          ^kill $pid
+          rm -f $pidfile
+          fail $"jigd did not open ($sock)\n(open --raw $log)"
+        }
+        sleep 25ms
+      }
     }
-    "stop" => { if ($pidfile | path exists) { ^kill (open --raw $pidfile | str trim); rm -f $pidfile $sock } }
+    "stop" => {
+      if not ($pidfile | path exists) { return }
+      let stopped = (^kill (open --raw $pidfile | str trim) | complete)
+      if $stopped.exit_code != 0 { fail $stopped.stderr }
+      let deadline = (date now) + 5sec
+      while (is-socket $sock) {
+        if (date now) >= $deadline { fail $"jigd has not stopped, see ($dir)/log" }
+        sleep 25ms
+      }
+      rm -f $pidfile
+    }
     "status" => {
       let s = (jigd-socket)
       if $s == null { print "jigd: not running"; return }

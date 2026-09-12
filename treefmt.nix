@@ -7,6 +7,12 @@
 }:
 let
   llvm = pkgs.llvmPackages_23;
+  fenix = (builtins.fromJSON (builtins.readFile ./flake.lock)).nodes.fenix.locked;
+  rustfmt =
+    (import (builtins.fetchTarball {
+      url = "https://github.com/${fenix.owner}/${fenix.repo}/archive/${fenix.rev}.tar.gz";
+      sha256 = fenix.narHash;
+    }) { inherit pkgs; }).latest.rustfmt;
   # nu's own parser/type checker over each file (authoritative). Fails on any error diagnostic.
   # cell-path-types: `$rec.field` takes the field's declared type instead of `any`, so typed
   # records are checked where they are used, not just where they are built
@@ -40,6 +46,7 @@ let
   );
   nuFiles = [
     "*.nu"
+    "tools/repkgs"
     "pkgs/up/uptrack/src/uptrack"
   ];
 in
@@ -50,6 +57,7 @@ pkgs.treefmt.withConfig {
       "pkgs/ll/llvm/*.txt"
       "result*"
       "**/lock.json"
+      "**/target/**"
     ];
     formatter = {
       nix = {
@@ -72,6 +80,16 @@ pkgs.treefmt.withConfig {
         command = "${pkgs.go}/bin/gofmt";
         options = [ "-w" ];
         includes = [ "pkgs/*/*/src/*.go" ];
+      };
+      rust = {
+        command = "${rustfmt}/bin/rustfmt";
+        options = [
+          "--edition"
+          "2024"
+          "--config"
+          "skip_children=true"
+        ];
+        includes = [ "pkgs/*/*/src/*.rs" ];
       };
       cpp = {
         command = "${llvm.clang-tools}/bin/clang-format";
