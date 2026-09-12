@@ -114,6 +114,68 @@ The assembled seed still contains the tools needed for ordinary package builds. 
 compiler trust roots to hex0 does not make that runtime tool bundle 229 bytes or remove the
 host and generated-source assumptions above.
 
+## Resuming and watching a clean LLVM build
+
+`bootstrap/rebuild.nu` rebuilds hex0 through LLVM in its own store, with compiled substitutes
+and remote builders disabled. It leaves the completed Rust chain in the normal store available
+for Nu and jig. This run verifies the compiler ancestry through LLVM. It does not repeat the
+full Rust bootstrap.
+
+```console
+nu bootstrap/rebuild.nu start
+nu bootstrap/rebuild.nu status
+nu bootstrap/rebuild.nu log
+```
+
+The default is a 30-core budget across three build jobs. `start --cores 30 --jobs 3` sets
+these explicitly. Each dependency build gets ten compile workers, so independent configure
+and compilation phases can overlap. Once all LLVM dependencies are ready, LLVM gets all 30
+workers. A recipe may impose a lower limit where parallel compilation is unsupported.
+
+On bcachefs, the checked Coreutils builds use `/tmp` on tmpfs because their hard-link
+disk-usage test assumes allocations larger than bcachefs gives small files. Their dependencies
+still build on disk, and completed outputs stay in the persistent isolated store.
+
+The build runs as a systemd user service. Closing the terminal or pressing Ctrl-C in `log`
+leaves the build running. The log viewer exits when the service finishes.
+If the build fails, `log` shows the first Nix error with the preceding build output.
+
+```console
+nu bootstrap/rebuild.nu stop
+nu bootstrap/rebuild.nu start
+```
+
+Starting again reuses every completed derivation. Nix may restart the interrupted derivation
+from its beginning. `--keep-failed` preserves its build directory for inspection, but does
+not turn it into a compiler checkpoint. Each Rust release in the normal store is already a
+separate derivation, so rebuilding the normal seed does not repeat unchanged compilers.
+Keep the `result-bootstrap-rust*` and `result-bootstrap-mrustc` links to protect those outputs
+from garbage collection.
+
+The runner saves its evaluated derivation and dependency audit on the first run. Later starts
+use that same derivation even after repository edits. State lives under
+`$XDG_STATE_HOME/repkgs/bootstrap-llvm`, or `~/.local/state/repkgs/bootstrap-llvm` by default.
+The directory contains `build.log`, `plan.json`, `graph.json` and the isolated `store`.
+`status` counts completed derivations, including source downloads. It is not a time estimate.
+
+Use `--state /path/on/disk` on each command to choose another location or begin a new run
+after changing the source pins. Keep it off tmpfs. The first preparation copies only derivation
+metadata, declared source inputs and the hash-verified stage0 source tree. The build also
+clears inherited sandbox paths so a host `/bin/sh` cannot become an extra compiler seed.
+It first builds Bash 2.05b from hex0 with no `/bin/sh`, then mounts that shell for the
+remaining minimal bootstrap. Once static Bash 5.3 is built, it supplies `/bin/sh` for
+the LLVM build and its remaining dependencies. Both shells come from the frozen graph
+and are built in the isolated store with substitutes disabled.
+
+After a reboot, run `start` again. A full logout may stop the user service if lingering is
+disabled. `loginctl enable-linger` allows the user manager to remain active after logout.
+The runner does not change that account setting.
+
+When LLVM finishes, the runner compares its NAR hash with the existing LLVM output if one
+was available when the run began. A mismatch reports failure and preserves both outputs.
+The normal seed remains available through `nix build .#bootstrap-seed`, using the existing
+Rust outputs.
+
 ## References
 
 - [nixpkgs minimal bootstrap](https://github.com/NixOS/nixpkgs/tree/422d1ae605d7fcd9896412b37dc065c456c0eefb/pkgs/os-specific/linux/minimal-bootstrap)
