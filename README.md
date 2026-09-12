@@ -36,7 +36,7 @@ builds it (`nix-build nix/nix`, flake `packages.x86_64-linux.nix`). On NixOS:
 ```nix
 nix.package = inputs.repkgs.packages.${pkgs.system}.nix; # or: import "${repkgs}/nix/nix" { inherit pkgs; }
 nix.settings = {
-  experimental-features = [ "nix-command" "ca-derivations" "dynamic-derivations" "recursive-nix" ];
+  experimental-features = [ "nix-command" "ca-derivations" "dynamic-derivations" ];
   system-features = [ "builder-rpc-v0" "big-parallel" "kvm" "nixos-test" "benchmark" ];
 };
 ```
