@@ -30,7 +30,13 @@
           bootstrap-rust-stage0 = bootstrap.stage0;
           bootstrap-rust = bootstrap.rust;
           bootstrap-nushell = bootstrap.nu;
-          bootstrap-mrustc = nixpkgs.legacyPackages.${system}.mrustc-bootstrap;
+          bootstrap-mrustc = nixpkgs.legacyPackages.${system}.mrustc-bootstrap.overrideAttrs {
+            checkPhase = ''
+              runHook preCheck
+              run_rustc/output-1.90.0/prefix/bin/hello_world | grep -Fx 'Hello, world!'
+              runHook postCheck
+            '';
+          };
           bootstrap-seed = bootstrap.seed;
         }
       );
