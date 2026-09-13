@@ -128,12 +128,11 @@ The assembled seed still contains the tools needed for ordinary package builds. 
 compiler trust roots to hex0 does not make that runtime tool bundle 229 bytes or remove the
 host and generated-source assumptions above.
 
-## Resuming and watching a clean LLVM build
+## Resuming and watching the isolated bootstrap
 
 `bootstrap/rebuild.nu` rebuilds hex0 through LLVM in its own store, with compiled substitutes
-and remote builders disabled. It leaves the completed Rust chain in the normal store available
-for Nu and jig. This run verifies the compiler ancestry through LLVM. It does not repeat the
-full Rust bootstrap.
+and remote builders disabled. The default run stops after LLVM. It leaves the completed Rust
+chain in the normal store available for ordinary seed builds.
 
 ```console
 nu bootstrap/rebuild.nu start
@@ -143,8 +142,9 @@ nu bootstrap/rebuild.nu log
 
 The default is a 30-core budget across three build jobs. `start --cores 30 --jobs 3` sets
 these explicitly. Each dependency build gets ten compile workers, so independent configure
-and compilation phases can overlap. Once all LLVM dependencies are ready, LLVM gets all 30
-workers. A recipe may impose a lower limit where parallel compilation is unsupported.
+and compilation phases can overlap. LLVM and each later compiler checkpoint get all 30 workers
+once their dependencies are ready. A recipe may impose a lower limit where parallel compilation
+is unsupported.
 
 On bcachefs, the checked Coreutils builds use `/tmp` on tmpfs because their hard-link
 disk-usage test assumes allocations larger than bcachefs gives small files. Their dependencies
@@ -187,8 +187,30 @@ The runner does not change that account setting.
 
 When LLVM finishes, the runner compares its NAR hash with the existing LLVM output if one
 was available when the run began. A mismatch reports failure and preserves both outputs.
-The normal seed remains available through `nix build .#bootstrap-seed`, using the existing
-Rust outputs.
+
+Extend a completed LLVM run through mrustc, each Rust release, Nushell, jig and seed assembly
+with the same store and log commands.
+
+```console
+nu bootstrap/rebuild.nu start --through seed
+nu bootstrap/rebuild.nu status
+nu bootstrap/rebuild.nu log
+```
+
+The extension requires the full seed graph to contain the frozen LLVM graph and the same
+stage0 sources. It preserves the LLVM plan and records the new plan under `seed/` in the state
+directory. Subsequent `start` commands resume that plan without needing `--through` again.
+Each compiler and the assembled seed have a recorded NAR comparison in `seed/checkpoints.json`.
+If no original output existed when the plan was frozen, its comparison is marked unavailable.
+`status` shows these checkpoints alongside the derivation counts.
+
+The extension reuses LLVM and its dependencies from the isolated store. It also imports locally
+available source inputs after checking their pinned hashes and rejecting store references.
+Nix's resolved build recipes are checked against the frozen recipes before accepting them as
+existing store metadata. Compiled Rust outputs from the normal store stay there, so this step
+does compile Rust again to verify its ancestry in isolation. Each completed release is reused
+when resuming this run. The normal seed remains available through `nix build .#bootstrap-seed`
+using the existing Rust outputs.
 
 The isolated store can be mirrored as a source-input local binary cache. The archive contains
 the fixed-output source files, the auditable hex0 seed and derivation recipes, never the compiled
@@ -198,7 +220,7 @@ LLVM output.
 nu tools/archive-bootstrap.nu --destination /path/to/repkgs-bootstrap-cache
 ```
 
-The archiver reads the frozen `graph.json`, checks the stored contents of fixed-output inputs
+The archiver reads the active frozen graph, checks the stored contents of fixed-output inputs
 and rejects inputs that reference other store paths. Its generated manifest records every
 archived source hash and derivation path. A future mirror can copy that directory to another
 binary-cache backend without rebuilding the source inputs.

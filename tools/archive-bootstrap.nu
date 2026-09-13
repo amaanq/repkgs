@@ -1,5 +1,7 @@
 #!/usr/bin/env nu
 
+use ../bootstrap/store.nu [plan-dir]
+
 def capture [program: string, arguments: list<string>]: nothing -> string {
   let result = (^$program ...$arguments | complete)
   if $result.exit_code != 0 { error make {msg: $result.stderr} }
@@ -14,7 +16,8 @@ def main [
   let base = ($env.XDG_STATE_HOME? | default ($env.HOME | path join .local/state))
   let state = ($state | default ($base | path join repkgs/bootstrap-llvm) | path expand)
   let destination = ($destination | path expand)
-  let graph = ($state | path join graph.json | open)
+  let metadata = (plan-dir $state)
+  let graph = ($metadata | path join graph.json | open)
   if $graph.version != 4 { error make {msg: "expected Nix derivation JSON version 4"} }
   let entries = ($graph.derivations | transpose path drv)
   let outputs = ($entries | each {|entry|
@@ -47,7 +50,7 @@ def main [
   ^nix --store $store copy --derivation --to $uri --no-check-sigs ...$derivations
   {
     created: (date now)
-    llvm_derivation: (open ($state | path join plan.json)).derivation
+    derivation: (open ($metadata | path join plan.json)).derivation
     fixed_outputs: $outputs
     derivations: $derivations
   } | to json | save --force ($destination | path join repkgs-bootstrap-manifest.json)
