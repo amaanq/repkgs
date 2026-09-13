@@ -117,7 +117,7 @@ impl Store {
    }
 
    pub fn resolve_all(&self, text: &str) -> String {
-      let mut resolved = mask_hashes(text);
+      let mut resolved = text.to_owned();
       for (masked, real) in &self.roots {
          let mut result = String::with_capacity(resolved.len());
          let mut remaining = resolved.as_str();

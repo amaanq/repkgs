@@ -36,10 +36,7 @@ use crate::{
       write_file,
    },
    process::diagnostic,
-   store::{
-      Store,
-      mask_hashes,
-   },
+   store::Store,
 };
 
 fn as_text(data: Vec<u8>) -> Result<String, Vec<u8>> {
@@ -49,9 +46,9 @@ fn as_text(data: Vec<u8>) -> Result<String, Vec<u8>> {
    String::from_utf8(data).map_err(FromUtf8Error::into_bytes)
 }
 
-fn stored(data: Vec<u8>) -> Vec<u8> {
+fn stored(store: &Store, data: Vec<u8>) -> Vec<u8> {
    match as_text(data) {
-      Ok(text) => mask_hashes(&text).into_bytes(),
+      Ok(text) => store.mask_for_replay(&text).into_bytes(),
       Err(binary) => binary,
    }
 }
@@ -80,6 +77,7 @@ enum Kind {
 }
 
 pub fn put_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<()> {
+   let store = Store::new();
    let mut listing = String::new();
    let mut pending = vec![root.to_path_buf()];
    let mut files = 0;
@@ -111,7 +109,7 @@ pub fn put_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<(
             writeln!(listing, "d 0 -\t{name}").expect("formatting a string cannot fail");
             pending.push(path);
          } else if metadata.is_file() {
-            let data = stored(read(&path)?);
+            let data = stored(&store, read(&path)?);
             let hash = digest(&data);
             let blob_key = format!("b/{hash}");
             if !cache.has_many(from_ref(&blob_key))?[0] {
