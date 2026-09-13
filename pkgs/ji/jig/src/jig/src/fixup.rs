@@ -159,13 +159,19 @@ pub fn run(args: &[String]) -> io::Result<()> {
       }
       let result = (|| -> io::Result<()> {
          let bytes = read(&path)?;
-         if denied
-            .iter()
-            .any(|hash| bytes.windows(hash.len()).any(|window| window == hash))
-         {
-            return Err(io::Error::other(
-               "output refers to a denied build platform dependency",
-            ));
+         for hash in &denied {
+            let Some(position) = bytes.windows(hash.len()).position(|window| window == hash) else {
+               continue;
+            };
+            let shown = &bytes[position..(position + 100).min(bytes.len())];
+            let end = shown
+               .iter()
+               .position(|byte| *byte < 0x20 || *byte == 0x7F)
+               .unwrap_or(shown.len());
+            return Err(io::Error::other(format!(
+               "refers to build platform {}",
+               String::from_utf8_lossy(&shown[..end])
+            )));
          }
          let mut image = Image { bytes };
          if is_elf(&image) {
