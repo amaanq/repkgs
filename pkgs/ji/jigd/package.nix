@@ -4,11 +4,12 @@ package {
   name = "jigd";
   version = "3.0.0";
   source = builtins.path {
-    path = ./src;
+    path = ../jig/src;
     name = "jigd-src";
     filter = path: _: builtins.baseNameOf path != "target";
   };
   uses = [ "cargo" ];
   cargo.tool = buildPkgs.rust-bootstrap;
+  cargo.flags = [ "-p" "jigd" ];
   tests.version = false; # a daemon, no --version
 }

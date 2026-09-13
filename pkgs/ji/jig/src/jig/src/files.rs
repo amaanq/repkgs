@@ -50,7 +50,3 @@ pub fn relative_path(text: &str) -> io::Result<&Path> {
    }
    Ok(path)
 }
-
-pub fn digest(data: &[u8]) -> String {
-   blake3::hash(data).to_hex()[..32].to_owned()
-}

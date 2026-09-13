@@ -27,11 +27,13 @@ use serde::{
    Deserialize,
    Serialize,
 };
+use wire::{
+   client::Client,
+   digest,
+};
 
 use crate::{
-   cache::CacheClient,
    files::{
-      digest,
       relative_path,
       write_file,
    },
@@ -201,7 +203,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
    let label = format!("{}{}", invocation.name, invocation.suffix);
    let mut store = Store::new();
    let connection = if invocation.cacheable {
-      CacheClient::connect(socket).map(Some)
+      Client::connect(socket).map(Some)
    } else {
       Ok(None)
    };
@@ -335,11 +337,11 @@ fn request_key(store: &Store, compiler: &str, invocation: &Invocation) -> io::Re
       field(&mut hasher, name);
       field(&mut hasher, var(name).unwrap_or_default());
    }
-   Ok(format!("rs-rust/{}", &hasher.finalize().to_hex()[..32]))
+   Ok(format!("rs/{}", &hasher.finalize().to_hex()[..32]))
 }
 
 fn store_result(
-   cache: &mut CacheClient,
+   cache: &mut Client,
    store: &mut Store,
    request: &str,
    invocation: &Invocation,
@@ -408,7 +410,7 @@ fn stem(name: &str, from: &str, to: &str) -> String {
    }
 }
 
-fn replay(cache: &mut CacheClient, directory: &Path, suffix: &str, key: &str) -> io::Result<bool> {
+fn replay(cache: &mut Client, directory: &Path, suffix: &str, key: &str) -> io::Result<bool> {
    let Some(listing) = cache.get(&format!("o/{key}"))? else {
       return Ok(false);
    };

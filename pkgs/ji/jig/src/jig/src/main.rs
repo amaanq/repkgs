@@ -1,4 +1,3 @@
-mod cache;
 mod cc;
 mod directory;
 mod driver;
@@ -38,9 +37,9 @@ use eyre::{
    bail,
    eyre,
 };
+use wire::client::Client;
 
 use crate::{
-   cache::CacheClient,
    directory::{
       get_directory,
       put_directory,
@@ -131,7 +130,7 @@ fn cache_mode(args: &[OsString], socket: &Path) -> Result<i32> {
    let key_text = key
       .to_str()
       .ok_or_else(|| eyre!("cache key is not UTF-8"))?;
-   let mut client = match CacheClient::connect(socket) {
+   let mut client = match Client::connect(socket) {
       Ok(client) => client,
       Err(error) => {
          diagnostic(format_args!("jig cache unavailable, {error}"));

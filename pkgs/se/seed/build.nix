@@ -152,6 +152,7 @@ let
         ];
     };
     cargoLock.lockFile = ../../ji/jig/src/Cargo.lock;
+    cargoBuildFlags = [ "-p" "jig" ];
     auditable = false;
     doCheck = false;
     env.JIG_STORE_DIR = builtins.storeDir;

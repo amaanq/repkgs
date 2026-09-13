@@ -17,15 +17,15 @@ use std::{
    time::Instant,
 };
 
-use crate::cache::CacheClient;
+use wire::client::Client;
 
 pub struct Slot<'client> {
-   client: &'client mut CacheClient,
+   client: &'client mut Client,
    build:  String,
 }
 
 impl Slot<'_> {
-   pub fn acquire(client: &mut CacheClient) -> io::Result<Option<Slot<'_>>> {
+   pub fn acquire(client: &mut Client) -> io::Result<Option<Slot<'_>>> {
       if var("JIG_SLOT").is_ok_and(|value| !value.is_empty()) {
          return Ok(None);
       }
@@ -107,7 +107,7 @@ pub fn run_slotted<Argument: AsRef<OsStr>>(
    socket: Option<&Path>,
    capture: bool,
 ) -> io::Result<RunResult> {
-   let mut client = socket.and_then(|path| CacheClient::connect(path).ok());
+   let mut client = socket.and_then(|path| Client::connect(path).ok());
    let slot = client
       .as_mut()
       .and_then(|client| Slot::acquire(client).ok().flatten());

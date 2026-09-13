@@ -14,8 +14,7 @@ use std::{
 };
 
 use blake3::Hasher;
-
-use crate::files::digest;
+use wire::identity::Identity;
 
 pub const STORE_DIR: &str = match option_env!("JIG_STORE_DIR") {
    Some(directory) => directory,
@@ -159,7 +158,7 @@ impl Store {
       if !is_store_path(path) {
          self.mask_output(&mut bytes, false);
       }
-      Ok(format!("C:{}", digest(&bytes)))
+      Ok(Identity::of(&bytes).to_string())
    }
 
    pub fn tool_id(&self, program: &str) -> io::Result<String> {

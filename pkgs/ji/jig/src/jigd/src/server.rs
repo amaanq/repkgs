@@ -2,14 +2,12 @@ use std::{
    collections::HashMap,
    io::{
       self,
-      BufRead,
       BufReader,
       BufWriter,
       Read,
       Write,
    },
    os::unix::net::UnixStream,
-   str::FromStr,
    sync::{
       Arc,
       atomic::{
@@ -19,13 +17,15 @@ use std::{
    },
 };
 
+use wire::{
+   read_line,
+   request::Request,
+};
+
 use crate::{
    identity::Identities,
    slots::Slots,
-   store::{
-      MAX_VALUE_SIZE,
-      Store,
-   },
+   store::Store,
 };
 
 pub struct Daemon {
@@ -54,49 +54,6 @@ impl Daemon {
          gets: AtomicU64::new(0),
          hits: AtomicU64::new(0),
          puts: AtomicU64::new(0),
-      }
-   }
-}
-
-enum Request {
-   Get(String),
-   Has(String),
-   Put { key: String, length: usize },
-   Identities(usize),
-   Acquire(String),
-   Release(String),
-   Stats,
-}
-
-impl FromStr for Request {
-   type Err = io::Error;
-
-   fn from_str(line: &str) -> io::Result<Self> {
-      let fields: Vec<_> = line.split_whitespace().collect();
-      match fields.as_slice() {
-         ["GET", key] => Ok(Self::Get((*key).to_owned())),
-         ["HAS", key] => Ok(Self::Has((*key).to_owned())),
-         ["PUT", key, size] => {
-            let length = size.parse::<usize>().map_err(io::Error::other)?;
-            if key.len() > 4096 || length > MAX_VALUE_SIZE {
-               return Err(io::Error::other("cache object exceeds size limit"));
-            }
-            Ok(Self::Put {
-               key: (*key).to_owned(),
-               length,
-            })
-         },
-         ["IDS", count] => {
-            let length = count.parse::<usize>().map_err(io::Error::other)?;
-            if length > 1 << 20 {
-               return Err(io::Error::other("identity request exceeds size limit"));
-            }
-            Ok(Self::Identities(length))
-         },
-         ["SLOT", build] => Ok(Self::Acquire((*build).to_owned())),
-         ["DONE", build] => Ok(Self::Release((*build).to_owned())),
-         ["STATS"] => Ok(Self::Stats),
-         _ => Err(io::Error::other("invalid cache request")),
       }
    }
 }
@@ -202,21 +159,6 @@ impl Drop for Connection {
          self.daemon.slots.release(&build, count);
       }
    }
-}
-
-fn read_line(reader: &mut impl BufRead) -> io::Result<Option<String>> {
-   let mut bytes = Vec::new();
-   let length = reader.take(65537).read_until(b'\n', &mut bytes)?;
-   if length == 0 {
-      return Ok(None);
-   }
-   if length > 65536 || bytes.pop() != Some(b'\n') {
-      return Err(io::Error::new(
-         io::ErrorKind::InvalidData,
-         "unterminated or oversized cache line",
-      ));
-   }
-   String::from_utf8(bytes).map(Some).map_err(io::Error::other)
 }
 
 #[cfg(test)]

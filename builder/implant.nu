@@ -6,7 +6,7 @@ use core.nu *
 # Every dynamically linked ELF under bin/, lib/, libexec/ of `dir` (default $out) gets what our
 # linker would have given it:
 #   - a RUNPATH over libc and the dependencies' lib dirs, padded so reloc-fixup can rewrite it
-#     in place afterwards (the slack sizes match pkgs/ji/jig/src/driver.rs)
+#     in place afterwards (the slack sizes match pkgs/ji/jig/src/jig/src/driver.rs)
 #   - for executables also our ld.so as interpreter and the relocation stub as entry point
 # The binary keeps a real /proc/self/exe this way, which bun and node need to re-exec.
 #

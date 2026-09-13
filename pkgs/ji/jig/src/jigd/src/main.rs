@@ -10,6 +10,7 @@ use std::{
       var,
       var_os,
    },
+   fmt::Arguments,
    fs::{
       Permissions,
       create_dir_all,
@@ -19,7 +20,6 @@ use std::{
    },
    io::{
       self,
-      IsTerminal,
       Write,
    },
    net::Shutdown,
@@ -50,6 +50,10 @@ use std::{
       JoinHandle,
       available_parallelism,
    },
+   time::{
+      SystemTime,
+      UNIX_EPOCH,
+   },
 };
 
 use eyre::{
@@ -73,11 +77,6 @@ use signal_hook::{
       SIGTERM,
    },
    flag::register,
-};
-use tracing::{
-   error,
-   info,
-   warn,
 };
 
 use crate::{
@@ -154,21 +153,16 @@ impl Drop for Socket {
          && metadata.ino() == self.inode
          && let Err(error) = remove_file(&self.path)
       {
-         error!(
+         warn(format_args!(
             "failed to remove socket {} with {error}",
             self.path.display()
-         );
+         ));
       }
    }
 }
 
 fn main() -> Result<()> {
    color_eyre::install()?;
-   tracing_subscriber::fmt()
-      .with_target(false)
-      .with_ansi(io::stderr().is_terminal())
-      .with_writer(io::stderr)
-      .init();
    let arguments: Vec<_> = args_os().skip(1).collect();
    if arguments.len() == 1 && (arguments[0] == "--help" || arguments[0] == "-h") {
       io::stdout().lock().write_all(USAGE.as_bytes())?;
@@ -215,11 +209,11 @@ fn main() -> Result<()> {
    let stopped = Arc::new(AtomicBool::new(false));
    register(SIGINT, Arc::clone(&stopped))?;
    register(SIGTERM, Arc::clone(&stopped))?;
-   info!(
+   note(format_args!(
       "listening on {}, {limit} slots, {}",
       socket.path.display(),
       store.stats()
-   );
+   ));
    let daemon = Arc::new(Daemon::new(store, limit));
    let mut workers: Vec<(JoinHandle<()>, UnixStream)> = Vec::new();
    let result = serve(&socket.listener, &daemon, &stopped, &mut workers);
@@ -228,7 +222,7 @@ fn main() -> Result<()> {
       match stream.shutdown(Shutdown::Both) {
          Ok(()) => {},
          Err(error) if error.kind() == io::ErrorKind::NotConnected => {},
-         Err(error) => warn!("could not stop client with {error}"),
+         Err(error) => warn(format_args!("could not stop client with {error}")),
       }
    }
    for (worker, _) in workers {
@@ -236,6 +230,42 @@ fn main() -> Result<()> {
    }
    daemon.close()?;
    result.map_err(Into::into)
+}
+
+pub fn note(message: Arguments<'_>) {
+   let _ = writeln!(io::stderr().lock(), "{} {message}", timestamp());
+}
+
+pub fn warn(message: Arguments<'_>) {
+   let _ = writeln!(io::stderr().lock(), "{} warning: {message}", timestamp());
+}
+
+fn timestamp() -> String {
+   let seconds = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .map_or(0, |since| since.as_secs());
+   let days = seconds / 86400;
+   let clock = seconds % 86400;
+   let shifted = days + 719_468;
+   let era = shifted / 146_097;
+   let day_of_era = shifted % 146_097;
+   let year_of_era =
+      (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146_096) / 365;
+   let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+   let month_index = (5 * day_of_year + 2) / 153;
+   let day = day_of_year - (153 * month_index + 2) / 5 + 1;
+   let month = if month_index < 10 {
+      month_index + 3
+   } else {
+      month_index - 9
+   };
+   let year = year_of_era + era * 400 + u64::from(month <= 2);
+   format!(
+      "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+      clock / 3600,
+      clock % 3600 / 60,
+      clock % 60
+   )
 }
 
 fn gibibytes(name: &str, fallback: u64) -> Result<u64> {
@@ -293,7 +323,7 @@ fn serve(
                | io::ErrorKind::ConnectionReset
                | io::ErrorKind::ConnectionAborted
                | io::ErrorKind::UnexpectedEof => {},
-               _ => warn!("client request failed with {error}"),
+               _ => warn(format_args!("client request failed with {error}")),
             }
          }
       })?;

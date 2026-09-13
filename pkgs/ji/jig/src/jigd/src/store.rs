@@ -64,15 +64,20 @@ use rustix::{
    },
    io::Errno,
 };
-use tracing::{
-   info,
+use wire::{
+   MAX_KEY,
+   MAX_OBJECT,
+   check_key,
+};
+
+use crate::{
+   note,
    warn,
 };
 
 const PACK_LIMIT: u64 = 256 << 20;
 const HEADER_SIZE: u64 = 8;
 const TOUCH_EVERY: Duration = Duration::from_secs(60);
-pub const MAX_VALUE_SIZE: usize = 2 << 30;
 
 pub struct Tier {
    pub directory: PathBuf,
@@ -307,7 +312,9 @@ impl Shared {
                });
             }
             if offset != size {
-               warn!("truncating unfinished pack {identifier} from {size} to {offset} bytes");
+               warn(format_args!(
+                  "truncating unfinished pack {identifier} from {size} to {offset} bytes"
+               ));
                file.set_len(offset)?;
                state
                   .packs
@@ -419,11 +426,11 @@ impl Shared {
          remove_file(self.pack_path(from, identifier, "pack"))?;
          let _ = remove_file(self.pack_path(from, identifier, "hint"));
          state.totals[from] -= removed.size;
-         info!(
+         note(format_args!(
             "evicted pack {identifier:06}, {} MiB, {} MiB live",
             removed.size >> 20,
             removed.live >> 20
-         );
+         ));
          return Ok(());
       }
       for extension in ["pack", "hint"] {
@@ -449,12 +456,12 @@ impl Shared {
       state.totals[from + 1] += size;
       remove_file(self.pack_path(from, identifier, "pack"))?;
       let _ = remove_file(self.pack_path(from, identifier, "hint"));
-      info!(
+      note(format_args!(
          "demoted pack {identifier:06} to {}, {} MiB, {} MiB live",
          self.tiers[from + 1].directory.display(),
          size >> 20,
          live >> 20
-      );
+      ));
       Ok(())
    }
 
@@ -476,7 +483,7 @@ impl Shared {
                break;
             };
             if let Err(error) = self.move_down(identifier) {
-               warn!("pack {identifier:06}: {error}");
+               warn(format_args!("pack {identifier:06}: {error}"));
                break;
             }
          }
@@ -522,10 +529,10 @@ impl Store {
                         path.file_name() == shared.pack_path(tier, *identifier, "pack").file_name()
                      })
                   else {
-                     warn!(
+                     warn(format_args!(
                         "ignoring pack file {} with a noncanonical name",
                         path.display()
-                     );
+                     ));
                      continue;
                   };
                   identifiers.push(identifier);
@@ -539,7 +546,7 @@ impl Store {
                   continue;
                }
                if let Err(error) = shared.load(&mut state, tier, identifier) {
-                  warn!("pack {identifier:06}: {error} (skipped)");
+                  warn(format_args!("pack {identifier:06}: {error} (skipped)"));
                   continue;
                }
                last = last.max(identifier);
@@ -680,20 +687,10 @@ fn move_file(from: &Path, to: &Path) -> io::Result<()> {
 }
 
 fn check_lengths(key_length: u32, length: u32) -> io::Result<()> {
-   if key_length == 0 || key_length > 4096 || length as usize > MAX_VALUE_SIZE {
+   if key_length == 0 || key_length as usize > MAX_KEY || length as usize > MAX_OBJECT {
       return Err(io::Error::new(
          io::ErrorKind::InvalidData,
          "invalid cache record lengths",
-      ));
-   }
-   Ok(())
-}
-
-fn check_key(key: &str) -> io::Result<()> {
-   if key.chars().any(char::is_whitespace) {
-      return Err(io::Error::new(
-         io::ErrorKind::InvalidData,
-         "invalid cache key",
       ));
    }
    Ok(())

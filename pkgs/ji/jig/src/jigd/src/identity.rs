@@ -6,7 +6,7 @@ use std::{
    sync::RwLock,
 };
 
-use blake3::Hasher;
+use wire::identity::Identity;
 
 #[derive(Eq, PartialEq)]
 struct Stamp {
@@ -19,7 +19,7 @@ struct Stamp {
 
 struct Entry {
    stamp:    Stamp,
-   identity: String,
+   identity: Identity,
 }
 
 #[derive(Default)]
@@ -28,7 +28,7 @@ pub struct Identities {
 }
 
 impl Identities {
-   pub fn of(&self, path: &str) -> io::Result<String> {
+   pub fn of(&self, path: &str) -> io::Result<Identity> {
       let mut file = File::open(path)?;
       let metadata = file.metadata()?;
       if !metadata.is_file() {
@@ -48,10 +48,7 @@ impl Identities {
          return Ok(entry.identity.clone());
       }
 
-      let mut hasher = Hasher::new();
-      hasher.update_reader(&mut file)?;
-      let digest = hasher.finalize().to_hex();
-      let identity = format!("C:{}", &digest[..32]);
+      let identity = Identity::of_reader(&mut file)?;
       self
          .known
          .write()
@@ -85,12 +82,21 @@ mod tests {
       write(&path, b"abc").expect("write header");
       let identities = Identities::default();
       let expected = "C:6437b3ac38465133ffb63b75273a8db5";
-      assert_eq!(identities.of(filename).expect("hash header"), expected);
-      assert_eq!(identities.of(filename).expect("reuse identity"), expected);
+      assert_eq!(
+         identities.of(filename).expect("hash header").to_string(),
+         expected
+      );
+      assert_eq!(
+         identities.of(filename).expect("reuse identity").to_string(),
+         expected
+      );
       assert_eq!(identities.len(), 1);
       write(&path, b"abcd").expect("rewrite header");
       assert_ne!(
-         identities.of(filename).expect("hash changed header"),
+         identities
+            .of(filename)
+            .expect("hash changed header")
+            .to_string(),
          expected
       );
       assert!(

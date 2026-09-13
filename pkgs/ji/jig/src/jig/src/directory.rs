@@ -25,11 +25,13 @@ use std::{
 };
 
 use tempfile::Builder;
+use wire::{
+   client::Client,
+   digest,
+};
 
 use crate::{
-   cache::CacheClient,
    files::{
-      digest,
       relative_path,
       write_file,
    },
@@ -77,7 +79,7 @@ enum Kind {
    Directory,
 }
 
-pub fn put_directory(cache: &mut CacheClient, key: &str, root: &Path) -> io::Result<()> {
+pub fn put_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<()> {
    let mut listing = String::new();
    let mut pending = vec![root.to_path_buf()];
    let mut files = 0;
@@ -199,7 +201,7 @@ fn parse_listing(text: &str) -> io::Result<Vec<Entry>> {
    Ok(entries)
 }
 
-pub fn get_directory(cache: &mut CacheClient, key: &str, root: &Path) -> io::Result<bool> {
+pub fn get_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<bool> {
    let Some(listing) = cache.get(key)? else {
       return Ok(false);
    };

@@ -9,13 +9,11 @@ use serde::{
    Deserialize,
    Serialize,
 };
+use wire::client::Client;
 
-use crate::{
-   cache::CacheClient,
-   store::{
-      Store,
-      field,
-   },
+use crate::store::{
+   Store,
+   field,
 };
 
 #[derive(Deserialize, Serialize)]
@@ -38,7 +36,7 @@ pub struct Manifest {
 
 impl Manifest {
    pub fn build(
-      cache: &mut CacheClient,
+      cache: &mut Client,
       store: &mut Store,
       paths: &[String],
       variables: &[String],
@@ -75,16 +73,12 @@ impl Manifest {
       Ok(hasher.finalize().to_hex()[..32].to_owned())
    }
 
-   pub fn publish(&self, cache: &mut CacheClient, request: &str) -> io::Result<()> {
+   pub fn publish(&self, cache: &mut Client, request: &str) -> io::Result<()> {
       cache.put(&format!("m/{request}"), &serde_json::to_vec(self)?)
    }
 }
 
-pub fn lookup(
-   cache: &mut CacheClient,
-   store: &mut Store,
-   request: &str,
-) -> io::Result<Option<String>> {
+pub fn lookup(cache: &mut Client, store: &mut Store, request: &str) -> io::Result<Option<String>> {
    let Some(bytes) = cache.get(&format!("m/{request}"))? else {
       return Ok(None);
    };
@@ -116,7 +110,7 @@ pub fn lookup(
    manifest.result_key(request).map(Some)
 }
 
-pub fn prefetch(cache: &mut CacheClient, store: &mut Store, paths: &[String]) -> io::Result<()> {
+pub fn prefetch(cache: &mut Client, store: &mut Store, paths: &[String]) -> io::Result<()> {
    let requested: Vec<_> = paths
       .iter()
       .filter(|path| store.daemon_may_identify(path))
@@ -124,7 +118,7 @@ pub fn prefetch(cache: &mut CacheClient, store: &mut Store, paths: &[String]) ->
       .collect();
    for (path, identity) in requested.iter().zip(cache.identities(&requested)?) {
       if let Some(value) = identity {
-         store.remember(path.to_owned(), value);
+         store.remember(path.to_owned(), value.to_string());
       }
    }
    Ok(())

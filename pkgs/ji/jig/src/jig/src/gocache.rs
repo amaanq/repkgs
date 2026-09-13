@@ -24,12 +24,12 @@ use serde::{
    Deserialize,
    Serialize,
 };
+use wire::{
+   MAX_OBJECT,
+   client::Client,
+};
 
 use crate::{
-   cache::{
-      CacheClient,
-      MAX_OBJECT_SIZE,
-   },
    files::write_file,
    process::{
       diagnostic,
@@ -135,7 +135,7 @@ fn reply(output: &mut impl Write, response: &Response) -> io::Result<()> {
 }
 
 pub fn run(socket: &Path) -> io::Result<()> {
-   let mut cache = match CacheClient::connect(socket) {
+   let mut cache = match Client::connect(socket) {
       Ok(client) => Some(client),
       Err(error) => {
          diagnostic(format_args!("jig Go cache daemon unavailable, {error}"));
@@ -209,7 +209,7 @@ pub fn run(socket: &Path) -> io::Result<()> {
          } => {
             let (_, action_hex) = identifier(&action)?;
             let (output_bytes, output_hex) = identifier(&output_id)?;
-            if size > MAX_OBJECT_SIZE {
+            if size > MAX_OBJECT {
                return Err(io::Error::other("Go cache body exceeds size limit"));
             }
             let mut bytes = Vec::new();

@@ -23,9 +23,9 @@ use eyre::{
    bail,
 };
 use tempfile::NamedTempFile;
+use wire::client::Client;
 
 use crate::{
-   cache::CacheClient,
    cc::cached_header,
    driver::Driver,
    manifest::parse_depfile,
@@ -71,7 +71,7 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
       log("header", "unsupported-options", "conftest.c", started);
       return Ok(1);
    }
-   let mut cache = CacheClient::connect(socket)?;
+   let mut cache = Client::connect(socket)?;
    if cached_header(&driver, raw, &mut cache)? {
       log("header", "compile-hit", "conftest.c", started);
       return Ok(0);

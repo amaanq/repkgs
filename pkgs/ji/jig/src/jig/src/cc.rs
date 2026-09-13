@@ -21,9 +21,9 @@ use std::{
 
 use blake3::Hasher;
 use tempfile::Builder;
+use wire::client::Client;
 
 use crate::{
-   cache::CacheClient,
    driver::{
       BinaryFormat,
       Driver,
@@ -324,11 +324,11 @@ impl Invocation {
       for path in &self.inputs {
          field(&mut hasher, store.input_id(path)?);
       }
-      Ok(format!("cc-rust/{}", &hasher.finalize().to_hex()[..32]))
+      Ok(format!("cc/{}", &hasher.finalize().to_hex()[..32]))
    }
 }
 
-pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut CacheClient) -> io::Result<bool> {
+pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut Client) -> io::Result<bool> {
    let mut invocation = Invocation::parse(raw.to_vec());
    if invocation.action != Action::Compile || !invocation.cacheable {
       return Ok(false);
@@ -366,7 +366,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    let connected = if invocation.cacheable {
       match invocation
          .request_key(&store, driver.compiler())
-         .and_then(|key| CacheClient::connect(socket).map(|cache| (key, cache)))
+         .and_then(|key| Client::connect(socket).map(|cache| (key, cache)))
       {
          Ok(connection) => Some(connection),
          Err(error) => {
@@ -559,7 +559,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
 }
 
 fn cached(
-   cache: &mut CacheClient,
+   cache: &mut Client,
    store: &Store,
    invocation: &Invocation,
    key: &str,

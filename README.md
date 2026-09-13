@@ -210,16 +210,15 @@ run from any path. **uptrack** (nu) does the updates.
 Work on the wrapper and daemon with nixpkgs' Rust toolchain, without bootstrapping the package set.
 
 ```console
-$ nix develop .#rust --command cargo build --manifest-path pkgs/ji/jig/src/Cargo.toml
-$ nix develop .#rust --command cargo build --manifest-path pkgs/ji/jigd/src/Cargo.toml
-$ nix develop .#rust --command cargo test --manifest-path pkgs/ji/jigd/src/Cargo.toml
+$ nix develop .#rust --command cargo build --workspace --manifest-path pkgs/ji/jig/src/Cargo.toml
+$ nix develop .#rust --command cargo test --workspace --manifest-path pkgs/ji/jig/src/Cargo.toml
 ```
 
 To use the local daemon through the cache commands, build it and pass its executable.
 
 ```console
-$ nix develop .#rust --command cargo build --release --manifest-path pkgs/ji/jigd/src/Cargo.toml
-$ repkgs cache start --daemon pkgs/ji/jigd/src/target/release/jigd
+$ nix develop .#rust --command cargo build --release -p jigd --manifest-path pkgs/ji/jig/src/Cargo.toml
+$ repkgs cache start --daemon pkgs/ji/jig/src/target/release/jigd
 $ repkgs cache status
 $ repkgs cache stop
 ```
