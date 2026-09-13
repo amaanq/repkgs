@@ -176,6 +176,17 @@ was available when the run began. A mismatch reports failure and preserves both 
 The normal seed remains available through `nix build .#bootstrap-seed`, using the existing
 Rust outputs.
 
+The isolated store can be mirrored as a source-input local binary cache. The archive contains
+the fixed-output source files, the auditable hex0 seed and derivation recipes, never the compiled
+LLVM output.
+
+```console
+nu tools/archive-bootstrap.nu --destination /path/to/repkgs-bootstrap-cache
+```
+
+The generated manifest records every archived source hash and derivation path. A future mirror
+can copy that directory to another binary-cache backend without rebuilding the source inputs.
+
 ## References
 
 - [nixpkgs minimal bootstrap](https://github.com/NixOS/nixpkgs/tree/422d1ae605d7fcd9896412b37dc065c456c0eefb/pkgs/os-specific/linux/minimal-bootstrap)
