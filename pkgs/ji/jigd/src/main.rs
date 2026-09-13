@@ -85,12 +85,17 @@ use crate::{
       Connection,
       Daemon,
    },
-   store::Store,
+   store::{
+      Store,
+      Tier,
+   },
 };
 
 const USAGE: &str = "jigd <socket>\n\nJIGD_SIZE sets the cache budget in GiB, default 50, zero \
-                     means unlimited\nJIGD_SLOTS sets concurrent compiler slots, default \
-                     available CPUs\nXDG_CACHE_HOME holds jigd/packs, default $HOME/.cache\n";
+                     means unlimited\nJIGD_COLD names a second, slower pack directory that takes \
+                     what JIGD_SIZE pushes out\nJIGD_COLD_SIZE sets its budget in GiB, default \
+                     unlimited\nJIGD_SLOTS sets concurrent compiler slots, default available \
+                     CPUs\nXDG_CACHE_HOME holds jigd/packs, default $HOME/.cache\n";
 
 struct Socket {
    listener: UnixListener,
@@ -177,18 +182,19 @@ fn main() -> Result<()> {
       Some(_) => bail!("XDG_CACHE_HOME must not be empty"),
       None => PathBuf::from(var_os("HOME").ok_or_else(|| eyre!("HOME is not set"))?).join(".cache"),
    };
-   let size = match var("JIGD_SIZE") {
-      Ok(value) => {
-         value
-            .parse::<u64>()
-            .wrap_err("JIGD_SIZE must be a nonnegative integer")?
+   let mut tiers = vec![Tier {
+      directory: cache.join("jigd/packs"),
+      budget:    gibibytes("JIGD_SIZE", 50)?,
+   }];
+   match var_os("JIGD_COLD") {
+      Some(path) if !path.is_empty() => {
+         tiers.push(Tier {
+            directory: PathBuf::from(path),
+            budget:    gibibytes("JIGD_COLD_SIZE", 0)?,
+         });
       },
-      Err(VarError::NotPresent) => 50,
-      Err(error) => return Err(error.into()),
-   };
-   let budget = size
-      .checked_mul(1 << 30)
-      .ok_or_else(|| eyre!("JIGD_SIZE is too large"))?;
+      Some(_) | None => {},
+   }
    let limit = match var("JIGD_SLOTS") {
       Ok(value) => {
          value
@@ -202,7 +208,7 @@ fn main() -> Result<()> {
       bail!("JIGD_SLOTS must be positive");
    }
 
-   let store = Store::open(&cache.join("jigd/packs"), budget).wrap_err("could not open cache")?;
+   let store = Store::open(tiers).wrap_err("could not open cache")?;
    let socket =
       Socket::bind(Path::new(socket_path).to_owned()).wrap_err("could not bind socket")?;
    let stopped = Arc::new(AtomicBool::new(false));
@@ -229,6 +235,21 @@ fn main() -> Result<()> {
    }
    daemon.close()?;
    result.map_err(Into::into)
+}
+
+fn gibibytes(name: &str, fallback: u64) -> Result<u64> {
+   let size = match var(name) {
+      Ok(value) => {
+         value
+            .parse::<u64>()
+            .wrap_err_with(|| format!("{name} must be a nonnegative integer"))?
+      },
+      Err(VarError::NotPresent) => fallback,
+      Err(error) => return Err(error.into()),
+   };
+   size
+      .checked_mul(1 << 30)
+      .ok_or_else(|| eyre!("{name} is too large"))
 }
 
 fn serve(

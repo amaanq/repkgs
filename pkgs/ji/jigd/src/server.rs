@@ -12,7 +12,6 @@ use std::{
    str::FromStr,
    sync::{
       Arc,
-      RwLock,
       atomic::{
          AtomicU64,
          Ordering,
@@ -30,7 +29,7 @@ use crate::{
 };
 
 pub struct Daemon {
-   store:      RwLock<Store>,
+   store:      Store,
    slots:      Slots,
    identities: Identities,
    gets:       AtomicU64,
@@ -44,17 +43,17 @@ impl Daemon {
    }
 
    pub fn close(&self) -> io::Result<()> {
-      self.store.read().expect("store lock poisoned").close()
+      self.store.close()
    }
 
    pub fn new(store: Store, limit: usize) -> Self {
       Self {
-         store:      RwLock::new(store),
-         slots:      Slots::new(limit),
+         store,
+         slots: Slots::new(limit),
          identities: Identities::default(),
-         gets:       AtomicU64::new(0),
-         hits:       AtomicU64::new(0),
-         puts:       AtomicU64::new(0),
+         gets: AtomicU64::new(0),
+         hits: AtomicU64::new(0),
+         puts: AtomicU64::new(0),
       }
    }
 }
@@ -125,12 +124,7 @@ impl Connection {
          match line.parse()? {
             Request::Get(key) => {
                self.daemon.gets.fetch_add(1, Ordering::Relaxed);
-               let value = self
-                  .daemon
-                  .store
-                  .read()
-                  .expect("store lock poisoned")
-                  .get(&key);
+               let value = self.daemon.store.get(&key);
                if let Some(object) = value {
                   self.daemon.hits.fetch_add(1, Ordering::Relaxed);
                   writeln!(self.writer, "OK {}", object.size())?;
@@ -141,13 +135,7 @@ impl Connection {
                }
             },
             Request::Has(key) => {
-               let exists = self
-                  .daemon
-                  .store
-                  .read()
-                  .expect("store lock poisoned")
-                  .get(&key)
-                  .is_some();
+               let exists = self.daemon.store.get(&key).is_some();
                self
                   .writer
                   .write_all(if exists { b"1\n" } else { b"0\n" })?;
@@ -157,12 +145,7 @@ impl Connection {
                value.try_reserve_exact(length).map_err(io::Error::other)?;
                value.resize(length, 0);
                self.reader.read_exact(&mut value)?;
-               self
-                  .daemon
-                  .store
-                  .write()
-                  .expect("store lock poisoned")
-                  .put(&key, &value)?;
+               self.daemon.store.put(&key, &value)?;
                self.daemon.puts.fetch_add(1, Ordering::Relaxed);
                self.writer.write_all(b"OK\n")?;
             },
@@ -194,7 +177,6 @@ impl Connection {
             },
             Request::Stats => {
                let (occupied, waiting) = self.daemon.slots.stats();
-               let store = self.daemon.store.read().expect("store lock poisoned");
                writeln!(
                   self.writer,
                   "gets={} hits={} puts={} ids={} slots={} waiting={} {}",
@@ -204,7 +186,7 @@ impl Connection {
                   self.daemon.identities.len(),
                   occupied,
                   waiting,
-                  store.stats()
+                  self.daemon.store.stats()
                )?;
             },
          }
@@ -258,7 +240,10 @@ mod tests {
          Connection,
          Daemon,
       },
-      store::Store,
+      store::{
+         Store,
+         Tier,
+      },
       test_directory::TestDirectory,
    };
 
@@ -268,7 +253,11 @@ mod tests {
       let header = directory.join("header.h");
       write(&header, b"abc").expect("write header");
       let daemon = Arc::new(Daemon::new(
-         Store::open(&directory.join("packs"), 1 << 30).expect("open store"),
+         Store::open(vec![Tier {
+            directory: directory.join("packs"),
+            budget:    1 << 30,
+         }])
+         .expect("open store"),
          1,
       ));
       let (mut client, server) = UnixStream::pair().expect("socket pair");

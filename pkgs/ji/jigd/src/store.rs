@@ -11,7 +11,9 @@ use std::{
    fs::{
       File,
       OpenOptions,
+      copy,
       create_dir_all,
+      hard_link,
       read_dir,
       remove_file,
       rename,
@@ -33,10 +35,24 @@ use std::{
    },
    sync::{
       Arc,
+      Condvar,
+      Mutex,
+      RwLock,
+      RwLockReadGuard,
+      RwLockWriteGuard,
       atomic::{
          AtomicU64,
          Ordering,
       },
+   },
+   thread::{
+      Builder,
+      JoinHandle,
+   },
+   time::{
+      Duration,
+      SystemTime,
+      UNIX_EPOCH,
    },
 };
 
@@ -55,7 +71,13 @@ use tracing::{
 
 const PACK_LIMIT: u64 = 256 << 20;
 const HEADER_SIZE: u64 = 8;
+const TOUCH_EVERY: Duration = Duration::from_secs(60);
 pub const MAX_VALUE_SIZE: usize = 2 << 30;
+
+pub struct Tier {
+   pub directory: PathBuf,
+   pub budget:    u64,
+}
 
 struct Location {
    pack:   u64,
@@ -64,10 +86,18 @@ struct Location {
 }
 
 struct Pack {
-   file: Arc<File>,
-   size: u64,
-   live: u64,
-   used: AtomicU64,
+   file:    Arc<File>,
+   tier:    usize,
+   size:    u64,
+   live:    u64,
+   used:    AtomicU64,
+   touched: AtomicU64,
+}
+
+impl Pack {
+   const fn stale(&self) -> bool {
+      self.live * 2 < self.size
+   }
 }
 
 pub struct Value {
@@ -127,64 +157,15 @@ impl Display for Stats {
    }
 }
 
-pub struct Store {
-   directory:       PathBuf,
-   _directory_lock: File,
-   budget:          u64,
-   reads:           AtomicU64,
-   index:           HashMap<String, Location>,
-   packs:           BTreeMap<u64, Pack>,
-   active:          u64,
-   total:           u64,
+#[derive(Default)]
+struct State {
+   index:  HashMap<String, Location>,
+   packs:  BTreeMap<u64, Pack>,
+   active: u64,
+   totals: Vec<u64>,
 }
 
-impl Store {
-   pub fn open(directory: &Path, budget: u64) -> io::Result<Self> {
-      create_dir_all(directory)?;
-      let directory_lock = File::open(directory)?;
-      flock(&directory_lock, FlockOperation::NonBlockingLockExclusive)?;
-      let mut store = Self {
-         directory: directory.to_owned(),
-         _directory_lock: directory_lock,
-         budget,
-         reads: AtomicU64::new(0),
-         index: HashMap::new(),
-         packs: BTreeMap::new(),
-         active: 0,
-         total: 0,
-      };
-      let mut identifiers = Vec::new();
-      for entry in read_dir(directory)? {
-         let path = entry?.path();
-         if path
-            .extension()
-            .is_some_and(|extension| extension == "pack")
-         {
-            let number = path
-               .file_stem()
-               .and_then(|stem| stem.to_str())
-               .ok_or_else(|| io::Error::other("invalid pack filename"))?;
-            let identifier = number.parse::<u64>().map_err(io::Error::other)?;
-            if path.file_name() != store.pack_path(identifier, "pack").file_name() {
-               return Err(io::Error::other("noncanonical pack filename"));
-            }
-            identifiers.push(identifier);
-         }
-      }
-      identifiers.sort_unstable();
-      for identifier in identifiers {
-         store.load(identifier)?;
-         store.active = identifier;
-      }
-      store.rotate()?;
-      store.evict()?;
-      Ok(store)
-   }
-
-   fn pack_path(&self, identifier: u64, extension: &str) -> PathBuf {
-      self.directory.join(format!("{identifier:06}.{extension}"))
-   }
-
+impl State {
    fn insert(&mut self, key: String, location: Location) {
       self
          .packs
@@ -199,24 +180,74 @@ impl Store {
             .live -= u64::from(previous.length);
       }
    }
+}
 
-   fn load(&mut self, identifier: u64) -> io::Result<()> {
+#[derive(Default)]
+struct Demotion {
+   pending: bool,
+   stopped: bool,
+}
+
+struct Shared {
+   tiers:    Vec<Tier>,
+   _locks:   Vec<File>,
+   state:    RwLock<State>,
+   demotion: Mutex<Demotion>,
+   changed:  Condvar,
+}
+
+pub struct Store {
+   shared:  Arc<Shared>,
+   demoter: Mutex<Option<JoinHandle<()>>>,
+}
+
+fn nanos(time: SystemTime) -> u64 {
+   time
+      .duration_since(UNIX_EPOCH)
+      .map_or(0, |since| since.as_nanos() as u64)
+}
+
+fn now() -> u64 {
+   nanos(SystemTime::now())
+}
+
+impl Shared {
+   fn pack_path(&self, tier: usize, identifier: u64, extension: &str) -> PathBuf {
+      self.tiers[tier]
+         .directory
+         .join(format!("{identifier:06}.{extension}"))
+   }
+
+   fn read(&self) -> RwLockReadGuard<'_, State> {
+      self.state.read().expect("store lock poisoned")
+   }
+
+   fn write(&self) -> RwLockWriteGuard<'_, State> {
+      self.state.write().expect("store lock poisoned")
+   }
+
+   fn load(&self, state: &mut State, tier: usize, identifier: u64) -> io::Result<()> {
       let file = Arc::new(
          OpenOptions::new()
             .read(true)
             .write(true)
-            .open(self.pack_path(identifier, "pack"))?,
+            .open(self.pack_path(tier, identifier, "pack"))?,
       );
-      let size = file.metadata()?.len();
-      self.packs.insert(identifier, Pack {
+      let metadata = file.metadata()?;
+      let size = metadata.len();
+      let modified = nanos(metadata.modified()?);
+      let pack = Pack {
          file: Arc::clone(&file),
+         tier,
          size,
          live: 0,
-         used: AtomicU64::new(0),
-      });
-      match File::open(self.pack_path(identifier, "hint")) {
+         used: AtomicU64::new(modified),
+         touched: AtomicU64::new(modified),
+      };
+      match File::open(self.pack_path(tier, identifier, "hint")) {
          Ok(hint) => {
             let mut reader = BufReader::new(hint);
+            let mut records = Vec::new();
             while let Some(header) = read_header::<16>(&mut reader)? {
                let key_length =
                   u32::from_le_bytes(header[..4].try_into().expect("key length slice"));
@@ -234,16 +265,21 @@ impl Store {
                {
                   return Err(io::Error::other("cache hint exceeds pack size"));
                }
-               let key = read_key(&mut reader, key_length)?;
-               self.insert(key, Location {
+               records.push((read_key(&mut reader, key_length)?, offset, length));
+            }
+            state.packs.insert(identifier, pack);
+            for (key, offset, length) in records {
+               state.insert(key, Location {
                   pack: identifier,
                   offset,
                   length,
                });
             }
+            state.totals[tier] += size;
          },
          Err(error) if error.kind() == io::ErrorKind::NotFound => {
             let mut reader = BufReader::new(&*file);
+            let mut records = Vec::new();
             let mut offset = 0;
             while offset + HEADER_SIZE <= size {
                let mut header = [0; 8];
@@ -251,41 +287,47 @@ impl Store {
                let key_length =
                   u32::from_le_bytes(header[..4].try_into().expect("key length slice"));
                let length = u32::from_le_bytes(header[4..].try_into().expect("value length slice"));
-               check_lengths(key_length, length)?;
                let end = offset + HEADER_SIZE + u64::from(key_length) + u64::from(length);
-               if end > size {
+               if check_lengths(key_length, length).is_err() || end > size {
                   break;
                }
-               let key = read_key(&mut reader, key_length)?;
+               let Ok(key) = read_key(&mut reader, key_length) else {
+                  break;
+               };
                reader.seek_relative(i64::from(length))?;
-               self.insert(key, Location {
+               records.push((key, offset + HEADER_SIZE + u64::from(key_length), length));
+               offset = end;
+            }
+            state.packs.insert(identifier, pack);
+            for (key, value_offset, length) in records {
+               state.insert(key, Location {
                   pack: identifier,
-                  offset: offset + HEADER_SIZE + u64::from(key_length),
+                  offset: value_offset,
                   length,
                });
-               offset = end;
             }
             if offset != size {
                warn!("truncating unfinished pack {identifier} from {size} to {offset} bytes");
                file.set_len(offset)?;
-               self
+               state
                   .packs
                   .get_mut(&identifier)
                   .expect("missing loaded pack")
                   .size = offset;
             }
-            self.seal(identifier)?;
+            state.totals[tier] += offset;
+            self.seal(state, identifier)?;
          },
          Err(error) => return Err(error),
       }
-      self.total += self.packs[&identifier].size;
       Ok(())
    }
 
-   fn seal(&self, identifier: u64) -> io::Result<()> {
-      let temporary = self.pack_path(identifier, "hint.tmp");
+   fn seal(&self, state: &State, identifier: u64) -> io::Result<()> {
+      let tier = state.packs[&identifier].tier;
+      let temporary = self.pack_path(tier, identifier, "hint.tmp");
       let mut writer = BufWriter::new(File::create(&temporary)?);
-      for (key, location) in &self.index {
+      for (key, location) in &state.index {
          if location.pack != identifier {
             continue;
          }
@@ -297,14 +339,14 @@ impl Store {
          writer.write_all(key.as_bytes())?;
       }
       writer.flush()?;
-      rename(temporary, self.pack_path(identifier, "hint"))
+      rename(temporary, self.pack_path(tier, identifier, "hint"))
    }
 
-   fn rotate(&mut self) -> io::Result<()> {
-      if self.packs.contains_key(&self.active) {
-         self.seal(self.active)?;
+   fn rotate(&self, state: &mut State) -> io::Result<()> {
+      if state.packs.contains_key(&state.active) {
+         self.seal(state, state.active)?;
       }
-      let identifier = self
+      let identifier = state
          .active
          .checked_add(1)
          .ok_or_else(|| io::Error::other("pack IDs exhausted"))?;
@@ -312,24 +354,229 @@ impl Store {
          .read(true)
          .write(true)
          .create_new(true)
-         .open(self.pack_path(identifier, "pack"))?;
-      self.packs.insert(identifier, Pack {
-         file: Arc::new(file),
-         size: 0,
-         live: 0,
-         used: AtomicU64::new(0),
+         .open(self.pack_path(0, identifier, "pack"))?;
+      let started = now();
+      state.packs.insert(identifier, Pack {
+         file:    Arc::new(file),
+         tier:    0,
+         size:    0,
+         live:    0,
+         used:    AtomicU64::new(started),
+         touched: AtomicU64::new(started),
       });
-      self.active = identifier;
+      state.active = identifier;
       Ok(())
    }
 
-   pub fn get(&self, key: &str) -> Option<Value> {
-      let location = self.index.get(key)?;
-      let pack = &self.packs[&location.pack];
-      pack.used.store(
-         self.reads.fetch_add(1, Ordering::Relaxed) + 1,
-         Ordering::Relaxed,
+   fn kick(&self) {
+      self
+         .demotion
+         .lock()
+         .expect("demotion lock poisoned")
+         .pending = true;
+      self.changed.notify_all();
+   }
+
+   fn victim(&self, state: &State) -> Option<u64> {
+      for (tier, budget) in self.tiers.iter().enumerate() {
+         if budget.budget == 0 || state.totals[tier] <= budget.budget {
+            continue;
+         }
+         let chosen = state
+            .packs
+            .iter()
+            .filter(|(identifier, pack)| pack.tier == tier && **identifier != state.active)
+            .min_by_key(|(identifier, pack)| {
+               (
+                  !pack.stale(),
+                  pack.used.load(Ordering::Relaxed),
+                  **identifier,
+               )
+            })
+            .map(|(identifier, _)| *identifier);
+         if chosen.is_some() {
+            return chosen;
+         }
+      }
+      None
+   }
+
+   fn move_down(&self, identifier: u64) -> io::Result<()> {
+      let (from, used) = {
+         let state = self.read();
+         let pack = &state.packs[&identifier];
+         (pack.tier, pack.used.load(Ordering::Relaxed))
+      };
+      if from + 1 == self.tiers.len() {
+         let mut state = self.write();
+         state
+            .index
+            .retain(|_, location| location.pack != identifier);
+         let removed = state
+            .packs
+            .remove(&identifier)
+            .expect("missing evicted pack");
+         remove_file(self.pack_path(from, identifier, "pack"))?;
+         let _ = remove_file(self.pack_path(from, identifier, "hint"));
+         state.totals[from] -= removed.size;
+         info!(
+            "evicted pack {identifier:06}, {} MiB, {} MiB live",
+            removed.size >> 20,
+            removed.live >> 20
+         );
+         return Ok(());
+      }
+      for extension in ["pack", "hint"] {
+         move_file(
+            &self.pack_path(from, identifier, extension),
+            &self.pack_path(from + 1, identifier, extension),
+         )?;
+      }
+      let file = OpenOptions::new()
+         .read(true)
+         .write(true)
+         .open(self.pack_path(from + 1, identifier, "pack"))?;
+      file.set_modified(UNIX_EPOCH + Duration::from_nanos(used))?;
+      let mut state = self.write();
+      let pack = state
+         .packs
+         .get_mut(&identifier)
+         .expect("missing demoted pack");
+      pack.file = Arc::new(file);
+      pack.tier = from + 1;
+      let (size, live) = (pack.size, pack.live);
+      state.totals[from] -= size;
+      state.totals[from + 1] += size;
+      remove_file(self.pack_path(from, identifier, "pack"))?;
+      let _ = remove_file(self.pack_path(from, identifier, "hint"));
+      info!(
+         "demoted pack {identifier:06} to {}, {} MiB, {} MiB live",
+         self.tiers[from + 1].directory.display(),
+         size >> 20,
+         live >> 20
       );
+      Ok(())
+   }
+
+   fn demote(&self) {
+      loop {
+         {
+            let mut demotion = self.demotion.lock().expect("demotion lock poisoned");
+            while !demotion.pending && !demotion.stopped {
+               demotion = self.changed.wait(demotion).expect("demotion lock poisoned");
+            }
+            if demotion.stopped {
+               return;
+            }
+            demotion.pending = false;
+         }
+         loop {
+            let victim = self.victim(&self.read());
+            let Some(identifier) = victim else {
+               break;
+            };
+            if let Err(error) = self.move_down(identifier) {
+               warn!("pack {identifier:06}: {error}");
+               break;
+            }
+         }
+      }
+   }
+}
+
+impl Store {
+   pub fn open(tiers: Vec<Tier>) -> io::Result<Self> {
+      let mut locks = Vec::new();
+      for tier in &tiers {
+         create_dir_all(&tier.directory)?;
+         let lock = File::open(&tier.directory)?;
+         flock(&lock, FlockOperation::NonBlockingLockExclusive)?;
+         locks.push(lock);
+      }
+      let shared = Arc::new(Shared {
+         state: RwLock::new(State {
+            totals: vec![0; tiers.len()],
+            ..State::default()
+         }),
+         tiers,
+         _locks: locks,
+         demotion: Mutex::new(Demotion::default()),
+         changed: Condvar::new(),
+      });
+      {
+         let mut state = shared.write();
+         let mut last = 0;
+         for tier in 0..shared.tiers.len() {
+            let mut identifiers = Vec::new();
+            for entry in read_dir(&shared.tiers[tier].directory)? {
+               let path = entry?.path();
+               if path
+                  .extension()
+                  .is_some_and(|extension| extension == "pack")
+               {
+                  let Some(identifier) = path
+                     .file_stem()
+                     .and_then(|stem| stem.to_str())
+                     .and_then(|stem| stem.parse::<u64>().ok())
+                     .filter(|identifier| {
+                        path.file_name() == shared.pack_path(tier, *identifier, "pack").file_name()
+                     })
+                  else {
+                     warn!(
+                        "ignoring pack file {} with a noncanonical name",
+                        path.display()
+                     );
+                     continue;
+                  };
+                  identifiers.push(identifier);
+               }
+            }
+            identifiers.sort_unstable();
+            for identifier in identifiers {
+               if state.packs.contains_key(&identifier) {
+                  let _ = remove_file(shared.pack_path(tier, identifier, "pack"));
+                  let _ = remove_file(shared.pack_path(tier, identifier, "hint"));
+                  continue;
+               }
+               if let Err(error) = shared.load(&mut state, tier, identifier) {
+                  warn!("pack {identifier:06}: {error} (skipped)");
+                  continue;
+               }
+               last = last.max(identifier);
+            }
+         }
+         state.active = last;
+         shared.rotate(&mut state)?;
+      }
+      let worker = Arc::clone(&shared);
+      let demoter = Builder::new()
+         .name("demoter".to_owned())
+         .spawn(move || worker.demote())?;
+      let store = Self {
+         shared,
+         demoter: Mutex::new(Some(demoter)),
+      };
+      store.shared.kick();
+      Ok(store)
+   }
+
+   pub fn get(&self, key: &str) -> Option<Value> {
+      let state = self.shared.read();
+      let location = state.index.get(key)?;
+      let pack = &state.packs[&location.pack];
+      let current = now();
+      pack.used.store(current, Ordering::Relaxed);
+      let touched = pack.touched.load(Ordering::Relaxed);
+      if current.saturating_sub(touched) > TOUCH_EVERY.as_nanos() as u64
+         && pack
+            .touched
+            .compare_exchange(touched, current, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+      {
+         let _ = pack
+            .file
+            .set_modified(UNIX_EPOCH + Duration::from_nanos(current));
+      }
       Some(Value {
          file:   Arc::clone(&pack.file),
          offset: location.offset,
@@ -337,20 +584,19 @@ impl Store {
       })
    }
 
-   pub fn put(&mut self, key: &str, value: &[u8]) -> io::Result<()> {
+   pub fn put(&self, key: &str, value: &[u8]) -> io::Result<()> {
       let key_length = u32::try_from(key.len()).map_err(io::Error::other)?;
       let length = u32::try_from(value.len()).map_err(io::Error::other)?;
       check_lengths(key_length, length)?;
       check_key(key)?;
       let record_size = HEADER_SIZE + u64::from(key_length) + u64::from(length);
-      let active_size = self.packs[&self.active].size;
+      let mut state = self.shared.write();
+      let active_size = state.packs[&state.active].size;
       if active_size > 0 && active_size + record_size > PACK_LIMIT {
-         self.rotate()?;
+         self.shared.rotate(&mut state)?;
       }
-      let pack = self
-         .packs
-         .get_mut(&self.active)
-         .expect("missing active pack");
+      let active = state.active;
+      let pack = state.packs.get_mut(&active).expect("missing active pack");
       let mut header = Vec::with_capacity(8 + key.len());
       header.extend_from_slice(&key_length.to_le_bytes());
       header.extend_from_slice(&length.to_le_bytes());
@@ -365,55 +611,72 @@ impl Store {
          return Err(error);
       }
       pack.size += record_size;
-      self.total += record_size;
-      self.insert(key.to_owned(), Location {
-         pack: self.active,
+      state.totals[0] += record_size;
+      state.insert(key.to_owned(), Location {
+         pack: active,
          offset,
          length,
       });
-      self.evict()
-   }
-
-   fn evict(&mut self) -> io::Result<()> {
-      if self.budget == 0 {
-         return Ok(());
-      }
-      let mut candidates: Vec<_> = self
-         .packs
-         .iter()
-         .filter(|(identifier, _)| **identifier != self.active)
-         .map(|(identifier, pack)| (pack.used.load(Ordering::Relaxed), *identifier))
-         .collect();
-      candidates.sort_unstable();
-      for (_, identifier) in candidates {
-         if self.total <= self.budget {
-            break;
-         }
-         remove_file(self.pack_path(identifier, "pack"))?;
-         remove_file(self.pack_path(identifier, "hint"))?;
-         self.index.retain(|_, location| location.pack != identifier);
-         let removed = self
-            .packs
-            .remove(&identifier)
-            .expect("missing evicted pack");
-         self.total -= removed.size;
-         info!("evicted pack {identifier}, {} bytes", removed.size);
+      let budget = self.shared.tiers[0].budget;
+      if budget > 0 && state.totals[0] > budget {
+         self.shared.kick();
       }
       Ok(())
    }
 
    pub fn stats(&self) -> Stats {
+      let state = self.shared.read();
       Stats {
-         keys:  self.index.len(),
-         packs: self.packs.len(),
-         bytes: self.total,
-         live:  self.packs.values().map(|pack| pack.live).sum(),
+         keys:  state.index.len(),
+         packs: state.packs.len(),
+         bytes: state.totals.iter().sum(),
+         live:  state.packs.values().map(|pack| pack.live).sum(),
+      }
+   }
+
+   fn stop(&self) {
+      self
+         .shared
+         .demotion
+         .lock()
+         .expect("demotion lock poisoned")
+         .stopped = true;
+      self.shared.changed.notify_all();
+      let demoter = self.demoter.lock().expect("demoter lock poisoned").take();
+      if let Some(demoter) = demoter {
+         demoter.join().expect("demoter panicked");
       }
    }
 
    pub fn close(&self) -> io::Result<()> {
-      self.seal(self.active)
+      self.stop();
+      let state = self.shared.read();
+      self.shared.seal(&state, state.active)
    }
+
+   #[cfg(test)]
+   fn wait(&self) {
+      while self.shared.victim(&self.shared.read()).is_some() {
+         std::thread::sleep(Duration::from_millis(1));
+      }
+   }
+}
+
+impl Drop for Store {
+   fn drop(&mut self) {
+      self.stop();
+   }
+}
+
+fn move_file(from: &Path, to: &Path) -> io::Result<()> {
+   match hard_link(from, to) {
+      Ok(()) => return Ok(()),
+      Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(()),
+      Err(_) => {},
+   }
+   let temporary = to.with_extension("tmp");
+   copy(from, &temporary)?;
+   rename(temporary, to)
 }
 
 fn check_lengths(key_length: u32, length: u32) -> io::Result<()> {
@@ -457,11 +720,18 @@ fn read_header<const SIZE: usize>(reader: &mut impl Read) -> io::Result<Option<[
 mod tests {
    use std::{
       fs::{
+         File,
          OpenOptions,
          metadata,
       },
       io::Write,
       os::unix::fs::FileExt,
+      path::Path,
+      sync::atomic::Ordering,
+      time::{
+         Duration,
+         SystemTime,
+      },
    };
 
    use crate::{
@@ -469,9 +739,18 @@ mod tests {
          HEADER_SIZE,
          PACK_LIMIT,
          Store,
+         Tier,
       },
       test_directory::TestDirectory,
    };
+
+   fn open(directory: &Path, budget: u64) -> Store {
+      Store::open(vec![Tier {
+         directory: directory.to_path_buf(),
+         budget,
+      }])
+      .expect("open store")
+   }
 
    fn read(store: &Store, key: &str) -> Option<Vec<u8>> {
       let object = store.get(key)?;
@@ -483,30 +762,42 @@ mod tests {
       Some(bytes)
    }
 
+   fn fill(store: &Store, numbers: std::ops::Range<usize>) {
+      let value = vec![1; 1 << 20];
+      for number in numbers {
+         store
+            .put(&format!("o/{number}"), &value)
+            .expect("fill packs");
+      }
+      store.wait();
+   }
+
+   const PER_PACK: usize = PACK_LIMIT as usize / (1 << 20);
+
    #[test]
    fn put_get_reopen() {
       let directory = TestDirectory::new();
-      let mut initial = Store::open(&directory, 0).expect("open store");
+      let initial = open(&directory, 0);
       initial.put("o/aa", b"one").expect("first value");
       initial.put("o/bb", b"two").expect("second value");
       initial.put("o/aa", b"three").expect("replace value");
       assert_eq!(read(&initial, "o/aa").as_deref(), Some(b"three".as_slice()));
       assert_eq!(read(&initial, "o/zz"), None);
       drop(initial);
-      let scanned = Store::open(&directory, 0).expect("scan unsealed pack");
+      let scanned = open(&directory, 0);
       assert_eq!(read(&scanned, "o/aa").as_deref(), Some(b"three".as_slice()));
       scanned.close().expect("seal store");
       drop(scanned);
-      let sealed = Store::open(&directory, 0).expect("load hints");
+      let sealed = open(&directory, 0);
       assert_eq!(read(&sealed, "o/bb").as_deref(), Some(b"two".as_slice()));
    }
 
    #[test]
    fn torn_tail() {
       let directory = TestDirectory::new();
-      let mut initial = Store::open(&directory, 0).expect("open store");
+      let initial = open(&directory, 0);
       initial.put("key", b"value").expect("write value");
-      let path = initial.pack_path(initial.active, "pack");
+      let path = directory.join("000001.pack");
       OpenOptions::new()
          .append(true)
          .open(&path)
@@ -514,7 +805,7 @@ mod tests {
          .write_all(&[9, 0, 0, 0, 200, 0, 0, 0, b'x'])
          .expect("append torn record");
       drop(initial);
-      let repaired = Store::open(&directory, 0).expect("recover torn pack");
+      let repaired = open(&directory, 0);
       assert_eq!(read(&repaired, "key").as_deref(), Some(b"value".as_slice()));
       assert_eq!(
          metadata(path).expect("stat pack").len(),
@@ -525,38 +816,137 @@ mod tests {
    #[test]
    fn evict_keeps_read_pack() {
       let directory = TestDirectory::new();
-      let mut store = Store::open(&directory, 2 * PACK_LIMIT + PACK_LIMIT / 2).expect("open store");
-      let value = vec![1; 1 << 20];
-      let per_pack = PACK_LIMIT as usize / value.len();
-      for number in 0..2 * per_pack {
-         store
-            .put(&format!("o/{number}"), &value)
-            .expect("fill packs");
-      }
+      let store = open(&directory, 2 * PACK_LIMIT + PACK_LIMIT / 2);
+      fill(&store, 0..2 * PER_PACK);
       assert!(read(&store, "o/0").is_some(), "first pack is available");
-      for number in 2 * per_pack..7 * per_pack / 2 {
-         store
-            .put(&format!("o/{number}"), &value)
-            .expect("trigger eviction");
-      }
+      fill(&store, 2 * PER_PACK..7 * PER_PACK / 2);
       assert!(read(&store, "o/0").is_some(), "recently read pack survives");
       assert!(
-         read(&store, &format!("o/{}", per_pack + 1)).is_none(),
+         read(&store, &format!("o/{}", PER_PACK + 1)).is_none(),
          "unread pack is evicted"
       );
    }
 
    #[test]
+   fn evict_recency_survives_restart() {
+      let directory = TestDirectory::new();
+      let store = open(&directory, 0);
+      fill(&store, 0..2 * PER_PACK);
+      store.close().expect("seal store");
+      drop(store);
+      let later = SystemTime::now() + Duration::from_secs(3600);
+      File::open(directory.join("000001.pack"))
+         .expect("open pack")
+         .set_modified(later)
+         .expect("touch pack");
+      let reopened = open(&directory, 2 * PACK_LIMIT + PACK_LIMIT / 2);
+      {
+         let state = reopened.shared.read();
+         assert!(
+            state.packs[&1].used.load(Ordering::Relaxed)
+               > state.packs[&2].used.load(Ordering::Relaxed),
+            "pack 1 is newer than pack 2 after the restart"
+         );
+      }
+      fill(&reopened, 2 * PER_PACK..7 * PER_PACK / 2);
+      assert!(
+         read(&reopened, "o/0").is_some(),
+         "pack read before the restart survives"
+      );
+      assert!(
+         read(&reopened, &format!("o/{}", PER_PACK + 1)).is_none(),
+         "never read pack is evicted"
+      );
+      let stale = SystemTime::now() - Duration::from_secs(600);
+      File::open(directory.join("000001.pack"))
+         .expect("open pack")
+         .set_modified(stale)
+         .expect("age pack");
+      reopened.close().expect("seal store");
+      drop(reopened);
+      let touched = open(&directory, 0);
+      read(&touched, "o/0").expect("read aged pack");
+      assert!(
+         metadata(directory.join("000001.pack"))
+            .expect("stat pack")
+            .modified()
+            .expect("mtime")
+            > stale,
+         "a read moves the pack's mtime"
+      );
+   }
+
+   #[test]
+   fn evict_superseded_first() {
+      let directory = TestDirectory::new();
+      let store = open(&directory, 2 * PACK_LIMIT + PACK_LIMIT / 2);
+      fill(&store, 0..PER_PACK);
+      fill(&store, 0..PER_PACK);
+      read(&store, "o/0").expect("served from pack 2");
+      store.shared.read().packs[&1].used.store(
+         super::now() + Duration::from_secs(3600).as_nanos() as u64,
+         Ordering::Relaxed,
+      );
+      fill(&store, PER_PACK..5 * PER_PACK / 2);
+      assert!(
+         !directory.join("000001.pack").exists(),
+         "superseded pack 1 is gone"
+      );
+      assert!(read(&store, "o/0").is_some(), "live pack 2 survives");
+   }
+
+   #[test]
+   fn tiers() {
+      let hot = TestDirectory::new();
+      let cold = TestDirectory::new();
+      let tiers = || {
+         vec![
+            Tier {
+               directory: hot.to_path_buf(),
+               budget:    2 * PACK_LIMIT,
+            },
+            Tier {
+               directory: cold.to_path_buf(),
+               budget:    PACK_LIMIT + PACK_LIMIT / 2,
+            },
+         ]
+      };
+      let store = Store::open(tiers()).expect("open tiers");
+      fill(&store, 0..5 * PER_PACK / 2);
+      assert!(cold.join("000001.pack").exists(), "pack 1 is demoted");
+      assert!(
+         !hot.join("000001.pack").exists(),
+         "pack 1 left the hot tier"
+      );
+      assert!(read(&store, "o/0").is_some(), "served from the cold tier");
+      fill(&store, 5 * PER_PACK / 2..7 * PER_PACK / 2);
+      assert!(
+         read(&store, &format!("o/{}", PER_PACK + 1)).is_none(),
+         "pack 2 fell out of the cold budget"
+      );
+      assert!(read(&store, "o/0").is_some(), "read pack 1 outlives pack 2");
+      store.close().expect("seal store");
+      drop(store);
+      let reopened = Store::open(
+         tiers()
+            .into_iter()
+            .map(|tier| Tier { budget: 0, ..tier })
+            .collect(),
+      )
+      .expect("reopen tiers");
+      assert!(
+         read(&reopened, "o/0").is_some(),
+         "cold pack found after restart"
+      );
+      assert_eq!(reopened.shared.read().packs[&1].tier, 1);
+   }
+
+   #[test]
    fn evict_oldest_pack() {
       let directory = TestDirectory::new();
-      let mut store = Store::open(&directory, PACK_LIMIT + PACK_LIMIT / 2).expect("open store");
-      let value = vec![1; 1 << 20];
-      let count = PACK_LIMIT as usize * 5 / 2 / value.len();
-      for number in 0..count {
-         store
-            .put(&format!("o/{number}"), &value)
-            .expect("fill packs");
-      }
+      let store = open(&directory, PACK_LIMIT + PACK_LIMIT / 2);
+      let count = PACK_LIMIT as usize * 5 / 2 / (1 << 20);
+      fill(&store, 0..count);
       assert!(read(&store, "o/0").is_none(), "oldest value is evicted");
       assert!(
          read(&store, &format!("o/{}", count - 1)).is_some(),
