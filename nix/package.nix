@@ -571,6 +571,7 @@ let
     ++ base;
   common = setCommon // {
     inherit src;
+    probeInputs = [ tree ] ++ map storeModule modules;
     inherit (args) version;
     patches = args.patches or [ ];
     inherit spec;

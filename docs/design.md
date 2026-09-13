@@ -207,7 +207,37 @@ cache, so outputs are identical either way, verifiable with CA outputs.
 | `cc -c` objects, probe links, real links (ELF) | compiler path, arguments, environment and source bytes, then the headers and libraries read through `-MD` and lld's dependency file. The package's own `$out` hash is masked in keys and cached bytes and restored on replay |
 | compile failures | replayed when all inputs are known (most of configure) |
 | rustc crates, Go actions, Haskell units | Rust dep-info, `--extern` and standard library identities, metadata flags and `env!` dependencies. Go's action IDs and cabal's unit id |
-| `config.cache`, cmake probe results, tool cache dirs | configure scripts + toolchain + deps + flags |
+| `config.cache`, cmake probe results, tool cache dirs | source and patches, script paths and contents, complete dependency paths, platform, environment and build-system options |
+
+Configure caches are reused for matching package inputs. Changing a dependency's store hash,
+compiler flags, source files or `CONFIG_SITE` contents invalidates them. Cache availability and
+compiler log destinations do not affect the key. CMake definitions and generator choices are
+included, and cached strings are restored literally.
+
+Autoconf C header checks can also share successful results across packages. Jig preprocesses
+the current test and keys the result by the compiler, expanded flags, warning policy, helper
+definitions, site configuration, compiler environment, source, preprocessed output and headers.
+It replaces package metadata values in the source key only when Clang reports those macros as
+unused. Used metadata and feature macros remain part of the key. Mutable headers are hashed
+on every lookup, and immutable headers retain their full store paths.
+
+Configure prints `(shared)` for these hits. Missing headers, unexpected preprocessing warnings,
+unsupported compiler options and an unavailable daemon fall back to the original check.
+Only the `cc` and `gcc` aliases of the same jig installation are supported. Failed checks,
+link checks and runtime checks are not shared through this mechanism. `nix/config.site`
+still supplies common platform defaults, and arbitrary `ac_cv_*` names are never used as
+cross-package keys.
+
+`tools/benchmark-configure.nu` measures Autoconf configuration with the selected seed and
+the packages' resolved build inputs. It starts a fresh daemon, primes the compiler cache,
+alternates runs with and without shared header results, then measures whole `config.cache`
+reuse. Every pass starts with a fresh source and build directory at the same paths. The
+benchmark rejects changes to the generated `Makefile` and `config.h` files and preserves
+the per-run logs and timings in the printed directory.
+
+```console
+nu tools/benchmark-configure.nu --seed ./result-bootstrap-seed --daemon /path/to/jigd sed diffutils
+```
 
 jigd (Rust) holds a bitcask-style object store (append-only packs, in-memory index, whole-pack
 eviction, `sendfile`), remembers store-file identities so hits do not rehash headers, and hands

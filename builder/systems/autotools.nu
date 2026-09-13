@@ -1,4 +1,5 @@
 use ../core.nu *
+use ../header-cache.nu
 use ../build-cache.nu
 use ./make.nu
 
@@ -72,7 +73,7 @@ export def --env configure []: nothing -> nothing {
   note config.cache (if (build-cache restore $key $cache) { "restored" } else { "cold" })
   backports $c.src
   cp ($nu.current-exe | path dirname | path join install) (install-tool)
-  with-env {PKGS_PREFIX: $c.out, PKGS_CONFIG_CACHE: $cache, INSTALL: $"(install-tool) -c"} {
+  with-env {PKGS_PREFIX: $c.out, PKGS_CONFIG_CACHE: $cache, INSTALL: $"(install-tool) -c", CONFIG_SITE: (header-cache site $script)} {
     (x $env.CONFIG_SHELL $script --disable-nls --disable-dependency-tracking --disable-static --enable-shared
       ...$host_flags ...$o.flags)
   }

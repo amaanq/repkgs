@@ -8,33 +8,36 @@ def main []: nothing -> nothing { help main }
 
 # build packages through the compile cache
 def "main build" [
-  --for: string # platform, e.g. aarch64-linux, x86_64-windows-gnu
+  --for: string # platform, e.g. aarch64-linux, x86_64-windows
+  --seed: path
   ...attrs: string # package attributes (jq, jq.tests)
 ]: nothing -> nothing {
   if ($attrs | is-empty) { fail "repkgs build <attr>…, or nix-build -A ci for the whole set" }
-  ^nix-build (root) ...$XP --no-out-link --log-format bar-with-logs ...(cache-args) ...(platform-arg $for) ...($attrs | each {|a| [-A $a] } | flatten)
+  ^nix-build (root) ...$XP --no-out-link --log-format bar-with-logs ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...($attrs | each {|a| [-A $a] } | flatten)
 }
 
 # build <pkg>.tests (tests.separate packages), or the package itself when it tests in-build.
 # No attrs: the builder's own tests (tests/builder), run those after editing builder/
 def "main test" [
   --for: string # platform
+  --seed: path
   ...attrs: string
 ]: nothing -> nothing {
   if ($attrs | is-empty) {
-    ^nix-build $"(root)/tests/builder" ...$XP --no-out-link --log-format bar-with-logs ...(cache-args) ...(platform-arg $for)
+    ^nix-build $"(root)/tests/builder" ...$XP --no-out-link --log-format bar-with-logs ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed)
     return
   }
-  let targets = ($attrs | each {|a| if (eval $"(pkg-expr $a $for) ? tests") { $"($a).tests" } else { $a } })
-  main build --for=$for ...$targets
+  let targets = ($attrs | each {|a| if (eval $"(pkg-expr $a $for $seed) ? tests") { $"($a).tests" } else { $a } })
+  main build --for=$for --seed=$seed ...$targets
 }
 
 # the build log of a package's derivation
 def "main log" [
   --for: string # platform
+  --seed: path
   attr: string
 ]: nothing -> nothing {
-  let d = (drv $attr $for)
+  let d = (drv $attr $for $seed)
   let r = (^nix ...$XP log $d | complete)
   if $r.exit_code != 0 { fail $"no local log for ($d): built elsewhere or substituted, `repkgs build` it here first" }
   print $r.stdout
@@ -43,10 +46,11 @@ def "main log" [
 # packages a platform supports, or the ones it does not and why
 def "main list" [
   --for: string # platform
+  --seed: path
   --unsupported # show what `supported` filters out, with the reason
   --json (-j) # machine-readable
 ]: nothing -> any {
-  let set = (set-expr $for)
+  let set = (set-expr $for $seed)
   let rows = (if $unsupported {
     eval $"let s = ($set); in map \(n: { name = n; reason = s.${n}.unsupportedReason; }\) \(builtins.filter \(n: !s.${n}.supported\) \(builtins.attrNames s\)\)"
   } else {
@@ -58,10 +62,11 @@ def "main list" [
 # version, platform support, build systems and features of one package without building it
 def "main info" [
   --for: string # platform
+  --seed: path
   --json (-j) # machine-readable: the full record
   attr: string
 ]: nothing -> any {
-  let p = (eval $"let p = (pkg-expr $attr $for); in { name = p.pname; version = p.version or null; platform = p.platform; supported = p.supported; reason = p.unsupportedReason; uses = p.args.uses or []; features = builtins.mapAttrs \(n: d: d // { value = p.features.${n}; }\) \(p.args.features or {}\); }")
+  let p = (eval $"let p = (pkg-expr $attr $for $seed); in { name = p.pname; version = p.version or null; platform = p.platform; supported = p.supported; reason = p.unsupportedReason; uses = p.args.uses or []; features = builtins.mapAttrs \(n: d: d // { value = p.features.${n}; }\) \(p.args.features or {}\); }")
   if $json { return ($p | to json) }
   print ({name: $p.name, version: $p.version, platform: $p.platform, uses: ($p.uses | str join " ")}
     | merge (if $p.supported { {} } else { {unsupported: $p.reason} }))
@@ -117,14 +122,15 @@ def --wrapped "main update" [...args: string]: nothing -> nothing {
 # rebuild and compare against the store (nix-build --check)
 def "main repro" [
   --for: string # platform
+  --seed: path
   ...attrs: string # default: zlib xz pcre2 jq sqlite ncurses
 ]: nothing -> table {
   let attrs = (if ($attrs | is-empty) { [zlib xz pcre2 jq sqlite ncurses] } else { $attrs })
   $attrs | each {|a|
-    let build = (^nix-build (root) ...$XP -A $a --no-out-link ...(cache-args) ...(platform-arg $for) | complete)
+    let build = (^nix-build (root) ...$XP -A $a --no-out-link ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) | complete)
     if $build.exit_code != 0 { return {attr: $a, status: build-failed} }
     # --check compiles for real: no cache
-    let check = (^nix-build (root) ...$XP -A $a --no-out-link --check --keep-failed ...(platform-arg $for) | complete)
+    let check = (^nix-build (root) ...$XP -A $a --no-out-link --check --keep-failed ...(platform-arg $for) ...(seed-arg $seed) | complete)
     {attr: $a, status: (if $check.exit_code == 0 { "reproducible" } else if $check.stderr =~ "may not be deterministic|differs" { "DIFFERS" } else { "check-failed" })}
   }
 }

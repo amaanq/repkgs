@@ -84,6 +84,20 @@ configuration. Nix rejects the seed if it retains a dependency on another store 
 These targets do not replace the downloaded seed used by normal repkgs builds. Publishing a
 new seed remains separate work.
 
+Use an assembled seed locally by passing its result link to the package commands. The same
+option selects the seed for `build`, `test`, `repro`, `log`, `shell`, `info` and `list`.
+
+```console
+nix build .#bootstrap-seed --out-link result-bootstrap-seed --cores 30 --max-jobs 1 -L
+nu tools/repkgs/repkgs build --seed ./result-bootstrap-seed sed diffutils
+nu tools/repkgs/repkgs log --seed ./result-bootstrap-seed sed
+```
+
+The first package build creates the target libc, runtimes and configured compiler from that
+seed. It reuses the completed Rust bootstrap. Seed assembly takes its Toybox command links
+from the configured target package, so commands enabled there are available when building
+the kernel headers and libc.
+
 `bootstrap-jig` builds the Rust compiler wrapper with the same source compiler and static musl
 target. Normal bootstrap recipes copy this binary into the cache wrapper and each configured
 toolchain. Its dependencies use the nixpkgs revision pinned in `flake.lock`, including for
@@ -184,8 +198,10 @@ LLVM output.
 nu tools/archive-bootstrap.nu --destination /path/to/repkgs-bootstrap-cache
 ```
 
-The generated manifest records every archived source hash and derivation path. A future mirror
-can copy that directory to another binary-cache backend without rebuilding the source inputs.
+The archiver reads the frozen `graph.json`, checks the stored contents of fixed-output inputs
+and rejects inputs that reference other store paths. Its generated manifest records every
+archived source hash and derivation path. A future mirror can copy that directory to another
+binary-cache backend without rebuilding the source inputs.
 
 ## References
 

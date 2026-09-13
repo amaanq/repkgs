@@ -8,7 +8,22 @@ export def root []: nothing -> string { $ROOT }
 
 # --for as nix sees it: on a command line, and inside an expression
 export def platform-arg [p]: nothing -> list<string> { if $p == null { [] } else { [--argstr platform $p] } }
-export def set-expr [p]: nothing -> string { $"\(import (root) (if $p == null { "{ }" } else { $"{ platform = \"($p)\"; }" })\)" }
+export def seed-path [seed: any]: nothing -> any {
+  if $seed == null { return null }
+  let path = ($seed | path expand --strict)
+  if not ($path | path join bin/nu | path exists) { fail $"($path) has no bin/nu" }
+  $path
+}
+
+export def seed-arg [seed: any]: nothing -> list<string> {
+  if $seed == null { [] } else { [--argstr seed (seed-path $seed)] }
+}
+
+export def set-expr [p, seed: any]: nothing -> string {
+  let fields = ({platform: $p, seed: (seed-path $seed)} | transpose name value | where value != null
+    | each {|field| $"($field.name) = ($field.value | to json -r | str replace -a '${' '\${');" })
+  $"\(import (root) { ($fields | str join ' ') }\)"
+}
 
 export def fail [msg: string]: nothing -> error { error make --unspanned {msg: $msg} }
 
@@ -25,9 +40,9 @@ export def eval [expr: string]: nothing -> any {
 
 # the package <attr> of the set for platform p, as an expression. `s.${"7zip"}` parses where
 # s.7zip does not, and a typo names its neighbours instead of nix's attribute trace
-export def pkg-expr [attr: string, p]: nothing -> string {
+export def pkg-expr [attr: string, p, seed: any]: nothing -> string {
   let n = ($attr | to json)
-  $"\(let s = (set-expr $p); n = ($n); in s.${n} or \(builtins.throw \"no package ${n}, near: ${toString \(builtins.filter \(a: builtins.substring 0 2 a == builtins.substring 0 2 n\) \(builtins.attrNames s\)\)}\"\)\)"
+  $"\(let s = (set-expr $p $seed); n = ($n); in s.${n} or \(builtins.throw \"no package ${n}, near: ${toString \(builtins.filter \(a: builtins.substring 0 2 a == builtins.substring 0 2 n\) \(builtins.attrNames s\)\)}\"\)\)"
 }
 
 # a socket file something is listening on (a crashed jigd leaves the file behind)
@@ -53,5 +68,5 @@ export def cache-args []: nothing -> list<string> {
   }
 }
 
-export def drv [attr: string, p]: nothing -> string { eval $"(pkg-expr $attr $p).drvPath" }
+export def drv [attr: string, p, seed: any]: nothing -> string { eval $"(pkg-expr $attr $p $seed).drvPath" }
 

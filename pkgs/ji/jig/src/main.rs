@@ -6,6 +6,7 @@ mod elf;
 mod files;
 mod fixup;
 mod gocache;
+mod header;
 mod manifest;
 mod nix_store;
 mod process;
@@ -77,7 +78,8 @@ fn dispatch() -> Result<i32> {
          io::stdout().lock(),
          "jig cc|c++ <args>\njig rustcwrap <rustc> <args>\njig cache get|put <key> <file>\njig \
           cache get-dir|put-dir <key> <directory>\njig slot <program> [args...]\njig \
-          gocacheprog\njig reloc-fixup <directory> [--deny <path>]\njig nix-store \
+          gocacheprog\njig header-key <context> <warning-policy> <compiler> <args...>\njig \
+          reloc-fixup <directory> [--deny <path>]\njig nix-store \
           add-text|add-drv|fetchurls|submit <args>"
       )?;
       return Ok(0);
@@ -105,6 +107,9 @@ fn dispatch() -> Result<i32> {
       .collect::<Result<Vec<_>>>()?;
    if mode == "rustcwrap" {
       return Ok(rustc::run_rustc(&text_args, &socket)?);
+   }
+   if mode == "header-key" {
+      return header::lookup(&text_args, &socket);
    }
    if mode == "reloc-fixup" {
       fixup::run(&text_args)?;
