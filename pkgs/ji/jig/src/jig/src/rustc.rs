@@ -123,9 +123,7 @@ impl Invocation {
             });
             if let Some(setting) = value {
                let unkeyed = matches!(flag, "--out-dir" | "-L")
-                  || (flag == "-C"
-                     && (setting.starts_with("metadata=")
-                        || setting.starts_with("extra-filename=")));
+                  || (flag == "-C" && setting.starts_with("extra-filename="));
                if !unkeyed {
                   invocation.key_args.push(format!("{flag}={setting}"));
                }
@@ -157,7 +155,7 @@ impl Invocation {
          } else if let Some(setting) = argument.strip_prefix("-C") {
             if let Some(suffix) = setting.strip_prefix("extra-filename=") {
                suffix.clone_into(&mut invocation.suffix);
-            } else if !setting.starts_with("metadata=") {
+            } else {
                invocation.key_args.push(format!("-C={setting}"));
             }
             invocation.cacheable &= !setting.starts_with("incremental=");

@@ -214,7 +214,8 @@ and replays stderr. `-E` to stdout is cached as an object and printed.
 ### 5.3 rustc requests
 
 Parsed from the arguments after the compiler. `key_args` holds each named flag as `flag=value`,
-except `--out-dir`, `-L`, `-C metadata=…` and `-C extra-filename=…`, plus every other argument.
+except `--out-dir`, `-L` and `-C extra-filename=…`, plus every other argument. `-C metadata`
+stays in the key because it seeds the crate's symbol hashes.
 `-Cx` glued spellings become `-C=x`. Cacheable when there is one `.rs` source, `--emit` includes
 `dep-info`, `--crate-type` is only `lib`, `rlib` or `staticlib`, `--out-dir` and `--crate-name`
 are set, no `-C incremental`, no `-o`, no `@file` and no query (`--print`, `-vV`, `--version`, `-`).
