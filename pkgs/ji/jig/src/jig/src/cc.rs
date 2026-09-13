@@ -32,6 +32,7 @@ use crate::{
    files::write_file,
    manifest::{
       Manifest,
+      Miss,
       lookup,
       parse_depfile,
    },
@@ -321,7 +322,8 @@ impl Invocation {
          field(&mut hasher, var(name).unwrap_or_default());
       }
       if self.action != Action::Link {
-         field(&mut hasher, store.key(&self.source));
+         field(&mut hasher, "source");
+         field(&mut hasher, self.source.as_bytes());
          let mut bytes = read(&self.source)?;
          store.mask_output(&mut bytes, false);
          field(&mut hasher, bytes);
@@ -342,8 +344,10 @@ pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut Client) -> io:
    invocation.key_injected(raw);
    let mut store = Store::new();
    let request = invocation.request_key(&store, driver.compiler())?;
-   let Some(key) = lookup(cache, &mut store, &request)? else {
-      return Ok(false);
+   let key = match lookup(cache, &mut store, &request) {
+      Ok(key) => key,
+      Err(Miss::Failed(error)) => return Err(error),
+      Err(_) => return Ok(false),
    };
    let results = cache.get_many(&[format!("r/{key}"), format!("e/{key}")])?;
    Ok(
@@ -409,13 +413,10 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       log_uncached(outcome, &user);
       return Ok(result.status);
    };
-   let hit = lookup(&mut cache, &mut store, &request).and_then(|key| {
-      key.map(|result| cached(&mut cache, &store, &invocation, &result))
-         .transpose()
-         .map(Option::flatten)
-   });
-   match hit {
-      Ok(Some(status)) => {
+   let hit = lookup(&mut cache, &mut store, &request)
+      .and_then(|key| cached(&mut cache, &store, &invocation, &key));
+   let miss = match hit {
+      Ok(status) => {
          log(
             "cc",
             if status == 0_i32 {
@@ -428,13 +429,15 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
          );
          return Ok(status);
       },
-      Ok(None) => {},
-      Err(error) => {
+      Err(Miss::Failed(error)) => {
          diagnostic(format_args!(
             "jig cache replay failed, compiling again, {error}"
          ));
+         Miss::Failed(error)
       },
-   }
+      Err(miss) => miss,
+   };
+   let explained = format!("{subject} {miss}");
 
    let parent = invocation
       .output
@@ -565,7 +568,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
          }
       },
    };
-   log("cc", outcome, &subject, started);
+   log("cc", outcome, &explained, started);
    Ok(result.status)
 }
 
@@ -574,7 +577,7 @@ fn cached(
    store: &Store,
    invocation: &Invocation,
    key: &str,
-) -> io::Result<Option<i32>> {
+) -> Result<i32, Miss> {
    let keys = [
       format!("r/{key}"),
       format!("o/{key}"),
@@ -583,7 +586,7 @@ fn cached(
    ];
    let mut objects = cache.get_many(&keys)?.into_iter();
    let Some(Some(status_bytes)) = objects.next() else {
-      return Ok(None);
+      return Err(Miss::ObjectGone);
    };
    let status = String::from_utf8(status_bytes)
       .map_err(io::Error::other)?
@@ -592,15 +595,15 @@ fn cached(
    let object = objects.next().flatten();
    let dependency = objects.next().flatten();
    let Some(Some(mut diagnostics)) = objects.next() else {
-      return Ok(None);
+      return Err(Miss::ObjectGone);
    };
    if status == 0 {
       let Some(mut bytes) = object else {
-         return Ok(None);
+         return Err(Miss::ObjectGone);
       };
       let dep_text = if invocation.depfile.is_some() {
          let Some(mut dep_bytes) = dependency else {
-            return Ok(None);
+            return Err(Miss::ObjectGone);
          };
          store.mask_output(&mut dep_bytes, true);
          let raw = String::from_utf8(dep_bytes).map_err(io::Error::other)?;
@@ -624,5 +627,5 @@ fn cached(
    }
    store.mask_output(&mut diagnostics, true);
    io::stderr().lock().write_all(&diagnostics)?;
-   Ok(Some(i32::from(status)))
+   Ok(i32::from(status))
 }

@@ -461,7 +461,18 @@ prints `relocated <path>  <new spellings>`.
 ## 10. Invocation log
 
 Each jig invocation appends `tool\toutcome\tsubject\tmilliseconds` to `JIG_LOG`. `subject` is
-the source, output or crate label with tabs and newlines replaced by spaces.
+the source, output or crate label with tabs and newlines replaced by spaces. After a cache
+lookup that did not replay, the subject carries the reason after a space, so a miss can be
+told apart from a first compile.
+
+| reason | meaning |
+|---|---|
+| `new-key` | no manifest for the request |
+| `inputs-changed:<path>` | that input's identity differs from the manifest, or it is gone |
+| `env-changed:<name>` | that manifest variable differs |
+| `object-gone` | the manifest matched but a result object was evicted |
+| `replay-failed` | the daemon or the replay failed, see stderr |
+
 
 | tool     | outcomes                                                                                                                             |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |

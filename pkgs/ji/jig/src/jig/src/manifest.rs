@@ -1,5 +1,10 @@
 use std::{
    env::var,
+   fmt::{
+      Display,
+      Formatter,
+      Result as FormatResult,
+   },
    io,
    mem::take,
 };
@@ -78,36 +83,67 @@ impl Manifest {
    }
 }
 
-pub fn lookup(cache: &mut Client, store: &mut Store, request: &str) -> io::Result<Option<String>> {
+pub enum Miss {
+   NewKey,
+   InputsChanged(String),
+   EnvironmentChanged(String),
+   ObjectGone,
+   Failed(io::Error),
+}
+
+impl Display for Miss {
+   #[expect(
+      clippy::renamed_function_params,
+      reason = "Project names have at least two characters"
+   )]
+   fn fmt(&self, formatter: &mut Formatter<'_>) -> FormatResult {
+      match *self {
+         Self::NewKey => formatter.write_str("new-key"),
+         Self::InputsChanged(ref path) => write!(formatter, "inputs-changed:{path}"),
+         Self::EnvironmentChanged(ref name) => write!(formatter, "env-changed:{name}"),
+         Self::ObjectGone => formatter.write_str("object-gone"),
+         Self::Failed(_) => formatter.write_str("replay-failed"),
+      }
+   }
+}
+
+impl From<io::Error> for Miss {
+   fn from(error: io::Error) -> Self {
+      Self::Failed(error)
+   }
+}
+
+pub fn lookup(cache: &mut Client, store: &mut Store, request: &str) -> Result<String, Miss> {
    let Some(bytes) = cache.get(&format!("m/{request}"))? else {
-      return Ok(None);
+      return Err(Miss::NewKey);
    };
-   let manifest = serde_json::from_slice::<Manifest>(&bytes)?;
-   let Some(paths) = manifest
-      .inputs
-      .iter()
-      .map(|input| store.resolve(&input.path))
-      .collect::<Option<Vec<_>>>()
-   else {
-      return Ok(None);
-   };
+   let manifest = serde_json::from_slice::<Manifest>(&bytes).map_err(io::Error::from)?;
+   let mut paths = Vec::with_capacity(manifest.inputs.len());
+   for input in &manifest.inputs {
+      let Some(path) = store.resolve(&input.path) else {
+         return Err(Miss::InputsChanged(input.path.clone()));
+      };
+      paths.push(path);
+   }
    prefetch(cache, store, &paths)?;
    for (input, path) in manifest.inputs.iter().zip(paths) {
       match store.input_id(&path) {
          Ok(identity) if identity == input.identity => {},
-         Ok(_) => return Ok(None),
-         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-         Err(error) => return Err(error),
+         Ok(_) => return Err(Miss::InputsChanged(path)),
+         Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Err(Miss::InputsChanged(path));
+         },
+         Err(error) => return Err(Miss::Failed(error)),
       }
    }
-   if manifest
+   if let Some(entry) = manifest
       .environment
       .iter()
-      .any(|entry| var(&entry.name).ok() != entry.value)
+      .find(|entry| var(&entry.name).ok() != entry.value)
    {
-      return Ok(None);
+      return Err(Miss::EnvironmentChanged(entry.name.clone()));
    }
-   manifest.result_key(request).map(Some)
+   Ok(manifest.result_key(request)?)
 }
 
 pub fn prefetch(cache: &mut Client, store: &mut Store, paths: &[String]) -> io::Result<()> {

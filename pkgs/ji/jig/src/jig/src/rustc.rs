@@ -39,6 +39,7 @@ use crate::{
    },
    manifest::{
       Manifest,
+      Miss,
       lookup,
       parse_depfile,
    },
@@ -248,23 +249,22 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
       );
       return Ok(result.status);
    };
-   let hit = lookup(client, &mut store, key).and_then(|found| {
-      found.map_or(Ok(false), |result| {
-         replay(client, &invocation.out_dir, &invocation.suffix, &result)
-      })
-   });
-   match hit {
-      Ok(true) => {
+   let hit = lookup(client, &mut store, key)
+      .and_then(|result| replay(client, &invocation.out_dir, &invocation.suffix, &result));
+   let miss = match hit {
+      Ok(()) => {
          log("rustc", "cached", &label, started);
          return Ok(0);
       },
-      Ok(false) => {},
-      Err(error) => {
+      Err(Miss::Failed(error)) => {
          diagnostic(format_args!(
             "jig Rust cache replay failed, compiling again, {error}"
          ));
+         Miss::Failed(error)
       },
-   }
+      Err(miss) => miss,
+   };
+   let explained = format!("{label} {miss}");
    let result = run(
       OsStr::new(compiler),
       arguments,
@@ -273,7 +273,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
    )?;
    io::stderr().lock().write_all(&result.stderr)?;
    if result.status != 0_i32 {
-      log("rustc", "failed", &label, started);
+      log("rustc", "failed", &explained, started);
       return Ok(result.status);
    }
    let stored = store_result(client, &mut store, key, &invocation, &result.stderr);
@@ -284,7 +284,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
          "compiled-unstored"
       },
    };
-   log("rustc", outcome, &label, started);
+   log("rustc", outcome, &explained, started);
    Ok(0)
 }
 
@@ -412,30 +412,36 @@ fn stem(name: &str, from: &str, to: &str) -> String {
    }
 }
 
-fn replay(cache: &mut Client, directory: &Path, suffix: &str, key: &str) -> io::Result<bool> {
+fn replay(cache: &mut Client, directory: &Path, suffix: &str, key: &str) -> Result<(), Miss> {
    let Some(listing) = cache.get(&format!("o/{key}"))? else {
-      return Ok(false);
+      return Err(Miss::ObjectGone);
    };
-   let artifacts = serde_json::from_slice::<Vec<Artifact>>(&listing)?;
+   let artifacts = serde_json::from_slice::<Vec<Artifact>>(&listing).map_err(io::Error::from)?;
    if artifacts.is_empty() {
-      return Err(io::Error::other("cached Rust result contains no artifacts"));
+      return Err(Miss::Failed(io::Error::other(
+         "cached Rust result contains no artifacts",
+      )));
    }
    let mut values = Vec::new();
    for artifact in &artifacts {
       relative_path(&artifact.name)?;
       if Path::new(&artifact.name).components().count() != 1 || artifact.mode > 0o777 {
-         return Err(io::Error::other("invalid cached Rust artifact"));
+         return Err(Miss::Failed(io::Error::other(
+            "invalid cached Rust artifact",
+         )));
       }
       let Some(bytes) = cache.get(&format!("b/{}", artifact.hash))? else {
-         return Ok(false);
+         return Err(Miss::ObjectGone);
       };
       if digest(&bytes) != artifact.hash {
-         return Err(io::Error::other("Rust artifact content hash differs"));
+         return Err(Miss::Failed(io::Error::other(
+            "Rust artifact content hash differs",
+         )));
       }
       values.push(bytes);
    }
    let Some(diagnostics) = cache.get(&format!("e/{key}"))? else {
-      return Ok(false);
+      return Err(Miss::ObjectGone);
    };
    for (artifact, bytes) in artifacts.iter().zip(values) {
       write_file(
@@ -445,5 +451,5 @@ fn replay(cache: &mut Client, directory: &Path, suffix: &str, key: &str) -> io::
       )?;
    }
    io::stderr().lock().write_all(&diagnostics)?;
-   Ok(true)
+   Ok(())
 }
