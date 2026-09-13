@@ -22,6 +22,7 @@ pub const STORE_DIR: &str = match option_env!("JIG_STORE_DIR") {
    None => "/nix/store",
 };
 const OUTPUT_PLACEHOLDER: &[u8] = b"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+const PATH_ENDS: &str = " \t\n\\:\"';,)]}>";
 
 pub struct Store {
    content:     bool,
@@ -112,29 +113,25 @@ impl Store {
          .map(|root| format!("{root}{}", &masked[end..]))
    }
 
-   pub fn resolve_all(&self, text: &str) -> io::Result<String> {
-      if !self.content {
-         return Ok(text.to_owned());
+   pub fn resolve_all(&self, text: &str) -> String {
+      let mut resolved = mask_hashes(text);
+      for (masked, real) in &self.roots {
+         let mut result = String::with_capacity(resolved.len());
+         let mut remaining = resolved.as_str();
+         while let Some(position) = remaining.find(masked.as_str()) {
+            let end = position + masked.len();
+            let whole = remaining[end..]
+               .chars()
+               .next()
+               .is_none_or(|next| next == '/' || PATH_ENDS.contains(next));
+            result.push_str(&remaining[..position]);
+            result.push_str(if whole { real } else { masked });
+            remaining = &remaining[end..];
+         }
+         result.push_str(remaining);
+         resolved = result;
       }
-      let masked = mask_hashes(text);
-      let marker = format!("{STORE_DIR}/*-");
-      let mut result = String::new();
-      let mut remaining = masked.as_str();
-      while let Some(position) = remaining.find(&marker) {
-         result.push_str(&remaining[..position]);
-         let path = &remaining[position..];
-         let end = path
-            .find([' ', '\t', '\n', '\\', ':'])
-            .unwrap_or(path.len());
-         result.push_str(
-            &self
-               .resolve(&path[..end])
-               .ok_or_else(|| io::Error::other("cached dependency has no current store root"))?,
-         );
-         remaining = &path[end..];
-      }
-      result.push_str(remaining);
-      Ok(result)
+      resolved
    }
 
    pub fn daemon_may_identify(&self, path: &str) -> bool {

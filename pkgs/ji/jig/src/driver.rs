@@ -24,6 +24,34 @@ pub enum BinaryFormat {
    Coff,
 }
 
+impl BinaryFormat {
+   fn keeps(self, arg: &str) -> Option<String> {
+      match self {
+         Self::Elf => {
+            (!arg.starts_with("-Wl,--dynamic-linker") && !arg.starts_with("-Wl,-dynamic-linker"))
+               .then(|| arg.to_owned())
+         },
+         Self::MachO => Some(arg.to_owned()),
+         Self::Coff => {
+            if matches!(
+               arg,
+               "-fPIC" | "-fpic" | "-fPIE" | "-fpie" | "-fno-PIC" | "-fno-pic" | "-pie"
+            ) {
+               return None;
+            }
+            if (arg.starts_with("-std=c") || arg.starts_with("-std=gnu"))
+               && ["++98", "++03", "++0x", "++11"]
+                  .iter()
+                  .any(|suffix| arg.ends_with(suffix))
+            {
+               return Some(format!("{}14", &arg[..arg.len() - 2]));
+            }
+            Some(arg.to_owned())
+         },
+      }
+   }
+}
+
 #[derive(Default, Deserialize)]
 pub struct PackageFlags {
    #[serde(default)]
@@ -152,7 +180,9 @@ impl Driver {
       let mut sets_fortify = false;
       let mut index = 0;
       while index < raw.len() {
-         if let Some((value, consumed)) = take_rpath(&raw[index..]) {
+         if self.format == BinaryFormat::Elf
+            && let Some((value, consumed)) = take_rpath(&raw[index..])
+         {
             for part in value.split(':').filter(|part| !host_directory(part)) {
                runpath.verbatim.push_str(part);
                runpath.verbatim.push(':');
@@ -162,9 +192,9 @@ impl Driver {
          }
          let arg = &raw[index];
          index += 1;
-         if arg.starts_with("-Wl,--dynamic-linker") || arg.starts_with("-Wl,-dynamic-linker") {
+         let Some(kept) = self.format.keeps(arg) else {
             continue;
-         }
+         };
          linking &= !matches!(
             arg.as_str(),
             "-c" | "-E" | "-S" | "-M" | "-MM" | "-fsyntax-only" | "-###"
@@ -173,22 +203,13 @@ impl Driver {
             arg.as_str(),
             "-static" | "-static-pie" | "-r" | "-Wl,-r" | "-nostartfiles"
          );
-         shared |= arg == "-shared";
+         shared |= arg == "-shared" || arg == "-dynamiclib";
          have_input |= !arg.starts_with('-');
          sets_fortify |= fortify(arg);
          if arg.starts_with("-O") {
             optimizes = arg != "-O0";
          }
-         if self.format == BinaryFormat::Coff
-            && (arg.starts_with("-std=c") || arg.starts_with("-std=gnu"))
-            && ["++98", "++03", "++0x", "++11"]
-               .iter()
-               .any(|suffix| arg.ends_with(suffix))
-         {
-            user.push(format!("{}14", &arg[..arg.len() - 2]));
-         } else {
-            user.push(arg.to_owned());
-         }
+         user.push(kept);
       }
       let mut output = vec!["--start-no-unused-arguments".to_owned()];
       output.extend_from_slice(&self.flags);
@@ -213,13 +234,27 @@ impl Driver {
       ) {
          output.push(format!("-ffile-prefix-map={mapping}"));
       }
+      if self.format == BinaryFormat::Elf {
+         output.extend([
+            "-Wl,--build-id=sha1".to_owned(),
+            r#"-Wl,--package-metadata={"type":"repkgs"}"#.to_owned(),
+         ]);
+      }
       output.push("--end-no-unused-arguments".to_owned());
       output.extend_from_slice(&user);
       if linking && have_input {
          output.extend_from_slice(&self.package.ldflags);
       }
-      if !linking || !have_input || no_policy || self.format != BinaryFormat::Elf {
+      if !linking || !have_input || no_policy {
          return output;
+      }
+      match self.format {
+         BinaryFormat::Elf => {},
+         BinaryFormat::MachO => {
+            output.push("-Wl,-headerpad_max_install_names".to_owned());
+            return output;
+         },
+         BinaryFormat::Coff => return output,
       }
 
       let mut link_args = user;
@@ -261,9 +296,10 @@ impl Driver {
       for directory in directories {
          let real = canonicalize(directory).unwrap_or_else(|_| Path::new(directory).to_path_buf());
          if is_store_path(&real.to_string_lossy())
-            && libraries
-               .iter()
-               .any(|library| real.join(format!("lib{library}.so")).exists())
+            && libraries.iter().any(|library| {
+               real.join(format!("lib{library}.so")).exists()
+                  || real.join(format!("lib{library}.dylib")).exists()
+            })
          {
             runpath.add(real.to_string_lossy().into_owned());
          }
@@ -360,6 +396,12 @@ fn take_rpath(args: &[String]) -> Option<(&str, usize)> {
 }
 
 pub fn shared_library(name: &str) -> bool {
+   if Path::new(name)
+      .extension()
+      .is_some_and(|extension| extension == "dylib")
+   {
+      return true;
+   }
    name.rsplit_once(".so").is_some_and(|(_, tail)| {
       tail.is_empty()
          || tail.strip_prefix('.').is_some_and(|suffix| {

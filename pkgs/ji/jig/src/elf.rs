@@ -6,7 +6,10 @@ use std::{
    },
 };
 
-use crate::store::normalize;
+use crate::{
+   image::Image,
+   store::normalize,
+};
 
 pub struct Section {
    pub kind:   u32,
@@ -22,139 +25,74 @@ pub struct Segment {
    pub address: u64,
    pub size:    usize,
 }
-pub struct Image {
-   pub bytes: Vec<u8>,
+
+pub fn is_elf(image: &Image) -> bool {
+   image.bytes.starts_with(b"\x7fELF\x02\x01")
 }
 
-impl Image {
-   pub fn is_supported(&self) -> bool {
-      self.bytes.starts_with(b"\x7fELF\x02\x01")
+pub fn sections(image: &Image) -> io::Result<Vec<Section>> {
+   let offset = image.size(40)?;
+   let stride = usize::from(image.word(58)?);
+   let count = usize::from(image.word(60)?);
+   if count != 0 && stride < 64 {
+      return Err(io::Error::other("ELF section header is too short"));
    }
-
-   pub fn array<const SIZE: usize>(&self, offset: usize) -> io::Result<[u8; SIZE]> {
-      self
-         .bytes
-         .get(offset..)
-         .and_then(|tail| tail.get(..SIZE))
-         .and_then(|bytes| bytes.try_into().ok())
-         .ok_or_else(|| io::Error::other("ELF field is outside the file"))
-   }
-
-   pub fn word(&self, offset: usize) -> io::Result<u16> {
-      self.array(offset).map(u16::from_le_bytes)
-   }
-   pub fn long(&self, offset: usize) -> io::Result<u32> {
-      self.array(offset).map(u32::from_le_bytes)
-   }
-   pub fn quad(&self, offset: usize) -> io::Result<u64> {
-      self.array(offset).map(u64::from_le_bytes)
-   }
-   pub fn size(&self, offset: usize) -> io::Result<usize> {
-      self.quad(offset)?.try_into().map_err(io::Error::other)
-   }
-
-   pub fn write(&mut self, offset: usize, data: &[u8]) -> io::Result<()> {
-      self
-         .bytes
-         .get_mut(offset..)
-         .and_then(|tail| tail.get_mut(..data.len()))
-         .ok_or_else(|| io::Error::other("ELF write is outside the file"))?
-         .copy_from_slice(data);
-      Ok(())
-   }
-
-   pub fn string(&self, offset: usize) -> io::Result<String> {
-      let tail = self
-         .bytes
-         .get(offset..)
-         .ok_or_else(|| io::Error::other("ELF string is outside the file"))?;
-      let end = tail
-         .iter()
-         .position(|byte| *byte == 0)
-         .ok_or_else(|| io::Error::other("ELF string is unterminated"))?;
-      String::from_utf8(tail[..end].to_vec()).map_err(io::Error::other)
-   }
-
-   pub fn padded(&mut self, offset: usize, capacity: usize, data: &[u8]) -> io::Result<()> {
-      if data.len() >= capacity {
-         return Err(io::Error::other(
-            "relocation does not fit reserved ELF space",
-         ));
-      }
-      let target = self
-         .bytes
-         .get_mut(offset..)
-         .and_then(|tail| tail.get_mut(..capacity))
-         .ok_or_else(|| io::Error::other("ELF padding is outside the file"))?;
-      target.fill(0);
-      target[..data.len()].copy_from_slice(data);
-      Ok(())
-   }
-
-   pub fn sections(&self) -> io::Result<Vec<Section>> {
-      let offset = self.size(40)?;
-      let stride = usize::from(self.word(58)?);
-      let count = usize::from(self.word(60)?);
-      if count != 0 && stride < 64 {
-         return Err(io::Error::other("ELF section header is too short"));
-      }
-      let mut sections = Vec::with_capacity(count);
-      for index in 0..count {
-         let start = offset
-            .checked_add(index * stride)
-            .ok_or_else(|| io::Error::other("ELF section offset overflows"))?;
-         self.array::<64>(start)?;
-         let section = Section {
-            kind:   self.long(start + 4)?,
-            offset: self.size(start + 24)?,
-            size:   self.size(start + 32)?,
-            link:   self.long(start + 40)? as usize,
-            stride: self.size(start + 56)?,
-         };
-         if section.kind != 8
-            && section
-               .offset
-               .checked_add(section.size)
-               .is_none_or(|end| end > self.bytes.len())
-         {
-            return Err(io::Error::other("ELF section extends beyond the file"));
-         }
-         sections.push(section);
-      }
-      Ok(sections)
-   }
-
-   pub fn segments(&self) -> io::Result<Vec<Segment>> {
-      let offset = self.size(32)?;
-      let stride = usize::from(self.word(54)?);
-      let count = usize::from(self.word(56)?);
-      if count != 0 && stride < 56 {
-         return Err(io::Error::other("ELF program header is too short"));
-      }
-      let mut segments = Vec::with_capacity(count);
-      for index in 0..count {
-         let start = offset
-            .checked_add(index * stride)
-            .ok_or_else(|| io::Error::other("ELF segment offset overflows"))?;
-         self.array::<56>(start)?;
-         let segment = Segment {
-            header:  start,
-            kind:    self.long(start)?,
-            offset:  self.size(start + 8)?,
-            address: self.quad(start + 16)?,
-            size:    self.size(start + 32)?,
-         };
-         if segment
+   let mut sections = Vec::with_capacity(count);
+   for index in 0..count {
+      let start = offset
+         .checked_add(index * stride)
+         .ok_or_else(|| io::Error::other("ELF section offset overflows"))?;
+      image.array::<64>(start)?;
+      let section = Section {
+         kind:   image.long(start + 4)?,
+         offset: image.size(start + 24)?,
+         size:   image.size(start + 32)?,
+         link:   image.long(start + 40)? as usize,
+         stride: image.size(start + 56)?,
+      };
+      if section.kind != 8
+         && section
             .offset
-            .checked_add(segment.size)
-            .is_none_or(|end| end > self.bytes.len())
-         {
-            return Err(io::Error::other("ELF segment extends beyond the file"));
-         }
-         segments.push(segment);
+            .checked_add(section.size)
+            .is_none_or(|end| end > image.bytes.len())
+      {
+         return Err(io::Error::other("ELF section extends beyond the file"));
       }
-      Ok(segments)
+      sections.push(section);
    }
+   Ok(sections)
+}
+
+pub fn segments(image: &Image) -> io::Result<Vec<Segment>> {
+   let offset = image.size(32)?;
+   let stride = usize::from(image.word(54)?);
+   let count = usize::from(image.word(56)?);
+   if count != 0 && stride < 56 {
+      return Err(io::Error::other("ELF program header is too short"));
+   }
+   let mut segments = Vec::with_capacity(count);
+   for index in 0..count {
+      let start = offset
+         .checked_add(index * stride)
+         .ok_or_else(|| io::Error::other("ELF segment offset overflows"))?;
+      image.array::<56>(start)?;
+      let segment = Segment {
+         header:  start,
+         kind:    image.long(start)?,
+         offset:  image.size(start + 8)?,
+         address: image.quad(start + 16)?,
+         size:    image.size(start + 32)?,
+      };
+      if segment
+         .offset
+         .checked_add(segment.size)
+         .is_none_or(|end| end > image.bytes.len())
+      {
+         return Err(io::Error::other("ELF segment extends beyond the file"));
+      }
+      segments.push(segment);
+   }
+   Ok(segments)
 }
 
 pub fn relative_from(directory: &Path, target: &Path) -> PathBuf {

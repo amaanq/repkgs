@@ -509,7 +509,7 @@ fn cached(
          };
          store.mask_output(&mut dep_bytes, true);
          let raw = String::from_utf8(dep_bytes).map_err(io::Error::other)?;
-         Some(store.resolve_all(&raw)?)
+         Some(store.resolve_all(&raw))
       } else {
          None
       };

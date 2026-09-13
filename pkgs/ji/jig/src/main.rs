@@ -7,6 +7,8 @@ mod files;
 mod fixup;
 mod gocache;
 mod header;
+mod image;
+mod macho;
 mod manifest;
 mod nix_store;
 mod process;
@@ -79,7 +81,7 @@ fn dispatch() -> Result<i32> {
          "jig cc|c++ <args>\njig rustcwrap <rustc> <args>\njig cache get|put <key> <file>\njig \
           cache get-dir|put-dir <key> <directory>\njig slot <program> [args...]\njig \
           gocacheprog\njig header-key <context> <warning-policy> <compiler> <args...>\njig \
-          reloc-fixup <directory> [--deny <path>]\njig nix-store \
+          reloc-fixup <directory> [--dest <path>] [--deny <path>]\njig nix-store \
           add-text|add-drv|fetchurls|submit <args>"
       )?;
       return Ok(0);

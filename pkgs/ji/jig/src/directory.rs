@@ -21,6 +21,7 @@ use std::{
       PathBuf,
    },
    slice::from_ref,
+   string::FromUtf8Error,
 };
 
 use tempfile::Builder;
@@ -33,27 +34,47 @@ use crate::{
       write_file,
    },
    process::diagnostic,
+   store::{
+      Store,
+      mask_hashes,
+   },
 };
 
-enum Entry {
-   File {
-      path: PathBuf,
-      mode: u32,
-      hash: String,
-   },
-   Link {
-      path:   PathBuf,
-      target: PathBuf,
-   },
-   Directory(PathBuf),
+fn as_text(data: Vec<u8>) -> Result<String, Vec<u8>> {
+   if data.contains(&0) {
+      return Err(data);
+   }
+   String::from_utf8(data).map_err(FromUtf8Error::into_bytes)
 }
 
-impl Entry {
-   fn path(&self) -> &Path {
-      match self {
-         Self::File { path, .. } | Self::Link { path, .. } | Self::Directory(path) => path,
-      }
+fn stored(data: Vec<u8>) -> Vec<u8> {
+   match as_text(data) {
+      Ok(text) => mask_hashes(&text).into_bytes(),
+      Err(binary) => binary,
    }
+}
+
+fn restored(store: &Store, data: Vec<u8>) -> Vec<u8> {
+   match as_text(data) {
+      Ok(text) => store.resolve_all(&text).into_bytes(),
+      Err(binary) => binary,
+   }
+}
+
+struct Entry {
+   path: PathBuf,
+   kind: Kind,
+}
+
+struct Blob {
+   mode: u32,
+   hash: String,
+}
+
+enum Kind {
+   File(Blob),
+   Link(PathBuf),
+   Directory,
 }
 
 pub fn put_directory(cache: &mut CacheClient, key: &str, root: &Path) -> io::Result<()> {
@@ -88,7 +109,7 @@ pub fn put_directory(cache: &mut CacheClient, key: &str, root: &Path) -> io::Res
             writeln!(listing, "d 0 -\t{name}").expect("formatting a string cannot fail");
             pending.push(path);
          } else if metadata.is_file() {
-            let data = read(&path)?;
+            let data = stored(read(&path)?);
             let hash = digest(&data);
             let blob_key = format!("b/{hash}");
             if !cache.has_many(from_ref(&blob_key))?[0] {
@@ -137,7 +158,7 @@ fn parse_listing(text: &str) -> io::Result<Vec<Entry>> {
       let reference = fields
          .next()
          .ok_or_else(|| io::Error::other("missing cache file reference"))?;
-      let entry = match kind {
+      let kind = match kind {
          Some("f") => {
             let bits = u32::from_str_radix(mode, 8).map_err(io::Error::other)?;
             if bits > 0o777
@@ -147,30 +168,26 @@ fn parse_listing(text: &str) -> io::Result<Vec<Entry>> {
                return Err(io::Error::other("invalid cached file metadata"));
             }
             leaves.insert(path.clone());
-            Entry::File {
-               path,
+            Kind::File(Blob {
                mode: bits,
                hash: reference.to_owned(),
-            }
+            })
          },
          Some("l") => {
             if reference.is_empty() || reference.contains('\0') {
                return Err(io::Error::other("invalid cached symlink target"));
             }
             leaves.insert(path.clone());
-            Entry::Link {
-               path,
-               target: PathBuf::from(reference),
-            }
+            Kind::Link(PathBuf::from(reference))
          },
-         Some("d") => Entry::Directory(path),
+         Some("d") => Kind::Directory,
          _ => return Err(io::Error::other("unknown cached file kind")),
       };
-      entries.push(entry);
+      entries.push(Entry { path, kind });
    }
    if entries.iter().any(|entry| {
       entry
-         .path()
+         .path
          .ancestors()
          .skip(1)
          .any(|parent| leaves.contains(parent))
@@ -194,37 +211,39 @@ pub fn get_directory(cache: &mut CacheClient, key: &str, root: &Path) -> io::Res
       .unwrap_or_else(|| Path::new("."));
    create_dir_all(parent)?;
    let staging = Builder::new().prefix(".jig-dir-").tempdir_in(parent)?;
+   let store = Store::new();
    let mut files = 0;
    for batch in entries.chunks(256) {
       let keys: Vec<_> = batch
          .iter()
          .filter_map(|entry| {
-            match entry {
-               Entry::File { hash, .. } => Some(format!("b/{hash}")),
-               Entry::Link { .. } | Entry::Directory(_) => None,
+            if let Kind::File(blob) = &entry.kind {
+               Some(format!("b/{}", blob.hash))
+            } else {
+               None
             }
          })
          .collect();
       let mut values = cache.get_many(&keys)?.into_iter();
       for entry in batch {
-         let destination = staging.path().join(entry.path());
+         let destination = staging.path().join(&entry.path);
          let containing = destination
             .parent()
             .ok_or_else(|| io::Error::other("cache entry has no parent"))?;
          create_dir_all(containing)?;
-         match entry {
-            Entry::File { hash, mode, .. } => {
+         match &entry.kind {
+            Kind::File(blob) => {
                let Some(Some(data)) = values.next() else {
                   return Ok(false);
                };
-               if digest(&data) != *hash {
+               if digest(&data) != blob.hash {
                   return Err(io::Error::other("cached file content hash differs"));
                }
-               write_file(&destination, &data, Some(*mode))?;
+               write_file(&destination, &restored(&store, data), Some(blob.mode))?;
                files += 1;
             },
-            Entry::Link { target, .. } => symlink(target, destination)?,
-            Entry::Directory(_) => create_dir_all(destination)?,
+            Kind::Link(target) => symlink(target, destination)?,
+            Kind::Directory => create_dir_all(destination)?,
          }
       }
    }

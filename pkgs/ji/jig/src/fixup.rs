@@ -16,12 +16,17 @@ use std::{
 };
 
 use crate::{
+   driver::shared_library,
    elf::{
-      Image,
       Section,
+      is_elf,
       relative_from,
+      sections,
+      segments,
    },
    files::write_file,
+   image::Image,
+   macho,
    process::diagnostic,
    store::{
       STORE_DIR,
@@ -29,6 +34,38 @@ use crate::{
       normalize,
    },
 };
+
+pub struct Context {
+   pub prefix:      PathBuf,
+   pub dest:        PathBuf,
+   pub directories: BTreeSet<PathBuf>,
+}
+
+impl Context {
+   pub fn final_path(&self, path: &Path) -> PathBuf {
+      let normal = normalize(path);
+      normal.strip_prefix(&self.prefix).map_or_else(
+         |_| normal.clone(),
+         |relative| normalize(&self.dest.join(relative)),
+      )
+   }
+
+   pub fn on_disk(&self, path: &Path) -> PathBuf {
+      let normal = normalize(path);
+      normal.strip_prefix(&self.dest).map_or_else(
+         |_| normal.clone(),
+         |relative| normalize(&self.prefix.join(relative)),
+      )
+   }
+
+   pub fn shown(&self, path: &Path) -> String {
+      path
+         .strip_prefix(&self.prefix)
+         .unwrap_or(path)
+         .display()
+         .to_string()
+   }
+}
 
 struct Needed {
    name:            String,
@@ -43,40 +80,50 @@ struct SearchDirectory {
 
 #[expect(
    clippy::filetype_is_file,
-   reason = "Only regular files can contain ELF images"
+   reason = "Only regular files can contain binary images"
 )]
 pub fn run(args: &[String]) -> io::Result<()> {
    let Some((prefix, rest)) = args.split_first() else {
       return Err(io::Error::other("reloc-fixup requires an output directory"));
    };
-   if !is_store_path(prefix) {
-      return Err(io::Error::other(
-         "reloc-fixup output must be under the Nix store",
-      ));
-   }
+   let mut context = Context {
+      prefix:      normalize(Path::new(prefix)),
+      dest:        normalize(Path::new(prefix)),
+      directories: BTreeSet::new(),
+   };
    let mut denied = Vec::new();
    for pair in rest.chunks(2) {
       let [flag, path] = pair else {
-         return Err(io::Error::other("reloc-fixup --deny requires a store path"));
+         return Err(io::Error::other("reloc-fixup options take a store path"));
       };
-      if flag != "--deny" || !is_store_path(path) {
+      if !is_store_path(path) {
          return Err(io::Error::other("invalid reloc-fixup argument"));
       }
-      let name = Path::new(path)
-         .file_name()
-         .and_then(|name| name.to_str())
-         .ok_or_else(|| io::Error::other("invalid denied store path"))?;
-      denied.push(
-         name
-            .get(..32)
-            .ok_or_else(|| io::Error::other("denied store path has no hash"))?
-            .as_bytes()
-            .to_vec(),
-      );
+      match flag.as_str() {
+         "--dest" => context.dest = normalize(Path::new(path)),
+         "--deny" => {
+            let name = Path::new(path)
+               .file_name()
+               .and_then(|name| name.to_str())
+               .ok_or_else(|| io::Error::other("invalid denied store path"))?;
+            denied.push(
+               name
+                  .get(..32)
+                  .ok_or_else(|| io::Error::other("denied store path has no hash"))?
+                  .as_bytes()
+                  .to_vec(),
+            );
+         },
+         _ => return Err(io::Error::other("invalid reloc-fixup argument")),
+      }
    }
-   let mut pending = vec![normalize(Path::new(prefix))];
+   if !is_store_path(&context.dest.to_string_lossy()) {
+      return Err(io::Error::other(
+         "reloc-fixup output must end up under the Nix store",
+      ));
+   }
+   let mut pending = vec![context.prefix.clone()];
    let mut files = Vec::new();
-   let mut directories = BTreeSet::new();
    while let Some(directory) = pending.pop() {
       for child in read_dir(directory)? {
          let entry = child?;
@@ -85,12 +132,13 @@ pub fn run(args: &[String]) -> io::Result<()> {
          if kind.is_dir() {
             pending.push(path);
          } else if kind.is_file() {
-            if entry.file_name().to_string_lossy().contains(".so") {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.contains(".so") || shared_library(&name) {
                let parent = path
                   .parent()
                   .ok_or_else(|| io::Error::other("shared library has no parent"))?;
                if !parent.to_string_lossy().contains("/debug") {
-                  directories.insert(parent.to_path_buf());
+                  context.directories.insert(parent.to_path_buf());
                }
             }
             files.push(path);
@@ -116,89 +164,11 @@ pub fn run(args: &[String]) -> io::Result<()> {
             ));
          }
          let mut image = Image { bytes };
-         if !image.is_supported() || !matches!(image.word(16)?, 2 | 3) {
-            return Ok(());
+         if is_elf(&image) {
+            fix_elf(&context, &path, &mut image)
+         } else {
+            macho::fix(&context, &path, &mut image)
          }
-         let sections = image.sections()?;
-         let segments = image.segments()?;
-         let mut changed = fix_runpath(&mut image, &sections, &path, &directories)?;
-         let entry_address = image.quad(24)?;
-         let mut stub = None;
-         if let Some(address) = entry_address.checked_sub(16) {
-            for segment in &segments {
-               if segment.kind == 1
-                  && address >= segment.address
-                  && address - segment.address < segment.size as u64
-               {
-                  let offset = segment.offset + (address - segment.address) as usize;
-                  if image.array::<8>(offset)? == *b"RELOCSTB" {
-                     stub = Some(entry_address);
-                  }
-               }
-            }
-         }
-         if stub.is_none()
-            && let Some(symbols) = sections.iter().find(|section| section.kind == 11)
-         {
-            let strings = sections
-               .get(symbols.link)
-               .ok_or_else(|| io::Error::other("ELF symbols have no string table"))?;
-            if symbols.stride < 24 {
-               return Err(io::Error::other("ELF symbol stride is too short"));
-            }
-            for offset in (symbols.offset..symbols.offset + symbols.size).step_by(symbols.stride) {
-               let name_offset = strings
-                  .offset
-                  .checked_add(image.long(offset)? as usize)
-                  .ok_or_else(|| io::Error::other("ELF symbol offset overflows"))?;
-               if image.string(name_offset)? == "__reloc_start" {
-                  stub = Some(image.quad(offset + 8)?);
-                  break;
-               }
-            }
-         }
-         if let Some(address) = stub {
-            for segment in &segments {
-               if segment.kind != 3 {
-                  continue;
-               }
-               let interpreter = image.string(segment.offset)?;
-               if is_store_path(&interpreter) {
-                  let parent = path
-                     .parent()
-                     .ok_or_else(|| io::Error::other("ELF has no parent directory"))?;
-                  let replacement = relative_from(parent, Path::new(&interpreter));
-                  image.padded(
-                     segment.offset,
-                     segment.size,
-                     replacement.as_os_str().as_encoded_bytes(),
-                  )?;
-               }
-               image.write(segment.header, &0_u32.to_le_bytes())?;
-               image.write(24, &address.to_le_bytes())?;
-               changed = true;
-            }
-         }
-         if changed {
-            write_file(&path, &image.bytes, Some(permission_bits(&path)?))?;
-            writeln!(
-               io::stdout().lock(),
-               "relocated {}",
-               path.strip_prefix(prefix).unwrap_or(&path).display()
-            )?;
-         }
-         if image
-            .bytes
-            .windows(STORE_DIR.len())
-            .any(|window| window == STORE_DIR.as_bytes())
-         {
-            writeln!(
-               io::stdout().lock(),
-               "absolute store reference remains in {}",
-               path.display()
-            )?;
-         }
-         Ok(())
       })();
       if let Err(error) = result {
          diagnostic(format_args!(
@@ -216,16 +186,111 @@ pub fn run(args: &[String]) -> io::Result<()> {
    Ok(())
 }
 
-fn permission_bits(path: &Path) -> io::Result<u32> {
+pub fn write_back(path: &Path, image: &Image) -> io::Result<()> {
    use std::os::unix::fs::PermissionsExt;
-   Ok(metadata(path)?.permissions().mode())
+   write_file(
+      path,
+      &image.bytes,
+      Some(metadata(path)?.permissions().mode()),
+   )
+}
+
+fn fix_elf(context: &Context, path: &Path, image: &mut Image) -> io::Result<()> {
+   if !matches!(image.word(16)?, 2 | 3) {
+      return Ok(());
+   }
+   let sections = sections(image)?;
+   let segments = segments(image)?;
+   let mut changed = fix_runpath(context, image, &sections, path)?;
+   let entry_address = image.quad(24)?;
+   let mut stub = None;
+   if let Some(address) = entry_address.checked_sub(16) {
+      for segment in &segments {
+         if segment.kind == 1
+            && address >= segment.address
+            && address - segment.address < segment.size as u64
+         {
+            let offset = segment.offset + (address - segment.address) as usize;
+            if image.array::<8>(offset)? == *b"RELOCSTB" {
+               stub = Some(entry_address);
+            }
+         }
+      }
+   }
+   if stub.is_none()
+      && let Some(symbols) = sections.iter().find(|section| section.kind == 11)
+   {
+      let strings = sections
+         .get(symbols.link)
+         .ok_or_else(|| io::Error::other("ELF symbols have no string table"))?;
+      if symbols.stride < 24 {
+         return Err(io::Error::other("ELF symbol stride is too short"));
+      }
+      for offset in (symbols.offset..symbols.offset + symbols.size).step_by(symbols.stride) {
+         let name_offset = strings
+            .offset
+            .checked_add(image.long(offset)? as usize)
+            .ok_or_else(|| io::Error::other("ELF symbol offset overflows"))?;
+         if image.string(name_offset)? == "__reloc_start" {
+            stub = Some(image.quad(offset + 8)?);
+            break;
+         }
+      }
+   }
+   if let Some(address) = stub {
+      for segment in &segments {
+         if segment.kind != 3 {
+            continue;
+         }
+         let interpreter = image.string(segment.offset)?;
+         if is_store_path(&interpreter) {
+            let parent = path
+               .parent()
+               .ok_or_else(|| io::Error::other("ELF has no parent directory"))?;
+            let replacement = relative_from(&context.final_path(parent), Path::new(&interpreter));
+            image.padded(
+               segment.offset,
+               segment.size,
+               replacement.as_os_str().as_encoded_bytes(),
+            )?;
+         }
+         image.write(segment.header, &0_u32.to_le_bytes())?;
+         image.write(24, &address.to_le_bytes())?;
+         changed = true;
+      }
+   }
+   if changed {
+      write_back(path, image)?;
+      writeln!(io::stdout().lock(), "relocated {}", context.shown(path))?;
+   }
+   if image
+      .bytes
+      .windows(STORE_DIR.len() + 1)
+      .any(|window| window == format!("{STORE_DIR}/").as_bytes())
+   {
+      writeln!(
+         io::stdout().lock(),
+         "absolute store reference remains in {}",
+         context.shown(path)
+      )?;
+   }
+   Ok(())
+}
+
+fn origin_relative(from: &Path, to: &Path) -> String {
+   let relative = relative_from(from, to);
+   if relative == Path::new(".") {
+      "$ORIGIN".to_owned()
+   } else {
+      format!("$ORIGIN/{}", relative.display())
+   }
 }
 
 fn fix_runpath(
+   context: &Context,
    image: &mut Image,
    sections: &[Section],
    path: &Path,
-   own: &BTreeSet<PathBuf>,
 ) -> io::Result<bool> {
    let Some(dynamic) = sections.iter().find(|section| section.kind == 6) else {
       return Ok(false);
@@ -288,38 +353,25 @@ fn fix_runpath(
    let parent = path
       .parent()
       .ok_or_else(|| io::Error::other("ELF has no parent directory"))?;
+   let final_here = context.final_path(parent);
    let mut search = Vec::new();
    for entry in old.split(':').filter(|entry| !entry.is_empty()) {
-      if is_store_path(entry) {
+      let final_directory = if entry == "$ORIGIN" || entry.starts_with("$ORIGIN/") {
+         normalize(&final_here.join(&entry[entry.len().min(8)..]))
+      } else {
+         context.final_path(Path::new(entry))
+      };
+      if is_store_path(&final_directory.to_string_lossy()) {
          search.push(SearchDirectory {
-            text: format!(
-               "$ORIGIN/{}",
-               relative_from(parent, Path::new(entry)).display()
-            ),
-            path: normalize(Path::new(entry)),
-            keep: true,
-         });
-      } else if entry == "$ORIGIN" {
-         search.push(SearchDirectory {
-            text: entry.to_owned(),
-            path: parent.to_path_buf(),
-            keep: true,
-         });
-      } else if let Some(suffix) = entry.strip_prefix("$ORIGIN/") {
-         search.push(SearchDirectory {
-            text: entry.to_owned(),
-            path: normalize(&parent.join(suffix)),
+            text: origin_relative(&final_here, &final_directory),
+            path: context.on_disk(&final_directory),
             keep: true,
          });
       }
    }
-   for directory in own {
+   for directory in &context.directories {
       search.push(SearchDirectory {
-         text: if directory == parent {
-            "$ORIGIN".to_owned()
-         } else {
-            format!("$ORIGIN/{}", relative_from(parent, directory).display())
-         },
+         text: origin_relative(&final_here, &context.final_path(directory)),
          path: directory.clone(),
          keep: false,
       });

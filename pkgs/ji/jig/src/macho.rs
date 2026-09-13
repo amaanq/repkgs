@@ -1,0 +1,245 @@
+use std::{
+   io::{
+      self,
+      Write,
+   },
+   path::Path,
+};
+
+use sha2::{
+   Digest,
+   Sha256,
+};
+
+use crate::{
+   elf::relative_from,
+   fixup::{
+      Context,
+      write_back,
+   },
+   image::Image,
+   store::is_store_path,
+};
+
+const MAGIC: u32 = 0xFEED_FACF;
+const HEADER_SIZE: usize = 32;
+const REQUIRED: u32 = 0x8000_0000;
+const LOAD_DYLIB: u32 = 0xC;
+const ID_DYLIB: u32 = 0xD;
+const LOAD_WEAK_DYLIB: u32 = 0x18 | REQUIRED;
+const RPATH: u32 = 0x1C | REQUIRED;
+const REEXPORT_DYLIB: u32 = 0x1F | REQUIRED;
+const LOAD_UPWARD_DYLIB: u32 = 0x23 | REQUIRED;
+const CODE_SIGNATURE: u32 = 0x1D;
+const SEGMENT_64: u32 = 0x19;
+
+struct Command {
+   kind:        u32,
+   bytes:       Vec<u8>,
+   path_offset: usize,
+}
+
+impl Command {
+   fn path(&self) -> io::Result<String> {
+      let tail = &self.bytes[self.path_offset..];
+      let end = tail
+         .iter()
+         .position(|byte| *byte == 0)
+         .unwrap_or(tail.len());
+      String::from_utf8(tail[..end].to_vec()).map_err(io::Error::other)
+   }
+
+   fn set_path(&mut self, path: &str) {
+      self.bytes.truncate(self.path_offset);
+      self.bytes.extend_from_slice(path.as_bytes());
+      self.bytes.resize((self.bytes.len() + 8) / 8 * 8, 0);
+      let size = (self.bytes.len() as u32).to_le_bytes();
+      self.bytes[4..8].copy_from_slice(&size);
+   }
+}
+
+fn read_commands(image: &Image) -> io::Result<(Vec<Command>, usize)> {
+   let count = image.long(16)?;
+   let mut room = image.bytes.len() - HEADER_SIZE;
+   let mut commands = Vec::new();
+   let mut offset = HEADER_SIZE;
+   for _ in 0..count {
+      let Ok(kind) = image.long(offset) else {
+         break;
+      };
+      let size = image.long(offset + 4)? as usize;
+      if size < 8 || offset + size > image.bytes.len() {
+         break;
+      }
+      let mut command = Command {
+         kind,
+         bytes: image.bytes[offset..offset + size].to_vec(),
+         path_offset: 0,
+      };
+      if matches!(
+         kind,
+         LOAD_DYLIB | LOAD_WEAK_DYLIB | REEXPORT_DYLIB | LOAD_UPWARD_DYLIB | ID_DYLIB | RPATH
+      ) {
+         let path_offset = image.long(offset + 8).unwrap_or(0) as usize;
+         if path_offset < size {
+            command.path_offset = path_offset;
+         }
+      }
+      if kind == SEGMENT_64 {
+         let file_offset = image.size(offset + 40).unwrap_or(0);
+         let file_size = image.size(offset + 48).unwrap_or(0);
+         if file_size != 0 && file_offset == 0 {
+            let section_count = image.long(offset + 64).unwrap_or(0) as usize;
+            for section in 0..section_count {
+               let section_offset =
+                  image.long(offset + 72 + section * 80 + 48).unwrap_or(0) as usize;
+               if section_offset != 0 {
+                  room = room.min(section_offset.saturating_sub(HEADER_SIZE));
+               }
+            }
+         } else if file_size != 0 {
+            room = room.min(file_offset.saturating_sub(HEADER_SIZE));
+         }
+      }
+      commands.push(command);
+      offset += size;
+   }
+   Ok((commands, room))
+}
+
+fn resign(image: &mut Image) -> io::Result<()> {
+   let count = image.long(16)?;
+   let mut offset = HEADER_SIZE;
+   let mut signature = None;
+   for _ in 0..count {
+      let Ok(kind) = image.long(offset) else {
+         break;
+      };
+      let size = image.long(offset + 4)? as usize;
+      if size < 8 {
+         break;
+      }
+      if kind == CODE_SIGNATURE {
+         signature = Some(image.long(offset + 8)? as usize);
+      }
+      offset += size;
+   }
+   let Some(signature) = signature else {
+      return Ok(());
+   };
+   if image.big_long(signature)? != 0xFADE_0CC0 {
+      return Err(io::Error::other(
+         "LC_CODE_SIGNATURE is no embedded signature blob",
+      ));
+   }
+   let blobs = image.big_long(signature + 8)?;
+   for blob in 0..blobs as usize {
+      let directory = signature + image.big_long(signature + 12 + blob * 8 + 4)? as usize;
+      if image.big_long(directory)? != 0xFADE_0C02 {
+         continue;
+      }
+      let hash_offset = image.big_long(directory + 16)? as usize;
+      let slots = image.big_long(directory + 28)? as usize;
+      let limit = image.big_long(directory + 32)? as usize;
+      let hash_size = usize::from(image.byte(directory + 36)?);
+      let hash_type = image.byte(directory + 37)?;
+      let page = 1_usize << image.byte(directory + 39)?;
+      if hash_type != 2 || hash_size != 32 {
+         return Err(io::Error::other(format!(
+            "code signature hash type {hash_type} is not SHA-256"
+         )));
+      }
+      for slot in 0..slots {
+         let begin = slot * page;
+         let end = (begin + page).min(limit);
+         let region = image
+            .bytes
+            .get(begin..end)
+            .ok_or_else(|| io::Error::other("code signature page lies outside the file"))?;
+         let digest = Sha256::digest(region);
+         image.write(directory + hash_offset + slot * hash_size, &digest)?;
+      }
+   }
+   Ok(())
+}
+
+fn loader_relative(from: &Path, target: &Path) -> String {
+   let relative = relative_from(from, target);
+   if relative == Path::new(".") {
+      "@loader_path".to_owned()
+   } else {
+      format!("@loader_path/{}", relative.display())
+   }
+}
+
+fn new_spelling(context: &Context, here: &Path, command: &Command) -> io::Result<Option<String>> {
+   let path = command.path()?;
+   if path.starts_with('@') || path.starts_with("/usr/lib/") || path.starts_with("/System/") {
+      return Ok(None);
+   }
+   let target = context.final_path(Path::new(&path));
+   if is_store_path(&target.to_string_lossy()) {
+      if command.kind == ID_DYLIB {
+         let name = target
+            .file_name()
+            .ok_or_else(|| io::Error::other("dylib id has no file name"))?;
+         return Ok(Some(format!("@rpath/{}", name.to_string_lossy())));
+      }
+      return Ok(Some(loader_relative(here, &target)));
+   }
+   if command.kind != RPATH && command.kind != ID_DYLIB {
+      return Err(io::Error::other(format!(
+         "links {path} by a path outside the store"
+      )));
+   }
+   Ok(None)
+}
+
+pub fn fix(context: &Context, path: &Path, image: &mut Image) -> io::Result<()> {
+   if image.long(0).ok() != Some(MAGIC) {
+      return Ok(());
+   }
+   let here = context
+      .final_path(path)
+      .parent()
+      .ok_or_else(|| io::Error::other("Mach-O file has no parent directory"))?
+      .to_path_buf();
+   let (mut commands, room) = read_commands(image)?;
+   let mut changed = Vec::new();
+   for command in &mut commands {
+      if command.path_offset == 0 {
+         continue;
+      }
+      if let Some(text) = new_spelling(context, &here, command)?
+         && text != command.path()?
+      {
+         command.set_path(&text);
+         changed.push(text);
+      }
+   }
+   if changed.is_empty() {
+      return Ok(());
+   }
+   let mut bytes: Vec<u8> = commands
+      .iter()
+      .flat_map(|command| command.bytes.iter().copied())
+      .collect();
+   if bytes.len() > room {
+      return Err(io::Error::other(format!(
+         "load commands need {} bytes, the header has room for {room} (-headerpad)",
+         bytes.len()
+      )));
+   }
+   image.write(20, &(bytes.len() as u32).to_le_bytes())?;
+   bytes.resize(room, 0);
+   image.write(HEADER_SIZE, &bytes)?;
+   resign(image)?;
+   write_back(path, image)?;
+   writeln!(
+      io::stdout().lock(),
+      "relocated {}  {}",
+      context.shown(path),
+      changed.join("  ")
+   )?;
+   Ok(())
+}
