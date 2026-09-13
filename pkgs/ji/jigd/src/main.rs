@@ -179,8 +179,9 @@ fn main() -> Result<()> {
    };
    let cache = match var_os("XDG_CACHE_HOME") {
       Some(path) if !path.is_empty() => PathBuf::from(path),
-      Some(_) => bail!("XDG_CACHE_HOME must not be empty"),
-      None => PathBuf::from(var_os("HOME").ok_or_else(|| eyre!("HOME is not set"))?).join(".cache"),
+      Some(_) | None => {
+         PathBuf::from(var_os("HOME").ok_or_else(|| eyre!("HOME is not set"))?).join(".cache")
+      },
    };
    let mut tiers = vec![Tier {
       directory: cache.join("jigd/packs"),

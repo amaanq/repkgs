@@ -72,12 +72,16 @@ impl Store {
       }
    }
 
-   pub fn key(&self, text: &str) -> String {
+   pub fn mask_for_replay(&self, text: &str) -> String {
       if self.content {
          mask_hashes(text)
       } else {
          text.to_owned()
       }
+   }
+
+   pub fn key(&self, arg: &str) -> String {
+      self.mask_for_replay(&mask_random_names(&normalize_path_arg(arg)))
    }
 
    pub fn mask_output(&self, data: &mut [u8], restore: bool) {
@@ -169,7 +173,7 @@ impl Store {
          .to_str()
          .ok_or_else(|| io::Error::other("compiler path is not UTF-8"))?;
       if is_store_path(filename) {
-         return Ok(filename.to_owned());
+         return Ok(self.key(filename));
       }
       let identity = self.input_id(filename)?;
       Ok(format!("{filename}={identity}"))
@@ -207,6 +211,54 @@ pub fn mask_hashes(text: &str) -> String {
    }
    output.push_str(remaining);
    output
+}
+
+fn normalize_path_arg(arg: &str) -> String {
+   if arg.starts_with("-D") || arg.starts_with("-U") {
+      return arg.to_owned();
+   }
+   let start = if let Some(option) = arg.strip_prefix("--") {
+      let Some(equals) = option.find('=') else {
+         return arg.to_owned();
+      };
+      equals + 3
+   } else if arg.starts_with('-') && arg.len() > 2 && !arg.starts_with("--") {
+      match arg.find('=') {
+         Some(equals) if !arg[..equals].contains('/') => equals + 1,
+         _ => 2,
+      }
+   } else if arg.starts_with('-') {
+      return arg.to_owned();
+   } else {
+      0
+   };
+   let value = &arg[start..];
+   if !value.contains('/') && !value.starts_with('.') {
+      return arg.to_owned();
+   }
+   format!(
+      "{}{}",
+      &arg[..start],
+      normalize(Path::new(value)).to_string_lossy()
+   )
+}
+
+fn mask_random_names(text: &str) -> String {
+   let mut masked = text.to_owned();
+   for (prefix, width) in [("TryCompile-", 6), ("cmTC_", 5)] {
+      let mut position = 0;
+      while let Some(found) = masked[position..].find(prefix) {
+         let start = position + found + prefix.len();
+         position = start;
+         if masked
+            .get(start..start + width)
+            .is_some_and(|tail| tail.bytes().all(|byte| byte.is_ascii_alphanumeric()))
+         {
+            masked.replace_range(start..start + width, &"#".repeat(width));
+         }
+      }
+   }
+   masked
 }
 
 pub fn normalize(path: &Path) -> PathBuf {

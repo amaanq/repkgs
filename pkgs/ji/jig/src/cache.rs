@@ -119,10 +119,12 @@ impl CacheClient {
       self.exchange(|reader| {
          let mut identities = Vec::with_capacity(paths.len());
          for batch in paths.chunks(BATCH_SIZE) {
-            writeln!(reader.get_mut(), "IDS {}", batch.len())?;
+            let mut request = Vec::new();
+            writeln!(request, "IDS {}", batch.len())?;
             for path in batch {
-               writeln!(reader.get_mut(), "{path}")?;
+               writeln!(request, "{path}")?;
             }
+            reader.get_mut().write_all(&request)?;
             for _ in batch {
                let identity = read_line(reader)?;
                if !identity.is_empty()

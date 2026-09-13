@@ -19,24 +19,23 @@ use std::{
 
 use crate::cache::CacheClient;
 
-pub struct Slot {
-   client: CacheClient,
+pub struct Slot<'client> {
+   client: &'client mut CacheClient,
    build:  String,
 }
 
-impl Slot {
-   pub fn acquire(socket: &Path) -> io::Result<Option<Self>> {
+impl Slot<'_> {
+   pub fn acquire(client: &mut CacheClient) -> io::Result<Option<Slot<'_>>> {
       if var("JIG_SLOT").is_ok_and(|value| !value.is_empty()) {
          return Ok(None);
       }
-      let mut client = CacheClient::connect(socket)?;
       let build = var("NIX_BUILD_TOP").unwrap_or_else(|_| "-".to_owned());
       client.acquire(&build)?;
-      Ok(Some(Self { client, build }))
+      Ok(Some(Slot { client, build }))
    }
 }
 
-impl Drop for Slot {
+impl Drop for Slot<'_> {
    fn drop(&mut self) {
       if let Err(error) = self.client.release(&self.build) {
          diagnostic(format_args!("jig could not release compiler slot, {error}"));
@@ -75,25 +74,52 @@ pub fn log(tool: &str, outcome: &str, subject: &str, started: Instant) {
    }
 }
 
+pub fn log_uncached(outcome: &str, args: &[String]) {
+   if outcome == "query" {
+      return;
+   }
+   if let Ok(path) = var("JIG_LOG_ARGS")
+      && !path.is_empty()
+   {
+      let record = format!("{outcome}\t{}\n", args.join(" "));
+      let result = OpenOptions::new()
+         .create(true)
+         .append(true)
+         .open(path)
+         .and_then(|mut file| file.write_all(record.as_bytes()));
+      if let Err(error) = result {
+         diagnostic(format_args!(
+            "jig could not write its uncached log, {error}"
+         ));
+      }
+   }
+}
+
 pub fn status_code(status: ExitStatus) -> i32 {
    status
       .code()
       .unwrap_or_else(|| 128 + status.signal().unwrap_or(1))
 }
 
-pub fn run<Argument: AsRef<OsStr>>(
+pub fn run_slotted<Argument: AsRef<OsStr>>(
    program: &OsStr,
    args: &[Argument],
    socket: Option<&Path>,
    capture: bool,
 ) -> io::Result<RunResult> {
-   let slot = match socket.map(Slot::acquire).transpose() {
-      Ok(held) => held.flatten(),
-      Err(error) => {
-         diagnostic(format_args!("jig running without a compiler slot, {error}"));
-         None
-      },
-   };
+   let mut client = socket.and_then(|path| CacheClient::connect(path).ok());
+   let slot = client
+      .as_mut()
+      .and_then(|client| Slot::acquire(client).ok().flatten());
+   run(program, args, slot, capture)
+}
+
+pub fn run<Argument: AsRef<OsStr>>(
+   program: &OsStr,
+   args: &[Argument],
+   slot: Option<Slot<'_>>,
+   capture: bool,
+) -> io::Result<RunResult> {
    let mut command = Command::new(program);
    command
       .args(args)

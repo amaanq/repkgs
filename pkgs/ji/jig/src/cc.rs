@@ -36,9 +36,12 @@ use crate::{
       parse_depfile,
    },
    process::{
+      Slot,
       diagnostic,
       log,
+      log_uncached,
       run,
+      run_slotted,
    },
    store::{
       Store,
@@ -58,7 +61,9 @@ enum Action {
 
 struct Invocation {
    args:      Vec<String>,
+   key_args:  Vec<String>,
    source:    String,
+   target:    String,
    inputs:    Vec<String>,
    output:    PathBuf,
    depfile:   Option<PathBuf>,
@@ -72,7 +77,9 @@ impl Invocation {
    fn parse(args: Vec<String>) -> Self {
       let mut invocation = Self {
          args,
+         key_args: Vec::new(),
          source: String::new(),
+         target: String::new(),
          inputs: Vec::new(),
          output: PathBuf::new(),
          depfile: None,
@@ -86,31 +93,41 @@ impl Invocation {
       let mut objects = false;
       let mut index = 0;
       while index < invocation.args.len() {
-         let arg = &invocation.args[index];
-         let next = invocation.args.get(index + 1);
+         let arg = invocation.args[index].clone();
+         let next = invocation.args.get(index + 1).cloned();
+         let mut keyed = true;
+         let mut consumed = false;
          match arg.as_str() {
             "-c" => invocation.action = Action::Compile,
             "-S" => invocation.action = Action::Assembly,
             "-E" => invocation.action = Action::Preprocess,
             "-o" => {
-               if let Some(value) = next {
+               keyed = false;
+               if let Some(value) = &next {
                   invocation.output = PathBuf::from(value);
-                  index += 1;
+                  consumed = true;
                }
             },
             "-MF" => {
-               if let Some(value) = next {
+               keyed = false;
+               if let Some(value) = &next {
                   invocation.depfile = Some(PathBuf::from(value));
                   wants_deps = true;
-                  index += 1;
+                  consumed = true;
                }
             },
             "-MT" | "-MQ" => {
-               if next.is_some() {
-                  index += 1;
+               keyed = false;
+               if let Some(value) = &next {
+                  value.clone_into(&mut invocation.target);
+                  wants_deps = true;
+                  consumed = true;
                }
             },
-            "-MD" | "-MMD" => wants_deps = true,
+            "-MD" | "-MMD" | "-MP" => {
+               keyed = false;
+               wants_deps = true;
+            },
             "-M" | "-MM" | "-" | "-v" | "-V" | "--version" | "-###" | "-fsyntax-only" => {
                invocation.query = true;
             },
@@ -118,17 +135,19 @@ impl Invocation {
             "-I" | "-isystem" | "-iquote" | "-idirafter" | "-include" | "-imacros"
             | "-isysroot" | "--sysroot" | "-L" | "-l" | "-x" | "-D" | "-U" | "-target"
             | "--target" => {
-               if let Some(value) = next {
+               if let Some(value) = &next {
                   if arg == "-x" && value.ends_with("-header") {
                      invocation.cacheable = false;
                   }
-                  index += 1;
+                  consumed = true;
                }
             },
             _ => {
                if arg.starts_with("-o") && arg.len() > 2 {
+                  keyed = false;
                   invocation.output = PathBuf::from(&arg[2..]);
                } else if arg.starts_with("-Wp,-MD,") || arg.starts_with("-Wp,-MMD,") {
+                  keyed = false;
                   invocation.depfile = arg.splitn(3, ',').nth(2).map(PathBuf::from);
                   wants_deps = true;
                } else if !arg.starts_with('-')
@@ -138,7 +157,8 @@ impl Invocation {
                   .iter()
                   .any(|suffix| arg.ends_with(suffix))
                {
-                  invocation.source = arg.to_owned();
+                  keyed = false;
+                  invocation.source.clone_from(&arg);
                   sources += 1;
                } else if !arg.starts_with('-')
                   && ([".o", ".os", ".lo", ".a", ".so", ".obj"]
@@ -146,7 +166,7 @@ impl Invocation {
                      .any(|suffix| arg.ends_with(suffix))
                      || arg.contains(".so."))
                {
-                  invocation.inputs.push(arg.to_owned());
+                  invocation.inputs.push(arg.clone());
                   objects = true;
                }
                invocation.query |= arg.starts_with("-print")
@@ -180,7 +200,13 @@ impl Invocation {
                   && !arg.ends_with(",-t");
             },
          }
-         index += 1;
+         if keyed {
+            invocation.key_args.push(arg);
+            if consumed && let Some(value) = next {
+               invocation.key_args.push(value);
+            }
+         }
+         index += if consumed { 2 } else { 1 };
       }
       if matches!(
          invocation.action,
@@ -231,14 +257,51 @@ impl Invocation {
       matches!(self.action, Action::Link | Action::LinkSource)
    }
 
+   fn key_injected(&mut self, user: &[String]) {
+      for arg in &self.args {
+         if !user.contains(arg) {
+            self.key_args.push(arg.clone());
+         }
+      }
+   }
+
+   fn retarget(&self, depfile: &str) -> String {
+      let target = if self.target.is_empty() {
+         self.output.to_string_lossy().into_owned()
+      } else {
+         self.target.clone()
+      };
+      match depfile.find(": ") {
+         Some(colon) if depfile.find('\n').is_none_or(|newline| newline > colon) => {
+            format!("{target}{}", &depfile[colon..])
+         },
+         _ => depfile.to_owned(),
+      }
+   }
+
    fn request_key(&self, store: &Store, compiler: &str) -> io::Result<String> {
       let mut hasher = Hasher::new();
       field(&mut hasher, store.tool_id(compiler)?);
-      field(&mut hasher, current_dir()?.as_os_str().as_encoded_bytes());
-      for argument in &self.args {
+      field(&mut hasher, store.key(&current_dir()?.to_string_lossy()));
+      field(&mut hasher, match self.action {
+         Action::Link => "link",
+         Action::LinkSource => "link-one",
+         _ => "compile",
+      });
+      for argument in &self.key_args {
          let mut bytes = argument.as_bytes().to_vec();
          store.mask_output(&mut bytes, false);
-         field(&mut hasher, bytes);
+         let masked = String::from_utf8_lossy(&bytes);
+         let embedded =
+            self.links() && (argument.contains("dynamic-linker") || argument.contains("rpath"));
+         field(
+            &mut hasher,
+            if embedded {
+               masked.into_owned()
+            } else {
+               store.key(&masked)
+            },
+         );
       }
       for name in [
          "CPATH",
@@ -269,11 +332,12 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    let started = Instant::now();
    let user = expand_response_files(raw)?;
    let driver = Driver::load()?;
-   let mut invocation = Invocation::parse(user);
+   let mut invocation = Invocation::parse(user.clone());
    if invocation.links() && driver.format() != BinaryFormat::Elf {
       invocation.cacheable = false;
    }
    invocation.args = driver.arguments(mode.contains("++"), &invocation.args);
+   invocation.key_injected(&user);
    let mut store = Store::new();
    let subject = if invocation.source.is_empty() {
       invocation.output.to_string_lossy().into_owned()
@@ -296,7 +360,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    };
    let Some((request, mut cache)) = connected else {
       let slot_socket = (!invocation.query).then_some(socket);
-      let result = run(
+      let result = run_slotted(
          OsStr::new(driver.compiler()),
          &invocation.args,
          slot_socket,
@@ -314,6 +378,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
          "no-daemon"
       };
       log("cc", outcome, &subject, started);
+      log_uncached(outcome, &user);
       return Ok(result.status);
    };
    let hit = lookup(&mut cache, &mut store, &request).and_then(|key| {
@@ -388,7 +453,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    let result = run(
       OsStr::new(driver.compiler()),
       &arguments,
-      Some(socket),
+      Slot::acquire(&mut cache).ok().flatten(),
       true,
    )?;
    io::stderr().lock().write_all(&result.stderr)?;
@@ -434,7 +499,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
          store.mask_output(&mut object, false);
          cache.put(&format!("o/{key}"), &object)?;
          if invocation.depfile.is_some() {
-            let mut dep_bytes = store.key(&dependencies).into_bytes();
+            let mut dep_bytes = store.mask_for_replay(&dependencies).into_bytes();
             store.mask_output(&mut dep_bytes, false);
             cache.put(&format!("d/{key}"), &dep_bytes)?;
          }
@@ -509,7 +574,7 @@ fn cached(
          };
          store.mask_output(&mut dep_bytes, true);
          let raw = String::from_utf8(dep_bytes).map_err(io::Error::other)?;
-         Some(store.resolve_all(&raw))
+         Some(invocation.retarget(&store.resolve_all(&raw)))
       } else {
          None
       };

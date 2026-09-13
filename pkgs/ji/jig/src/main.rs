@@ -93,7 +93,7 @@ fn dispatch() -> Result<i32> {
       let Some((program, rest)) = args.split_first() else {
          bail!("jig slot requires a program")
       };
-      return Ok(process::run(program, rest, Some(&socket), false)?.status);
+      return Ok(process::run_slotted(program, rest, Some(&socket), false)?.status);
    }
    if mode == "gocacheprog" {
       gocache::run(&socket)?;

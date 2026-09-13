@@ -72,7 +72,7 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
    }
    let mut cache = CacheClient::connect(socket)?;
    let dependency_file = NamedTempFile::new_in(".")?;
-   let slot = Slot::acquire(socket)?;
+   let slot = Slot::acquire(&mut cache)?;
    let output = Command::new(driver.compiler())
       .args(expanded.iter().filter(|arg| *arg != "-c"))
       .args(["-E", "-MD", "-MF"])

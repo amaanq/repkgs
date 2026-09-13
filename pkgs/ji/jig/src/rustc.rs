@@ -41,9 +41,11 @@ use crate::{
       parse_depfile,
    },
    process::{
+      Slot,
       diagnostic,
       log,
       run,
+      run_slotted,
    },
    store::{
       Store,
@@ -53,6 +55,7 @@ use crate::{
 };
 
 struct Invocation {
+   key_args:  Vec<String>,
    source:    String,
    out_dir:   PathBuf,
    name:      String,
@@ -65,6 +68,7 @@ struct Invocation {
 impl Invocation {
    fn parse(args: &[String]) -> Self {
       let mut invocation = Self {
+         key_args:  Vec::new(),
          source:    String::new(),
          out_dir:   PathBuf::new(),
          name:      String::new(),
@@ -116,6 +120,13 @@ impl Invocation {
                args.get(index).map(String::as_str)
             });
             if let Some(setting) = value {
+               let unkeyed = matches!(flag, "--out-dir" | "-L")
+                  || (flag == "-C"
+                     && (setting.starts_with("metadata=")
+                        || setting.starts_with("extra-filename=")));
+               if !unkeyed {
+                  invocation.key_args.push(format!("{flag}={setting}"));
+               }
                match flag {
                   "--out-dir" => invocation.out_dir = PathBuf::from(setting),
                   "--crate-name" => setting.clone_into(&mut invocation.name),
@@ -144,6 +155,8 @@ impl Invocation {
          } else if let Some(setting) = argument.strip_prefix("-C") {
             if let Some(suffix) = setting.strip_prefix("extra-filename=") {
                suffix.clone_into(&mut invocation.suffix);
+            } else if !setting.starts_with("metadata=") {
+               invocation.key_args.push(format!("-C={setting}"));
             }
             invocation.cacheable &= !setting.starts_with("incremental=");
          } else if !argument.starts_with('-')
@@ -158,6 +171,7 @@ impl Invocation {
                || argument.starts_with("--print=")
                || matches!(argument.as_str(), "-" | "-vV" | "--version");
             invocation.cacheable &= !argument.starts_with("-o") && !argument.starts_with('@');
+            invocation.key_args.push(argument.clone());
          }
          index += 1;
       }
@@ -199,7 +213,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
       },
    };
    let request = if cache.is_some() {
-      match request_key(&store, compiler, arguments, &invocation) {
+      match request_key(&store, compiler, &invocation) {
          Ok(key) => Some(key),
          Err(error) => {
             diagnostic(format_args!("jig cannot identify Rust inputs, {error}"));
@@ -210,7 +224,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
       None
    };
    let (Some(client), Some(key)) = (&mut cache, request) else {
-      let result = run(
+      let result = run_slotted(
          OsStr::new(compiler),
          arguments,
          (!invocation.query).then_some(socket),
@@ -232,7 +246,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
    };
    let hit = lookup(client, &mut store, &key).and_then(|found| {
       found.map_or(Ok(false), |result| {
-         replay(client, &invocation.out_dir, &result)
+         replay(client, &invocation.out_dir, &invocation.suffix, &result)
       })
    });
    match hit {
@@ -247,7 +261,12 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
          ));
       },
    }
-   let result = run(OsStr::new(compiler), arguments, Some(socket), true)?;
+   let result = run(
+      OsStr::new(compiler),
+      arguments,
+      Slot::acquire(client).ok().flatten(),
+      true,
+   )?;
    io::stderr().lock().write_all(&result.stderr)?;
    if result.status != 0 {
       log("rustc", "failed", &label, started);
@@ -265,17 +284,12 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
    Ok(0)
 }
 
-fn request_key(
-   store: &Store,
-   compiler: &str,
-   args: &[String],
-   invocation: &Invocation,
-) -> io::Result<String> {
+fn request_key(store: &Store, compiler: &str, invocation: &Invocation) -> io::Result<String> {
    let mut hasher = Hasher::new();
    field(&mut hasher, store.tool_id(compiler)?);
-   field(&mut hasher, current_dir()?.as_os_str().as_encoded_bytes());
-   for argument in args {
-      field(&mut hasher, argument);
+   field(&mut hasher, store.key(&current_dir()?.to_string_lossy()));
+   for argument in &invocation.key_args {
+      field(&mut hasher, store.key(argument));
    }
    field(&mut hasher, read(&invocation.source)?);
    for external in &invocation.externs {
@@ -376,7 +390,7 @@ fn store_result(
       let hash = digest(&bytes);
       cache.put(&format!("b/{hash}"), &bytes)?;
       artifacts.push(Artifact {
-         name: name.to_owned(),
+         name: stem(name, &invocation.suffix, "@"),
          mode: metadata(&output)?.permissions().mode() & 0o777,
          hash,
       });
@@ -386,7 +400,15 @@ fn store_result(
    manifest.publish(cache, request)
 }
 
-fn replay(cache: &mut CacheClient, directory: &Path, key: &str) -> io::Result<bool> {
+fn stem(name: &str, from: &str, to: &str) -> String {
+   if from.is_empty() {
+      name.to_owned()
+   } else {
+      name.replace(from, to)
+   }
+}
+
+fn replay(cache: &mut CacheClient, directory: &Path, suffix: &str, key: &str) -> io::Result<bool> {
    let Some(listing) = cache.get(&format!("o/{key}"))? else {
       return Ok(false);
    };
@@ -412,7 +434,11 @@ fn replay(cache: &mut CacheClient, directory: &Path, key: &str) -> io::Result<bo
       return Ok(false);
    };
    for (artifact, bytes) in artifacts.iter().zip(values) {
-      write_file(&directory.join(&artifact.name), &bytes, Some(artifact.mode))?;
+      write_file(
+         &directory.join(stem(&artifact.name, "@", suffix)),
+         &bytes,
+         Some(artifact.mode),
+      )?;
    }
    io::stderr().lock().write_all(&diagnostics)?;
    Ok(true)
