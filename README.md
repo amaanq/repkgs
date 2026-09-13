@@ -208,6 +208,7 @@ slots. **launch** and **crt-interp** are the few hundred bytes that let scripts 
 run from any path. **uptrack** (nu) does the updates.
 
 Work on the wrapper and daemon with nixpkgs' Rust toolchain, without bootstrapping the package set.
+The Cargo config selects Wild through Clang. Both development shells provide the linker tools.
 
 ```console
 $ nix develop .#rust --command cargo build --workspace --manifest-path pkgs/ji/jig/src/Cargo.toml

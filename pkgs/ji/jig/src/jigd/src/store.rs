@@ -1,8 +1,5 @@
 use std::{
-   collections::{
-      BTreeMap,
-      HashMap,
-   },
+   collections::BTreeMap,
    fmt::{
       Display,
       Formatter,
@@ -23,10 +20,10 @@ use std::{
       BufReader,
       BufWriter,
       Read,
-      Write,
+      Write as _,
    },
    os::unix::{
-      fs::FileExt,
+      fs::FileExt as _,
       net::UnixStream,
    },
    path::{
@@ -118,13 +115,13 @@ impl Value {
 
    pub fn write_to(&self, stream: &UnixStream) -> io::Result<()> {
       let mut offset = self.offset;
-      let mut remaining = self.length as usize;
+      let mut remaining = usize::try_from(self.length).map_err(io::Error::other)?;
       while remaining > 0 {
          match sendfile(
             stream,
             &*self.file,
             Some(&mut offset),
-            remaining.min(1 << 20),
+            remaining.min(1 << 20_i32),
          ) {
             Ok(0) => {
                return Err(io::Error::new(
@@ -149,13 +146,9 @@ pub struct Stats {
 }
 
 impl Display for Stats {
-   #[expect(
-      clippy::renamed_function_params,
-      reason = "Project names have at least two characters"
-   )]
-   fn fmt(&self, formatter: &mut Formatter<'_>) -> FormatResult {
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
       write!(
-         formatter,
+         f,
          "keys={} packs={} bytes={} live={}",
          self.keys, self.packs, self.bytes, self.live
       )
@@ -164,13 +157,14 @@ impl Display for Stats {
 
 #[derive(Default)]
 struct State {
-   index:  HashMap<String, Location>,
+   index:  BTreeMap<String, Location>,
    packs:  BTreeMap<u64, Pack>,
    active: u64,
    totals: Vec<u64>,
 }
 
 impl State {
+   #[expect(clippy::expect_used, reason = "indexed locations must refer to loaded packs")]
    fn insert(&mut self, key: String, location: Location) {
       self
          .packs
@@ -207,9 +201,9 @@ pub struct Store {
 }
 
 fn nanos(time: SystemTime) -> u64 {
-   time
-      .duration_since(UNIX_EPOCH)
-      .map_or(0, |since| since.as_nanos() as u64)
+   time.duration_since(UNIX_EPOCH).map_or(0, |since| {
+      u64::try_from(since.as_nanos()).unwrap_or(u64::MAX)
+   })
 }
 
 fn now() -> u64 {
@@ -223,14 +217,21 @@ impl Shared {
          .join(format!("{identifier:06}.{extension}"))
    }
 
+   #[expect(clippy::expect_used, reason = "poisoned store state violates its invariants")]
    fn read(&self) -> RwLockReadGuard<'_, State> {
       self.state.read().expect("store lock poisoned")
    }
 
+   #[expect(clippy::expect_used, reason = "poisoned store state violates its invariants")]
    fn write(&self) -> RwLockWriteGuard<'_, State> {
       self.state.write().expect("store lock poisoned")
    }
 
+   #[expect(
+      clippy::too_many_lines,
+      reason = "pack loading handles hint parsing and fallback scan in one place"
+   )]
+   #[expect(clippy::expect_used, reason = "the pack was inserted before its size is updated")]
    fn load(&self, state: &mut State, tier: usize, identifier: u64) -> io::Result<()> {
       let file = Arc::new(
          OpenOptions::new()
@@ -254,13 +255,21 @@ impl Shared {
             let mut reader = BufReader::new(hint);
             let mut records = Vec::new();
             while let Some(header) = read_header::<16>(&mut reader)? {
-               let key_length =
-                  u32::from_le_bytes(header[..4].try_into().expect("key length slice"));
-               let length =
-                  u32::from_le_bytes(header[4..8].try_into().expect("value length slice"));
-               let record_offset =
-                  u64::from_le_bytes(header[8..].try_into().expect("offset slice"));
-               check_lengths(key_length, length)?;
+               let key_length = u32::from_le_bytes(
+                  header[..4]
+                     .try_into()
+                     .map_err(|_error| io::Error::other("key length slice"))?,
+               );
+               let length = u32::from_le_bytes(
+                  header[4..8]
+                     .try_into()
+                     .map_err(|_error| io::Error::other("value length slice"))?,
+               );
+               let record_offset = u64::from_le_bytes(
+                  header[8..]
+                     .try_into()
+                     .map_err(|_error| io::Error::other("offset slice"))?,
+               );
                let offset = record_offset
                   .checked_add(HEADER_SIZE + u64::from(key_length))
                   .ok_or_else(|| io::Error::other("cache offset overflow"))?;
@@ -289,9 +298,16 @@ impl Shared {
             while offset + HEADER_SIZE <= size {
                let mut header = [0; 8];
                reader.read_exact(&mut header)?;
-               let key_length =
-                  u32::from_le_bytes(header[..4].try_into().expect("key length slice"));
-               let length = u32::from_le_bytes(header[4..].try_into().expect("value length slice"));
+               let key_length = u32::from_le_bytes(
+                  header[..4]
+                     .try_into()
+                     .map_err(|_error| io::Error::other("key length slice"))?,
+               );
+               let length = u32::from_le_bytes(
+                  header[4..]
+                     .try_into()
+                     .map_err(|_error| io::Error::other("value length slice"))?,
+               );
                let end = offset + HEADER_SIZE + u64::from(key_length) + u64::from(length);
                if check_lengths(key_length, length).is_err() || end > size {
                   break;
@@ -338,7 +354,7 @@ impl Shared {
          if location.pack != identifier {
             continue;
          }
-         let key_length = u32::try_from(key.len()).expect("validated key length");
+         let key_length = u32::try_from(key.len()).map_err(io::Error::other)?;
          let record_offset = location.offset - HEADER_SIZE - u64::from(key_length);
          writer.write_all(&key_length.to_le_bytes())?;
          writer.write_all(&location.length.to_le_bytes())?;
@@ -376,12 +392,10 @@ impl Shared {
    }
 
    fn kick(&self) {
-      self
-         .demotion
-         .lock()
-         .expect("demotion lock poisoned")
-         .pending = true;
-      self.changed.notify_all();
+      if let Ok(mut demotion) = self.demotion.lock() {
+         demotion.pending = true;
+         self.changed.notify_all();
+      }
    }
 
    fn victim(&self, state: &State) -> Option<u64> {
@@ -392,15 +406,11 @@ impl Shared {
          let chosen = state
             .packs
             .iter()
-            .filter(|(identifier, pack)| pack.tier == tier && **identifier != state.active)
-            .min_by_key(|(identifier, pack)| {
-               (
-                  !pack.stale(),
-                  pack.used.load(Ordering::Relaxed),
-                  **identifier,
-               )
+            .filter(|&(&identifier, pack)| pack.tier == tier && identifier != state.active)
+            .min_by_key(|&(&identifier, pack)| {
+               (!pack.stale(), pack.used.load(Ordering::Relaxed), identifier)
             })
-            .map(|(identifier, _)| *identifier);
+            .map(|(&identifier, _)| identifier);
          if chosen.is_some() {
             return chosen;
          }
@@ -408,11 +418,15 @@ impl Shared {
       None
    }
 
+   #[expect(clippy::expect_used, reason = "selected packs must remain in the index")]
    fn move_down(&self, identifier: u64) -> io::Result<()> {
       let (from, used) = {
          let state = self.read();
          let pack = &state.packs[&identifier];
-         (pack.tier, pack.used.load(Ordering::Relaxed))
+         let from = pack.tier;
+         let used = pack.used.load(Ordering::Relaxed);
+         drop(state);
+         (from, used)
       };
       if from + 1 == self.tiers.len() {
          let mut state = self.write();
@@ -424,12 +438,15 @@ impl Shared {
             .remove(&identifier)
             .expect("missing evicted pack");
          remove_file(self.pack_path(from, identifier, "pack"))?;
-         let _ = remove_file(self.pack_path(from, identifier, "hint"));
+         drop(remove_file(self.pack_path(from, identifier, "hint")));
          state.totals[from] -= removed.size;
+         let size = removed.size;
+         let live = removed.live;
+         drop(state);
          note(format_args!(
             "evicted pack {identifier:06}, {} MiB, {} MiB live",
-            removed.size >> 20,
-            removed.live >> 20
+            size >> 20_u32,
+            live >> 20_u32
          ));
          return Ok(());
       }
@@ -454,13 +471,14 @@ impl Shared {
       let (size, live) = (pack.size, pack.live);
       state.totals[from] -= size;
       state.totals[from + 1] += size;
+      drop(state);
       remove_file(self.pack_path(from, identifier, "pack"))?;
-      let _ = remove_file(self.pack_path(from, identifier, "hint"));
+      drop(remove_file(self.pack_path(from, identifier, "hint")));
       note(format_args!(
          "demoted pack {identifier:06} to {}, {} MiB, {} MiB live",
          self.tiers[from + 1].directory.display(),
-         size >> 20,
-         live >> 20
+         size >> 20_u32,
+         live >> 20_u32
       ));
       Ok(())
    }
@@ -468,15 +486,20 @@ impl Shared {
    fn demote(&self) {
       loop {
          {
-            let mut demotion = self.demotion.lock().expect("demotion lock poisoned");
+            let Ok(mut demotion) = self.demotion.lock() else {
+               return;
+            };
             while !demotion.pending && !demotion.stopped {
-               demotion = self.changed.wait(demotion).expect("demotion lock poisoned");
+               let Ok(next_demotion) = self.changed.wait(demotion) else {
+                  return;
+               };
+               demotion = next_demotion;
             }
             if demotion.stopped {
                return;
             }
             demotion.pending = false;
-         }
+         };
          loop {
             let victim = self.victim(&self.read());
             let Some(identifier) = victim else {
@@ -541,8 +564,8 @@ impl Store {
             identifiers.sort_unstable();
             for identifier in identifiers {
                if state.packs.contains_key(&identifier) {
-                  let _ = remove_file(shared.pack_path(tier, identifier, "pack"));
-                  let _ = remove_file(shared.pack_path(tier, identifier, "hint"));
+                  drop(remove_file(shared.pack_path(tier, identifier, "pack")));
+                  drop(remove_file(shared.pack_path(tier, identifier, "hint")));
                   continue;
                }
                if let Err(error) = shared.load(&mut state, tier, identifier) {
@@ -554,7 +577,8 @@ impl Store {
          }
          state.active = last;
          shared.rotate(&mut state)?;
-      }
+         drop(state);
+      };
       let worker = Arc::clone(&shared);
       let demoter = Builder::new()
          .name("demoter".to_owned())
@@ -568,29 +592,36 @@ impl Store {
    }
 
    pub fn get(&self, key: &str) -> Option<Value> {
-      let state = self.shared.read();
-      let location = state.index.get(key)?;
-      let pack = &state.packs[&location.pack];
-      let current = now();
-      pack.used.store(current, Ordering::Relaxed);
-      let touched = pack.touched.load(Ordering::Relaxed);
-      if current.saturating_sub(touched) > TOUCH_EVERY.as_nanos() as u64
-         && pack
-            .touched
-            .compare_exchange(touched, current, Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok()
-      {
-         let _ = pack
-            .file
-            .set_modified(UNIX_EPOCH + Duration::from_nanos(current));
-      }
+      let (file, offset, length) = {
+         let state = self.shared.read();
+         let location = state.index.get(key)?;
+         let pack = &state.packs[&location.pack];
+         let current = now();
+         let file = Arc::clone(&pack.file);
+         let offset = location.offset;
+         let length = location.length;
+         let touched = pack.touched.load(Ordering::Relaxed);
+         pack.used.store(current, Ordering::Relaxed);
+         let touch_interval = u64::try_from(TOUCH_EVERY.as_nanos()).unwrap_or(u64::MAX);
+         let need_touch = current.saturating_sub(touched) > touch_interval
+            && pack
+               .touched
+               .compare_exchange(touched, current, Ordering::Relaxed, Ordering::Relaxed)
+               .is_ok();
+         drop(state);
+         if need_touch {
+            drop(file.set_modified(UNIX_EPOCH + Duration::from_nanos(current)));
+         }
+         (file, offset, length)
+      };
       Some(Value {
-         file:   Arc::clone(&pack.file),
-         offset: location.offset,
-         length: location.length,
+         file,
+         offset,
+         length,
       })
    }
 
+   #[expect(clippy::expect_used, reason = "the active pack must exist after rotation")]
    pub fn put(&self, key: &str, value: &[u8]) -> io::Result<()> {
       let key_length = u32::try_from(key.len()).map_err(io::Error::other)?;
       let length = u32::try_from(value.len()).map_err(io::Error::other)?;
@@ -603,12 +634,16 @@ impl Store {
          self.shared.rotate(&mut state)?;
       }
       let active = state.active;
-      let pack = state.packs.get_mut(&active).expect("missing active pack");
+      let pack = state
+         .packs
+         .get_mut(&active)
+         .expect("missing active pack");
       let mut header = Vec::with_capacity(8 + key.len());
       header.extend_from_slice(&key_length.to_le_bytes());
       header.extend_from_slice(&length.to_le_bytes());
       header.extend_from_slice(key.as_bytes());
-      let offset = pack.size + header.len() as u64;
+      let header_length = u64::try_from(header.len()).map_err(io::Error::other)?;
+      let offset = pack.size + header_length;
       let written = pack
          .file
          .write_all_at(&header, pack.size)
@@ -625,7 +660,9 @@ impl Store {
          length,
       });
       let budget = self.shared.tiers[0].budget;
-      if budget > 0 && state.totals[0] > budget {
+      let needs_kick = budget > 0 && state.totals[0] > budget;
+      drop(state);
+      if needs_kick {
          self.shared.kick();
       }
       Ok(())
@@ -642,16 +679,14 @@ impl Store {
    }
 
    fn stop(&self) {
-      self
-         .shared
-         .demotion
-         .lock()
-         .expect("demotion lock poisoned")
-         .stopped = true;
-      self.shared.changed.notify_all();
-      let demoter = self.demoter.lock().expect("demoter lock poisoned").take();
-      if let Some(demoter) = demoter {
-         demoter.join().expect("demoter panicked");
+      if let Ok(mut demotion) = self.shared.demotion.lock() {
+         demotion.stopped = true;
+         self.shared.changed.notify_all();
+      }
+      if let Ok(mut demoter_guard) = self.demoter.lock()
+         && let Some(worker) = demoter_guard.take()
+      {
+         drop(worker.join());
       }
    }
 
@@ -663,8 +698,9 @@ impl Store {
 
    #[cfg(test)]
    fn wait(&self) {
+      use std::thread;
       while self.shared.victim(&self.shared.read()).is_some() {
-         std::thread::sleep(Duration::from_millis(1));
+         thread::sleep(Duration::from_millis(1));
       }
    }
 }
@@ -687,7 +723,9 @@ fn move_file(from: &Path, to: &Path) -> io::Result<()> {
 }
 
 fn check_lengths(key_length: u32, length: u32) -> io::Result<()> {
-   if key_length == 0 || key_length as usize > MAX_KEY || length as usize > MAX_OBJECT {
+   let key_len = usize::try_from(key_length).map_err(io::Error::other)?;
+   let val_len = usize::try_from(length).map_err(io::Error::other)?;
+   if key_length == 0 || key_len > MAX_KEY || val_len > MAX_OBJECT {
       return Err(io::Error::new(
          io::ErrorKind::InvalidData,
          "invalid cache record lengths",
@@ -697,7 +735,8 @@ fn check_lengths(key_length: u32, length: u32) -> io::Result<()> {
 }
 
 fn read_key(reader: &mut impl Read, length: u32) -> io::Result<String> {
-   let mut bytes = vec![0; length as usize];
+   let byte_count = usize::try_from(length).map_err(io::Error::other)?;
+   let mut bytes = vec![0; byte_count];
    reader.read_exact(&mut bytes)?;
    let key = String::from_utf8(bytes).map_err(io::Error::other)?;
    check_key(&key)?;
@@ -714,6 +753,12 @@ fn read_header<const SIZE: usize>(reader: &mut impl Read) -> io::Result<Option<[
 }
 
 #[cfg(test)]
+#[expect(
+   clippy::as_conversions,
+   clippy::cast_possible_truncation,
+   clippy::expect_used,
+   reason = "tests"
+)]
 mod tests {
    use std::{
       fs::{
@@ -721,8 +766,9 @@ mod tests {
          OpenOptions,
          metadata,
       },
-      io::Write,
-      os::unix::fs::FileExt,
+      io::Write as _,
+      ops::Range,
+      os::unix::fs::FileExt as _,
       path::Path,
       sync::atomic::Ordering,
       time::{
@@ -759,7 +805,7 @@ mod tests {
       Some(bytes)
    }
 
-   fn fill(store: &Store, numbers: std::ops::Range<usize>) {
+   fn fill(store: &Store, numbers: Range<usize>) {
       let value = vec![1; 1 << 20];
       for number in numbers {
          store
@@ -844,7 +890,8 @@ mod tests {
                > state.packs[&2].used.load(Ordering::Relaxed),
             "pack 1 is newer than pack 2 after the restart"
          );
-      }
+         drop(state);
+      };
       fill(&reopened, 2 * PER_PACK..7 * PER_PACK / 2);
       assert!(
          read(&reopened, "o/0").is_some(),
@@ -942,7 +989,7 @@ mod tests {
    fn evict_oldest_pack() {
       let directory = TestDirectory::new();
       let store = open(&directory, PACK_LIMIT + PACK_LIMIT / 2);
-      let count = PACK_LIMIT as usize * 5 / 2 / (1 << 20);
+      let count = PACK_LIMIT as usize * 5 / 2 / (1 << 20_i32);
       fill(&store, 0..count);
       assert!(read(&store, "o/0").is_none(), "oldest value is evicted");
       assert!(

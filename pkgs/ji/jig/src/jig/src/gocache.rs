@@ -1,12 +1,12 @@
 use std::{
    collections::BTreeMap,
    env::var_os,
-   fmt::Write as FormatWrite,
    fs::create_dir_all,
    io::{
       self,
       BufRead,
-      Read,
+      BufReader,
+      Read as _,
       Write,
    },
    path::{
@@ -17,7 +17,7 @@ use std::{
 };
 
 use base64::{
-   Engine,
+   Engine as _,
    engine::general_purpose::STANDARD,
 };
 use serde::{
@@ -101,6 +101,7 @@ enum ResponseBody {
 }
 
 fn identifier(encoded: &str) -> io::Result<(Vec<u8>, String)> {
+   const HEX: &[u8; 16] = b"0123456789abcdef";
    let bytes = STANDARD.decode(encoded).map_err(io::Error::other)?;
    if bytes.len() != 32 {
       return Err(io::Error::other(
@@ -109,18 +110,20 @@ fn identifier(encoded: &str) -> io::Result<(Vec<u8>, String)> {
    }
    let mut hex = String::with_capacity(64);
    for byte in &bytes {
-      write!(hex, "{byte:02x}").expect("formatting a string cannot fail");
+      hex.push(char::from(HEX[usize::from(*byte >> 4_u8)]));
+      hex.push(char::from(HEX[usize::from(*byte & 0x0f)]));
    }
    Ok((bytes, hex))
 }
 
 fn next_line(input: &mut impl BufRead, limit: usize) -> io::Result<Option<String>> {
    let mut line = String::new();
-   let count = input.take(limit as u64 + 1).read_line(&mut line)?;
+   let limit_u64 = u64::try_from(limit).map_err(io::Error::other)?;
+   let count = input.take(limit_u64 + 1).read_line(&mut line)?;
    if count == 0 {
       return Ok(None);
    }
-   if count > limit || !line.ends_with('\n') {
+   if u64::try_from(count).map_err(io::Error::other)? > limit_u64 || !line.ends_with('\n') {
       return Err(io::Error::other(
          "unterminated or oversized Go cache message",
       ));
@@ -134,6 +137,10 @@ fn reply(output: &mut impl Write, response: &Response) -> io::Result<()> {
    output.flush()
 }
 
+#[expect(
+   clippy::too_many_lines,
+   reason = "loop covers protocol handling and request dispatch in one place"
+)]
 pub fn run(socket: &Path) -> io::Result<()> {
    let mut cache = match Client::connect(socket) {
       Ok(client) => Some(client),
@@ -151,19 +158,20 @@ pub fn run(socket: &Path) -> io::Result<()> {
       PathBuf::from,
    );
    create_dir_all(&directory)?;
-   let mut input = io::stdin().lock();
-   let mut output = io::stdout().lock();
+   let mut input = BufReader::new(io::stdin());
+   let stdout = io::stdout();
+   let mut output = stdout.lock();
    reply(&mut output, &Response {
       id:   0,
       body: ResponseBody::Greeting {
          commands: ["get", "put", "close"],
       },
    })?;
-   while let Some(line) = next_line(&mut input, 65536)? {
+   while let Some(line) = next_line(&mut input, 0x10000)? {
       if line.trim().is_empty() {
          continue;
       }
-      let request: Request = serde_json::from_str(&line)?;
+      let request = serde_json::from_str::<Request>(&line)?;
       let started = Instant::now();
       let closing = matches!(request.command, RequestCommand::Close);
       let body = match request.command {
@@ -220,7 +228,7 @@ pub fn run(socket: &Path) -> io::Result<()> {
                   if body_line.trim().is_empty() {
                      continue;
                   }
-                  let encoded: String = serde_json::from_str(&body_line)?;
+                  let encoded = serde_json::from_str::<String>(&body_line)?;
                   bytes = STANDARD.decode(encoded).map_err(io::Error::other)?;
                   break;
                }

@@ -1,11 +1,11 @@
 use std::{
-   collections::HashMap,
+   collections::BTreeMap,
    io::{
       self,
       BufReader,
       BufWriter,
-      Read,
-      Write,
+      Read as _,
+      Write as _,
    },
    os::unix::net::UnixStream,
    sync::{
@@ -62,7 +62,7 @@ pub struct Connection {
    daemon: Arc<Daemon>,
    reader: BufReader<UnixStream>,
    writer: BufWriter<UnixStream>,
-   held:   HashMap<String, usize>,
+   held:   BTreeMap<String, usize>,
 }
 
 impl Connection {
@@ -72,7 +72,7 @@ impl Connection {
          daemon,
          reader: BufReader::new(stream),
          writer,
-         held: HashMap::new(),
+         held: BTreeMap::new(),
       })
    }
 
@@ -155,21 +155,22 @@ impl Connection {
 
 impl Drop for Connection {
    fn drop(&mut self) {
-      for (build, count) in self.held.drain() {
+      while let Some((build, count)) = self.held.pop_first() {
          self.daemon.slots.release(&build, count);
       }
    }
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "tests")]
 mod tests {
    use std::{
       fs::write,
       io::{
-         BufRead,
+         BufRead as _,
          BufReader,
-         Read,
-         Write,
+         Read as _,
+         Write as _,
       },
       os::unix::net::UnixStream,
       sync::Arc,
@@ -235,7 +236,7 @@ mod tests {
          .write_all(b"SLOT b1\nDONE b1\nSLOT b1\n")
          .expect("slot requests");
       let mut replies = BufReader::new(&client);
-      for _ in 0..3 {
+      for _ in 0_usize..3_usize {
          let mut reply = String::new();
          replies.read_line(&mut reply).expect("slot reply");
          assert_eq!(reply, "OK\n");

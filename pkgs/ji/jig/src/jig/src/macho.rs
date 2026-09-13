@@ -1,13 +1,13 @@
 use std::{
    io::{
       self,
-      Write,
+      Write as _,
    },
    path::Path,
 };
 
 use sha2::{
-   Digest,
+   Digest as _,
    Sha256,
 };
 
@@ -49,12 +49,13 @@ impl Command {
       String::from_utf8(tail[..end].to_vec()).map_err(io::Error::other)
    }
 
-   fn set_path(&mut self, path: &str) {
+   fn set_path(&mut self, path: &str) -> io::Result<()> {
       self.bytes.truncate(self.path_offset);
       self.bytes.extend_from_slice(path.as_bytes());
       self.bytes.resize((self.bytes.len() + 8) / 8 * 8, 0);
-      let size = (self.bytes.len() as u32).to_le_bytes();
-      self.bytes[4..8].copy_from_slice(&size);
+      let size = u32::try_from(self.bytes.len()).map_err(io::Error::other)?;
+      self.bytes[4..8].copy_from_slice(&size.to_le_bytes());
+      Ok(())
    }
 }
 
@@ -67,7 +68,7 @@ fn read_commands(image: &Image) -> io::Result<(Vec<Command>, usize)> {
       let Ok(kind) = image.long(offset) else {
          break;
       };
-      let size = image.long(offset + 4)? as usize;
+      let size = usize::try_from(image.long(offset + 4)?).map_err(io::Error::other)?;
       if size < 8 || offset + size > image.bytes.len() {
          break;
       }
@@ -80,7 +81,8 @@ fn read_commands(image: &Image) -> io::Result<(Vec<Command>, usize)> {
          kind,
          LOAD_DYLIB | LOAD_WEAK_DYLIB | REEXPORT_DYLIB | LOAD_UPWARD_DYLIB | ID_DYLIB | RPATH
       ) {
-         let path_offset = image.long(offset + 8).unwrap_or(0) as usize;
+         let path_offset =
+            usize::try_from(image.long(offset + 8).unwrap_or(0)).map_err(io::Error::other)?;
          if path_offset < size {
             command.path_offset = path_offset;
          }
@@ -89,10 +91,12 @@ fn read_commands(image: &Image) -> io::Result<(Vec<Command>, usize)> {
          let file_offset = image.size(offset + 40).unwrap_or(0);
          let file_size = image.size(offset + 48).unwrap_or(0);
          if file_size != 0 && file_offset == 0 {
-            let section_count = image.long(offset + 64).unwrap_or(0) as usize;
+            let section_count =
+               usize::try_from(image.long(offset + 64).unwrap_or(0)).map_err(io::Error::other)?;
             for section in 0..section_count {
                let section_offset =
-                  image.long(offset + 72 + section * 80 + 48).unwrap_or(0) as usize;
+                  usize::try_from(image.long(offset + 72 + section * 80 + 48).unwrap_or(0))
+                     .map_err(io::Error::other)?;
                if section_offset != 0 {
                   room = room.min(section_offset.saturating_sub(HEADER_SIZE));
                }
@@ -115,32 +119,35 @@ fn resign(image: &mut Image) -> io::Result<()> {
       let Ok(kind) = image.long(offset) else {
          break;
       };
-      let size = image.long(offset + 4)? as usize;
+      let size = usize::try_from(image.long(offset + 4)?).map_err(io::Error::other)?;
       if size < 8 {
          break;
       }
       if kind == CODE_SIGNATURE {
-         signature = Some(image.long(offset + 8)? as usize);
+         signature = Some(usize::try_from(image.long(offset + 8)?).map_err(io::Error::other)?);
       }
       offset += size;
    }
-   let Some(signature) = signature else {
+   let Some(signature_offset) = signature else {
       return Ok(());
    };
-   if image.big_long(signature)? != 0xFADE_0CC0 {
+   if image.big_long(signature_offset)? != 0xFADE_0CC0 {
       return Err(io::Error::other(
          "LC_CODE_SIGNATURE is no embedded signature blob",
       ));
    }
-   let blobs = image.big_long(signature + 8)?;
-   for blob in 0..blobs as usize {
-      let directory = signature + image.big_long(signature + 12 + blob * 8 + 4)? as usize;
+   let blobs = image.big_long(signature_offset + 8)?;
+   for blob in 0..usize::try_from(blobs).map_err(io::Error::other)? {
+      let directory = signature_offset
+         + usize::try_from(image.big_long(signature_offset + 12 + blob * 8 + 4)?)
+            .map_err(io::Error::other)?;
       if image.big_long(directory)? != 0xFADE_0C02 {
          continue;
       }
-      let hash_offset = image.big_long(directory + 16)? as usize;
-      let slots = image.big_long(directory + 28)? as usize;
-      let limit = image.big_long(directory + 32)? as usize;
+      let hash_offset =
+         usize::try_from(image.big_long(directory + 16)?).map_err(io::Error::other)?;
+      let slots = usize::try_from(image.big_long(directory + 28)?).map_err(io::Error::other)?;
+      let limit = usize::try_from(image.big_long(directory + 32)?).map_err(io::Error::other)?;
       let hash_size = usize::from(image.byte(directory + 36)?);
       let hash_type = image.byte(directory + 37)?;
       let page = 1_usize << image.byte(directory + 39)?;
@@ -213,24 +220,25 @@ pub fn fix(context: &Context, path: &Path, image: &mut Image) -> io::Result<()> 
       if let Some(text) = new_spelling(context, &here, command)?
          && text != command.path()?
       {
-         command.set_path(&text);
+         command.set_path(&text)?;
          changed.push(text);
       }
    }
    if changed.is_empty() {
       return Ok(());
    }
-   let mut bytes: Vec<u8> = commands
+   let mut bytes = commands
       .iter()
       .flat_map(|command| command.bytes.iter().copied())
-      .collect();
+      .collect::<Vec<u8>>();
    if bytes.len() > room {
       return Err(io::Error::other(format!(
          "load commands need {} bytes, the header has room for {room} (-headerpad)",
          bytes.len()
       )));
    }
-   image.write(20, &(bytes.len() as u32).to_le_bytes())?;
+   let size = u32::try_from(bytes.len()).map_err(io::Error::other)?;
+   image.write(20, &size.to_le_bytes())?;
    bytes.resize(room, 0);
    image.write(HEADER_SIZE, &bytes)?;
    resign(image)?;

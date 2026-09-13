@@ -20,14 +20,14 @@ use std::{
    },
    io::{
       self,
-      Write,
+      Write as _,
    },
    net::Shutdown,
    os::unix::{
       fs::{
-         FileTypeExt,
-         MetadataExt,
-         PermissionsExt,
+         FileTypeExt as _,
+         MetadataExt as _,
+         PermissionsExt as _,
       },
       net::{
          UnixListener,
@@ -58,7 +58,7 @@ use std::{
 
 use eyre::{
    Result,
-   WrapErr,
+   WrapErr as _,
    bail,
    eyre,
 };
@@ -163,12 +163,12 @@ impl Drop for Socket {
 
 fn main() -> Result<()> {
    color_eyre::install()?;
-   let arguments: Vec<_> = args_os().skip(1).collect();
+   let arguments = args_os().skip(1).collect::<Vec<_>>();
    if arguments.len() == 1 && (arguments[0] == "--help" || arguments[0] == "-h") {
       io::stdout().lock().write_all(USAGE.as_bytes())?;
       return Ok(());
    }
-   let [socket_path] = arguments.as_slice() else {
+   let [ref socket_path] = *arguments.as_slice() else {
       bail!("{USAGE}");
    };
    let cache = match var_os("XDG_CACHE_HOME") {
@@ -215,29 +215,31 @@ fn main() -> Result<()> {
       store.stats()
    ));
    let daemon = Arc::new(Daemon::new(store, limit));
-   let mut workers: Vec<(JoinHandle<()>, UnixStream)> = Vec::new();
+   let mut workers = Vec::<(JoinHandle<()>, UnixStream)>::new();
    let result = serve(&socket.listener, &daemon, &stopped, &mut workers);
    daemon.stop();
-   for (_, stream) in &workers {
-      match stream.shutdown(Shutdown::Both) {
+   for worker in &workers {
+      match worker.1.shutdown(Shutdown::Both) {
          Ok(()) => {},
          Err(error) if error.kind() == io::ErrorKind::NotConnected => {},
          Err(error) => warn(format_args!("could not stop client with {error}")),
       }
    }
    for (worker, _) in workers {
-      worker.join().expect("cache worker panicked");
+      worker.join().map_err(|_error| eyre!("cache worker panicked"))?;
    }
    daemon.close()?;
    result.map_err(Into::into)
 }
 
+#[inline]
 pub fn note(message: Arguments<'_>) {
-   let _ = writeln!(io::stderr().lock(), "{} {message}", timestamp());
+   drop(writeln!(io::stderr().lock(), "{} {message}", timestamp()));
 }
 
+#[inline]
 pub fn warn(message: Arguments<'_>) {
-   let _ = writeln!(io::stderr().lock(), "{} warning: {message}", timestamp());
+   drop(writeln!(io::stderr().lock(), "{} warning: {message}", timestamp()));
 }
 
 fn timestamp() -> String {
@@ -294,7 +296,9 @@ fn serve(
       while position < workers.len() {
          if workers[position].0.is_finished() {
             let (worker, _) = workers.swap_remove(position);
-            worker.join().expect("cache worker panicked");
+            worker
+               .join()
+               .map_err(|_error| io::Error::other("cache worker panicked"))?;
          } else {
             position += 1;
          }
@@ -317,14 +321,16 @@ fn serve(
       let control = stream.try_clone()?;
       let mut connection = Connection::new(Arc::clone(daemon), stream)?;
       let worker = Builder::new().spawn(move || {
-         if let Err(error) = connection.run() {
-            match error.kind() {
+         if let Err(error) = connection.run()
+            && !matches!(
+               error.kind(),
                io::ErrorKind::BrokenPipe
-               | io::ErrorKind::ConnectionReset
-               | io::ErrorKind::ConnectionAborted
-               | io::ErrorKind::UnexpectedEof => {},
-               _ => warn(format_args!("client request failed with {error}")),
-            }
+                  | io::ErrorKind::ConnectionReset
+                  | io::ErrorKind::ConnectionAborted
+                  | io::ErrorKind::UnexpectedEof
+            )
+         {
+            warn(format_args!("client request failed with {error}"));
          }
       })?;
       workers.push((worker, control));
@@ -333,6 +339,7 @@ fn serve(
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "tests")]
 mod test_directory {
    use std::{
       env::temp_dir,

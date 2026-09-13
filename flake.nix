@@ -46,6 +46,9 @@
         rust =
           let
             pkgs = nixpkgs.legacyPackages.${system};
+            hasWild =
+              pkgs.stdenv.hostPlatform.isLinux
+              && (pkgs.stdenv.hostPlatform.isx86_64 || pkgs.stdenv.hostPlatform.isAarch64);
           in
           pkgs.mkShell {
             packages = [
@@ -55,6 +58,10 @@
               pkgs.taplo
               pkgs.nixfmt
               fenix.packages.${system}.latest.rustfmt
+            ]
+            ++ pkgs.lib.optionals hasWild [
+              pkgs.wild
+              pkgs.clang
             ];
           };
       });

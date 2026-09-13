@@ -7,8 +7,8 @@ use std::{
    io::{
       self,
       BufReader,
-      Read,
-      Write,
+      Read as _,
+      Write as _,
    },
    os::unix::net::UnixStream,
 };
@@ -18,7 +18,7 @@ use serde::{
    Serialize,
 };
 use sha2::{
-   Digest,
+   Digest as _,
    Sha256,
 };
 
@@ -129,7 +129,13 @@ fn quote(text: &str) -> String {
 
 fn store_path(kind: &str, name: &str, contents: &[u8]) -> String {
    let inner = Sha256::digest(contents);
-   let fingerprint = format!("{kind}:sha256:{inner:x}:{STORE_DIR}:{name}");
+   let mut hex = String::with_capacity(64);
+   for byte in inner {
+      const HEX: &[u8; 16] = b"0123456789abcdef";
+      hex.push(char::from(HEX[usize::from(byte >> 4_u8)]));
+      hex.push(char::from(HEX[usize::from(byte & 0x0F)]));
+   }
+   let fingerprint = format!("{kind}:sha256:{hex}:{STORE_DIR}:{name}");
    let hash = Sha256::digest(fingerprint);
    let mut compressed = [0_u8; 20];
    for (index, byte) in hash.iter().enumerate() {
@@ -141,8 +147,9 @@ fn store_path(kind: &str, name: &str, contents: &[u8]) -> String {
       let bit = index * 5;
       let low = u16::from(compressed[bit / 8]);
       let high = u16::from(compressed.get(bit / 8 + 1).copied().unwrap_or(0));
+      let shift = bit % 8_usize;
       encoded.push(char::from(
-         alphabet[usize::from(((low | (high << 8)) >> (bit % 8)) & 31)],
+         alphabet[usize::from(((low | (high << 8_u32)) >> shift) & 31_u16)],
       ));
    }
    format!("{STORE_DIR}/{encoded}-{name}")
@@ -164,7 +171,7 @@ impl FetchFile {
          &self.name,
          format!("fixed:out:{}:{}:", self.algo, self.hex).as_bytes(),
       );
-      let environment: BTreeMap<String, String> = [
+      let environment = [
          ("name", self.name.as_str()),
          ("out", path.as_str()),
          ("outputHash", self.sri.as_str()),
@@ -191,7 +198,7 @@ impl FetchFile {
       ]
       .into_iter()
       .map(|(key, value)| (key.to_owned(), value.to_owned()))
-      .collect();
+      .collect::<BTreeMap<String, String>>();
       let output = Output {
          path,
          algorithm: self.algo.clone(),
@@ -239,9 +246,9 @@ impl Connection {
          "add-to-store-scanning",
          "submit-output",
       ];
-      connection.word(features.len() as u64);
+      connection.word(features.len().try_into().map_err(io::Error::other)?);
       for feature in features {
-         connection.string(feature.as_bytes());
+         connection.string(feature.as_bytes())?;
       }
       connection.flush()?;
       connection.skip_strings()?;
@@ -257,12 +264,13 @@ impl Connection {
    fn word(&mut self, value: u64) {
       self.output.extend(value.to_le_bytes());
    }
-   fn string(&mut self, value: &[u8]) {
-      self.word(value.len() as u64);
+   fn string(&mut self, value: &[u8]) -> io::Result<()> {
+      self.word(value.len().try_into().map_err(io::Error::other)?);
       self.output.extend_from_slice(value);
       self
          .output
          .resize(self.output.len() + (8 - value.len() % 8) % 8, 0);
+      Ok(())
    }
    fn flush(&mut self) -> io::Result<()> {
       self.reader.get_mut().write_all(&self.output)?;
@@ -275,34 +283,35 @@ impl Connection {
       Ok(u64::from_le_bytes(bytes))
    }
    fn read_string(&mut self) -> io::Result<String> {
-      let length = self.read_word()?;
-      if length > 64 << 20 {
+      let length_words = self.read_word()?;
+      if length_words > 64_u64 << 20_u32 {
          return Err(io::Error::other("Nix daemon string exceeds size limit"));
       }
-      let mut bytes = vec![0; length as usize];
+      let length = usize::try_from(length_words).map_err(io::Error::other)?;
+      let mut bytes = vec![0; length];
       self.reader.read_exact(&mut bytes)?;
       let mut padding = [0; 8];
       self
          .reader
-         .read_exact(&mut padding[..(8 - length as usize % 8) % 8])?;
+         .read_exact(&mut padding[..(8 - length % 8) % 8])?;
       String::from_utf8(bytes).map_err(io::Error::other)
    }
    fn skip_strings(&mut self) -> io::Result<()> {
       let count = self.read_word()?;
-      if count > 1 << 20 {
+      if count > (1_u64 << 20_u32) {
          return Err(io::Error::other("Nix daemon list exceeds size limit"));
       }
-      for _ in 0..count {
+      for _ in 0..usize::try_from(count).map_err(io::Error::other)? {
          self.read_string()?;
       }
       Ok(())
    }
    fn skip_fields(&mut self) -> io::Result<()> {
       let count = self.read_word()?;
-      if count > 1 << 20 {
+      if count > (1_u64 << 20_u32) {
          return Err(io::Error::other("Nix daemon field list exceeds size limit"));
       }
-      for _ in 0..count {
+      for _ in 0..usize::try_from(count).map_err(io::Error::other)? {
          match self.read_word()? {
             0 => {
                self.read_word()?;
@@ -354,14 +363,14 @@ impl Connection {
       bytes: &[u8],
    ) -> io::Result<String> {
       self.word(7);
-      self.string(name.as_bytes());
-      self.string(b"text:sha256");
-      self.word(references.len() as u64);
+      self.string(name.as_bytes())?;
+      self.string(b"text:sha256")?;
+      self.word(references.len().try_into().map_err(io::Error::other)?);
       for reference in references {
-         self.string(reference.as_bytes());
+         self.string(reference.as_bytes())?;
       }
       self.word(0);
-      self.word(bytes.len() as u64);
+      self.word(bytes.len().try_into().map_err(io::Error::other)?);
       self.output.extend_from_slice(bytes);
       self.word(0);
       self.flush()?;
@@ -381,8 +390,8 @@ impl Connection {
    fn submit(&mut self, path: &str, output: &str) -> io::Result<()> {
       self.word(1000);
       self.word(0);
-      self.string(path.as_bytes());
-      self.string(output.as_bytes());
+      self.string(path.as_bytes())?;
+      self.string(output.as_bytes())?;
       self.flush()?;
       self.drain_logs()?;
       self.read_word()?;
@@ -421,8 +430,17 @@ pub fn run(args: &[String]) -> io::Result<()> {
    } else {
       Some(Connection::connect()?)
    };
-   match args {
-      [operation, name, references @ ..] if operation == "add-text" || operation == "add-drv" => {
+   let Some(operation) = args.first() else {
+      return Err(io::Error::other(
+         "jig nix-store requires add-text, add-drv, fetchurls, or submit",
+      ));
+   };
+   match operation.as_str() {
+      "add-text" | "add-drv" => {
+         let Some(name) = args.get(1) else {
+            return Err(io::Error::other("jig nix-store add-text requires a name"));
+         };
+         let references = args.get(2..).unwrap_or(&[]);
          let mut bytes = Vec::new();
          io::stdin().read_to_end(&mut bytes)?;
          if operation == "add-drv" {
@@ -438,8 +456,13 @@ pub fn run(args: &[String]) -> io::Result<()> {
          )?;
          writeln!(io::stdout().lock(), "{path}")?;
       },
-      [operation] if operation == "fetchurls" => {
-         let files: Vec<FetchFile> = serde_json::from_reader(io::stdin().lock())?;
+      "fetchurls" => {
+         if args.len() != 1 {
+            return Err(io::Error::other(
+               "jig nix-store fetchurls takes no arguments",
+            ));
+         }
+         let files = serde_json::from_reader::<_, Vec<FetchFile>>(io::stdin().lock())?;
          let mut results = Vec::new();
          for file in files {
             let derivation = file.derivation();
@@ -454,15 +477,20 @@ pub fn run(args: &[String]) -> io::Result<()> {
                .outputs
                .into_values()
                .next()
-               .expect("fetchurl has one output")
+               .ok_or_else(|| io::Error::other("fetchurl has no outputs"))?
                .path;
             results.push(Realisation { drv, out });
          }
          serde_json::to_writer(io::stdout().lock(), &results)?;
          writeln!(io::stdout().lock())?;
       },
-      [operation, path, output] if operation == "submit" => {
-         if let Some(daemon) = &mut connection {
+      "submit" => {
+         let [_, ref path, ref output] = *args else {
+            return Err(io::Error::other(
+               "jig nix-store submit requires path and output",
+            ));
+         };
+         if let Some(daemon) = connection.as_mut() {
             daemon.submit(path, output)?;
          }
       },

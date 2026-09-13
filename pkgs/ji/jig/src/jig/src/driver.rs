@@ -103,9 +103,9 @@ impl Driver {
          package:     PackageFlags::default(),
       };
       match read_to_string(root.join("etc/jig.conf")) {
-         Ok(text) => {
+         Ok(config_text) => {
             driver.configured = true;
-            for line in text
+            for line in config_text
                .lines()
                .map(str::trim)
                .filter(|line| !line.is_empty() && !line.starts_with('#'))
@@ -147,8 +147,9 @@ impl Driver {
                   },
                }
             }
-            if let Ok(text) = var("PKGS_CC") {
-               let mut packages: HashMap<String, PackageFlags> = serde_json::from_str(&text)?;
+            if let Ok(packages_text) = var("PKGS_CC") {
+               let mut packages =
+                  serde_json::from_str::<HashMap<String, PackageFlags>>(&packages_text)?;
                let name = root
                   .to_str()
                   .ok_or_else(|| io::Error::other("jig installation path is not UTF-8"))?;
@@ -166,6 +167,14 @@ impl Driver {
       Ok(driver)
    }
 
+   #[expect(
+      clippy::cognitive_complexity,
+      reason = "compiler mode rewrite is linear, each case is in one place"
+   )]
+   #[expect(
+      clippy::too_many_lines,
+      reason = "compiler mode rewrite tracks arguments and runpath in one pass"
+   )]
    pub fn arguments(&self, cxx: bool, raw: &[String]) -> Vec<String> {
       if !self.configured {
          return raw.to_vec();
@@ -385,7 +394,7 @@ fn take_rpath(args: &[String]) -> Option<(&str, usize)> {
          return Some((value, 1));
       }
    }
-   if let [linker, flag, second, value, ..] = args
+   if let [ref linker, ref flag, ref second, ref value, ..] = *args
       && linker == "-Xlinker"
       && matches!(flag.as_str(), "-rpath" | "--rpath")
       && second == "-Xlinker"

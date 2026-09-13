@@ -23,7 +23,7 @@ use std::{
    fs::read,
    io::{
       self,
-      Write,
+      Write as _,
    },
    path::{
       Path,
@@ -49,7 +49,7 @@ use crate::{
 };
 
 fn dispatch() -> Result<i32> {
-   let arguments: Vec<_> = args_os().collect();
+   let arguments = args_os().collect::<Vec<_>>();
    let executable = arguments
       .first()
       .and_then(|name| Path::new(name).file_name())
@@ -124,8 +124,8 @@ fn dispatch() -> Result<i32> {
 }
 
 fn cache_mode(args: &[OsString], socket: &Path) -> Result<i32> {
-   let [operation, key, file] = args else {
-      bail!("jig cache requires an operation, key, and path")
+   let [ref operation, ref key, ref file] = *args else {
+      bail!("jig cache requires an operation, key, and path");
    };
    let key_text = key
       .to_str()

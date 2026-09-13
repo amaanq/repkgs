@@ -1,6 +1,10 @@
 [package]
 name         = "jigd"
 description  = "Compilation cache and compiler slot daemon for repkgs"
+license      = "EUPL-1.2"
+repository   = "https://github.com/amaanq/repkgs"
+keywords     = [ "cache", "compiler", "nix", "bootstrap" ]
+categories   = [ "command-line-utilities", "development-tools" ]
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true

@@ -10,7 +10,7 @@ use std::{
    },
    io::{
       self,
-      Write,
+      Write as _,
    },
    path::{
       Path,
@@ -74,6 +74,10 @@ struct Invocation {
 }
 
 impl Invocation {
+   #[expect(
+      clippy::too_many_lines,
+      reason = "single-pass option scanner, splitting would scatter invocation state"
+   )]
    fn parse(args: Vec<String>) -> Self {
       let mut invocation = Self {
          args,
@@ -88,7 +92,7 @@ impl Invocation {
          cacheable: true,
          stdout: false,
       };
-      let mut sources = 0;
+      let mut sources = 0_i32;
       let mut wants_deps = false;
       let mut objects = false;
       let mut index = 0;
@@ -103,14 +107,14 @@ impl Invocation {
             "-E" => invocation.action = Action::Preprocess,
             "-o" => {
                keyed = false;
-               if let Some(value) = &next {
+               if let Some(ref value) = next {
                   invocation.output = PathBuf::from(value);
                   consumed = true;
                }
             },
             "-MF" => {
                keyed = false;
-               if let Some(value) = &next {
+               if let Some(ref value) = next {
                   invocation.depfile = Some(PathBuf::from(value));
                   wants_deps = true;
                   consumed = true;
@@ -118,7 +122,7 @@ impl Invocation {
             },
             "-MT" | "-MQ" => {
                keyed = false;
-               if let Some(value) = &next {
+               if let Some(ref value) = next {
                   value.clone_into(&mut invocation.target);
                   wants_deps = true;
                   consumed = true;
@@ -135,7 +139,7 @@ impl Invocation {
             "-I" | "-isystem" | "-iquote" | "-idirafter" | "-include" | "-imacros"
             | "-isysroot" | "--sysroot" | "-L" | "-l" | "-x" | "-D" | "-U" | "-target"
             | "--target" => {
-               if let Some(value) = &next {
+               if let Some(ref value) = next {
                   if arg == "-x" && value.ends_with("-header") {
                      invocation.cacheable = false;
                   }
@@ -159,7 +163,7 @@ impl Invocation {
                {
                   keyed = false;
                   invocation.source.clone_from(&arg);
-                  sources += 1;
+                  sources += 1_i32;
                } else if !arg.starts_with('-')
                   && ([".o", ".os", ".lo", ".a", ".so", ".obj"]
                      .iter()
@@ -212,8 +216,8 @@ impl Invocation {
          invocation.action,
          Action::Compile | Action::Assembly | Action::Preprocess
       ) {
-         invocation.cacheable &= sources == 1;
-         invocation.query |= invocation.action == Action::Preprocess && sources == 0;
+         invocation.cacheable &= sources == 1_i32;
+         invocation.query |= invocation.action == Action::Preprocess && sources == 0_i32;
          if invocation.action == Action::Preprocess
             && (invocation.output.as_os_str().is_empty() || invocation.output == Path::new("-"))
          {
@@ -232,8 +236,8 @@ impl Invocation {
          }
       } else {
          invocation.action = match (objects, sources) {
-            (false, 1) => Action::LinkSource,
-            (true, 0) if !invocation.inputs.is_empty() => Action::Link,
+            (false, 1_i32) => Action::LinkSource,
+            (true, 0_i32) if !invocation.inputs.is_empty() => Action::Link,
             _ => Action::Other,
          };
          if invocation.output.as_os_str().is_empty() {
@@ -286,7 +290,7 @@ impl Invocation {
       field(&mut hasher, match self.action {
          Action::Link => "link",
          Action::LinkSource => "link-one",
-         _ => "compile",
+         Action::Compile | Action::Assembly | Action::Preprocess | Action::Other => "compile",
       });
       for argument in &self.key_args {
          let mut bytes = argument.as_bytes().to_vec();
@@ -348,6 +352,10 @@ pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut Client) -> io:
    )
 }
 
+#[expect(
+   clippy::too_many_lines,
+   reason = "compile-cache pipeline from lookup to store, stages read linearly"
+)]
 pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    let started = Instant::now();
    let user = expand_response_files(raw)?;
@@ -410,7 +418,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       Ok(Some(status)) => {
          log(
             "cc",
-            if status == 0 {
+            if status == 0_i32 {
                "cached"
             } else {
                "cached-error"
@@ -446,9 +454,11 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    } else {
       None
    };
-   let output_path = output_capture
-      .as_ref()
-      .map_or(invocation.output.as_path(), |file| file.path());
+   let output_path = if let Some(ref file) = output_capture {
+      file.path()
+   } else {
+      invocation.output.as_path()
+   };
    let dependency_path = invocation
       .depfile
       .as_deref()
@@ -499,7 +509,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
                .filter(|path| !Path::new(path).starts_with(&temporary)),
          );
       }
-      if result.status != 0
+      if result.status != 0_i32
          && (invocation.links()
             || inputs.is_empty()
             || String::from_utf8_lossy(&result.stderr).contains("file not found"))
@@ -514,7 +524,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       inputs.dedup();
       let manifest = Manifest::build(&mut cache, &mut store, &inputs, &[])?;
       let key = manifest.result_key(&request)?;
-      if result.status == 0 {
+      if result.status == 0_i32 {
          let mut object = read(output_path)?;
          store.mask_output(&mut object, false);
          cache.put(&format!("o/{key}"), &object)?;
@@ -533,14 +543,14 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    })();
    let outcome = match stored {
       Ok(true) => {
-         if result.status == 0 {
+         if result.status == 0_i32 {
             "compiled"
          } else {
             "compiled-error"
          }
       },
       Ok(false) => {
-         if result.status == 0 {
+         if result.status == 0_i32 {
             "compiled-unstored"
          } else {
             "failed"
@@ -548,7 +558,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       },
       Err(error) => {
          diagnostic(format_args!("jig could not store compiler result, {error}"));
-         if result.status == 0 {
+         if result.status == 0_i32 {
             "compiled-unstored"
          } else {
             "failed"
@@ -608,7 +618,7 @@ fn cached(
             invocation.links().then_some(0o755),
          )?;
       }
-      if let (Some(path), Some(text)) = (&invocation.depfile, dep_text) {
+      if let (Some(path), Some(text)) = (invocation.depfile.as_ref(), dep_text.as_ref()) {
          write_file(path, text.as_bytes(), None)?;
       }
    }

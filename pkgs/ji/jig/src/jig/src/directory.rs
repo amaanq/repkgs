@@ -1,6 +1,6 @@
 use std::{
    collections::BTreeSet,
-   fmt::Write,
+   fmt::Write as _,
    fs::{
       DirEntry,
       create_dir_all,
@@ -13,7 +13,7 @@ use std::{
    },
    io,
    os::unix::fs::{
-      PermissionsExt,
+      PermissionsExt as _,
       symlink,
    },
    path::{
@@ -80,8 +80,8 @@ pub fn put_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<(
    let store = Store::new();
    let mut listing = String::new();
    let mut pending = vec![root.to_path_buf()];
-   let mut files = 0;
-   let mut uploaded = 0;
+   let mut files = 0_i32;
+   let mut uploaded = 0_i32;
    while let Some(directory) = pending.pop() {
       let mut children = read_dir(directory)?.collect::<io::Result<Vec<_>>>()?;
       children.sort_unstable_by_key(DirEntry::file_name);
@@ -103,10 +103,9 @@ pub fn put_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<(
                   "cache symlink target contains a line delimiter",
                ));
             }
-            writeln!(listing, "l 0 {target_text}\t{name}")
-               .expect("formatting a string cannot fail");
+            writeln!(listing, "l 0 {target_text}\t{name}").map_err(io::Error::other)?;
          } else if metadata.is_dir() {
-            writeln!(listing, "d 0 -\t{name}").expect("formatting a string cannot fail");
+            writeln!(listing, "d 0 -\t{name}").map_err(io::Error::other)?;
             pending.push(path);
          } else if metadata.is_file() {
             let data = stored(&store, read(&path)?);
@@ -114,15 +113,15 @@ pub fn put_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<(
             let blob_key = format!("b/{hash}");
             if !cache.has_many(from_ref(&blob_key))?[0] {
                cache.put(&blob_key, &data)?;
-               uploaded += 1;
+               uploaded += 1_i32;
             }
             writeln!(
                listing,
                "f {:o} {hash}\t{name}",
                metadata.permissions().mode() & 0o777
             )
-            .expect("formatting a string cannot fail");
-            files += 1;
+            .map_err(io::Error::other)?;
+            files += 1_i32;
          } else {
             return Err(io::Error::other(format!(
                "unsupported cache file {}",
@@ -158,7 +157,7 @@ fn parse_listing(text: &str) -> io::Result<Vec<Entry>> {
       let reference = fields
          .next()
          .ok_or_else(|| io::Error::other("missing cache file reference"))?;
-      let kind = match kind {
+      let parsed = match kind {
          Some("f") => {
             let bits = u32::from_str_radix(mode, 8).map_err(io::Error::other)?;
             if bits > 0o777
@@ -183,7 +182,7 @@ fn parse_listing(text: &str) -> io::Result<Vec<Entry>> {
          Some("d") => Kind::Directory,
          _ => return Err(io::Error::other("unknown cached file kind")),
       };
-      entries.push(Entry { path, kind });
+      entries.push(Entry { path, kind: parsed });
    }
    if entries.iter().any(|entry| {
       entry
@@ -212,18 +211,18 @@ pub fn get_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<b
    create_dir_all(parent)?;
    let staging = Builder::new().prefix(".jig-dir-").tempdir_in(parent)?;
    let store = Store::new();
-   let mut files = 0;
+   let mut files = 0_i32;
    for batch in entries.chunks(256) {
-      let keys: Vec<_> = batch
+      let keys = batch
          .iter()
          .filter_map(|entry| {
-            if let Kind::File(blob) = &entry.kind {
+            if let Kind::File(ref blob) = entry.kind {
                Some(format!("b/{}", blob.hash))
             } else {
                None
             }
          })
-         .collect();
+         .collect::<Vec<String>>();
       let mut values = cache.get_many(&keys)?.into_iter();
       for entry in batch {
          let destination = staging.path().join(&entry.path);
@@ -231,8 +230,8 @@ pub fn get_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<b
             .parent()
             .ok_or_else(|| io::Error::other("cache entry has no parent"))?;
          create_dir_all(containing)?;
-         match &entry.kind {
-            Kind::File(blob) => {
+         match entry.kind {
+            Kind::File(ref blob) => {
                let Some(Some(data)) = values.next() else {
                   return Ok(false);
                };
@@ -240,9 +239,9 @@ pub fn get_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<b
                   return Err(io::Error::other("cached file content hash differs"));
                }
                write_file(&destination, &restored(&store, data), Some(blob.mode))?;
-               files += 1;
+               files += 1_i32;
             },
-            Kind::Link(target) => symlink(target, destination)?,
+            Kind::Link(ref target) => symlink(target, destination)?,
             Kind::Directory => create_dir_all(destination)?,
          }
       }

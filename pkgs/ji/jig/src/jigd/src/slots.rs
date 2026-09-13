@@ -50,7 +50,10 @@ impl Slots {
    }
 
    pub fn acquire(&self, build: &str, stream: &UnixStream) -> io::Result<()> {
-      let mut state = self.state.lock().expect("slot lock poisoned");
+      let mut state = self
+         .state
+         .lock()
+         .map_err(|_error| io::Error::other("slot lock poisoned"))?;
       let ticket = state.next_ticket;
       state.next_ticket += 1;
       state.waiting.push(Waiter {
@@ -74,7 +77,7 @@ impl Slots {
             };
          }
 
-         let selected = state.waiting.iter().enumerate().min_by_key(|(_, waiter)| {
+         let selected = state.waiting.iter().enumerate().min_by_key(|&(_, waiter)| {
             (
                state.held.get(&waiter.build).copied().unwrap_or(0),
                waiter.ticket,
@@ -94,11 +97,12 @@ impl Slots {
          let (next_state, _) = self
             .changed
             .wait_timeout(state, Duration::from_millis(100))
-            .expect("slot lock poisoned");
+            .map_err(|_error| io::Error::other("slot lock poisoned"))?;
          state = next_state;
       }
    }
 
+   #[expect(clippy::expect_used, reason = "release requires a slot owned by the build")]
    pub fn release(&self, build: &str, count: usize) {
       let mut state = self.state.lock().expect("slot lock poisoned");
       let held = state.held.get_mut(build).expect("released an unowned slot");
@@ -108,16 +112,21 @@ impl Slots {
          state.held.remove(build);
       }
       state.occupied -= count;
+      drop(state);
       self.changed.notify_all();
    }
 
+   #[expect(clippy::expect_used, reason = "poisoned slot state violates scheduling invariants")]
    pub fn stats(&self) -> (usize, usize) {
       let state = self.state.lock().expect("slot lock poisoned");
       (state.occupied, state.waiting.len())
    }
 
+   #[expect(clippy::expect_used, reason = "poisoned slot state violates scheduling invariants")]
    pub fn stop(&self) {
-      self.state.lock().expect("slot lock poisoned").stopped = true;
+      let mut state = self.state.lock().expect("slot lock poisoned");
+      state.stopped = true;
+      drop(state);
       self.changed.notify_all();
    }
 }
@@ -140,6 +149,7 @@ fn peer_closed(stream: &UnixStream) -> io::Result<bool> {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "tests")]
 mod tests {
    use std::{
       os::unix::net::UnixStream,
@@ -147,10 +157,7 @@ mod tests {
          Arc,
          mpsc,
       },
-      thread::{
-         sleep,
-         spawn,
-      },
+      thread,
       time::{
          Duration,
          Instant,
@@ -170,7 +177,7 @@ mod tests {
          let deadline = Instant::now() + Duration::from_secs(5);
          while slots.stats().1 != length {
             assert!(Instant::now() < deadline, "slot requests did not queue");
-            sleep(Duration::from_millis(1));
+            thread::sleep(Duration::from_millis(1));
          }
       };
       let mut workers = Vec::new();
@@ -178,7 +185,7 @@ mod tests {
          let pool = Arc::clone(&slots);
          let connection = stream.try_clone().expect("copy socket handle");
          let replies = sender.clone();
-         workers.push(spawn(move || {
+         workers.push(thread::spawn(move || {
             pool.acquire(build, &connection).expect("queued slot");
             replies.send(build).expect("report granted slot");
          }));

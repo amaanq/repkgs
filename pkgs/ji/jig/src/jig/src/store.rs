@@ -1,5 +1,8 @@
 use std::{
-   collections::HashMap,
+   collections::{
+      BTreeMap,
+      HashMap,
+   },
    env::var,
    fs::{
       canonicalize,
@@ -27,7 +30,7 @@ pub struct Store {
    content:     bool,
    output:      String,
    output_hash: Vec<u8>,
-   roots:       HashMap<String, String>,
+   roots:       BTreeMap<String, String>,
    identities:  HashMap<String, String>,
 }
 
@@ -44,7 +47,7 @@ impl Store {
       } else {
          Vec::new()
       };
-      let mut roots = HashMap::new();
+      let mut roots = BTreeMap::new();
       for root in var("JIG_STORE_ROOTS")
          .unwrap_or_default()
          .split_whitespace()
@@ -179,7 +182,10 @@ impl Store {
    }
 }
 
-pub fn field<Data: AsRef<[u8]>>(hasher: &mut Hasher, data: Data) {
+pub fn field<Data>(hasher: &mut Hasher, data: Data)
+where
+   Data: AsRef<[u8]>,
+{
    let bytes = data.as_ref();
    hasher.update(format!("{}:", bytes.len()).as_bytes());
    hasher.update(bytes);
@@ -269,7 +275,10 @@ pub fn normalize(path: &Path) -> PathBuf {
             normal.pop();
          },
          Component::ParentDir if normal.has_root() => {},
-         other => normal.push(other),
+         Component::ParentDir => normal.push(".."),
+         other @ (Component::Prefix(_) | Component::RootDir | Component::Normal(_)) => {
+            normal.push(other);
+         },
       }
    }
    if normal.as_os_str().is_empty() {

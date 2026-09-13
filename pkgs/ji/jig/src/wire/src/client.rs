@@ -3,7 +3,7 @@ use std::{
       self,
       BufRead,
       BufReader,
-      Write,
+      Write as _,
    },
    os::unix::net::UnixStream,
    path::Path,
@@ -25,6 +25,7 @@ pub struct Client {
 }
 
 impl Client {
+   #[inline]
    pub fn connect(socket: &Path) -> io::Result<Self> {
       Ok(Self {
          reader: Some(BufReader::with_capacity(
@@ -53,6 +54,7 @@ impl Client {
       result
    }
 
+   #[inline]
    pub fn get(&mut self, key: &str) -> io::Result<Option<Vec<u8>>> {
       check_key(key)?;
       self.exchange(|reader| {
@@ -61,6 +63,7 @@ impl Client {
       })
    }
 
+   #[inline]
    pub fn get_many(&mut self, keys: &[String]) -> io::Result<Vec<Option<Vec<u8>>>> {
       keys.iter().try_for_each(|key| check_key(key))?;
       self.exchange(|reader| {
@@ -79,6 +82,7 @@ impl Client {
       })
    }
 
+   #[inline]
    pub fn has_many(&mut self, keys: &[String]) -> io::Result<Vec<bool>> {
       keys.iter().try_for_each(|key| check_key(key))?;
       self.exchange(|reader| {
@@ -101,6 +105,7 @@ impl Client {
       })
    }
 
+   #[inline]
    pub fn put(&mut self, key: &str, value: &[u8]) -> io::Result<()> {
       check_key(key)?;
       let frame = encode(value)?;
@@ -111,6 +116,7 @@ impl Client {
       })
    }
 
+   #[inline]
    pub fn identities(&mut self, paths: &[String]) -> io::Result<Vec<Option<Identity>>> {
       for path in paths {
          if path.contains(['\n', '\r', '\0']) || path.len() >= MAX_LINE {
@@ -139,6 +145,7 @@ impl Client {
       })
    }
 
+   #[inline]
    pub fn acquire(&mut self, build: &str) -> io::Result<()> {
       check_key(build)?;
       self.exchange(|reader| {
@@ -147,6 +154,7 @@ impl Client {
       })
    }
 
+   #[inline]
    pub fn release(&mut self, build: &str) -> io::Result<()> {
       check_key(build)?;
       self.exchange(|reader| {

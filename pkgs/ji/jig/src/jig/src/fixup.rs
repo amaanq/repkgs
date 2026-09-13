@@ -7,7 +7,7 @@ use std::{
    },
    io::{
       self,
-      Write,
+      Write as _,
    },
    path::{
       Path,
@@ -82,8 +82,12 @@ struct SearchDirectory {
    clippy::filetype_is_file,
    reason = "Only regular files can contain binary images"
 )]
+#[expect(
+   clippy::too_many_lines,
+   reason = "single-pass directory walk and file handling, splitting would duplicate policy"
+)]
 pub fn run(args: &[String]) -> io::Result<()> {
-   let Some((prefix, rest)) = args.split_first() else {
+   let Some((prefix, remaining)) = args.split_first() else {
       return Err(io::Error::other("reloc-fixup requires an output directory"));
    };
    let mut context = Context {
@@ -92,8 +96,8 @@ pub fn run(args: &[String]) -> io::Result<()> {
       directories: BTreeSet::new(),
    };
    let mut denied = Vec::new();
-   for pair in rest.chunks(2) {
-      let [flag, path] = pair else {
+   for pair in remaining.chunks(2) {
+      let [ref flag, ref path] = *pair else {
          return Err(io::Error::other("reloc-fixup options take a store path"));
       };
       if !is_store_path(path) {
@@ -145,7 +149,7 @@ pub fn run(args: &[String]) -> io::Result<()> {
          }
       }
    }
-   let mut failures = 0;
+   let mut failures = 0_usize;
    for path in files {
       if path
          .extension()
@@ -178,7 +182,7 @@ pub fn run(args: &[String]) -> io::Result<()> {
          failures += 1;
       }
    }
-   if failures != 0 {
+   if failures != 0_usize {
       return Err(io::Error::other(format!(
          "relocation failed for {failures} files"
       )));
@@ -187,7 +191,7 @@ pub fn run(args: &[String]) -> io::Result<()> {
 }
 
 pub fn write_back(path: &Path, image: &Image) -> io::Result<()> {
-   use std::os::unix::fs::PermissionsExt;
+   use std::os::unix::fs::PermissionsExt as _;
    write_file(
       path,
       &image.bytes,
@@ -206,11 +210,13 @@ fn fix_elf(context: &Context, path: &Path, image: &mut Image) -> io::Result<()> 
    let mut stub = None;
    if let Some(address) = entry_address.checked_sub(16) {
       for segment in &segments {
+         let segment_size = u64::try_from(segment.size).map_err(io::Error::other)?;
          if segment.kind == 1
             && address >= segment.address
-            && address - segment.address < segment.size as u64
+            && address - segment.address < segment_size
          {
-            let offset = segment.offset + (address - segment.address) as usize;
+            let offset = segment.offset
+               + usize::try_from(address - segment.address).map_err(io::Error::other)?;
             if image.array::<8>(offset)? == *b"RELOCSTB" {
                stub = Some(entry_address);
             }
@@ -229,7 +235,7 @@ fn fix_elf(context: &Context, path: &Path, image: &mut Image) -> io::Result<()> 
       for offset in (symbols.offset..symbols.offset + symbols.size).step_by(symbols.stride) {
          let name_offset = strings
             .offset
-            .checked_add(image.long(offset)? as usize)
+            .checked_add(usize::try_from(image.long(offset)?).map_err(io::Error::other)?)
             .ok_or_else(|| io::Error::other("ELF symbol offset overflows"))?;
          if image.string(name_offset)? == "__reloc_start" {
             stub = Some(image.quad(offset + 8)?);
@@ -286,6 +292,10 @@ fn origin_relative(from: &Path, to: &Path) -> String {
    }
 }
 
+#[expect(
+   clippy::too_many_lines,
+   reason = "runpath rewrite keeps symbol and version handling in one scan"
+)]
 fn fix_runpath(
    context: &Context,
    image: &mut Image,
@@ -331,7 +341,7 @@ fn fix_runpath(
          image.array::<16>(offset)?;
          let string_offset = strings
             .offset
-            .checked_add(image.long(offset + 4)? as usize)
+            .checked_add(usize::try_from(image.long(offset + 4)?).map_err(io::Error::other)?)
             .ok_or_else(|| io::Error::other("ELF version name offset overflows"))?;
          let name = image.string(string_offset)?;
          for library in &mut needed {
@@ -339,7 +349,7 @@ fn fix_runpath(
                library.version_offsets.push(offset + 4);
             }
          }
-         let next = image.long(offset + 12)? as usize;
+         let next = usize::try_from(image.long(offset + 12)?).map_err(io::Error::other)?;
          if next == 0 {
             break;
          }
@@ -434,7 +444,7 @@ fn fix_runpath(
       for offset in (symbols.offset..symbols.offset + symbols.size).step_by(symbols.stride) {
          let name_offset = table
             .offset
-            .checked_add(image.long(offset)? as usize)
+            .checked_add(usize::try_from(image.long(offset)?).map_err(io::Error::other)?)
             .ok_or_else(|| io::Error::other("ELF symbol offset overflows"))?;
          if name_offset > start && name_offset < start + old.len() {
             return Err(io::Error::other("ELF symbol shares bytes with RUNPATH"));
@@ -450,7 +460,9 @@ fn fix_runpath(
    for (library, directory) in direct {
       image.write(
          needed[library].value_offset,
-         &(string_offset as u64).to_le_bytes(),
+         &u64::try_from(string_offset)
+            .map_err(io::Error::other)?
+            .to_le_bytes(),
       )?;
       for &offset in &needed[library].version_offsets {
          image.write(

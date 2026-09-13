@@ -20,11 +20,16 @@ pub struct Identity(String);
 
 impl Identity {
    #[must_use]
+   #[inline]
    pub fn of(bytes: &[u8]) -> Self {
       Self(format!("C:{}", digest(bytes)))
    }
 
-   pub fn of_reader<Reader: Read>(reader: Reader) -> io::Result<Self> {
+   #[inline]
+   pub fn of_reader<Reader>(reader: Reader) -> io::Result<Self>
+   where
+      Reader: Read,
+   {
       let mut hasher = Hasher::new();
       hasher.update_reader(reader)?;
       Ok(Self(format!("C:{}", &hasher.finalize().to_hex()[..32])))
@@ -36,6 +41,7 @@ impl Display for Identity {
       clippy::renamed_function_params,
       reason = "Project names have at least two characters"
    )]
+   #[inline]
    fn fmt(&self, formatter: &mut Formatter<'_>) -> FormatResult {
       formatter.write_str(&self.0)
    }
@@ -44,6 +50,7 @@ impl Display for Identity {
 impl FromStr for Identity {
    type Err = io::Error;
 
+   #[inline]
    fn from_str(text: &str) -> io::Result<Self> {
       if text.len() != 34
          || !text.starts_with("C:")

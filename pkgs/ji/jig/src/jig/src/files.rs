@@ -5,9 +5,9 @@ use std::{
    },
    io::{
       self,
-      Write,
+      Write as _,
    },
-   os::unix::fs::PermissionsExt,
+   os::unix::fs::PermissionsExt as _,
    path::{
       Component,
       Path,

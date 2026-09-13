@@ -82,7 +82,7 @@ pub fn lookup(cache: &mut Client, store: &mut Store, request: &str) -> io::Resul
    let Some(bytes) = cache.get(&format!("m/{request}"))? else {
       return Ok(None);
    };
-   let manifest: Manifest = serde_json::from_slice(&bytes)?;
+   let manifest = serde_json::from_slice::<Manifest>(&bytes)?;
    let Some(paths) = manifest
       .inputs
       .iter()
@@ -111,11 +111,11 @@ pub fn lookup(cache: &mut Client, store: &mut Store, request: &str) -> io::Resul
 }
 
 pub fn prefetch(cache: &mut Client, store: &mut Store, paths: &[String]) -> io::Result<()> {
-   let requested: Vec<_> = paths
+   let requested = paths
       .iter()
       .filter(|path| store.daemon_may_identify(path))
       .cloned()
-      .collect();
+      .collect::<Vec<String>>();
    for (path, identity) in requested.iter().zip(cache.identities(&requested)?) {
       if let Some(value) = identity {
          store.remember(path.to_owned(), value.to_string());
@@ -139,7 +139,10 @@ pub fn parse_depfile(text: &str) -> Vec<String> {
                .peek()
                .is_some_and(|next| matches!(next, ' ' | '\t' | '\\' | '#' | ':')) =>
          {
-            token.push(characters.next().expect("escaped character exists"));
+            let Some(escaped) = characters.next() else {
+               return paths;
+            };
+            token.push(escaped);
          },
          ':' if !dependencies => {
             dependencies = true;

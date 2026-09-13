@@ -47,7 +47,10 @@ pub fn sections(image: &Image) -> io::Result<Vec<Section>> {
          kind:   image.long(start + 4)?,
          offset: image.size(start + 24)?,
          size:   image.size(start + 32)?,
-         link:   image.long(start + 40)? as usize,
+         link:   image
+            .long(start + 40)?
+            .try_into()
+            .map_err(io::Error::other)?,
          stride: image.size(start + 56)?,
       };
       if section.kind != 8
@@ -98,12 +101,12 @@ pub fn segments(image: &Image) -> io::Result<Vec<Segment>> {
 pub fn relative_from(directory: &Path, target: &Path) -> PathBuf {
    let base = normalize(directory);
    let destination = normalize(target);
-   let base_parts: Vec<_> = base.components().collect();
-   let target_parts: Vec<_> = destination.components().collect();
+   let base_parts = base.components().collect::<Vec<_>>();
+   let target_parts = destination.components().collect::<Vec<_>>();
    let common = base_parts
       .iter()
       .zip(&target_parts)
-      .take_while(|(left, right)| left == right)
+      .take_while(|&(left, right)| left == right)
       .count();
    let mut relative = PathBuf::new();
    for _ in common..base_parts.len() {

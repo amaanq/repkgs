@@ -144,15 +144,19 @@ let
       path = ../../ji/jig/src;
       name = "jig-rust-src";
       filter =
-        path: _:
-        builtins.match ".*\\.rs" path != null
+        path: type:
+        (type == "directory" && baseNameOf path != "target")
+        || builtins.match ".*\\.rs" path != null
         || builtins.elem (baseNameOf path) [
           "Cargo.toml"
           "Cargo.lock"
         ];
     };
     cargoLock.lockFile = ../../ji/jig/src/Cargo.lock;
-    cargoBuildFlags = [ "-p" "jig" ];
+    cargoBuildFlags = [
+      "-p"
+      "jig"
+    ];
     auditable = false;
     doCheck = false;
     env.JIG_STORE_DIR = builtins.storeDir;

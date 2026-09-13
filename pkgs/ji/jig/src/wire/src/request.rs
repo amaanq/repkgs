@@ -21,9 +21,10 @@ pub enum Request {
 impl FromStr for Request {
    type Err = io::Error;
 
+   #[inline]
    fn from_str(line: &str) -> io::Result<Self> {
-      let fields: Vec<_> = line.split_whitespace().collect();
-      match fields.as_slice() {
+      let fields = line.split_whitespace().collect::<Vec<&str>>();
+      match *fields.as_slice() {
          ["GET", key] => Ok(Self::Get((*key).to_owned())),
          ["HAS", key] => Ok(Self::Has((*key).to_owned())),
          ["PUT", key, size] => {

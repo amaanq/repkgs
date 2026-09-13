@@ -5,9 +5,9 @@ use std::{
    fs::OpenOptions,
    io::{
       self,
-      Write,
+      Write as _,
    },
-   os::unix::process::ExitStatusExt,
+   os::unix::process::ExitStatusExt as _,
    path::Path,
    process::{
       Command,
@@ -49,7 +49,7 @@ pub struct RunResult {
 }
 
 pub fn diagnostic(message: Arguments<'_>) {
-   let _ = writeln!(io::stderr().lock(), "{message}");
+   drop(writeln!(io::stderr().lock(), "{message}"));
 }
 
 pub fn log(tool: &str, outcome: &str, subject: &str, started: Instant) {
@@ -98,28 +98,34 @@ pub fn log_uncached(outcome: &str, args: &[String]) {
 pub fn status_code(status: ExitStatus) -> i32 {
    status
       .code()
-      .unwrap_or_else(|| 128 + status.signal().unwrap_or(1))
+      .unwrap_or_else(|| 128_i32 + status.signal().unwrap_or(1_i32))
 }
 
-pub fn run_slotted<Argument: AsRef<OsStr>>(
+pub fn run_slotted<Argument>(
    program: &OsStr,
    args: &[Argument],
    socket: Option<&Path>,
    capture: bool,
-) -> io::Result<RunResult> {
+) -> io::Result<RunResult>
+where
+   Argument: AsRef<OsStr>,
+{
    let mut client = socket.and_then(|path| Client::connect(path).ok());
    let slot = client
       .as_mut()
-      .and_then(|client| Slot::acquire(client).ok().flatten());
+      .and_then(|connected| Slot::acquire(connected).ok().flatten());
    run(program, args, slot, capture)
 }
 
-pub fn run<Argument: AsRef<OsStr>>(
+pub fn run<Argument>(
    program: &OsStr,
    args: &[Argument],
    slot: Option<Slot<'_>>,
    capture: bool,
-) -> io::Result<RunResult> {
+) -> io::Result<RunResult>
+where
+   Argument: AsRef<OsStr>,
+{
    let mut command = Command::new(program);
    command
       .args(args)

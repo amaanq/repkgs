@@ -12,9 +12,9 @@ use std::{
    },
    io::{
       self,
-      Write,
+      Write as _,
    },
-   os::unix::fs::PermissionsExt,
+   os::unix::fs::PermissionsExt as _,
    path::{
       Path,
       PathBuf,
@@ -68,6 +68,10 @@ struct Invocation {
 }
 
 impl Invocation {
+   #[expect(
+      clippy::too_many_lines,
+      reason = "single-pass rustc flag scan, splitting would scatter one match"
+   )]
    fn parse(args: &[String]) -> Self {
       let mut invocation = Self {
          key_args:  Vec::new(),
@@ -79,7 +83,7 @@ impl Invocation {
          cacheable: true,
          query:     false,
       };
-      let mut sources = 0;
+      let mut sources = 0_i32;
       let mut dep_info = false;
       let mut library = false;
       let mut index = 0;
@@ -165,7 +169,7 @@ impl Invocation {
                .is_some_and(|ext| ext.eq_ignore_ascii_case("rs"))
          {
             argument.clone_into(&mut invocation.source);
-            sources += 1;
+            sources += 1_i32;
          } else {
             invocation.query |= argument == "--print"
                || argument.starts_with("--print=")
@@ -176,7 +180,7 @@ impl Invocation {
          index += 1;
       }
       invocation.cacheable &= !invocation.query
-         && sources == 1
+         && sources == 1_i32
          && library
          && dep_info
          && !invocation.out_dir.as_os_str().is_empty()
@@ -223,7 +227,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
    } else {
       None
    };
-   let (Some(client), Some(key)) = (&mut cache, request) else {
+   let Some((client, key)) = cache.as_mut().zip(request.as_ref()) else {
       let result = run_slotted(
          OsStr::new(compiler),
          arguments,
@@ -244,7 +248,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
       );
       return Ok(result.status);
    };
-   let hit = lookup(client, &mut store, &key).and_then(|found| {
+   let hit = lookup(client, &mut store, key).and_then(|found| {
       found.map_or(Ok(false), |result| {
          replay(client, &invocation.out_dir, &invocation.suffix, &result)
       })
@@ -268,11 +272,11 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
       true,
    )?;
    io::stderr().lock().write_all(&result.stderr)?;
-   if result.status != 0 {
+   if result.status != 0_i32 {
       log("rustc", "failed", &label, started);
       return Ok(result.status);
    }
-   let stored = store_result(client, &mut store, &key, &invocation, &result.stderr);
+   let stored = store_result(client, &mut store, key, &invocation, &result.stderr);
    let outcome = match stored {
       Ok(()) => "compiled",
       Err(error) => {
@@ -354,7 +358,7 @@ fn store_result(
    inputs.push(invocation.source.clone());
    inputs.sort_unstable();
    inputs.dedup();
-   let variables: Vec<_> = text
+   let variables = text
       .lines()
       .filter_map(|line| line.strip_prefix("# env-dep:"))
       .map(|entry| {
@@ -363,7 +367,7 @@ fn store_result(
             .map_or(entry, |(name, _)| name)
             .to_owned()
       })
-      .collect();
+      .collect::<Vec<String>>();
    let manifest = Manifest::build(cache, store, &inputs, &variables)?;
    let key = manifest.result_key(request)?;
    let mut outputs = vec![dep_path];
@@ -412,7 +416,7 @@ fn replay(cache: &mut Client, directory: &Path, suffix: &str, key: &str) -> io::
    let Some(listing) = cache.get(&format!("o/{key}"))? else {
       return Ok(false);
    };
-   let artifacts: Vec<Artifact> = serde_json::from_slice(&listing)?;
+   let artifacts = serde_json::from_slice::<Vec<Artifact>>(&listing)?;
    if artifacts.is_empty() {
       return Err(io::Error::other("cached Rust result contains no artifacts"));
    }

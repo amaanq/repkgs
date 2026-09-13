@@ -182,9 +182,12 @@ request = "cc/" + hash(
                               ? placeholder(a) : key(placeholder(a)))
    for each of CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH OBJC_INCLUDE_PATH LIBRARY_PATH
                SOURCE_DATE_EPOCH LANG LC_ALL: field(name) field(value or "")
-   field(key(source path)) field(placeholder(source bytes))   unless the action is a pure link
+   field(exact source argument) field(placeholder(source bytes))   unless the action is a pure link
    for each object, archive or library input: field(input_id(input)))
 ```
+
+The source argument preserves its spelling because `file.c` and `./file.c` produce different
+`__FILE__` values.
 
 `placeholder` is the §3.4 substitution. An invocation is cacheable when it has exactly one
 source for compile, assemble or preprocess, or is a link of objects, is not a query

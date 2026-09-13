@@ -2,7 +2,7 @@ use std::{
    collections::HashMap,
    fs::File,
    io,
-   os::unix::fs::MetadataExt,
+   os::unix::fs::MetadataExt as _,
    sync::RwLock,
 };
 
@@ -42,17 +42,22 @@ impl Identities {
          modified: (metadata.mtime(), metadata.mtime_nsec()),
          changed:  (metadata.ctime(), metadata.ctime_nsec()),
       };
-      if let Some(entry) = self.known.read().expect("identity lock poisoned").get(path)
-         && entry.stamp == stamp
       {
-         return Ok(entry.identity.clone());
+         let known = self
+            .known
+            .read()
+            .map_err(|_error| io::Error::other("identity lock poisoned"))?;
+         if let Some(entry) = known.get(path)
+            && entry.stamp == stamp
+         {
+            return Ok(entry.identity.clone());
+         }
       }
-
       let identity = Identity::of_reader(&mut file)?;
       self
          .known
          .write()
-         .expect("identity lock poisoned")
+         .map_err(|_error| io::Error::other("identity lock poisoned"))?
          .insert(path.to_owned(), Entry {
             stamp,
             identity: identity.clone(),
@@ -60,12 +65,14 @@ impl Identities {
       Ok(identity)
    }
 
+   #[expect(clippy::expect_used, reason = "poisoned identity cache violates its invariants")]
    pub fn len(&self) -> usize {
       self.known.read().expect("identity lock poisoned").len()
    }
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "tests")]
 mod tests {
    use std::fs::write;
 

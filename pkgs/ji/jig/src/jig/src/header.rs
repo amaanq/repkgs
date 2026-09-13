@@ -10,7 +10,7 @@ use std::{
    },
    io::{
       self,
-      Write,
+      Write as _,
    },
    path::Path,
    process::Command,
@@ -40,10 +40,14 @@ use crate::{
    },
 };
 
+#[expect(
+   clippy::too_many_lines,
+   reason = "single path validates compiler inputs and cache lookup in one pass"
+)]
 pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
    let started = Instant::now();
-   let [context, warnings, compiler, raw @ ..] = args else {
-      bail!("jig header-key requires the probe identity, warning policy and compiler command")
+   let &[ref context, ref warnings, ref compiler, ref raw @ ..] = args else {
+      bail!("jig header-key requires the probe identity, warning policy and compiler command");
    };
    if !Path::new(compiler).file_name().is_some_and(|name| {
       name == "cc" || name == "gcc" || name == "cc-build" || name == "gcc-build"
@@ -158,7 +162,10 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
 }
 
 fn normalize_source(source: &str, diagnostics: &str) -> Option<String> {
-   let mut lines: Vec<_> = source.split('\n').map(str::to_owned).collect();
+   let mut lines = source
+      .split('\n')
+      .map(str::to_owned)
+      .collect::<Vec<String>>();
    for diagnostic in diagnostics.lines() {
       let (location, warning) = diagnostic.split_once(": warning: ")?;
       if !warning.ends_with("macro is not used [-Wunused-macros]") {
