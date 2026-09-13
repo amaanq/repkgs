@@ -1,7 +1,7 @@
 # Design
 
 What the set does differently from nixpkgs and why. Things not built yet are in `plan.md`,
-the updater in `uptrack.md`.
+the updater in `uptrack.md`, the exact jig and jigd contract in `jig.md`.
 
 Names used below: **jig** is the compiler driver (`cc`, `c++`, `rustc` on the build `PATH`) and
 ELF post-processor, **jigd** the per-machine daemon behind it (compile cache, build slots),
@@ -262,8 +262,8 @@ jigd (Rust) holds a bitcask-style object store (append-only packs, in-memory ind
 eviction, `sendfile`), remembers store-file identities so hits do not rehash headers, and hands
 out build slots so N sandboxes × `make -jN` do not oversubscribe (cc/rustc per process, go via
 `-toolexec`, ghc via `jsem`). sqlite3.c 82 s → 0.08 s, fd's 200 rlibs 218 s → 1.4 s,
-bit-identical with the C++ wrapper. The Rust port uses stricter request keys and needs fresh
-measurements. A cache writer can supply compiler artifacts, so the cache stays per user and machine.
+bit-identical with the C++ wrapper. Request keys, manifests and the pack format are specified in
+`jig.md`. A cache writer can supply compiler artifacts, so the cache stays per user and machine.
 
 ## Toolchain, bootstrap, cross
 
