@@ -272,11 +272,12 @@ def cache-summary []: nothing -> nothing {
   # `query` (cc -v, -dM, -print-*) is not a build step and stays out of the counts
   let runs = (open --raw $env.JIG_LOG | from tsv --noheaders | rename tool outcome subject | where outcome != query)
   let tools = ($runs | group-by tool --to-table)
+  let cached_outcomes = [cached cached-error hit compile-hit]
   let parts = ($tools | each {|t|
     let counts = ($t.items.outcome | uniq -c)
     let total = ($t.items | length)
-    let cached = ($counts | where value == cached | get count | append 0 | first)
-    let rest = ($counts | where value != cached | each { $"($in.value)=($in.count)" })
+    let cached = ($counts | where value in $cached_outcomes | get count | append 0 | math sum)
+    let rest = ($counts | where value not-in $cached_outcomes | each { $"($in.value)=($in.count)" })
     [$t.tool $"cached=($cached)/($total) \(($cached * 100 // $total)%)" ...$rest] | str join " "
   })
   if ($parts | is-not-empty) { note jig ($parts | str join ", ") }

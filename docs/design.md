@@ -214,7 +214,9 @@ compiler flags, source files or `CONFIG_SITE` contents invalidates them. Cache a
 compiler log destinations do not affect the key. CMake definitions and generator choices are
 included, and cached strings are restored literally.
 
-Autoconf C header checks can also share successful results across packages. Jig preprocesses
+Autoconf C header checks first reuse successful, warning-free compiler results after validating
+their dependency manifests. These hits avoid launching the preprocessor. Otherwise, header
+checks can share successful results across packages. Jig preprocesses
 the current test and keys the result by the compiler, expanded flags, warning policy, helper
 definitions, site configuration, compiler environment, source, preprocessed output and headers.
 It replaces package metadata values in the source key only when Clang reports those macros as
@@ -223,8 +225,8 @@ on every lookup, and immutable headers retain their full store paths.
 
 Configure prints `(shared)` for these hits. Missing headers, unexpected preprocessing warnings,
 unsupported compiler options and an unavailable daemon fall back to the original check.
-Only the `cc` and `gcc` aliases of the same jig installation are supported. Failed checks,
-link checks and runtime checks are not shared through this mechanism. `nix/config.site`
+Only the `cc`, `gcc`, `cc-build` and `gcc-build` aliases of the same jig installation are supported.
+Failed checks, link checks and runtime checks are not shared through this mechanism. `nix/config.site`
 still supplies common platform defaults, and arbitrary `ac_cv_*` names are never used as
 cross-package keys.
 
@@ -232,12 +234,29 @@ cross-package keys.
 the packages' resolved build inputs. It starts a fresh daemon, primes the compiler cache,
 alternates runs with and without shared header results, then measures whole `config.cache`
 reuse. Every pass starts with a fresh source and build directory at the same paths. The
-benchmark rejects changes to the generated `Makefile` and `config.h` files and preserves
-the per-run logs and timings in the printed directory.
+benchmark rejects changes to the generated `Makefile` and `config.h` files, requires the warm
+configure cache to report a restore, and preserves the per-run logs and timings in the printed
+directory. `environment.json` records the seed and daemon identity, while `summary.json` records
+the median timings and configure-cache speedup. Package builds finish before measurements begin.
 
 ```console
 nu tools/benchmark-configure.nu --seed ./result-bootstrap-seed --daemon /path/to/jigd sed diffutils
 ```
+
+Measured on x86-64 Linux with the source-built seed and release jigd on September 13, 2026.
+Compiler-cache and shared-header times are medians of three interleaved configure runs.
+The final column measures a restored whole configure cache, with identical generated files.
+
+| package | compiler cache | shared headers | configure cache |
+|---|---|---|---|
+| sed 4.10 | 8.29 s | 8.34 s | 0.34 s |
+| diffutils 3.12 | 10.34 s | 10.37 s | 0.29 s |
+
+The header fast path avoids 48 preprocessor launches for sed and 42 for diffutils.
+Whole configure-cache reuse gives the larger reduction, about 25× and 35× respectively.
+Nix output checks also pass for both packages with cold and warm caches. In ordinary sandboxed
+builds, diffutils reuses 16 successful header checks from sed. Warm rebuilds restore the whole
+configure cache and reuse 97 percent of sed's compiler actions and 98 percent of diffutils'.
 
 jigd (Rust) holds a bitcask-style object store (append-only packs, in-memory index, whole-pack
 eviction, `sendfile`), remembers store-file identities so hits do not rehash headers, and hands

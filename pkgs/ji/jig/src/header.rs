@@ -26,6 +26,7 @@ use tempfile::NamedTempFile;
 
 use crate::{
    cache::CacheClient,
+   cc::cached_header,
    driver::Driver,
    manifest::parse_depfile,
    process::{
@@ -71,6 +72,10 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
       return Ok(1);
    }
    let mut cache = CacheClient::connect(socket)?;
+   if cached_header(&driver, raw, &mut cache)? {
+      log("header", "compile-hit", "conftest.c", started);
+      return Ok(0);
+   }
    let dependency_file = NamedTempFile::new_in(".")?;
    let slot = Slot::acquire(&mut cache)?;
    let output = Command::new(driver.compiler())

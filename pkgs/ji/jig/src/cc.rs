@@ -328,6 +328,25 @@ impl Invocation {
    }
 }
 
+pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut CacheClient) -> io::Result<bool> {
+   let mut invocation = Invocation::parse(raw.to_vec());
+   if invocation.action != Action::Compile || !invocation.cacheable {
+      return Ok(false);
+   }
+   invocation.args = driver.arguments(false, raw);
+   invocation.key_injected(raw);
+   let mut store = Store::new();
+   let request = invocation.request_key(&store, driver.compiler())?;
+   let Some(key) = lookup(cache, &mut store, &request)? else {
+      return Ok(false);
+   };
+   let results = cache.get_many(&[format!("r/{key}"), format!("e/{key}")])?;
+   Ok(
+      matches!(results.as_slice(), [Some(status), Some(diagnostics)]
+      if status == b"0" && diagnostics.is_empty()),
+   )
+}
+
 pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    let started = Instant::now();
    let user = expand_response_files(raw)?;
