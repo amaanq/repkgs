@@ -234,7 +234,7 @@ impl Driver {
       ) {
          output.push(format!("-ffile-prefix-map={mapping}"));
       }
-      if self.format == BinaryFormat::Elf {
+      if self.format == BinaryFormat::Elf && linking && have_input {
          output.extend([
             "-Wl,--build-id=sha1".to_owned(),
             r#"-Wl,--package-metadata={"type":"repkgs"}"#.to_owned(),

@@ -388,7 +388,7 @@ Given the user's arguments, jig builds the compiler command line in this order.
    set one or compiles with `-O0`
 4. for C++, `--driver-mode=g++`, `cxxflags`, `PKGS_CC.cxxflags`
 5. `-ffile-prefix-map=<pair>` for each `prefix-map` and `PKGS_PREFIX_MAP` pair
-6. for ELF, `-Wl,--build-id=sha1` and `-Wl,--package-metadata={"type":"repkgs"}`
+6. for an ELF link with an input, `-Wl,--build-id=sha1` and `-Wl,--package-metadata={"type":"repkgs"}`
 7. `--end-no-unused-arguments`
 8. the user's arguments after the per format filter, with every rpath spelling removed for ELF
 9. when linking with an input, `PKGS_CC.ldflags`
