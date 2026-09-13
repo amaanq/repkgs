@@ -182,7 +182,7 @@ request = "cc/" + hash(
                               ? placeholder(a) : key(placeholder(a)))
    for each of CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH OBJC_INCLUDE_PATH LIBRARY_PATH
                SOURCE_DATE_EPOCH LANG LC_ALL: field(name) field(value or "")
-   field(placeholder(source bytes))            unless the action is a pure link
+   field(key(source path)) field(placeholder(source bytes))   unless the action is a pure link
    for each object, archive or library input: field(input_id(input)))
 ```
 

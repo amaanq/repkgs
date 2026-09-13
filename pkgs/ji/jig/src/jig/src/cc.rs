@@ -317,6 +317,7 @@ impl Invocation {
          field(&mut hasher, var(name).unwrap_or_default());
       }
       if self.action != Action::Link {
+         field(&mut hasher, store.key(&self.source));
          let mut bytes = read(&self.source)?;
          store.mask_output(&mut bytes, false);
          field(&mut hasher, bytes);
