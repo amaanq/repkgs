@@ -7,7 +7,7 @@
 let
   inherit (pkgs) lib;
   buildRust = import ./rust-build.nix { inherit pkgs ps llvm; };
-  releases = (builtins.fromTOML (builtins.readFile ./rust-chain.toml)).release;
+  releases = (fromTOML (builtins.readFile ./rust-chain.toml)).release;
   mrustc = pkgs.mrustc-bootstrap.overrideAttrs {
     checkPhase = ''
       runHook preCheck

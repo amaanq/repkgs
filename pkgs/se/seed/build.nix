@@ -22,7 +22,7 @@ let
   source =
     name:
     let
-      manifest = builtins.fromTOML (
+      manifest = fromTOML (
         builtins.readFile (../.. + "/${builtins.substring 0 2 name}/${name}/sources.toml")
       );
       fetch =
@@ -146,7 +146,7 @@ let
       filter =
         path: _:
         builtins.match ".*\\.rs" path != null
-        || builtins.elem (builtins.baseNameOf path) [
+        || builtins.elem (baseNameOf path) [
           "Cargo.toml"
           "Cargo.lock"
         ];
@@ -173,6 +173,10 @@ let
         src = nuSource.default;
         auditable = false;
         doCheck = false;
+        postPatch = ''
+          substituteInPlace "$cargoDepsCopy/source-registry-0/pest_consume_macros-1.1.0/src/make_parser.rs" \
+            --replace-fail HashMap BTreeMap
+        '';
       };
   bsdtar = ps.libarchive;
   # nu has no ln/chmod/readlink and configure scripts need expr/tr/sed/... before anything is built
@@ -235,7 +239,7 @@ let
       find $out -name __pycache__ -prune -exec rm -rf {} +
       ${pkgs.lib.optionalString (
         !cross
-      ) ''$out/bin/python3 -c "import sys, os, re, json, subprocess, argparse"''}
+      ) ''$out/bin/python3 -B -c "import sys, os, re, json, subprocess, argparse"''}
     '';
     dontFixup = true;
   };

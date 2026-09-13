@@ -140,11 +140,25 @@ nu bootstrap/rebuild.nu status
 nu bootstrap/rebuild.nu log
 ```
 
-The default is a 30-core budget across three build jobs. `start --cores 30 --jobs 3` sets
-these explicitly. Each dependency build gets ten compile workers, so independent configure
-and compilation phases can overlap. LLVM and each later compiler checkpoint get all 30 workers
-once their dependencies are ready. A recipe may impose a lower limit where parallel compilation
+The default is a 30-core budget across three build jobs. Each dependency build gets ten
+compile workers, so independent configure and compilation phases can overlap. Compiler
+checkpoints get the full budget once their dependencies are ready. `start --cores 22 --jobs 3`
+reduces the budget to 22 cores. A recipe may impose a lower limit where parallel compilation
 is unsupported.
+
+The runner builds checked LLVM packages separately with four workers by default because
+LLVM 20 exhausted the host's memory with ten test workers. `--llvm-cores` changes that limit.
+The pinned recipes use `NIX_BUILD_CORES` for both compilation and tests, so this currently
+limits both phases. Independent limits need runtime support beyond the existing recipes.
+Worker and memory settings stay in the runner and do not change derivation hashes.
+
+All Rust checkpoints use the full compile budget. Final Rust builds its bundled LLVM backend
+with two link jobs and does not run LLVM's `check-all` suite.
+
+The service defaults to a 48 GiB memory ceiling, with memory pressure throttling above 80 percent
+of that limit. `--memory 64GiB` changes the ceiling. An exhausted limit can still fail a build,
+but contains its memory use. `status` and `log` identify kernel OOM kills even when Nix reports
+an interruption by the user.
 
 On bcachefs, the checked Coreutils builds use `/tmp` on tmpfs because their hard-link
 disk-usage test assumes allocations larger than bcachefs gives small files. Their dependencies
@@ -203,6 +217,23 @@ directory. Subsequent `start` commands resume that plan without needing `--throu
 Each compiler and the assembled seed have a recorded NAR comparison in `seed/checkpoints.json`.
 If no original output existed when the plan was frozen, its comparison is marked unavailable.
 `status` shows these checkpoints alongside the derivation counts.
+Completed runs list skipped derivations separately, including source fetchers made unnecessary
+by importing verified source inputs.
+
+A NAR mismatch records `different` and allows the remaining checkpoints to build. After the
+last checkpoint, any mismatch fails the run with `verification_failed` and lists every
+affected checkpoint. Completed outputs remain reusable. This distinguishes a build failure
+from a reproducibility failure without treating different outputs as identical.
+
+After fixing a seed recipe, `start --refresh` evaluates a new seed plan and archives the
+previous plan and comparisons under `history/`. It reuses completed outputs whose derivations
+are unchanged and retains the frozen LLVM ancestry. Build the updated normal seed first to
+give the new checkpoints comparison baselines. An ordinary `start` keeps its current plan.
+
+The seed patches `pest_consume_macros` to generate parser enums in sorted order. Its randomized
+map iteration otherwise changes Nushell's generated code between builds. Python's smoke check
+disables bytecode writes so it cannot recreate timestamped caches after cleanup. Final Rust
+strips unused driver symbols whose ThinLTO suffixes can differ without changing machine code.
 
 The extension reuses LLVM and its dependencies from the isolated store. It also imports locally
 available source inputs after checking their pinned hashes and rejecting store references.
@@ -212,18 +243,45 @@ does compile Rust again to verify its ancestry in isolation. Each completed rele
 when resuming this run. The normal seed remains available through `nix build .#bootstrap-seed`
 using the existing Rust outputs.
 
-The isolated store can be mirrored as a source-input local binary cache. The archive contains
-the fixed-output source files, the auditable hex0 seed and derivation recipes, never the compiled
-LLVM output.
+Archive the isolated store's inputs as a local binary cache. The archive contains the pinned
+source files, the auditable hex0 seed and derivation recipes. It follows the active plan, so
+a run extended through the assembled seed includes the Rust and Nushell sources too.
 
 ```console
 nu tools/archive-bootstrap.nu --destination /path/to/repkgs-bootstrap-cache
 ```
 
-The archiver reads the active frozen graph, checks the stored contents of fixed-output inputs
-and rejects inputs that reference other store paths. Its generated manifest records every
-archived source hash and derivation path. A future mirror can copy that directory to another
-binary-cache backend without rebuilding the source inputs.
+The archiver checks each fixed-output input against its pinned flat or NAR hash and rejects
+inputs that reference other store paths. It uses 30 hash workers by default, adjustable with
+`--jobs`, and compresses the cache with zstd. The manifest records the full source and recipe
+inventory. The saved plans include the output hash baselines for the compiler checkpoints.
+Rerunning the command reuses archived paths and rejects a destination belonging to another plan.
+
+Copy the archive directory to another x86-64 Linux machine with Nix, Nushell and this repository,
+then restore it into a new state directory.
+
+```console
+nu tools/archive-bootstrap.nu restore /path/to/repkgs-bootstrap-cache --state /path/to/offline-bootstrap
+nu bootstrap/rebuild.nu status --state /path/to/offline-bootstrap
+nu bootstrap/rebuild.nu start --state /path/to/offline-bootstrap
+nu bootstrap/rebuild.nu log --state /path/to/offline-bootstrap
+```
+
+Restore uses only the local archive. It checks the exact store inventory, saved derivation graph
+and every pinned source hash before marking the state ready. An interrupted restore can resume
+with the same command. It rejects other nonempty state directories. No compiled LLVM, Rust or
+Nushell outputs are imported, and no checkpoints are marked built. Starting the restored state
+rebuilds those tools from the saved recipes and compares them with the saved hash baselines.
+The existing completed bootstrap remains available in its original state directory.
+
+The verified full-seed archive contains 354 unique fixed-output inputs and 1,246 recipes,
+about 6.7 GiB compressed. Its 1,869 store paths restored in a network namespace with no network
+interfaces besides an unconfigured loopback. The 49 early derivations through kaem then rebuilt
+offline, and kaem matched the original output's NAR hash. This check did not repeat LLVM or Rust
+and does not establish reproducibility across machines.
+
+The host tools remain within the trust boundary described above. Preserving release archives
+also preserves their generated files, so this does not close that remaining source audit work.
 
 ## References
 

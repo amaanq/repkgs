@@ -1,3 +1,5 @@
+const bootstrap_dir = path self .
+
 export def capture [program: string, arguments: list<string>]: nothing -> string {
   let result = (^$program ...$arguments | complete)
   if $result.exit_code != 0 {
@@ -103,7 +105,7 @@ def freeze [directory: string, seed: bool]: nothing -> nothing {
     }
     null
   })
-  let repository = ($env.FILE_PWD | path dirname)
+  let repository = ($bootstrap_dir | path dirname)
   let target = (if $seed { "bootstrap-seed" } else { "bootstrap-llvm" })
   print $"Freezing ($target) and auditing its inputs"
   let drv = (capture nix [eval --raw $"($repository)#($target).drvPath"])
@@ -126,7 +128,7 @@ def freeze [directory: string, seed: bool]: nothing -> nothing {
     error make {msg: "derivation closure contains paths outside the declared build inputs"}
   }
   let flags = (if $seed { [--rust] } else { [] })
-  let report = (capture nu ([--no-config-file ($env.FILE_PWD | path join audit.nu) $drv] ++ $flags) | from json)
+  let report = (capture nu ([--no-config-file ($bootstrap_dir | path join audit.nu) $drv] ++ $flags) | from json)
   let output = (output-path ($document.derivations | get ($drv | path basename)) out)
   let baseline = (if ($output | path exists) { capture nix [hash path $output] } else { null })
   let plan = {derivation: $drv, output: $output, baseline: $baseline, source: $source, created: (date now)}
@@ -138,10 +140,30 @@ def freeze [directory: string, seed: bool]: nothing -> nothing {
   mv --force ($metadata | path join plan.tmp.json) ($metadata | path join plan.json)
 }
 
-export def prepare [directory: string, through: string]: nothing -> record {
+export def prepare [directory: string, through: string, --refresh]: nothing -> record {
   let active = (plan-dir $directory)
   if $through == llvm and $active != $directory {
     error make {msg: "this run has advanced through the seed, omit --through to resume it"}
+  }
+  if $refresh {
+    if $active == $directory or not ($active | path join prepared.json | path exists) {
+      error make {msg: "refresh requires a prepared seed plan"}
+    }
+    let original = (open ($active | path join plan.json))
+    let archive = ($directory | path join history ($original.derivation | path basename))
+    if ($archive | path exists) {
+      error make {msg: "this plan is already archived, inspect its history before refreshing again"}
+    }
+    mkdir $archive
+    for name in [plan.json graph.json audit.json prepared.json checkpoints.json] {
+      let file = ($active | path join $name)
+      if ($file | path exists) { cp $file ($archive | path join $name) }
+    }
+    freeze $directory true
+    rm ($active | path join prepared.json)
+    let comparisons = ($active | path join checkpoints.json)
+    if ($comparisons | path exists) { rm $comparisons }
+    print $"Previous plan and comparisons are preserved in ($archive)"
   }
   if $through == seed and $active == $directory {
     freeze $directory true
@@ -153,6 +175,8 @@ export def prepare [directory: string, through: string]: nothing -> record {
   if ($metadata | path join prepared.json | path exists) { return $plan }
   save-progress $directory {phase: preparing, target: $plan.derivation}
   let graph = ((open ($metadata | path join graph.json)).derivations | transpose path drv)
+  let historical = (glob ($directory | path join history '*' graph.json)
+    | each {|file| (open $file).derivations | transpose path drv } | flatten | uniq-by path)
   let prior_outputs = (if $metadata != $directory {
     (open ($directory | path join graph.json)).derivations | values | each {|drv|
       $drv.outputs | columns | each {|name| output-path $drv $name }
@@ -163,12 +187,16 @@ export def prepare [directory: string, through: string]: nothing -> record {
       {path: (output-path $entry.drv $output.name), hash: $output.spec.hash, method: $output.spec.method}
     }
   } | flatten | uniq-by path)
-  mut allowed = ((declared-paths $graph) ++ $prior_outputs ++ ($sources | get path) ++ [$plan.source.path])
+  let historical_outputs = ($historical | each {|entry|
+    $entry.drv.outputs | columns | each {|name| output-path $entry.drv $name }
+  } | flatten)
+  mut allowed = ((declared-paths $graph) ++ (declared-paths $historical) ++ $historical_outputs
+    ++ $prior_outputs ++ ($sources | get path) ++ [$plan.source.path])
   let store = ($directory | path join store)
   if ($store | path exists) {
     let existing = (capture nix ([path-info --all] ++ (store-args $directory)) | lines)
     let extra = ($existing | where {|path| $path not-in $allowed })
-    $allowed = ($allowed ++ (resolved-paths $directory $graph $extra))
+    $allowed = ($allowed ++ (resolved-paths $directory ($graph ++ $historical | uniq-by path) $extra))
     let unexpected = ($existing | where {|path| $path not-in $allowed })
     if ($unexpected | is-not-empty) {
       error make {msg: $"isolated store contains unexpected paths before preparation\n($unexpected | str join (char newline))"}
@@ -229,7 +257,7 @@ export def verify-stage [directory: string, stage: record]: nothing -> record {
   mv --force ($metadata | path join checkpoints.tmp.json) $file
   print $"Checkpoint ($stage.name), comparison with the original build is ($comparison)"
   if $comparison == different {
-    error make {msg: $"($stage.name) built but its NAR hash ($hash) differs from the original ($stage.baseline), output is preserved at ($physical)"}
+    print $"Output is preserved at ($physical), the mismatch will be reported after the remaining checkpoints"
   }
   $result
 }

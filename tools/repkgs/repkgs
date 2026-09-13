@@ -129,8 +129,9 @@ def "main repro" [
   $attrs | each {|a|
     let build = (^nix-build (root) ...$XP -A $a --no-out-link ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) | complete)
     if $build.exit_code != 0 { return {attr: $a, status: build-failed} }
+    let resolved = (^nix-store --query --deriver ($build.stdout | str trim) | str trim)
     # --check compiles for real: no cache
-    let check = (^nix-build (root) ...$XP -A $a --no-out-link --check --keep-failed ...(platform-arg $for) ...(seed-arg $seed) | complete)
+    let check = (^nix-build $resolved ...$XP --no-out-link --check --keep-failed | complete)
     {attr: $a, status: (if $check.exit_code == 0 { "reproducible" } else if $check.stderr =~ "may not be deterministic|differs" { "DIFFERS" } else { "check-failed" })}
   }
 }

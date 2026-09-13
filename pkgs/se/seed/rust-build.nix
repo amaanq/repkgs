@@ -173,6 +173,9 @@ let
       python3 x.py install --stage ${toString stage} -j "$NIX_BUILD_CORES"
       rm -f "$out/lib/rustlib/install.log" "$out/lib/rustlib/uninstall.sh"
       runHook postInstall
+    ''
+    + lib.optionalString final ''
+      ${llvm}/bin/llvm-strip --strip-unneeded "$out"/lib/librustc_driver-*.so
     '';
     disallowedReferences = [ stage0 ];
     passthru = {

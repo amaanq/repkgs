@@ -1,3 +1,5 @@
+#!/usr/bin/env nu
+
 use store.nu [capture save-progress store-args plan-dir prepare verify-stage]
 
 def state-dir [directory: any]: nothing -> string {
@@ -14,7 +16,7 @@ def unit-name [directory: string]: nothing -> string {
 def unit-info [directory: string]: nothing -> record {
   capture systemctl [--user show (unit-name $directory)
     --property=LoadState --property=ActiveState --property=SubState
-    --property=Result --property=MainPID]
+    --property=Result --property=MainPID --property=MemoryPeak --property=MemoryMax]
   | lines | split column --number 2 '=' key value | transpose --header-row --as-record
 }
 
@@ -74,9 +76,11 @@ def build-coreutils [directory: string, graph: table, shell: string, cores: int,
 
 def main []: nothing -> nothing { help main }
 
-def "main start" [--state: path, --cores: int = 30, --jobs: int = 3, --through: string = ""]: nothing -> nothing {
-  if $cores < 1 or $jobs < 1 { error make {msg: "cores and jobs must be positive"} }
+def "main start" [--state: path, --cores: int = 30, --jobs: int = 3, --llvm-cores: int = 4, --memory: filesize = 48GiB, --through: string = "", --refresh]: nothing -> nothing {
+  if $cores < 1 or $jobs < 1 or $llvm_cores < 1 { error make {msg: "cores and jobs must be positive"} }
   if $jobs > $cores { error make {msg: "jobs must not exceed the total core budget"} }
+  if $llvm_cores > $cores { error make {msg: "LLVM workers must not exceed the total core budget"} }
+  if $memory <= 0B { error make {msg: "memory limit must be positive"} }
   if $through not-in ["" llvm seed] { error make {msg: "--through must be llvm or seed"} }
   let directory = (state-dir $state)
   mkdir $directory
@@ -94,21 +98,25 @@ def "main start" [--state: path, --cores: int = 30, --jobs: int = 3, --through: 
   let shell = (which nu | first | get path | path expand)
   let lock = (which flock | first | get path | path expand)
   let script = ($env.CURRENT_FILE | path expand)
+  let maximum = ($memory | into int)
+  let high = ($maximum * 4 // 5)
   capture systemd-run [--user --unit (unit-name $directory)
     --property=RemainAfterExit=yes --property=KillSignal=SIGINT --property=TimeoutStopSec=60
+    $"--property=MemoryHigh=($high)" $"--property=MemoryMax=($maximum)"
     $"--property=WorkingDirectory=($directory)"
     $"--property=StandardOutput=append:($directory)/build.log"
     --property=StandardError=inherit
     $lock --no-fork --nonblock ($directory | path join lock)
-    $shell --no-config-file $script work $directory ($cores | into string) ($jobs | into string) $through] | ignore
+    $shell --no-config-file $script work $directory ($cores | into string) ($jobs | into string) ($llvm_cores | into string) $through ($refresh | into string)] | ignore
   print $"Started (unit-name $directory) with ($cores) total cores and ($jobs) build jobs"
+  print $"Checked LLVM builds use ($llvm_cores) workers, service memory limit is ($memory)"
   print $"Log is ($directory)/build.log"
 }
 
-def "main work" [directory: path, cores: int, jobs: int, through: string]: nothing -> nothing {
+def "main work" [directory: path, cores: int, jobs: int, llvm_cores: int, through: string, refresh: bool]: nothing -> nothing {
   print $"Starting bootstrap (date now)"
-  try {
-    let plan = (prepare $directory $through)
+  let verified = (try {
+    let plan = (prepare $directory $through --refresh=$refresh)
     print "Compiled substitutes and remote builders are disabled"
     let metadata = (plan-dir $directory)
     let graph = ((open ($metadata | path join graph.json)).derivations | transpose path drv)
@@ -123,22 +131,44 @@ def "main work" [directory: path, cores: int, jobs: int, through: string]: nothi
     }
     build-coreutils $directory $graph $shell $cores $jobs
     let checkpoints = (if $metadata == $directory { [$plan | insert name LLVM] } else { $plan.checkpoints })
-    mut verified = {}
+    let checked_llvm = ($graph | where {|entry|
+      ($entry.drv.name =~ '^llvm-[0-9]+\.[0-9]+\.[0-9]+$'
+        and ($entry.drv.structuredAttrs?.doCheck? | default $entry.drv.env.doCheck?) in [true "1"])
+    })
+    mut results = []
     for stage in $checkpoints {
       print $"Starting checkpoint ($stage.name)"
+      let closure = (capture nix ([path-info --recursive $stage.derivation] ++ (store-args $directory)) | lines)
+      let valid = (capture nix ([path-info --all] ++ (store-args $directory)) | lines)
+      for compiler in ($checked_llvm | where {|entry|
+        ($"/nix/store/($entry.path)" in $closure
+          and not ($entry.drv.outputs | values | all {|output| $"/nix/store/($output.path)" in $valid }))
+      }) {
+        let derivation = $"/nix/store/($compiler.path)"
+        print $"Building ($compiler.drv.name) separately with ($llvm_cores) workers for compilation and tests"
+        build-stage $directory $derivation $cores_per_build $jobs --shell $shell --dependencies
+        build-stage $directory $derivation $llvm_cores 1 --shell $shell
+      }
       build-stage $directory $stage.derivation $cores_per_build $jobs --shell $shell --dependencies
       build-stage $directory $stage.derivation $cores 1 --shell $shell
-      $verified = (verify-stage $directory $stage)
+      $results = ($results | append (verify-stage $directory $stage))
     }
     mv --force ($directory | path join result.tmp.json) ($directory | path join result.json)
-    save-progress $directory ($verified | merge {phase: complete})
-    print $"Bootstrap complete through ($verified.name), comparison with the original build is ($verified.comparison)"
+    $results
   } catch {|failure|
     save-progress $directory {phase: failed, error: $failure.msg}
     let context = (failure-context $directory)
     if $context != "" { print $"First build failure\n($context)" }
     error make {msg: $failure.msg}
+  })
+  let latest = ($verified | last)
+  let mismatches = ($verified | where comparison == different | get name)
+  let phase = (if ($mismatches | is-empty) { "complete" } else { "verification_failed" })
+  save-progress $directory ($latest | merge {phase: $phase, mismatches: $mismatches})
+  if ($mismatches | is-not-empty) {
+    error make {msg: $"All bootstrap checkpoints built, but reproducibility verification failed for ($mismatches | str join ', '). Outputs are preserved, restarting will reuse them."}
   }
+  print $"Bootstrap complete through ($latest.name), comparison with the original build is ($latest.comparison)"
 }
 
 def "main status" [--state: path]: nothing -> nothing {
@@ -155,19 +185,23 @@ def "main status" [--state: path]: nothing -> nothing {
   if ($metadata | path join prepared.json | path exists) {
     let valid = (capture nix ([path-info --all] ++ (store-args $directory)) | lines)
     let graph = ((open ($metadata | path join graph.json)).derivations | values)
-    let done = ($graph | where {|drv|
-      $drv.outputs | transpose name spec | all {|output|
+    let pending = ($graph | where {|drv|
+      not ($drv.outputs | transpose name spec | all {|output|
         let path = ($output.spec.path? | default ($drv.env | get -o $output.name))
         $path != null and (if $path starts-with '/' { $path } else { $"/nix/store/($path)" }) in $valid
-      }
-    } | length)
-    $counts = {completed_derivations: $done, total_derivations: ($graph | length)}
+      })
+    })
+    $counts = {completed_derivations: (($graph | length) - ($pending | length)), total_derivations: ($graph | length)}
+    if $phase in [complete verification_failed] and ($pending | is-not-empty) {
+      $counts = ($counts | insert skipped_derivations ($pending | get name))
+    }
   }
   if ($metadata | path join checkpoints.json | path exists) {
     let verified = (open ($metadata | path join checkpoints.json) | select name comparison)
     $counts = ($counts | insert checkpoints $verified)
   }
-  $progress | merge $counts | merge {phase: $phase, service: $unit.ActiveState, process: $unit.SubState, state: $directory, log: ($directory | path join build.log)} | print
+  let reason = (if $unit.Result == "oom-kill" { "out of memory" } else { $unit.Result })
+  $progress | merge $counts | merge {phase: $phase, service: $unit.ActiveState, process: $unit.SubState, service_result: $reason, memory_peak_bytes: $unit.MemoryPeak, memory_limit_bytes: $unit.MemoryMax, state: $directory, log: ($directory | path join build.log)} | print
 }
 
 def "main log" [--state: path, --lines: int = 40]: nothing -> nothing {
@@ -180,6 +214,18 @@ def "main log" [--state: path, --lines: int = 40]: nothing -> nothing {
   } else if $unit.ActiveState != failed { ^tail --lines $lines $log }
   let finished = (unit-info $directory)
   if $finished.ActiveState == failed {
+    let progress = (if ($directory | path join progress.json | path exists) {
+      open ($directory | path join progress.json)
+    } else { {} })
+    if $progress.phase? == verification_failed {
+      print $"All bootstrap outputs were built. Reproducibility differs for ($progress.mismatches | str join ', ')."
+      print "The outputs and checkpoint comparisons are preserved. Restarting will not rebuild completed outputs."
+      return
+    }
+    if $finished.Result == "oom-kill" {
+      print "The kernel killed a bootstrap process for running out of memory"
+      print "Nix may report this as interrupted by the user"
+    }
     let context = (failure-context $directory)
     if $context == "" { ^tail --lines $lines $log } else { print $"First build failure\n($context)" }
     print "Bootstrap stopped, completed derivations are preserved. Run start to resume."

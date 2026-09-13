@@ -4,10 +4,13 @@ What is not built yet. design.md describes what is.
 
 ## Source bootstrap
 
-LLVM, the mrustc chain through Rust 1.98, static Nushell and the Rust jig wrapper now build
-without a downloaded Rust compiler. The assembled seed has no store references and runs after
-relocation. Rebuild every dependency in an empty store without compiled substitutes next.
-The dependency boundary and remaining work are in [bootstrap.md](bootstrap.md).
+The x86-64 source bootstrap has completed in an isolated store without compiled substitutes.
+All 13 checkpoints through LLVM, mrustc, Rust 1.98.1, Nushell, jig and seed assembly match the
+normal-store builds byte for byte. The assembled seed has no store references and runs after
+relocation. The complete source archive restores offline into an empty store, and the 49 early
+stages through kaem rebuild there with a matching kaem output. A full replay on another machine
+and regenerating release archives' generated files remain unverified.
+The dependency boundary and rebuild commands are in [bootstrap.md](bootstrap.md).
 
 ## Compilers still taken as upstream binaries
 
