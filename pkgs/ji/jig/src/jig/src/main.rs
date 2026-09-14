@@ -1,6 +1,8 @@
 mod attrs;
+mod autotools;
 mod cc;
 mod cli;
+mod cmake;
 mod debug;
 mod directory;
 mod driver;
@@ -17,12 +19,15 @@ mod image;
 mod implant;
 mod launchers;
 mod macho;
+mod make;
 mod manifest;
 mod nix_store;
 mod prepare;
+mod probe;
 mod process;
 mod rustc;
 mod store;
+mod system;
 mod tree;
 
 use std::{
@@ -55,6 +60,7 @@ use crate::{
    cli::{
       CacheOperation,
       Mode,
+      ProbeOperation,
       text_arguments,
    },
    directory::{
@@ -102,6 +108,36 @@ fn dispatch() -> Result<i32> {
    )
 }
 
+fn probe_mode(operation: ProbeOperation, socket: &Path) -> Result<i32> {
+   match operation {
+      ProbeOperation::Key {
+         kind,
+         scripts,
+         extra,
+         no_out,
+      } => {
+         let parsed = extra
+            .as_deref()
+            .map(serde_json::from_str::<serde_json::Value>)
+            .transpose()?;
+         let key = probe::key(&kind, &scripts, parsed.as_ref(), no_out, socket)?;
+         writeln!(io::stdout().lock(), "{key}")?;
+      },
+      ProbeOperation::Restore { key, file } => {
+         return Ok(i32::from(!probe::restore(&key, &file, socket)?));
+      },
+      ProbeOperation::Store { key, file } => probe::store(&key, &file, socket)?,
+      ProbeOperation::RestoreDir { key, dir } => {
+         return Ok(i32::from(!probe::restore_dir(&key, &dir, socket)?));
+      },
+      ProbeOperation::StoreDir { key, dir } => probe::store_dir(&key, &dir, socket)?,
+      ProbeOperation::CmakeInit { cache } => {
+         writeln!(io::stdout().lock(), "{}", probe::cmake_init(&cache)?)?;
+      },
+   }
+   Ok(0)
+}
+
 fn slot_mode(args: &[OsString], socket: &Path) -> Result<i32> {
    let Some((program, rest)) = args.split_first() else {
       bail!("jig slot requires a program")
@@ -141,6 +177,8 @@ fn run(mode: Mode, name: &str, args: &[OsString], socket: &Path) -> Result<i32> 
       } => tree::relativize(&prefix, &dest, macho)?,
       Mode::SplitDebug { output, debug } => debug::run(&output, &debug)?,
       Mode::Identify { roots } => identify::run(&roots, socket)?,
+      Mode::Probe { operation } => return probe_mode(operation, socket),
+      Mode::System { operation } => system::mode(operation, socket)?,
       Mode::Env { out, cache } => env::run(&out, cache)?,
       Mode::Implant {
          directory,

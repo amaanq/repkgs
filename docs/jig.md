@@ -35,6 +35,9 @@ arguments through untouched, every other mode parses them and fails on an unknow
 | `jig finish [--keep-tree] [--tests]`                                            | everything after the last build phase, up to the version check                      |
 | `jig implant <dir> --interp <ld.so> [--stub <blob>] <dependency…>`              | give upstream ELFs our interpreter, the relocation stub and a padded RUNPATH        |
 | `jig launchers <output> --launch <bin> --interp <ld.so> [--ldso] <dependency…>` | put launch records in front of bin/ scripts and wrapped binaries                    |
+| `jig identify <store path…>`                                                    | content identity per store path, memoized in jigd                                  |
+| `jig probe key\|restore\|store\|restore-dir\|store-dir\|cmake-init …`           | configure-time probe results shared through jigd                                   |
+| `jig system setup\|workdir\|phase <system> …`                                   | the make, autotools and cmake build systems                                        |
 
 **jigd** runs on the host, outside every sandbox, as `jigd <socket>`. It owns the compile
 cache, the file identity cache and the build slots. Nothing in a derivation names it, so
@@ -267,9 +270,10 @@ checking the content hash and refusing names with a directory component.
 
 ### 5.4 Header probe keys
 
-`jig header-key` serves `builder/header-cache.nu`, which patches autoconf's C compile test to ask
-jig before compiling. It only answers for `cc`, `gcc`, `cc-build` and `gcc-build` that resolve
-to the running jig, a store path compiler, a last argument of `conftest.c`, arguments from a
+`jig header-key` serves the `CONFIG_SITE` the autotools system writes, which patches autoconf's
+C compile test to ask jig before compiling. It only answers for `cc`, `gcc`, `cc-build` and
+`gcc-build` that resolve to the running jig, a store path compiler, a last argument of
+`conftest.c`, arguments from a
 fixed allow list, and none of `CCC_OVERRIDE_OPTIONS`, `CL`, `_CL_`, `GCC_EXEC_PREFIX`,
 `COMPILER_PATH`, `SDKROOT` set.
 
@@ -522,6 +526,16 @@ derivation's `result.json` instead.
 relative path, kind and file content (or link target), or over the file when the path is one.
 The result is stored under `identity/v3/<path>` in jigd, so each store path is hashed once.
 `builder/probe-cache.nu` keys configure caches on these instead of raw store paths.
+
+`probe key <kind> <scripts…> [--extra <json>] [--no-out]` prints `probe/v3/<kind>/<hash>` over
+the scripts, the identities of roots, source, patches and builder tree, spec, platform,
+environment, `CONFIG_SITE` files and `extra`, store hashes masked. `restore` and `store` move a
+file through jigd with the roots as `{rootN}`, `restore-dir` and `store-dir` a tree,
+`cmake-init` renders a `CMakeCache.txt`'s path-free `INTERNAL` entries as a `-C` script.
+
+`system setup|workdir|phase <name> [<verb>]` is `make`, `autotools` and `cmake`, as
+`builder/systems/*.nu` did them. autotools keeps `config.cache` and cmake its `INTERNAL`
+entries under the probe key of the same name.
 
 `env` reads the derivation's structured attrs from `NIX_ATTRS_JSON_FILE` and prints the
 environment every build step inherits, one JSON object for `load-env`, with `PATH` as a list.

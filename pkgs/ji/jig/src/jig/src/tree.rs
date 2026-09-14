@@ -190,7 +190,7 @@ fn fix(path: &Path, from: &[&[u8]], to: &[u8], undo: bool) -> io::Result<()> {
    Ok(())
 }
 
-fn replace_all(text: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
+pub fn replace_all(text: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
    let mut output = Vec::with_capacity(text.len());
    let mut rest = text;
    while let Some(position) = find(rest, from) {
@@ -224,7 +224,7 @@ fn replace_line_starts(text: &[u8], from: &[&[u8]], to: &[u8]) -> Vec<u8> {
    output
 }
 
-fn find(text: &[u8], needle: &[u8]) -> Option<usize> {
+pub fn find(text: &[u8], needle: &[u8]) -> Option<usize> {
    if needle.is_empty() || text.len() < needle.len() {
       return None;
    }

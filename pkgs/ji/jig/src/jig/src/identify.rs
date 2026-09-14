@@ -31,9 +31,15 @@ use crate::{
    },
 };
 
-// store paths never change, so an identity computed once is good for the life
-// of the daemon
 pub fn run(roots: &[String], socket: &Path) -> io::Result<()> {
+   let found = identities(roots, socket)?;
+   let mut stdout = io::stdout().lock();
+   serde_json::to_writer(&mut stdout, &found)?;
+   writeln!(stdout)?;
+   Ok(())
+}
+
+pub fn identities(roots: &[String], socket: &Path) -> io::Result<Map<String, Value>> {
    let mut client = Client::connect(socket).ok();
    let mut found = Map::new();
    for root in roots {
@@ -54,10 +60,7 @@ pub fn run(roots: &[String], socket: &Path) -> io::Result<()> {
       };
       found.insert(root.clone(), Value::String(identity));
    }
-   let mut stdout = io::stdout().lock();
-   serde_json::to_writer(&mut stdout, &found)?;
-   writeln!(stdout)?;
-   Ok(())
+   Ok(found)
 }
 
 fn identity(root: &Path) -> io::Result<String> {
@@ -101,7 +104,7 @@ fn masked(bytes: Vec<u8>) -> Vec<u8> {
    masked_hashes(image.bytes)
 }
 
-fn masked_hashes(mut bytes: Vec<u8>) -> Vec<u8> {
+pub fn masked_hashes(mut bytes: Vec<u8>) -> Vec<u8> {
    let mut at = 0;
    while let Some(offset) = bytes[at..].iter().position(|byte| *byte == b'/') {
       let start = at + offset + 1;

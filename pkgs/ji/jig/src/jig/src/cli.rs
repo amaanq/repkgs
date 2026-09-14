@@ -106,6 +106,16 @@ pub enum Mode {
    },
    /// content identity of each store path, memoized in jigd.
    Identify { roots: Vec<String> },
+   /// configure-time probe results shared through jigd.
+   Probe {
+      #[pound(subcommand)]
+      operation: ProbeOperation,
+   },
+   /// the build systems jig implements, make, autotools and cmake.
+   System {
+      #[pound(subcommand)]
+      operation: SystemOperation,
+   },
    /// the build environment from the structured attrs, as JSON for load-env.
    Env {
       out:   PathBuf,
@@ -191,4 +201,38 @@ pub fn text_arguments(args: &[OsString]) -> Result<Vec<String>> {
             .ok_or_else(|| eyre!("argument {arg:?} is not UTF-8"))
       })
       .collect()
+}
+
+#[derive(Parse)]
+pub enum ProbeOperation {
+   /// the key for a kind of probe over its scripts and this build's inputs.
+   Key {
+      kind:    String,
+      scripts: Vec<String>,
+      #[pound(long)]
+      extra:   Option<String>,
+      #[pound(long)]
+      no_out:  bool,
+   },
+   /// fetch a stored file, exit 1 when there is none.
+   Restore { key: String, file: PathBuf },
+   /// store a file for the next build with the same key.
+   Store { key: String, file: PathBuf },
+   /// fetch a stored directory tree, exit 1 when there is none.
+   RestoreDir { key: String, dir: PathBuf },
+   /// store a directory tree.
+   StoreDir { key: String, dir: PathBuf },
+   /// a CMakeCache.txt's probe results as a -C init script.
+   CmakeInit { cache: PathBuf },
+}
+
+#[derive(Parse)]
+pub enum SystemOperation {
+   /// the environment for the phases, as JSON, after creating the working
+   /// directory.
+   Setup { system: String },
+   /// the working directory.
+   Workdir { system: String },
+   /// one phase, in the working directory.
+   Phase { system: String, verb: String },
 }

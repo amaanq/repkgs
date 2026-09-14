@@ -12,6 +12,7 @@ use std::{
 use serde::{
    Deserialize,
    Serialize,
+   de::DeserializeOwned,
 };
 use serde_json::{
    Map,
@@ -41,6 +42,8 @@ pub struct Attrs {
    pub package:            String,
    #[serde(default)]
    pub platform:           Value,
+   #[serde(rename = "probeInputs", default)]
+   pub probe_inputs:       Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -105,19 +108,22 @@ pub struct Spec {
 #[derive(Deserialize)]
 pub struct Tests {
    #[serde(default = "enabled")]
-   pub run:     bool,
+   pub run:      bool,
+   #[serde(default = "enabled")]
+   pub parallel: bool,
    #[serde(default)]
-   pub version: Value,
+   pub version:  Value,
    #[serde(default)]
-   pub dlopen:  Vec<String>,
+   pub dlopen:   Vec<String>,
 }
 
 impl Default for Tests {
    fn default() -> Self {
       Self {
-         run:     true,
-         version: Value::Null,
-         dlopen:  Vec::new(),
+         run:      true,
+         parallel: true,
+         version:  Value::Null,
+         dlopen:   Vec::new(),
       }
    }
 }
@@ -177,6 +183,23 @@ impl Ctx {
       Ok(serde_json::from_str(&read_to_string(
          Path::new(top).join("ctx.json"),
       )?)?)
+   }
+
+   pub fn options<Options>(&self, system: &str) -> io::Result<Options>
+   where
+      Options: DeserializeOwned,
+   {
+      let found = self
+         .spec
+         .get(system)
+         .cloned()
+         .ok_or_else(|| io::Error::other(format!("spec has no {system} options")))?;
+      Ok(serde_json::from_value(found)?)
+   }
+
+   pub fn test_jobs(&self) -> io::Result<usize> {
+      let spec: Spec = serde_json::from_value(self.spec.clone())?;
+      Ok(if spec.tests.parallel { self.njobs } else { 1 })
    }
 }
 
