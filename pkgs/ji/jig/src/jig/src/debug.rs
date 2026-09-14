@@ -11,10 +11,6 @@ use std::{
       PathBuf,
    },
    process::Command,
-   thread::{
-      available_parallelism,
-      scope,
-   },
 };
 
 use crate::{
@@ -28,6 +24,7 @@ use crate::{
    tree::{
       Entry,
       note,
+      parallel,
       walk,
       writable,
    },
@@ -90,7 +87,7 @@ pub fn run(output: &Path, debug: &Path) -> io::Result<()> {
          ),
       );
    }
-   let mut groups: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+   let mut groups = BTreeMap::<&str, Vec<&str>>::new();
    for elf in elfs.iter().filter(|elf| elf.ours && !elf.split) {
       let Some(id) = elf.id.as_deref() else {
          return Err(io::Error::other(format!(
@@ -104,13 +101,13 @@ pub fn run(output: &Path, debug: &Path) -> io::Result<()> {
    if groups.is_empty() {
       return Ok(());
    }
-   let grouped: Vec<(&str, Vec<&str>)> = groups.into_iter().collect();
+   let grouped = groups.into_iter().collect::<Vec<(&str, Vec<&str>)>>();
    parallel(&grouped, |group| split(debug, group.0, &group.1))?;
-   let size: u64 = walk(debug)?
+   let size = walk(debug)?
       .iter()
       .filter(|entry| entry.kind == 'f')
       .map(|entry| entry.size)
-      .sum();
+      .sum::<u64>();
    note(
       "debug",
       &format!("{} files, {}", grouped.len(), human(size)),
@@ -210,31 +207,6 @@ fn objcopy(args: &[&str], output: Option<&PathBuf>) -> io::Result<()> {
       )));
    }
    Ok(())
-}
-
-fn parallel<Item, Out, Work>(items: &[Item], work: Work) -> io::Result<Vec<Out>>
-where
-   Item: Sync,
-   Out: Send,
-   Work: Fn(&Item) -> io::Result<Out> + Sync,
-{
-   let workers = available_parallelism().map_or(4, |count| count.get().min(16));
-   let chunk = items.len().div_ceil(workers).max(1);
-   scope(|threads| {
-      let handles = items
-         .chunks(chunk)
-         .map(|batch| threads.spawn(|| batch.iter().map(&work).collect::<io::Result<Vec<Out>>>()))
-         .collect::<Vec<_>>();
-      let mut results = Vec::with_capacity(items.len());
-      for handle in handles {
-         results.extend(
-            handle
-               .join()
-               .map_err(|_panic| io::Error::other("debug worker panicked"))??,
-         );
-      }
-      Ok(results)
-   })
 }
 
 fn has_extension(rel: &str, extensions: &[&str]) -> bool {

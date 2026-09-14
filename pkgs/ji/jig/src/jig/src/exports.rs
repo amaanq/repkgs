@@ -171,6 +171,25 @@ pub fn closure(roots: &[String]) -> io::Result<Vec<Exports>> {
    Ok(done)
 }
 
+pub fn lib_dirs(interp: &Path, roots: &[String]) -> io::Result<Vec<String>> {
+   let mut dirs = vec![
+      interp
+         .parent()
+         .unwrap_or(interp)
+         .to_string_lossy()
+         .into_owned(),
+   ];
+   for entry in closure(roots)? {
+      dirs.extend(
+         entry
+            .lib_dirs
+            .iter()
+            .map(|rel| format!("{}/{rel}", entry.root)),
+      );
+   }
+   Ok(dirs)
+}
+
 pub fn print(roots: &[String], transitive: bool) -> io::Result<()> {
    let entries = if transitive {
       closure(roots)?

@@ -17,6 +17,7 @@ use serde::Deserialize;
 
 use crate::store::is_store_path;
 
+pub const RUNPATH_SLACK: usize = 48;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum BinaryFormat {
    Elf,
@@ -323,7 +324,7 @@ impl Driver {
          path.push_str(directory);
          path.push_str("/.:");
       }
-      let slack = entries.max(1) * 48 + libraries.len() * 80;
+      let slack = entries.max(1) * RUNPATH_SLACK + libraries.len() * 80;
       path.push('/');
       path.push_str(&"_".repeat(slack - 1));
       output.extend([

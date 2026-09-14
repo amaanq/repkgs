@@ -152,6 +152,50 @@ pub fn segments(image: &Image) -> io::Result<Vec<Segment>> {
    Ok(segments)
 }
 
+pub fn has_segment(segments: &[Segment], kind: u32) -> bool {
+   segments.iter().any(|segment| segment.kind == kind)
+}
+
+fn file_offset(segments: &[Segment], address: u64) -> Option<usize> {
+   segments
+      .iter()
+      .filter(|segment| segment.kind == 1)
+      .find(|segment| {
+         address >= segment.address
+            && address - segment.address < u64::try_from(segment.size).unwrap_or(u64::MAX)
+      })
+      .and_then(|segment| {
+         segment
+            .offset
+            .checked_add(usize::try_from(address - segment.address).ok()?)
+      })
+}
+
+pub fn runpath(image: &Image, segments: &[Segment]) -> io::Result<Option<String>> {
+   let Some(dynamic) = segments.iter().find(|segment| segment.kind == 2) else {
+      return Ok(None);
+   };
+   let mut strings = None;
+   let mut rpath = None;
+   let mut runpath = None;
+   for offset in (dynamic.offset..dynamic.offset + dynamic.size).step_by(16) {
+      match image.quad(offset)? {
+         0 => break,
+         5 => strings = file_offset(segments, image.quad(offset + 8)?),
+         15 => rpath = Some(image.size(offset + 8)?),
+         29 => runpath = Some(image.size(offset + 8)?),
+         _ => {},
+      }
+   }
+   let (Some(table), Some(entry)) = (strings, runpath.or(rpath)) else {
+      return Ok(None);
+   };
+   let start = table
+      .checked_add(entry)
+      .ok_or_else(|| io::Error::other("ELF runpath offset overflows"))?;
+   image.string(start).map(Some)
+}
+
 pub fn relative_from(directory: &Path, target: &Path) -> PathBuf {
    let base = normalize(directory);
    let destination = normalize(target);

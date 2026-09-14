@@ -90,6 +90,28 @@ pub enum Mode {
    },
    /// move the DWARF of what jig linked into the debug output, by build-id.
    SplitDebug { output: PathBuf, debug: PathBuf },
+   /// give upstream ELFs our interpreter, the relocation stub and a padded
+   /// RUNPATH over the dependencies.
+   Implant {
+      directory: PathBuf,
+      #[pound(long)]
+      interp:    PathBuf,
+      #[pound(long)]
+      stub:      Option<PathBuf>,
+      deps:      Vec<String>,
+   },
+   /// put a launch record and a symlink to launch in front of every bin/
+   /// script and wrapped binary.
+   Launchers {
+      output: PathBuf,
+      #[pound(long)]
+      launch: PathBuf,
+      #[pound(long)]
+      interp: PathBuf,
+      #[pound(long)]
+      ldso:   bool,
+      deps:   Vec<String>,
+   },
 }
 
 impl Mode {

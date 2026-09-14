@@ -30,6 +30,8 @@ arguments through untouched, every other mode parses them and fails on an unknow
 | `jig prune <output>`                                                       | drop docs and junk, unpack man pages, print the inventory as JSON |
 | `jig relativize <prefix> <store path>`                                     | make .pc files, foo-config scripts and links relative, fail on a leaked prefix |
 | `jig split-debug <output> <debug output>`                                  | move the DWARF of every ELF jig linked into the debug output, by build-id |
+| `jig implant <dir> --interp <ld.so> [--stub <blob>] <dependency…>`         | give upstream ELFs our interpreter, the relocation stub and a padded RUNPATH |
+| `jig launchers <output> --launch <bin> --interp <ld.so> [--ldso] <dependency…>` | put launch records in front of bin/ scripts and wrapped binaries |
 
 **jigd** runs on the host, outside every sandbox, as `jigd <socket>`. It owns the compile
 cache, the file identity cache and the build slots. Nothing in a derivation names it, so
@@ -537,6 +539,36 @@ already split is left alone and counted in a `debug:` note. The rest is grouped 
 `<debug>/lib/debug/.build-id/<id[..2]>/<id[2..]>.debug` and every member stripped with
 `--strip-debug --add-gnu-debuglink=<that file>`, groups in parallel. A final `debug:` note gives
 the number of build-ids and the apparent size of the debug output.
+
+`implant` serves `prebuilt = true` packages. Every regular 64-bit ELF under `bin/`, `lib/` and
+`libexec/` of the directory that has a `PT_DYNAMIC` segment gets `formatelf --set-rpath` with
+the interpreter's directory, the `lib` dirs of the dependency closure (§ `exports`) and the
+file's own `DT_RUNPATH` (or `DT_RPATH`) entries, in that order, each once, keeping only entries
+that start with `/` or `$` and whose second character is not `_` so an earlier pass's padding
+drops out. The path ends in `:/` and `entries × 48 - 1` underscores, the same slack the driver's
+links get (§ 8), so `reloc-fixup` can rewrite it in place. Files with a `PT_INTERP` also get
+`--set-interpreter <dir>/./×12/<ld.so>` and, when `--stub` is given, `--set-entry-stub`. The
+stub only works after `reloc-fixup`, so callers pass it for `$out` and not for an unpacked
+tree whose binaries run during the install. Each `formatelf` line is echoed with a `+ ` prefix,
+and one `implant:` note names each rewritten file, sorted.
+
+`launchers` walks `bin/` of the output in name order, skipping dotfiles, dangling links, entries
+that already have a `.<name>.launch` record and symlinks whose target sits in `bin/` (aliases
+like `python3 -> python3.14`). The env part is the same for every record, PATH prepended with
+each direct dependency's `bin/` and each dependency's `exports.env` as `default`s, values with
+the output replaced by `{root}` and the store by `{store}`. A file starting with `#!` is a
+script, its first line split on whitespace with a leading `env` dropped. `/bin/sh` needs no
+launcher unless there is env to inject. An interpreter under the store that neither the output
+nor a direct dependency owns is a leaked build tool, the line is rewritten to
+`#!/usr/bin/env <name>` with a `script:` note and the file left alone. A bare name is looked up
+as `bin/<name>` in the output and its direct dependencies, never on the build PATH, and a line
+into the output itself is rewritten to the `env` form because it would dangle. A 64-bit ELF with
+a `PT_INTERP` under `--ldso` runs as `<ld.so> --argv0 {self} --library-path <interp dir and
+closure lib dirs> {root}/bin/.<name>`, any other ELF gets a record only when there is env to
+inject, with `argv0` set to `{argv0}`. The file moves to `bin/.<name>`, the record
+`{ env, program, args | argv0 }` is written to `bin/.<name>.launch`, `bin/<name>` becomes a
+symlink to the launch binary and a `launcher:` note says what it runs. A symlinked script is
+run by its resolved path so its `$0` logic holds.
 
 ## 12. nix-store mode
 

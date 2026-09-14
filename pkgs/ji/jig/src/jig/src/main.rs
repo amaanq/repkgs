@@ -10,6 +10,8 @@ mod fixup;
 mod gocache;
 mod header;
 mod image;
+mod implant;
+mod launchers;
 mod macho;
 mod manifest;
 mod nix_store;
@@ -120,6 +122,19 @@ fn dispatch() -> Result<i32> {
          macho,
       } => tree::relativize(&prefix, &dest, macho)?,
       Mode::SplitDebug { output, debug } => debug::run(&output, &debug)?,
+      Mode::Implant {
+         directory,
+         interp,
+         stub,
+         deps,
+      } => implant::run(&directory, &interp, stub.as_deref(), &deps)?,
+      Mode::Launchers {
+         output,
+         launch,
+         interp,
+         ldso,
+         deps,
+      } => launchers::run(&output, &launch, &interp, ldso, &deps)?,
    }
    Ok(0)
 }

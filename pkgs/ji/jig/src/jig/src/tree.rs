@@ -143,21 +143,32 @@ pub fn shebangs(directory: &Path, undo: bool) -> io::Result<()> {
          undo || metadata(path).is_ok_and(|meta| meta.permissions().mode() & 0o100 != 0)
       })
       .collect();
+   parallel(&candidates, |path| fix(path, from, to, undo))?;
+   Ok(())
+}
+
+pub fn parallel<Item, Out, Work>(items: &[Item], work: Work) -> io::Result<Vec<Out>>
+where
+   Item: Sync,
+   Out: Send,
+   Work: Fn(&Item) -> io::Result<Out> + Sync,
+{
    let workers = available_parallelism().map_or(4, |count| count.get().min(16));
-   let chunk = candidates.len().div_ceil(workers).max(1);
+   let chunk = items.len().div_ceil(workers).max(1);
    scope(|threads| {
-      let mut handles = Vec::new();
-      for paths in candidates.chunks(chunk) {
-         handles.push(
-            threads.spawn(move || paths.iter().try_for_each(|path| fix(path, from, to, undo))),
+      let handles: Vec<_> = items
+         .chunks(chunk)
+         .map(|batch| threads.spawn(|| batch.iter().map(&work).collect::<io::Result<Vec<Out>>>()))
+         .collect();
+      let mut results = Vec::with_capacity(items.len());
+      for handle in handles {
+         results.extend(
+            handle
+               .join()
+               .map_err(|_panic| io::Error::other("tree worker panicked"))??,
          );
       }
-      for handle in handles {
-         handle
-            .join()
-            .map_err(|_panic| io::Error::other("shebang worker panicked"))??;
-      }
-      Ok(())
+      Ok(results)
    })
 }
 
