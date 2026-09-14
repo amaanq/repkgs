@@ -19,8 +19,20 @@ export def seed-arg [seed: any]: nothing -> list<string> {
   if $seed == null { [] } else { [--argstr seed (seed-path $seed)] }
 }
 
-export def set-expr [p, seed: any]: nothing -> string {
-  let fields = ({platform: $p, seed: (seed-path $seed)} | transpose name value | where value != null
+export def rust-toolchain-path [toolchain: any]: nothing -> any {
+  if $toolchain == null { return null }
+  let path = ($toolchain | path expand --strict)
+  if not ($path | path join bin/rustc | path exists) { fail $"($path) has no bin/rustc" }
+  if not ($path | path join bin/cargo | path exists) { fail $"($path) has no bin/cargo" }
+  $path
+}
+
+export def rust-toolchain-arg [toolchain: any]: nothing -> list<string> {
+  if $toolchain == null { [] } else { [--argstr rustToolchain (rust-toolchain-path $toolchain)] }
+}
+
+export def set-expr [p, seed: any, toolchain: any]: nothing -> string {
+  let fields = ({platform: $p, seed: (seed-path $seed), rustToolchain: (rust-toolchain-path $toolchain)} | transpose name value | where value != null
     | each {|field| $"($field.name) = ($field.value | to json -r | str replace -a '${' '\${');" })
   $"\(import (root) { ($fields | str join ' ') }\)"
 }
@@ -40,9 +52,9 @@ export def eval [expr: string]: nothing -> any {
 
 # the package <attr> of the set for platform p, as an expression. `s.${"7zip"}` parses where
 # s.7zip does not, and a typo names its neighbours instead of nix's attribute trace
-export def pkg-expr [attr: string, p, seed: any]: nothing -> string {
+export def pkg-expr [attr: string, p, seed: any, toolchain: any]: nothing -> string {
   let n = ($attr | to json)
-  $"\(let s = (set-expr $p $seed); n = ($n); in s.${n} or \(builtins.throw \"no package ${n}, near: ${toString \(builtins.filter \(a: builtins.substring 0 2 a == builtins.substring 0 2 n\) \(builtins.attrNames s\)\)}\"\)\)"
+  $"\(let s = (set-expr $p $seed $toolchain); n = ($n); in s.${n} or \(builtins.throw \"no package ${n}, near: ${toString \(builtins.filter \(a: builtins.substring 0 2 a == builtins.substring 0 2 n\) \(builtins.attrNames s\)\)}\"\)\)"
 }
 
 # a socket file something is listening on (a crashed jigd leaves the file behind)
@@ -68,5 +80,5 @@ export def cache-args []: nothing -> list<string> {
   }
 }
 
-export def drv [attr: string, p, seed: any]: nothing -> string { eval $"(pkg-expr $attr $p $seed).drvPath" }
+export def drv [attr: string, p, seed: any, toolchain: any]: nothing -> string { eval $"(pkg-expr $attr $p $seed $toolchain).drvPath" }
 

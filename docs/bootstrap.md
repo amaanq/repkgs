@@ -93,6 +93,22 @@ nu tools/repkgs/repkgs build --seed ./result-bootstrap-seed sed diffutils
 nu tools/repkgs/repkgs log --seed ./result-bootstrap-seed sed
 ```
 
+Select a completed Rust toolchain with `--rust-toolchain`. It supplies Rust and Cargo to
+package builds, including tools such as jigd and formatelf that otherwise use the binary
+bootstrap compiler. The option works with the same package commands as `--seed`, and both
+options are accepted by `cache start` when it builds jigd.
+
+```console
+nix build .#bootstrap-rust --out-link result-bootstrap-rust --cores 30 --max-jobs 1 -L
+nu tools/repkgs/repkgs build --seed ./result-bootstrap-seed --rust-toolchain ./result-bootstrap-rust ripgrep
+nu tools/repkgs/repkgs repro --seed ./result-bootstrap-seed --rust-toolchain ./result-bootstrap-rust ripgrep
+```
+
+The Nix package-set argument is `rustToolchain`, pointing to an existing store path.
+The toolchain must contain `bin/rustc`, `bin/cargo` and the build machine's Rust
+standard library. Selection currently supports native builds only. Building the `rust`
+package itself still runs its source recipe.
+
 The first package build creates the target libc, runtimes and configured compiler from that
 seed. It reuses the completed Rust bootstrap. Seed assembly takes its Toybox command links
 from the configured target package, so commands enabled there are available when building

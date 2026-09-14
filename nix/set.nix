@@ -4,6 +4,7 @@
   system ? builtins.currentSystem,
   platform ? system,
   seed ? null,
+  rustToolchain ? null,
   overrides ? { },
   packages ? { },
   features ? { },
@@ -41,12 +42,27 @@ let
   toolchain = stage.cc;
   launch = stage.launch or null;
   dlaudit = stage.dlaudit or null;
-  buildPkgs =
+  rustPath =
+    if builtins.isString rustToolchain || builtins.isPath rustToolchain then
+      builtins.storePath rustToolchain
+    else
+      throw "rustToolchain must be an existing store path";
+  rust = {
+    pname = "rust";
+    outPath = toString rustPath;
+  };
+  missingRust = builtins.filter (path: !builtins.pathExists "${rustPath}/${path}") [
+    "bin/rustc"
+    "bin/cargo"
+    "lib/rustlib/${plat.buildRustTriple}/lib"
+  ];
+  buildPkgsBase =
     if plat.cross then
       (import ./set.nix {
         platform = system;
         inherit
           seed
+          rustToolchain
           system
           overrides
           packages
@@ -54,6 +70,17 @@ let
       }).pkgs
     else
       self;
+  buildPkgs =
+    buildPkgsBase
+    // (
+      if rustToolchain == null then
+        { }
+      else
+        {
+          inherit rust;
+          rust-bootstrap = rust;
+        }
+    );
 
   # build systems that spawn `sh` by name get the seed's dash
   lib = import ./lib.nix;
@@ -243,7 +270,11 @@ in
 {
   # attrNames alone would not force the platform: `list --for typo` showed this machine's set
   pkgs = builtins.seq stage (
-    if unknownOverrides != [ ] then
+    if rustToolchain != null && plat.cross then
+      throw "rustToolchain currently supports native builds only, omit it for ${platform}"
+    else if rustToolchain != null && missingRust != [ ] then
+      throw "rustToolchain ${toString rustPath} is missing ${toString missingRust}"
+    else if unknownOverrides != [ ] then
       throw "overrides: no packages named ${toString unknownOverrides}"
     else
       self

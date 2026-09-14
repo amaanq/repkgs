@@ -9,6 +9,7 @@
   system ? builtins.currentSystem,
   platform ? system,
   seed ? null,
+  rustToolchain ? null,
   # one tree or a list of them: { zlib.autotools.flags.append = [ … ]; } (nix/overrides.nix)
   overrides ? { },
   # out-of-tree packages: name -> directory with package.nix (+ sources.toml), called like
@@ -22,6 +23,7 @@
     system
     platform
     seed
+    rustToolchain
     overrides
     packages
     features

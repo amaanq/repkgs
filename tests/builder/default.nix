@@ -5,6 +5,8 @@
 {
   system ? builtins.currentSystem,
   platform ? system,
+  seed ? null,
+  rustToolchain ? null,
 }:
 let
   inherit (builtins)
@@ -24,7 +26,12 @@ let
   isPackage = n: pathExists (tests.${n} + "/package.nix");
   # as test-<name>: a bare `go` would replace the set's go, which the go build system runs
   set = import ../../nix/set.nix {
-    inherit system platform;
+    inherit
+      system
+      platform
+      seed
+      rustToolchain
+      ;
     packages = listToAttrs (
       map (n: {
         name = "test-${n}";
@@ -32,7 +39,7 @@ let
       }) (filter isPackage (attrNames tests))
     );
   };
-  seed = set.bootstrap.seed;
+  seedPath = set.bootstrap.seed;
 in
 mapAttrs (
   name: dir:
@@ -43,9 +50,9 @@ mapAttrs (
       __contentAddressed = true;
       outputHashMode = "recursive";
       outputHashAlgo = "sha256";
-      PATH = "${seed}/bin";
+      PATH = "${seedPath}/bin";
       fixtures = dir;
-      builder = "${seed}/bin/nu";
+      builder = "${seedPath}/bin/nu";
       # nu separates include dirs with \x1e
       args = [
         "--no-config-file"

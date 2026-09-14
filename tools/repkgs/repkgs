@@ -10,10 +10,11 @@ def main []: nothing -> nothing { help main }
 def "main build" [
   --for: string # platform, e.g. aarch64-linux, x86_64-windows
   --seed: path
+  --rust-toolchain: path
   ...attrs: string # package attributes (jq, jq.tests)
 ]: nothing -> nothing {
   if ($attrs | is-empty) { fail "repkgs build <attr>…, or nix-build -A ci for the whole set" }
-  ^nix-build (root) ...$XP --no-out-link --log-format bar-with-logs ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...($attrs | each {|a| [-A $a] } | flatten)
+  ^nix-build (root) ...$XP --no-out-link --log-format bar-with-logs ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain) ...($attrs | each {|a| [-A $a] } | flatten)
 }
 
 # build <pkg>.tests (tests.separate packages), or the package itself when it tests in-build.
@@ -21,23 +22,25 @@ def "main build" [
 def "main test" [
   --for: string # platform
   --seed: path
+  --rust-toolchain: path
   ...attrs: string
 ]: nothing -> nothing {
   if ($attrs | is-empty) {
-    ^nix-build $"(root)/tests/builder" ...$XP --no-out-link --log-format bar-with-logs ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed)
+    ^nix-build $"(root)/tests/builder" ...$XP --no-out-link --log-format bar-with-logs ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain)
     return
   }
-  let targets = ($attrs | each {|a| if (eval $"(pkg-expr $a $for $seed) ? tests") { $"($a).tests" } else { $a } })
-  main build --for=$for --seed=$seed ...$targets
+  let targets = ($attrs | each {|a| if (eval $"(pkg-expr $a $for $seed $rust_toolchain) ? tests") { $"($a).tests" } else { $a } })
+  main build --for=$for --seed=$seed --rust-toolchain=$rust_toolchain ...$targets
 }
 
 # the build log of a package's derivation
 def "main log" [
   --for: string # platform
   --seed: path
+  --rust-toolchain: path
   attr: string
 ]: nothing -> nothing {
-  let d = (drv $attr $for $seed)
+  let d = (drv $attr $for $seed $rust_toolchain)
   let r = (^nix ...$XP log $d | complete)
   if $r.exit_code != 0 { fail $"no local log for ($d): built elsewhere or substituted, `repkgs build` it here first" }
   print $r.stdout
@@ -47,10 +50,11 @@ def "main log" [
 def "main list" [
   --for: string # platform
   --seed: path
+  --rust-toolchain: path
   --unsupported # show what `supported` filters out, with the reason
   --json (-j) # machine-readable
 ]: nothing -> any {
-  let set = (set-expr $for $seed)
+  let set = (set-expr $for $seed $rust_toolchain)
   let rows = (if $unsupported {
     eval $"let s = ($set); in map \(n: { name = n; reason = s.${n}.unsupportedReason; }\) \(builtins.filter \(n: !s.${n}.supported\) \(builtins.attrNames s\)\)"
   } else {
@@ -63,10 +67,11 @@ def "main list" [
 def "main info" [
   --for: string # platform
   --seed: path
+  --rust-toolchain: path
   --json (-j) # machine-readable: the full record
   attr: string
 ]: nothing -> any {
-  let p = (eval $"let p = (pkg-expr $attr $for $seed); in { name = p.pname; version = p.version or null; platform = p.platform; supported = p.supported; reason = p.unsupportedReason; uses = p.args.uses or []; features = builtins.mapAttrs \(n: d: d // { value = p.features.${n}; }\) \(p.args.features or {}\); }")
+  let p = (eval $"let p = (pkg-expr $attr $for $seed $rust_toolchain); in { name = p.pname; version = p.version or null; platform = p.platform; supported = p.supported; reason = p.unsupportedReason; uses = p.args.uses or []; features = builtins.mapAttrs \(n: d: d // { value = p.features.${n}; }\) \(p.args.features or {}\); }")
   if $json { return ($p | to json) }
   print ({name: $p.name, version: $p.version, platform: $p.platform, uses: ($p.uses | str join " ")}
     | merge (if $p.supported { {} } else { {unsupported: $p.reason} }))
@@ -123,11 +128,12 @@ def --wrapped "main update" [...args: string]: nothing -> nothing {
 def "main repro" [
   --for: string # platform
   --seed: path
+  --rust-toolchain: path
   ...attrs: string # default: zlib xz pcre2 jq sqlite ncurses
 ]: nothing -> table {
   let attrs = (if ($attrs | is-empty) { [zlib xz pcre2 jq sqlite ncurses] } else { $attrs })
   $attrs | each {|a|
-    let build = (^nix-build (root) ...$XP -A $a --no-out-link ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) | complete)
+    let build = (^nix-build (root) ...$XP -A $a --no-out-link ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain) | complete)
     if $build.exit_code != 0 { return {attr: $a, status: build-failed} }
     let resolved = (^nix-store --query --deriver ($build.stdout | str trim) | str trim)
     # --check compiles for real: no cache
@@ -141,6 +147,8 @@ def "main cache" [
   action: string # start, stop or status
   --size: int = 50 # GiB before whole packs are evicted (start)
   --daemon: path
+  --seed: path
+  --rust-toolchain: path
 ]: nothing -> nothing {
   let dir = (jigd-dir)
   let sock = $"($dir)/socket"
@@ -150,7 +158,7 @@ def "main cache" [
       if $size < 0 { fail "cache size must be nonnegative" }
       if (is-socket $sock) { print -e $"jigd already serving ($sock)"; return }
       let executable = (if $daemon == null {
-        let build = (^nix-build (root) ...$XP -A jigd --no-out-link err> /dev/stderr | complete)
+        let build = (^nix-build (root) ...$XP -A jigd --no-out-link ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain) err> /dev/stderr | complete)
         if $build.exit_code != 0 { fail "could not build jigd" }
         $build.stdout | str trim | path join bin jigd
       } else { $daemon | path expand --strict })
