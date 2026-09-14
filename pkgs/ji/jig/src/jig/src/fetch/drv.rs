@@ -297,7 +297,7 @@ where
    };
    let mut references = sources;
    references.extend(inputs.iter().cloned());
-   let drv = store.add_derivation(&drv_name, &references, &derivation)?;
+   let drv = store.add_derivation(&format!("{drv_name}.drv"), &references, &derivation)?;
    say(&format!(
       "{name}: second stage after {} inputs -> {drv}",
       inputs.len()
