@@ -26,6 +26,7 @@ use crate::{
          self,
          Tool,
       },
+      bundler,
       cabal,
       cargo,
       cmake,
@@ -42,6 +43,7 @@ use crate::{
          self,
          Manager,
       },
+      pyapp,
       python,
    },
 };
@@ -63,6 +65,8 @@ pub enum System {
    Mix,
    Luarocks,
    Deno,
+   Pyapp,
+   Bundler,
 }
 
 impl FromStr for System {
@@ -86,6 +90,8 @@ impl FromStr for System {
          "mix" => Ok(Self::Mix),
          "luarocks" => Ok(Self::Luarocks),
          "deno" => Ok(Self::Deno),
+         "pyapp" => Ok(Self::Pyapp),
+         "bundler" => Ok(Self::Bundler),
          _ => {
             Err(io::Error::other(format!(
                "{name} is not a build system jig knows"
@@ -129,6 +135,8 @@ fn setup(name: &str, socket: &Path) -> io::Result<()> {
       System::Rebar3 => text(beam::setup(Tool::Rebar3, &ctx, &Attrs::load()?, socket)?),
       System::Mix => text(beam::setup(Tool::Mix, &ctx, &Attrs::load()?, socket)?),
       System::Deno => text(deno::setup(&ctx)?),
+      System::Pyapp => text(pyapp::setup(&ctx, &Attrs::load()?)?),
+      System::Bundler => text(bundler::setup(&ctx, &Attrs::load()?)?),
    };
    let mut stdout = io::stdout().lock();
    serde_json::to_writer(&mut stdout, &env)?;
@@ -160,6 +168,8 @@ fn workdir_of(ctx: &Ctx, name: &str) -> io::Result<PathBuf> {
       System::Mix => beam::workdir(Tool::Mix, ctx),
       System::Luarocks => luarocks::workdir(ctx),
       System::Deno => deno::workdir(ctx),
+      System::Pyapp => pyapp::workdir(ctx),
+      System::Bundler => bundler::workdir(ctx),
    }
 }
 
@@ -183,5 +193,7 @@ fn phase(name: &str, verb: &str, socket: &Path) -> io::Result<()> {
       System::Mix => beam::phase(Tool::Mix, &ctx, verb, socket),
       System::Luarocks => luarocks::phase(&ctx, verb),
       System::Deno => deno::phase(&ctx, verb),
+      System::Pyapp => pyapp::phase(&ctx, verb, &Attrs::load()?),
+      System::Bundler => bundler::phase(&ctx, verb),
    }
 }

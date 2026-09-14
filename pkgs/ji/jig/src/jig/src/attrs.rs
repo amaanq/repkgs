@@ -147,6 +147,10 @@ pub struct Platform {
    #[serde(default)]
    pub launch:       String,
    #[serde(default)]
+   pub interp:       String,
+   #[serde(default)]
+   pub reloc_stub:   String,
+   #[serde(default)]
    pub sysroot:      String,
    #[serde(default)]
    pub gnu_triple:   String,

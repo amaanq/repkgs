@@ -2,6 +2,8 @@ use std::{
    fs::{
       self,
       Permissions,
+      read_dir,
+      symlink_metadata,
    },
    io::{
       self,
@@ -11,6 +13,7 @@ use std::{
    path::{
       Component,
       Path,
+      PathBuf,
    },
 };
 
@@ -49,4 +52,103 @@ pub fn relative_path(text: &str) -> io::Result<&Path> {
       return Err(io::Error::other("invalid relative cache path"));
    }
    Ok(path)
+}
+
+pub fn glob(pattern: &str) -> io::Result<Vec<PathBuf>> {
+   let mut found = Vec::new();
+   for expanded in expand_braces(pattern) {
+      let (mut candidates, segments): (Vec<PathBuf>, Vec<&str>) =
+         expanded.strip_prefix('/').map_or_else(
+            || (vec![PathBuf::new()], expanded.split('/').collect()),
+            |rest| (vec![PathBuf::from("/")], rest.split('/').collect()),
+         );
+      for segment in segments.into_iter().filter(|segment| !segment.is_empty()) {
+         let mut next = Vec::new();
+         for candidate in &candidates {
+            if segment == "**" {
+               next.push(candidate.clone());
+               next.extend(descendants(candidate)?);
+            } else if segment.contains('*') {
+               let directory = if candidate.as_os_str().is_empty() {
+                  PathBuf::from(".")
+               } else {
+                  candidate.clone()
+               };
+               let Ok(entries) = read_dir(&directory) else {
+                  continue;
+               };
+               for entry in entries {
+                  let name = entry?.file_name();
+                  let text = name.to_string_lossy();
+                  if !text.starts_with('.') && wildcard(segment, &text) {
+                     next.push(candidate.join(&name));
+                  }
+               }
+            } else {
+               let joined = candidate.join(segment);
+               if symlink_metadata(&joined).is_ok() {
+                  next.push(joined);
+               }
+            }
+         }
+         candidates = next;
+      }
+      found.extend(candidates);
+   }
+   found.sort();
+   found.dedup();
+   Ok(found)
+}
+
+fn expand_braces(pattern: &str) -> Vec<String> {
+   let Some(open) = pattern.find('{') else {
+      return vec![pattern.to_owned()];
+   };
+   let Some(close) = pattern[open..].find('}').map(|offset| open + offset) else {
+      return vec![pattern.to_owned()];
+   };
+   let (head, tail) = (&pattern[..open], &pattern[close + 1..]);
+   pattern[open + 1..close]
+      .split(',')
+      .flat_map(|choice| expand_braces(&format!("{head}{choice}{tail}")))
+      .collect()
+}
+
+fn wildcard(pattern: &str, text: &str) -> bool {
+   let Some((head, rest)) = pattern.split_once('*') else {
+      return pattern == text;
+   };
+   let Some(after) = text.strip_prefix(head) else {
+      return false;
+   };
+   if rest.is_empty() {
+      return true;
+   }
+   (0..=after.len())
+      .filter(|&skip| after.is_char_boundary(skip))
+      .any(|skip| wildcard(rest, &after[skip..]))
+}
+
+fn descendants(directory: &Path) -> io::Result<Vec<PathBuf>> {
+   let listed = if directory.as_os_str().is_empty() {
+      PathBuf::from(".")
+   } else {
+      directory.to_path_buf()
+   };
+   let Ok(entries) = read_dir(&listed) else {
+      return Ok(Vec::new());
+   };
+   let mut found = Vec::new();
+   for entry in entries {
+      let name = entry?.file_name();
+      if name.to_string_lossy().starts_with('.') {
+         continue;
+      }
+      let child = directory.join(&name);
+      if symlink_metadata(&child)?.is_dir() {
+         found.extend(descendants(&child)?);
+         found.push(child);
+      }
+   }
+   Ok(found)
 }

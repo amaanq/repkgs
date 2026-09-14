@@ -6,7 +6,6 @@ use std::{
    fs::{
       File,
       create_dir_all,
-      read_dir,
       read_to_string,
       remove_dir_all,
       remove_file,
@@ -44,6 +43,7 @@ use crate::{
       Request,
       write_request,
    },
+   files::glob,
    fixup,
    implant,
    launchers,
@@ -140,7 +140,7 @@ fn install_map(spec: &Spec, out: &Path) -> io::Result<()> {
       };
       let mut matched = Vec::new();
       for pattern in &patterns {
-         matched.extend(matching(pattern)?);
+         matched.extend(glob(pattern)?);
       }
       if matched.is_empty() {
          return Err(io::Error::other(format!(
@@ -171,78 +171,6 @@ fn install_map(spec: &Spec, out: &Path) -> io::Result<()> {
       symlink(link, &placed)?;
    }
    Ok(())
-}
-
-fn matching(pattern: &str) -> io::Result<Vec<PathBuf>> {
-   let mut found = Vec::new();
-   for expanded in expand_braces(pattern) {
-      let (mut candidates, segments): (Vec<PathBuf>, Vec<&str>) =
-         expanded.strip_prefix('/').map_or_else(
-            || (vec![PathBuf::new()], expanded.split('/').collect()),
-            |rest| (vec![PathBuf::from("/")], rest.split('/').collect()),
-         );
-      for segment in segments.into_iter().filter(|segment| !segment.is_empty()) {
-         let mut next = Vec::new();
-         for candidate in &candidates {
-            if segment.contains('*') {
-               let directory = if candidate.as_os_str().is_empty() {
-                  PathBuf::from(".")
-               } else {
-                  candidate.clone()
-               };
-               let Ok(entries) = read_dir(&directory) else {
-                  continue;
-               };
-               for entry in entries {
-                  let name = entry?.file_name();
-                  let text = name.to_string_lossy();
-                  if !text.starts_with('.') && wildcard(segment, &text) {
-                     next.push(candidate.join(&name));
-                  }
-               }
-            } else {
-               let joined = candidate.join(segment);
-               if symlink_metadata(&joined).is_ok() {
-                  next.push(joined);
-               }
-            }
-         }
-         candidates = next;
-      }
-      found.extend(candidates);
-   }
-   found.sort();
-   found.dedup();
-   Ok(found)
-}
-
-fn expand_braces(pattern: &str) -> Vec<String> {
-   let Some(open) = pattern.find('{') else {
-      return vec![pattern.to_owned()];
-   };
-   let Some(close) = pattern[open..].find('}').map(|offset| open + offset) else {
-      return vec![pattern.to_owned()];
-   };
-   let (head, tail) = (&pattern[..open], &pattern[close + 1..]);
-   pattern[open + 1..close]
-      .split(',')
-      .flat_map(|choice| expand_braces(&format!("{head}{choice}{tail}")))
-      .collect()
-}
-
-fn wildcard(pattern: &str, text: &str) -> bool {
-   let Some((head, rest)) = pattern.split_once('*') else {
-      return pattern == text;
-   };
-   let Some(after) = text.strip_prefix(head) else {
-      return false;
-   };
-   if rest.is_empty() {
-      return true;
-   }
-   (0..=after.len())
-      .filter(|&skip| after.is_char_boundary(skip))
-      .any(|skip| wildcard(rest, &after[skip..]))
 }
 
 fn save_tree(tree: &str, top: &str, njobs: usize) -> io::Result<()> {

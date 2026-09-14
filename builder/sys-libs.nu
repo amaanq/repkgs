@@ -7,8 +7,8 @@
 #
 # Decided when the package is pinned: uptrack looks the lock files of the tree it just hashed up
 # here (`wanted`) and writes `sys = [..]` into [pin] of sources.toml, nix/package.nix makes those
-# dependencies. At build time the build-system module applies `env-for`/`go-tags`/
-# `gem-build-flags` for the libraries present and `check`s the lock still agrees with sys.
+# dependencies. At build time jig's build systems apply env, tags and flags for the libraries
+# present and check the lock still agrees with sys.
 #
 # Explicit on purpose: linking a system library is a decision. Packages that only ever vendor
 # (ring, aws-lc-sys, modernc.org/sqlite) or are plain OS bindings have no entry.
@@ -44,44 +44,5 @@ export def wanted [dir: path]: nothing -> list<string> {
   } | flatten | uniq | sort
 }
 
-# build time: the lock can link libraries [pin] sys does not name -> the pin is stale. null: no
-# sources.toml, dependencies are by hand. (Names the set lacks on this platform are fine:
-# nix/package.nix drops those and the locked package vendors)
-export def check [dir: path, sys: any]: nothing -> nothing { check-names (wanted $dir) $sys rehash }
-
-export def check-names [wanted: list<string>, sys: any, cmd: string]: nothing -> nothing {
-  if $sys == null { return }
-  let missing = ($wanted | where $it not-in $sys)
-  if ($missing | is-not-empty) {
-    error make {msg: $"sys-libs: the lock can link ($missing | str join ', '), missing from [pin] sys in sources.toml. `repkgs update ($cmd) <pkg>` rewrites it"}
-  }
-}
-
 # python packages that build from sdist whenever they appear (fetch/pypi.nu)
 export def sdist-packages []: nothing -> list<string> { (tables).python | transpose locked entry | where { $in.entry.pkg? != null } | get locked }
-
-# --- builder side (cargo.nu, go.nu, bundler.nu, pyapp.nu): configure for the libraries present ----
-
-# table entries of `ecosystem` whose library is among `deps` ({name, root, …} records from ctx),
-# each with that dependency's root attached
-def active [ecosystem: string, deps: list<record<name: string, root: string>>]: nothing -> table {
-  let roots = ($deps | select name root | rename pkg root)
-  (tables) | get $ecosystem | transpose locked entry | flatten entry | join $roots pkg
-}
-
-# env vars from the matching entries, {root} replaced by the library's store path
-export def env-for [ecosystem: string, deps: list<record<name: string, root: string>>]: nothing -> record {
-  active $ecosystem $deps
-    | reduce --fold {} {|e, acc| $acc | merge ($e.env | items {|k, v| [$k ($v | str replace -a "{root}" $e.root)] } | into record) }
-}
-
-# go: build tags that switch a module to the system library
-export def go-tags [deps: list<record<name: string, root: string>>]: nothing -> list<string> {
-  active go $deps | each { $in.tags? | default [] } | flatten | uniq
-}
-
-# bundler: gem -> `bundle config build.<gem>` argument string
-export def gem-build-flags [deps: list<record<name: string, root: string>>]: nothing -> record {
-  active gems $deps | where { $in.flags | is-not-empty }
-    | reduce --fold {} {|e, acc| $acc | upsert $e.locked ($e.flags | str replace -a "{root}" $e.root | str join " ") }
-}

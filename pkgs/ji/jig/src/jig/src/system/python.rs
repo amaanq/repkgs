@@ -89,7 +89,7 @@ fn site_packages(roots: &[String]) -> io::Result<Vec<String>> {
 
 /// a PEP 517 backend imports its own dependencies, so the python tools on PATH
 /// bring what they propagate.
-fn tool_site_packages() -> io::Result<Vec<String>> {
+pub fn tool_site_packages() -> io::Result<Vec<String>> {
    let mut roots = Vec::new();
    for directory in var("PATH").unwrap_or_default().split(':') {
       let root = Path::new(directory)

@@ -1,5 +1,6 @@
 mod autotools;
 mod beam;
+mod bundler;
 mod cabal;
 mod cargo;
 mod cmake;
@@ -11,5 +12,6 @@ mod luarocks;
 mod make;
 mod meson;
 mod node;
+mod pyapp;
 mod python;
 mod syslibs;
