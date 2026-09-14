@@ -6,7 +6,10 @@ use std::{
       write,
    },
    io,
-   path::Path,
+   path::{
+      Path,
+      PathBuf,
+   },
 };
 
 use serde::{
@@ -21,7 +24,10 @@ use serde_json::{
 
 use crate::{
    exports::Exports,
-   store::is_store_path,
+   store::{
+      is_store_path,
+      normalize,
+   },
 };
 
 #[derive(Deserialize)]
@@ -197,6 +203,10 @@ impl Ctx {
          .cloned()
          .ok_or_else(|| io::Error::other(format!("spec has no {system} options")))?;
       Ok(serde_json::from_value(found)?)
+   }
+
+   pub fn project_dir(&self, root: &str) -> PathBuf {
+      normalize(&Path::new(&self.src).join(root))
    }
 
    pub fn test_jobs(&self) -> io::Result<usize> {

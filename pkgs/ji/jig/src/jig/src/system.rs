@@ -20,18 +20,17 @@ use crate::{
       Ctx,
       build_top,
    },
-   autotools,
-   cargo,
    cli::SystemOperation,
-   cmake,
-   make,
-   meson,
-   python,
-   store::{
-      normalize,
-      on_path,
-   },
+   store::on_path,
 };
+
+mod autotools;
+mod cargo;
+mod cmake;
+mod make;
+mod meson;
+mod python;
+mod syslibs;
 
 pub enum System {
    Make,
@@ -115,10 +114,6 @@ fn phase(name: &str, verb: &str, socket: &Path) -> io::Result<()> {
       System::Cargo => cargo::phase(&ctx, verb),
       System::Python => python::phase(&ctx, verb, &Attrs::load()?),
    }
-}
-
-pub fn project_dir(ctx: &Ctx, root: &str) -> PathBuf {
-   normalize(&Path::new(&ctx.src).join(root))
 }
 
 pub fn tool(name: &str) -> io::Result<PathBuf> {

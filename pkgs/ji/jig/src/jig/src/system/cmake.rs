@@ -23,7 +23,6 @@ use crate::{
    files::write_file,
    probe,
    system::{
-      project_dir,
       run,
       unknown,
    },
@@ -95,8 +94,8 @@ fn upsert(defs: &mut Vec<(String, Value)>, name: &str, value: Value) {
    }
 }
 
-// the sysroot's include/ and lib/ for find_path/find_library (an Apple SDK has
-// them under usr/)
+/// the sysroot's include/ and lib/ for find_path/find_library (an Apple SDK has
+/// them under usr/).
 fn defaults(ctx: &Ctx, options: &Options) -> Vec<(String, Value)> {
    let platform = &ctx.platform;
    let sysroot = text(platform, "sysroot");
@@ -166,7 +165,7 @@ fn defaults(ctx: &Ctx, options: &Options) -> Vec<(String, Value)> {
 
 fn configure(ctx: &Ctx, options: &Options, socket: &Path) -> io::Result<()> {
    let defs = defaults(ctx, options);
-   let srcdir = project_dir(ctx, &options.root);
+   let srcdir = ctx.project_dir(&options.root);
    let scripts: Vec<String> = walk(&srcdir)?
       .into_iter()
       .filter(|entry| {

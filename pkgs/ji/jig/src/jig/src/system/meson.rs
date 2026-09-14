@@ -28,7 +28,6 @@ use crate::{
    },
    files::write_file,
    system::{
-      project_dir,
       run,
       unknown,
    },
@@ -92,9 +91,9 @@ fn machine_file(path: &str, sections: &[(&str, Vec<(&str, Value)>)]) -> io::Resu
    Ok(path.to_owned())
 }
 
-// the build machine's pkg-config finds nothing so build-time tools never link
-// target libraries, and sizeof/alignment properties spare cc.sizeof() an exe
-// wrapper
+/// the build machine's pkg-config finds nothing so build-time tools never link
+/// target libraries, and sizeof/alignment properties spare cc.sizeof() an exe
+/// wrapper.
 fn cross_files(ctx: &Ctx) -> io::Result<Vec<String>> {
    let platform = &ctx.platform;
    let os_names = platform.get("osNames").cloned().unwrap_or(Value::Null);
@@ -163,8 +162,8 @@ fn render(value: &Value) -> String {
    }
 }
 
-// buildtype plain because cc brings -O2 -g itself, auto_features disabled so
-// packages enable what they declare
+/// buildtype plain because cc brings -O2 -g itself, auto_features disabled so
+/// packages enable what they declare.
 fn configure(ctx: &Ctx, options: &Options) -> io::Result<()> {
    let profile = ctx
       .spec
@@ -191,7 +190,7 @@ fn configure(ctx: &Ctx, options: &Options) -> io::Result<()> {
    let mut args = vec![
       "setup".to_owned(),
       ".".to_owned(),
-      project_dir(ctx, &options.root)
+      ctx.project_dir(&options.root)
          .to_string_lossy()
          .into_owned(),
    ];

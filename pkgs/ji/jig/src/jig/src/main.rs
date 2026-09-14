@@ -1,9 +1,6 @@
 mod attrs;
-mod autotools;
-mod cargo;
 mod cc;
 mod cli;
-mod cmake;
 mod debug;
 mod directory;
 mod driver;
@@ -20,17 +17,13 @@ mod image;
 mod implant;
 mod launchers;
 mod macho;
-mod make;
 mod manifest;
-mod meson;
 mod nix_store;
 mod prepare;
 mod probe;
 mod process;
-mod python;
 mod rustc;
 mod store;
-mod syslibs;
 mod system;
 mod tree;
 

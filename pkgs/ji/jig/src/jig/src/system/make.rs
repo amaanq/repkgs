@@ -15,7 +15,6 @@ use crate::{
    attrs::Ctx,
    store::on_path,
    system::{
-      project_dir,
       run,
       tool,
       unknown,
@@ -51,7 +50,7 @@ pub fn setup() -> io::Result<BTreeMap<String, String>> {
 
 pub fn workdir(ctx: &Ctx) -> io::Result<PathBuf> {
    let options: Options = ctx.options("make")?;
-   Ok(project_dir(ctx, &options.root))
+   Ok(ctx.project_dir(&options.root))
 }
 
 /// #!/bin/sh would be the sandbox's.
@@ -106,7 +105,7 @@ pub fn test(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
    run("make", &args, &[])
 }
 
-// PREFIX/prefix for hand-written Makefiles, configure'd ones ignore them
+/// PREFIX/prefix for hand-written Makefiles, configure'd ones ignore them.
 pub fn install(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
    let mut args = targets.to_vec();
    args.push(format!("PREFIX={}", ctx.out));

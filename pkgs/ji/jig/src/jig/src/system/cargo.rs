@@ -36,10 +36,9 @@ use crate::{
    files::write_file,
    prepare::succeed,
    store::on_path,
-   syslibs,
    system::{
-      project_dir,
       run,
+      syslibs,
       tool,
       unknown,
    },
@@ -74,7 +73,7 @@ fn arguments(options: &Options) -> Vec<String> {
 
 pub fn workdir(ctx: &Ctx) -> io::Result<PathBuf> {
    let options: Options = ctx.options("cargo")?;
-   Ok(project_dir(ctx, &options.root))
+   Ok(ctx.project_dir(&options.root))
 }
 
 fn quoted(value: &str) -> String {
@@ -86,10 +85,10 @@ fn list(values: &[String]) -> String {
    format!("[{}]", items.join(", "))
 }
 
-// pkg-config, the -sys crates' usual probe, refuses to answer under --target
-// without ALLOW_CROSS. bindgen asks a clang executable for its include dirs,
-// ours and not a bare one on PATH. rustflags go in the config because RUSTFLAGS
-// from the environment would replace them
+/// pkg-config, the -sys crates' usual probe, refuses to answer under --target
+/// without ALLOW_CROSS. bindgen asks a clang executable for its include dirs,
+/// ours and not a bare one on PATH. rustflags go in the config because RUSTFLAGS
+/// from the environment would replace them
 pub fn setup(ctx: &Ctx, attrs: &Attrs) -> io::Result<BTreeMap<String, String>> {
    let options: Options = ctx.options("cargo")?;
    let home = format!("{}/cargo-home", ctx.build);
@@ -112,7 +111,7 @@ pub fn setup(ctx: &Ctx, attrs: &Attrs) -> io::Result<BTreeMap<String, String>> {
    let target = text(&ctx.platform, "rustTriple").to_owned();
    env.insert("CARGO_BUILD_TARGET".to_owned(), target.clone());
    let spec: Spec = serde_json::from_value(ctx.spec.clone())?;
-   syslibs::check(attrs, &project_dir(ctx, &options.root), spec.sys.as_deref())?;
+   syslibs::check(attrs, &ctx.project_dir(&options.root), spec.sys.as_deref())?;
    let sys = syslibs::active(attrs, "cargo", &ctx.deps)?.env;
    env.insert("PKG_CONFIG_ALLOW_CROSS".to_owned(), "1".to_owned());
    if !sys.is_empty() {
@@ -187,7 +186,7 @@ pub fn setup(ctx: &Ctx, attrs: &Attrs) -> io::Result<BTreeMap<String, String>> {
 }
 
 // the toolchain carries std for the build machine only, the target's is
-// <toolchain>-std, one sysroot of symlinks over both
+// <toolchain>-std.
 fn cross_sysroot(ctx: &Ctx, attrs: &Attrs, rustc: &Path, target: &str) -> io::Result<String> {
    let sysroot = format!("{}/rust-sysroot", ctx.build);
    let toolchain = rustc
@@ -220,8 +219,8 @@ fn cross_sysroot(ctx: &Ctx, attrs: &Attrs, rustc: &Path, target: &str) -> io::Re
    Ok(sysroot)
 }
 
-// the vendor dir with the named crates copied out and patched, the rest
-// symlinked
+/// the vendor dir with the named crates copied out and patched, the rest
+/// symlinked.
 fn patched_vendor(ctx: &Ctx, deps: &str, patches: &Map<String, Value>) -> io::Result<String> {
    let dir = format!("{}/vendor", ctx.build);
    create_dir_all(&dir)?;
@@ -277,8 +276,8 @@ fn patched_vendor(ctx: &Ctx, deps: &str, patches: &Map<String, Value>) -> io::Re
    Ok(dir)
 }
 
-// `name-1.2.3` is the crate `name`, the version starts at the last dash
-// followed by a digit
+/// `name-1.2.3` is the crate `name`, the version starts at the last dash
+/// followed by a digit.
 fn crate_of(directory: &str) -> Option<&str> {
    let dash = directory
       .rmatch_indices('-')
@@ -320,9 +319,9 @@ pub fn phase(ctx: &Ctx, verb: &str) -> io::Result<()> {
    }
 }
 
-// with CARGO_BUILD_TARGET set cargo always builds into target/<triple>/. Its
-// own files there are lib*.rlib/.so/.d and .cargo-lock, the rest are the
-// [[bin]] targets
+/// with CARGO_BUILD_TARGET set cargo always builds into target/<triple>/. Its
+/// own files there are lib*.rlib/.so/.d and .cargo-lock, the rest are the
+/// [[bin]] targets.
 fn install(ctx: &Ctx) -> io::Result<()> {
    let release = format!(
       "{}/{}/release",

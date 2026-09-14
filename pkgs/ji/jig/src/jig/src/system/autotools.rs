@@ -23,10 +23,9 @@ use crate::{
    },
    files::write_file,
    header::site,
-   make,
    probe,
    system::{
-      project_dir,
+      make,
       run,
       tool,
       unknown,
@@ -59,7 +58,7 @@ pub fn workdir(ctx: &Ctx) -> io::Result<PathBuf> {
    Ok(if options.out_of_tree {
       PathBuf::from(&ctx.build)
    } else {
-      project_dir(ctx, &options.root)
+      ctx.project_dir(&options.root)
    })
 }
 
@@ -150,10 +149,7 @@ fn gnulib_gettext_literal(src: &Path) -> io::Result<()> {
    Ok(())
 }
 
-// configure's INSTALL. The seed's path would be a store reference in
-// rbconfig.rb and python's sysconfig, a bare name gets ../ prepended per
-// subdirectory. So a copy in the build dir, and after `make install` the files
-// that recorded it say plain `install`
+/// configure's INSTALL.
 fn install_tool(ctx: &Ctx) -> PathBuf {
    PathBuf::from(format!("{}/install", ctx.build))
 }

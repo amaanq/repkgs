@@ -39,7 +39,6 @@ use crate::{
    files::write_file,
    store::STORE_DIR,
    system::{
-      project_dir,
       run,
       unknown,
    },
@@ -58,7 +57,7 @@ struct Options {
 
 pub fn workdir(ctx: &Ctx) -> io::Result<PathBuf> {
    let options: Options = ctx.options("python")?;
-   Ok(project_dir(ctx, &options.root))
+   Ok(ctx.project_dir(&options.root))
 }
 
 fn site_packages(roots: &[String]) -> io::Result<Vec<String>> {
@@ -104,7 +103,7 @@ fn tool_site_packages() -> io::Result<Vec<String>> {
 // setuptools) before any of the stack exists
 pub fn setup(ctx: &Ctx) -> io::Result<BTreeMap<String, String>> {
    let options: Options = ctx.options("python")?;
-   let root = project_dir(ctx, &options.root);
+   let root = ctx.project_dir(&options.root);
    let dep_roots: Vec<String> = ctx.deps.iter().map(|dep| dep.root.clone()).collect();
    let mut path = site_packages(&dep_roots)?;
    path.extend(tool_site_packages()?);
