@@ -104,6 +104,8 @@ pub enum Mode {
       #[pound(long)]
       tests:     bool,
    },
+   /// content identity of each store path, memoized in jigd.
+   Identify { roots: Vec<String> },
    /// the build environment from the structured attrs, as JSON for load-env.
    Env {
       out:   PathBuf,

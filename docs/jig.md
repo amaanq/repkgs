@@ -12,29 +12,29 @@ or from the first argument when `argv[0]` is `jig`. `jig --help` and `jig <mode>
 the modes and their flags. The compiler, `rustcwrap`, `slot` and `header-key` modes hand their
 arguments through untouched, every other mode parses them and fails on an unknown one.
 
-| invoked as                                                                 | mode                                           |
-| -------------------------------------------------------------------------- | ---------------------------------------------- |
-| `cc`, `gcc`, `clang`, `cc-build`, `gcc-build`, any other name              | C driver, `cc`                                 |
-| `c++`, `g++`, `clang++`, any name containing `++`                          | C++ driver, same code with C++ defaults        |
-| `jig rustcwrap <rustc> <args…>`                                            | rustc wrapper, set as cargo's `RUSTC`          |
-| `jig cache get\|put <key> <file>`                                          | one object, exit 1 on a miss, 2 with no daemon |
-| `jig cache get-dir\|put-dir <key> <directory>`                             | a directory tree, same exits                   |
-| `jig slot <program> [args…]`                                               | run under a build slot                         |
-| `jig gocacheprog`                                                          | Go's `GOCACHEPROG` protocol on stdin/stdout    |
-| `jig header-key <context> <warning-policy> <compiler> <args…>`             | autoconf header probe key                      |
-| `jig reloc-fixup <directory> [--dest <store path>] [--deny <store path>]…` | post-link relocation                           |
-| `jig nix-store add-text\|add-drv\|fetchurls\|submit …`                     | builder RPC to the Nix daemon                  |
-| `jig shebangs <directory> [--undo]`                                        | point `#!/usr/bin/env` scripts at the build's env, or back |
-| `jig exports <store path…>`, `jig deps <store path…>`                       | a package's exports with defaults, or the propagated closure, as JSON |
-| `jig write-exports <output>`                                               | write `exports.json` from the spec on stdin, propagating .pc and cmake requirements |
-| `jig prune <output>`                                                       | drop docs and junk, unpack man pages, print the inventory as JSON |
-| `jig relativize <prefix> <store path>`                                     | make .pc files, foo-config scripts and links relative, fail on a leaked prefix |
-| `jig split-debug <output> <debug output>`                                  | move the DWARF of every ELF jig linked into the debug output, by build-id |
-| `jig env <prefix> [--cache]`                                               | the build environment from the structured attrs, as JSON |
-| `jig prepare [--from-tree <tree>]`                                         | environment, platform, source tree and ctx before the first build phase |
-| `jig finish [--keep-tree] [--tests]`                                       | everything after the last build phase, up to the version check |
-| `jig implant <dir> --interp <ld.so> [--stub <blob>] <dependency…>`         | give upstream ELFs our interpreter, the relocation stub and a padded RUNPATH |
-| `jig launchers <output> --launch <bin> --interp <ld.so> [--ldso] <dependency…>` | put launch records in front of bin/ scripts and wrapped binaries |
+| invoked as                                                                      | mode                                                                                |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `cc`, `gcc`, `clang`, `cc-build`, `gcc-build`, any other name                   | C driver, `cc`                                                                      |
+| `c++`, `g++`, `clang++`, any name containing `++`                               | C++ driver, same code with C++ defaults                                             |
+| `jig rustcwrap <rustc> <args…>`                                                 | rustc wrapper, set as cargo's `RUSTC`                                               |
+| `jig cache get\|put <key> <file>`                                               | one object, exit 1 on a miss, 2 with no daemon                                      |
+| `jig cache get-dir\|put-dir <key> <directory>`                                  | a directory tree, same exits                                                        |
+| `jig slot <program> [args…]`                                                    | run under a build slot                                                              |
+| `jig gocacheprog`                                                               | Go's `GOCACHEPROG` protocol on stdin/stdout                                         |
+| `jig header-key <context> <warning-policy> <compiler> <args…>`                  | autoconf header probe key                                                           |
+| `jig reloc-fixup <directory> [--dest <store path>] [--deny <store path>]…`      | post-link relocation                                                                |
+| `jig nix-store add-text\|add-drv\|fetchurls\|submit …`                          | builder RPC to the Nix daemon                                                       |
+| `jig shebangs <directory> [--undo]`                                             | point `#!/usr/bin/env` scripts at the build's env, or back                          |
+| `jig exports <store path…>`, `jig deps <store path…>`                           | a package's exports with defaults, or the propagated closure, as JSON               |
+| `jig write-exports <output>`                                                    | write `exports.json` from the spec on stdin, propagating .pc and cmake requirements |
+| `jig prune <output>`                                                            | drop docs and junk, unpack man pages, print the inventory as JSON                   |
+| `jig relativize <prefix> <store path>`                                          | make .pc files, foo-config scripts and links relative, fail on a leaked prefix      |
+| `jig split-debug <output> <debug output>`                                       | move the DWARF of every ELF jig linked into the debug output, by build-id           |
+| `jig env <prefix> [--cache]`                                                    | the build environment from the structured attrs, as JSON                            |
+| `jig prepare [--from-tree <tree>]`                                              | environment, platform, source tree and ctx before the first build phase             |
+| `jig finish [--keep-tree] [--tests]`                                            | everything after the last build phase, up to the version check                      |
+| `jig implant <dir> --interp <ld.so> [--stub <blob>] <dependency…>`              | give upstream ELFs our interpreter, the relocation stub and a padded RUNPATH        |
+| `jig launchers <output> --launch <bin> --interp <ld.so> [--ldso] <dependency…>` | put launch records in front of bin/ scripts and wrapped binaries                    |
 
 **jigd** runs on the host, outside every sandbox, as `jigd <socket>`. It owns the compile
 cache, the file identity cache and the build slots. Nothing in a derivation names it, so
@@ -481,14 +481,13 @@ the source, output or crate label with tabs and newlines replaced by spaces. Aft
 lookup that did not replay, the subject carries the reason after a space, so a miss can be
 told apart from a first compile.
 
-| reason | meaning |
-|---|---|
-| `new-key` | no manifest for the request |
+| reason                  | meaning                                                        |
+| ----------------------- | -------------------------------------------------------------- |
+| `new-key`               | no manifest for the request                                    |
 | `inputs-changed:<path>` | that input's identity differs from the manifest, or it is gone |
-| `env-changed:<name>` | that manifest variable differs |
-| `object-gone` | the manifest matched but a result object was evicted |
-| `replay-failed` | the daemon or the replay failed, see stderr |
-
+| `env-changed:<name>`    | that manifest variable differs                                 |
+| `object-gone`           | the manifest matched but a result object was evicted           |
+| `replay-failed`         | the daemon or the replay failed, see stderr                    |
 
 | tool     | outcomes                                                                                                                             |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -518,6 +517,11 @@ That is `spec.install` and `spec.links`, `--keep-tree`, the `bin` check, `prune`
 `relativize`, the move into the store, the `tests.version` check from the store path and from a
 relocated copy under `env -i`, and the `jig:` cache summary. `--tests` writes the tests
 derivation's `result.json` instead.
+
+`identify` prints `{ "<path>": "<32 hex>" }` per argument, a blake3 over the sorted tree of
+relative path, kind and file content (or link target), or over the file when the path is one.
+The result is stored under `identity/v3/<path>` in jigd, so each store path is hashed once.
+`builder/probe-cache.nu` keys configure caches on these instead of raw store paths.
 
 `env` reads the derivation's structured attrs from `NIX_ATTRS_JSON_FILE` and prints the
 environment every build step inherits, one JSON object for `load-env`, with `PATH` as a list.
@@ -568,8 +572,8 @@ naming up to ten files and the printable runs around the hit.
 `split-debug` runs `llvm-objcopy --strip-debug` over every `.a` and `.o` in the output, noting
 the ones it refuses (archives with LTO bitcode or `lib.rmeta` members keep their DWARF). It then
 reads every other regular file over 3072 bytes that is a 64-bit ELF and classes it by its notes
-and section names. An ELF is *ours* when it carries the FDO package note (type `0xcafe1a7e`)
-the driver's `--package-metadata` produces (§ 8), *split* when it has a `.gnu_debuglink`, and it
+and section names. An ELF is _ours_ when it carries the FDO package note (type `0xcafe1a7e`)
+the driver's `--package-metadata` produces (§ 8), _split_ when it has a `.gnu_debuglink`, and it
 has DWARF when a `.debug_info` section is present. Ours without DWARF and without a debuglink
 is an error, since the build stripped what the driver compiled with `-g`. Anything not ours or
 already split is left alone and counted in a `debug:` note. The rest is grouped by GNU build-id
@@ -587,7 +591,7 @@ drops out. The path ends in `:/` and `entries × 48 - 1` underscores, the same s
 links get (§ 8), so `reloc-fixup` can rewrite it in place. Files with a `PT_INTERP` also get
 `--set-interpreter <dir>/./×12/<ld.so>` and, when `--stub` is given, `--set-entry-stub`. The
 stub only works after `reloc-fixup`, so callers pass it for `$out` and not for an unpacked
-tree whose binaries run during the install. Each `formatelf` line is echoed with a `+ ` prefix,
+tree whose binaries run during the install. Each `formatelf` line is echoed with a `+` prefix,
 and one `implant:` note names each rewritten file, sorted.
 
 `launchers` walks `bin/` of the output in name order, skipping dotfiles, dangling links, entries

@@ -12,6 +12,7 @@ mod finish;
 mod fixup;
 mod gocache;
 mod header;
+mod identify;
 mod image;
 mod implant;
 mod launchers;
@@ -139,6 +140,7 @@ fn run(mode: Mode, name: &str, args: &[OsString], socket: &Path) -> Result<i32> 
          macho,
       } => tree::relativize(&prefix, &dest, macho)?,
       Mode::SplitDebug { output, debug } => debug::run(&output, &debug)?,
+      Mode::Identify { roots } => identify::run(&roots, socket)?,
       Mode::Env { out, cache } => env::run(&out, cache)?,
       Mode::Implant {
          directory,
