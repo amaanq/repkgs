@@ -121,6 +121,11 @@ let
       dlaudit = if elf then "${dlaudit}/lib/dlaudit.so" else "";
       relocStub = "${toolchain}/lib/reloc_stub.bin";
     };
+    # nix/hardening.nix as data for jig env: the flag table and what is on for this platform
+    hardening = {
+      inherit (hardening) flags cxx link;
+      enabled = hardening.forPlatform platform;
+    };
   };
   phaseRe = "([a-z][a-z0-9]*)\\.([a-zA-Z][a-zA-Z-]*)";
 in

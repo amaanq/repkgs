@@ -4,6 +4,7 @@ mod debug;
 mod directory;
 mod driver;
 mod elf;
+mod env;
 mod exports;
 mod files;
 mod fixup;
@@ -122,6 +123,7 @@ fn dispatch() -> Result<i32> {
          macho,
       } => tree::relativize(&prefix, &dest, macho)?,
       Mode::SplitDebug { output, debug } => debug::run(&output, &debug)?,
+      Mode::Env { out, cache } => env::run(&out, cache)?,
       Mode::Implant {
          directory,
          interp,

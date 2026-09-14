@@ -1,8 +1,7 @@
-# Everything before the first build-system phase: the environment (env.nu), the platform, the
+# Everything before the first build-system phase: the environment (jig env), the platform, the
 # source tree (unpacked and patched, or restored for a tests derivation), and the `ctx` record
 # every later step reads.
 use core.nu *
-use env.nu
 
 # cross: does the builder's binfmt_misc run target binaries transparently (probe = target ld.so)?
 # If not, build systems that support one get the explicit emulator
@@ -70,10 +69,13 @@ export def --env main [
   # 0 is nix for "all of them"
   let njobs = ($env.NIX_BUILD_CORES? | default "0" | into int | if $in > 0 { $in } else { sys cpu | length })
   let deps = (dep-closure $a.dependencies)
-  env $a $deps $out
-  let plat = (resolve-platform $a.platform)
   let cache = ($"($env.NIX_STORE | path dirname)/var/nix/jigd/socket" | path exists)
-  if $cache { load-env (env compiler-caches) }
+  # sandbox dirs, reproducibility pins, the toolchain's view of the dependencies, default flags,
+  # then the build tools' and the spec's own `env` on top. rustc and go go through jig only when
+  # a daemon is there, and more than their own build system runs them (maturin from pyapp, cargo
+  # from napi-rs npm packages, `go build` from Makefiles), so that is decided here for every build
+  load-env (^jig env $out ...(if $cache { [--cache] } else { [] }) | from json)
+  let plat = (resolve-platform $a.platform)
 
   let src = $"($env.NIX_BUILD_TOP)/source"
   let build = $"($env.NIX_BUILD_TOP)/build"

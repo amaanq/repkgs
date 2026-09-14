@@ -30,6 +30,7 @@ arguments through untouched, every other mode parses them and fails on an unknow
 | `jig prune <output>`                                                       | drop docs and junk, unpack man pages, print the inventory as JSON |
 | `jig relativize <prefix> <store path>`                                     | make .pc files, foo-config scripts and links relative, fail on a leaked prefix |
 | `jig split-debug <output> <debug output>`                                  | move the DWARF of every ELF jig linked into the debug output, by build-id |
+| `jig env <prefix> [--cache]`                                               | the build environment from the structured attrs, as JSON |
 | `jig implant <dir> --interp <ld.so> [--stub <blob>] <dependency…>`         | give upstream ELFs our interpreter, the relocation stub and a padded RUNPATH |
 | `jig launchers <output> --launch <bin> --interp <ld.so> [--ldso] <dependency…>` | put launch records in front of bin/ scripts and wrapped binaries |
 
@@ -498,10 +499,30 @@ told apart from a first compile.
 `compile-hit` as hits. `JIG_LOG_ARGS` gets `outcome\t<arguments joined by spaces>` for every
 non query invocation that ran the compiler.
 
-## 11. Output tree modes
+## 11. Builder modes
 
-These serve `builder/prepare.nu` and `builder/finish.nu`, which used to walk the tree in nu.
+These serve `builder/prepare.nu` and `builder/finish.nu`, which used to do the work in nu.
 Paths and errors follow the nu functions they replaced.
+
+`env` reads the derivation's structured attrs from `NIX_ATTRS_JSON_FILE` and prints the
+environment every build step inherits, one JSON object for `load-env`, with `PATH` as a list.
+Later entries override earlier ones, in this order. Sandbox dirs (PATH over every build
+dependency's `bin/`, HOME and the XDG dirs under `$NIX_BUILD_TOP/home`, which it creates,
+TMPDIR, `CI=true`, `TERM=dumb`, `out` set to the prefix argument). Reproducibility pins
+(`SOURCE_DATE_EPOCH=315532800` and the matching KBUILD, TZ, LC_ALL, ZERO_AR_DATE and hash seed
+variables, `CONFIG_SITE` from the attrs). The toolchain's view of the dependency closure (CC and
+friends by bare name, PKG_CONFIG_PATH, CMAKE_PREFIX_PATH and ACLOCAL_PATH from the closure's
+`exports`, JIG_LOG and JIG_LOG_ARGS under the build top, `JIG_STORE_IDENTITY=content`,
+`JIG_STORE_ROOTS` over the closure, the build dependencies and what the `cc` on the new PATH
+lists in its package's `etc/roots`, and `PKGS_PREFIX_MAP` mapping the build top to `/build` and
+each store path to `/deps/<name>` or `/tools/<name>`). `PKGS_CC` (§ 2.2) keyed by the resolved
+root of that `cc`, with `-isystem` over the closure's include dirs, `-O2`, `-g` or `-g0` after
+`spec.debug`, frame pointers, the hardening flags `attrs.hardening.enabled` turns on minus what
+`spec.cc.hardening` turns off (`false` turns all off), the package's own `cc.cflags`, and the
+same for `cxxflags` and `ldflags` with `-L` over the closure's lib dirs, plus the cargo release
+profile's debug and strip settings. Then every build dependency's `exports.env`, then
+`spec.env`. With `--cache`, when `rustc` is on the new PATH, `RUSTC` absolute, `RUSTC_WRAPPER`
+pointing at `rustcwrap` and `CARGO_INCREMENTAL=0`, and `GOCACHEPROG` when `go` is.
 
 `shebangs` rewrites the first line of every executable regular file under 1 MiB that starts
 with `#!/usr/bin/env` to `#!<env on PATH>`, writing in place and restoring the file's mtime.

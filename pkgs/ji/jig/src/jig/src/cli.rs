@@ -90,6 +90,12 @@ pub enum Mode {
    },
    /// move the DWARF of what jig linked into the debug output, by build-id.
    SplitDebug { output: PathBuf, debug: PathBuf },
+   /// the build environment from the structured attrs, as JSON for load-env.
+   Env {
+      out:   PathBuf,
+      #[pound(long)]
+      cache: bool,
+   },
    /// give upstream ELFs our interpreter, the relocation stub and a padded
    /// RUNPATH over the dependencies.
    Implant {

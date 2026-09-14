@@ -1,6 +1,6 @@
 # exports.json: what a package offers dependents (include, lib, pkgconfig, aclocal dirs relative
 # to its root, libs, env, propagate), read with defaults from the tree and written by finish.
-# env.nu turns the closure of these into search paths
+# jig env turns the closure of these into search paths
 
 # a package's exports with defaults filled in. Used for dependencies and for writing our own
 export def exports-of [p: path]: nothing -> record<name: string, includeDirs: list<string>, libDirs: list<string>, libs: list<string>, pkgconfigDirs: list<string>, aclocalDirs: list<string>, env: record, propagate: list<string>> {
