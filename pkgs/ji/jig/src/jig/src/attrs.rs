@@ -127,23 +127,27 @@ pub enum Profile {
 #[serde(rename_all = "camelCase")]
 pub struct Platform {
    #[serde(default)]
-   pub cross:       bool,
+   pub cross:        bool,
    #[serde(default)]
-   pub cpu:         String,
+   pub cpu:          String,
    #[serde(default)]
-   pub os:          String,
+   pub os:           String,
+   pub bits:         u8,
+   pub endian:       String,
    #[serde(default)]
-   pub sysroot:     String,
+   pub build_triple: String,
    #[serde(default)]
-   pub gnu_triple:  String,
+   pub sysroot:      String,
    #[serde(default)]
-   pub rust_triple: String,
+   pub gnu_triple:   String,
    #[serde(default)]
-   pub emulator:    Vec<String>,
+   pub rust_triple:  String,
    #[serde(default)]
-   pub os_names:    OsNames,
+   pub emulator:     Vec<String>,
    #[serde(default)]
-   pub names:       Names,
+   pub os_names:     OsNames,
+   #[serde(default)]
+   pub names:        Names,
 }
 
 #[derive(Deserialize, Default)]

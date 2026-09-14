@@ -99,8 +99,7 @@ fn upsert(defs: &mut Vec<(String, Def)>, name: &str, value: Def) {
    }
 }
 
-/// the sysroot's include/ and lib/ for find_path/find_library (an Apple SDK has
-/// them under usr/).
+/// Darwin.cmake finds usr/ and the frameworks from `CMAKE_OSX_SYSROOT`.
 fn defaults(ctx: &Ctx, options: &Options) -> io::Result<Vec<(String, Def)>> {
    let platform = ctx.platform()?;
    let build_type = match ctx.spec()?.profile {

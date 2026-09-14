@@ -146,8 +146,8 @@ let
       hardening = c.hardening or { };
       inherit (oses.linux) osNames;
       os = "linux";
-      abi = "gnu";
-      posix = true;
+      bits = c.bits or 64;
+      endian = c.endian or "little";
       binfmt = "elf";
       ext = extFor binfmt libc;
       names = builtins.mapAttrs (n: _: c.names.${n} or cpu) {
@@ -190,6 +190,8 @@ let
       inherit cpu;
       inherit (mk cpu "glibc") names;
       inherit (oses.${o.os}) osNames;
+      bits = c.bits or 64;
+      endian = c.endian or "little";
       name = "${cpu}-${o.os}";
       posix = o.os != "windows";
       interp = "";

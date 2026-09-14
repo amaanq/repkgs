@@ -89,7 +89,7 @@ fn configure(ctx: &Ctx, options: &Options, socket: &Path) -> io::Result<()> {
    let host_flags: Vec<String> = if platform.cross {
       vec![
          format!("--host={}", platform.gnu_triple),
-         "--build=x86_64-build-linux-gnu".to_owned(),
+         format!("--build={}", platform.build_triple),
       ]
    } else {
       Vec::new()

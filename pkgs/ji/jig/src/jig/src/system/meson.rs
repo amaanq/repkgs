@@ -114,6 +114,8 @@ fn machine_file(path: &str, sections: &[(&str, Vec<(&str, Literal)>)]) -> io::Re
 /// target libraries, and sizeof/alignment properties spare cc.sizeof() an exe
 /// wrapper.
 fn cross_files(ctx: &Ctx, platform: &Platform) -> io::Result<Vec<String>> {
+   let word = platform.bits / 8;
+   let long = if platform.os == "windows" { 4 } else { word };
    let mut binaries = vec![
       ("c", text("cc")),
       ("cpp", text("c++")),
@@ -131,10 +133,10 @@ fn cross_files(ctx: &Ctx, platform: &Platform) -> io::Result<Vec<String>> {
       ("binaries", binaries),
       ("properties", vec![
          ("needs_exe_wrapper", Literal::Flag(true)),
-         ("sizeof_void_p", Literal::Int(8)),
-         ("sizeof_long", Literal::Int(8)),
-         ("sizeof_size_t", Literal::Int(8)),
-         ("alignment_void_p", Literal::Int(8)),
+         ("sizeof_void_p", Literal::Int(word)),
+         ("sizeof_long", Literal::Int(long)),
+         ("sizeof_size_t", Literal::Int(word)),
+         ("alignment_void_p", Literal::Int(word)),
          ("alignment_double", Literal::Int(8)),
          (
             "sys_root",
@@ -150,7 +152,7 @@ fn cross_files(ctx: &Ctx, platform: &Platform) -> io::Result<Vec<String>> {
          ("kernel", text(&platform.os_names.meson_kernel)),
          ("cpu_family", text(&platform.names.meson)),
          ("cpu", text(&platform.cpu)),
-         ("endian", text("little")),
+         ("endian", text(&platform.endian)),
       ]),
    ])?;
    let native = machine_file(&format!("{}/native.ini", ctx.build), &[("binaries", vec![

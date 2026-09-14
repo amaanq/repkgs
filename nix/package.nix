@@ -98,6 +98,9 @@ let
         rustTriple
         opensslTarget
         buildRustTriple
+        buildTriple
+        bits
+        endian
         cross
         emulator
         abi
