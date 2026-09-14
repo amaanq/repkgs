@@ -38,7 +38,7 @@ def main []: nothing -> nothing {
   # clang's msvc driver appends the installer's spelling
   ^ln -s include $"($out)/sdk/Include"
   ^ln -s lib $"($out)/sdk/Lib"
-  # etc/cc/: the libc facts bootstrap/lib.nu documents. clang's msvc driver derives include and lib
+  # etc/cc/: the libc facts jig's bootstrap/stage.rs cc_facts documents. clang's msvc driver derives include and lib
   # paths for the arch from the two roots, for lld-link too. The STL is part of the CRT
   let v = (ls $"($out)/sdk/include" | get name | path basename | first)
   mkdir $"($out)/etc/cc"

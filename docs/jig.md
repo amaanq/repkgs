@@ -25,6 +25,7 @@ arguments through untouched, every other mode parses them and fails on an unknow
 | `jig reloc-fixup <directory> [--dest <store path>] [--deny <store path>]…` | post-link relocation                           |
 | `jig nix-store add-text\|add-drv\|fetchurls\|submit …`                     | builder RPC to the Nix daemon                  |
 | `jig identify <store path…>`                                               | content identity per store path, memoized in jigd |
+| `jig bootstrap <recipe>`                                                   | one toolchain stage from its structured attrs, see §13 |
 
 **jib** is the build script executor, a second static executable on every package build's PATH
 and nowhere in the bootstrap. It links jig's library for the store, ELF, tree and cache client
@@ -648,3 +649,16 @@ and adds it. `fetchurls` reads a JSON array of `{ name, url, algo, hex, sri }`, 
 `builtin:fetchurl` derivation each and prints `[ { drv, out } ]`. `submit <drv> <output>`
 registers an output. With `JIG_NIX_STORE_OFFLINE` set, paths are computed locally and nothing
 is submitted.
+
+## 13. bootstrap mode
+
+`jig bootstrap <recipe>` is the builder of every stage derivation in bootstrap/default.nix. It
+reads the structured attrs, exports each one except `outputs`, `args` and `builder` as an
+environment variable for the recipe's children (lists space-joined, booleans and numbers as
+text), sets `out`, `JIG_LOG` to `<build top>/jig.log` and `JIG_STORE_ROOTS` to every attr that
+names a store path plus the sysroot's `roots` file, runs the recipe, prints `== cache:
+<kind>=<count>…` from the log, and clears group and other write bits on `$out`. The recipes are
+`jig`, `launch`, `dlaudit`, `linux-headers`, `sysroot`, `apple-sdk`, `musl`, `glibc`,
+`compiler-rt`, `runtimes` and `cc`, each a `Recipe` in `jig/src/bootstrap/`. A libc recipe
+writes `etc/cc/include-dirs`, and an SDK adds `etc/cc/flags` and `etc/cc/cxxflags` with the
+words `SYSROOT` and `LLD` standing for the final paths, which `compiler-rt` and `cc` read.

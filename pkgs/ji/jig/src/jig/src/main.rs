@@ -1,3 +1,4 @@
+mod bootstrap;
 mod cc;
 mod cli;
 mod driver;
@@ -97,6 +98,7 @@ fn run(mode: Mode, name: &str, args: &[OsString], socket: &Path) -> Result<i32> 
       } => fixup::run(&directory, dest.as_deref(), &deny)?,
       Mode::NixStore { operation } => nix_store::run(&operation)?,
       Mode::Identify { roots } => identify::run(&roots, socket)?,
+      Mode::Bootstrap { recipe } => bootstrap::dispatch::mode(&recipe)?,
    }
    Ok(0)
 }

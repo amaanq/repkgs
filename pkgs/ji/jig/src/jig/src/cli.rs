@@ -67,6 +67,8 @@ pub enum Mode {
 
    /// content identity of each store path, memoized in jigd.
    Identify { roots: Vec<String> },
+   /// one bootstrap stage from its structured attrs, `jig bootstrap <recipe>`.
+   Bootstrap { recipe: String },
 }
 
 impl Mode {

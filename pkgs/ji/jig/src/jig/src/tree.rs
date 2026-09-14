@@ -158,8 +158,25 @@ where
    Out: Send,
    Work: Fn(&Item) -> io::Result<Out> + Sync,
 {
-   let workers = available_parallelism().map_or(4, |count| count.get().min(16));
-   let chunk = items.len().div_ceil(workers).max(1);
+   parallel_with(
+      items,
+      available_parallelism().map_or(4, |count| count.get().min(16)),
+      work,
+   )
+}
+
+#[inline]
+pub fn parallel_with<Item, Out, Work>(
+   items: &[Item],
+   workers: usize,
+   work: Work,
+) -> io::Result<Vec<Out>>
+where
+   Item: Sync,
+   Out: Send,
+   Work: Fn(&Item) -> io::Result<Out> + Sync,
+{
+   let chunk = items.len().div_ceil(workers.max(1)).max(1);
    scope(|threads| {
       let handles: Vec<_> = items
          .chunks(chunk)

@@ -1,9 +1,9 @@
 # From the seed to a configured `cc` per platform:
 #   stage0  seed clang, musl    -> jig and a cc for the build machine
-#   stage1  seed clang, glibc   -> a cc to host cmake and llvm (clang+lld, all targets, toolchain.nu)
+#   stage1  seed clang, glibc   -> a cc to host cmake and llvm (clang+lld, all targets)
 #   stage2  our clang           -> compiler-rt, libc, libc++, cc and launch for every platform
-# Each derivation is `nu run.nu <recipe>.nu` with structured attrs as its environment. Recipes
-# live with their package (pkgs/<name>/bootstrap.nu, pkgs/ll/llvm/*.nu) or here (sysroot.nu).
+# Each derivation runs `jig bootstrap <recipe>` with structured attrs. Recipes live in
+# pkgs/ji/jig/src/jig/src/bootstrap/.
 {
   seed ? null,
   system ? builtins.currentSystem,
@@ -31,17 +31,6 @@ let
     );
   source = name: (source' name).default;
 
-  recipes = {
-    sysroot = ./sysroot.nu;
-    compiler-rt = pkg "llvm" + "/compiler-rt.nu";
-    runtimes = pkg "llvm" + "/runtimes.nu";
-    cc = pkg "llvm" + "/cc.nu";
-    llvm = pkg "llvm" + "/toolchain.nu";
-    cmake = pkg "cmake-bootstrap" + "/bootstrap.nu";
-    linux-headers = pkg "linux" + "/bootstrap.nu";
-  };
-  # per recipe, so that editing jig rebuilds jig and cc, not glibc. One thunk each: eval forces a
-  # source once however many stage derivations use it
   json_hpp = source "nlohmann-json";
   llvmSrc = source "llvm";
   seedBuild = import ../pkgs/se/seed {
@@ -98,39 +87,6 @@ let
       ];
     };
   };
-  # the recipe plus what it imports, laid out as in the tree (bootstrap/, builder/, pkgs/x/x/) so
-  # `use ../../bootstrap/lib.nu` resolves and an edit to one recipe rebuilds only its step
-  recipe' =
-    name:
-    let
-      file = recipes.${name} or (pkg name + "/bootstrap.nu");
-      rel = if name == "sysroot" then "bootstrap/${name}.nu" else "pkgs/x/x/${name}.nu";
-      layout = {
-        "bootstrap/run.nu" = ./run.nu;
-        "bootstrap/lib.nu" = ./lib.nu;
-        "builder/glob.nu" = ../builder/glob.nu;
-        "builder/log.nu" = ../builder/log.nu;
-        ${rel} = file;
-      };
-    in
-    {
-      inherit rel;
-      path = mkDrv {
-        name = "recipe-${name}";
-        inherit system;
-        builder = "${seedPath}/bin/nu";
-        layout = builtins.toJSON layout;
-        args = [
-          "--no-config-file"
-          "-c"
-          "$env.layout | from json | items {|rel, src| mkdir ($\"($env.out)/($rel)\" | path dirname); cp $src $\"($env.out)/($rel)\" }"
-        ];
-        preferLocalBuild = true;
-      };
-    };
-  recipeDrvs = builtins.mapAttrs (n: _: recipe' n) (recipes // recipeInputs);
-  recipe = name: recipeDrvs.${name};
-
   # `derivation` minus the per-output and override plumbing: these are single-output leaves
   mkDrv =
     attrs:
@@ -153,7 +109,7 @@ let
     outputHashAlgo = "sha256";
     outputs = [ "out" ];
     seed = seedPath;
-    builder = "${seedPath}/bin/nu";
+    builder = "${seedBuild.jig}/bin/jig";
     JIG_STORE_IDENTITY = "content";
     M4 = "m4";
     BISON_PKGDATADIR = "${seedPath}/share/bison";
@@ -189,17 +145,13 @@ let
       basePath = binPath (tools ++ [ seedPath ]);
     in
     extraTools: recipeName: args:
-    let
-      r = recipe recipeName;
-    in
     mkDrv (
       perStage
       // {
         name = recipeName + (if args ? headersOnly then "-headers" else "") + suffix;
         args = [
-          "--no-config-file"
-          "${r.path}/bootstrap/run.nu"
-          "${r.path}/${r.rel}"
+          "bootstrap"
+          recipeName
         ];
         PATH = if extraTools == [ ] then basePath else "${binPath extraTools}:${basePath}";
       }
