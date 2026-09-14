@@ -8,10 +8,7 @@ use std::{
    },
    io,
    os::unix::fs::symlink,
-   path::{
-      Path,
-      PathBuf,
-   },
+   path::Path,
    process::{
       Command,
       Stdio,
@@ -29,17 +26,22 @@ use crate::{
    launchers,
    probe,
    store::on_path,
-   system::command::{
-      dep_root,
-      run,
-      tool_root,
-      unknown,
+   system::{
+      command::{
+         Env,
+         dep_root,
+         run,
+         strs,
+         tool_root,
+         unknown,
+      },
+      dispatch::System,
    },
    tree::note,
 };
 
 #[derive(Clone, Copy)]
-pub enum Tool {
+enum Tool {
    Rebar3,
    Mix,
 }
@@ -53,19 +55,40 @@ impl Tool {
    }
 }
 
+macro_rules! tools {
+   ($($name:ident => $tool:expr),* $(,)?) => {
+      $(
+         pub struct $name;
+
+         impl System for $name {
+            fn name(&self) -> &'static str {
+               $tool.name()
+            }
+
+            fn setup(&self, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<Env> {
+               setup($tool, ctx, attrs, socket)
+            }
+
+            fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
+               phase($tool, ctx, verb, socket)
+            }
+         }
+      )*
+   };
+}
+
+tools! {
+   Rebar3 => Tool::Rebar3,
+   Mix => Tool::Mix,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Options {
-   root:    String,
    deps:    String,
    #[serde(default)]
    escript: Vec<String>,
    flags:   Vec<String>,
-}
-
-pub fn workdir(tool: Tool, ctx: &Ctx) -> io::Result<PathBuf> {
-   let options: Options = ctx.options(tool.name())?;
-   Ok(ctx.project_dir(&options.root))
 }
 
 fn sorted_names(dir: &str) -> io::Result<Vec<String>> {
@@ -219,12 +242,7 @@ fn env(tool: Tool, ctx: &Ctx, attrs: &Attrs) -> io::Result<Vec<(String, String)>
 /// rebar3 takes _checkouts/ over the lock without asking a registry, mix
 /// wants deps/ the way `mix deps.get` leaves it, with a .hex manifest that
 /// `Hex.SCM.lock_status` accepts. Compiled deps round-trip through jigd.
-pub fn setup(
-   tool: Tool,
-   ctx: &Ctx,
-   attrs: &Attrs,
-   socket: &Path,
-) -> io::Result<BTreeMap<String, String>> {
+fn setup(tool: Tool, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<Env> {
    let options: Options = ctx.options(tool.name())?;
    let vars = env(tool, ctx, attrs)?;
    let packages = format!("{}/packages/hexpm", options.deps);
@@ -260,29 +278,24 @@ pub fn setup(
    let restored = probe::restore_dir(&key, Path::new(compiled), socket)?;
    note(kind, if restored { "restored" } else { "cold" });
    if matches!(tool, Tool::Mix) {
-      let borrowed: Vec<(&str, String)> = vars
+      let env: Vec<(&str, &str)> = vars
          .iter()
-         .map(|pair| (pair.0.as_str(), pair.1.clone()))
+         .map(|pair| (pair.0.as_str(), pair.1.as_str()))
          .collect();
-      run(
-         "mix",
-         &[
-            "deps.compile".to_owned(),
-            "--skip-umbrella-children".to_owned(),
-         ],
-         &borrowed,
-      )?;
+      run("mix", &["deps.compile", "--skip-umbrella-children"], &env)?;
       probe::store_dir(&key, Path::new(compiled), socket)?;
    }
-   Ok(vars.into_iter().collect())
+   Ok(Env::from(
+      vars.into_iter().collect::<BTreeMap<String, String>>(),
+   ))
 }
 
-pub fn phase(tool: Tool, ctx: &Ctx, verb: &str, socket: &Path) -> io::Result<()> {
+fn phase(tool: Tool, ctx: &Ctx, verb: &str, socket: &Path) -> io::Result<()> {
    let options: Options = ctx.options(tool.name())?;
    match (tool, verb) {
       (Tool::Rebar3, "build") => {
-         let mut args = vec!["compile".to_owned()];
-         args.extend(options.flags.iter().cloned());
+         let mut args = vec!["compile"];
+         args.extend(strs(&options.flags));
          run("rebar3", &args, &[])?;
          probe::store_dir(
             &deps_key(tool, &options, socket)?,
@@ -290,26 +303,20 @@ pub fn phase(tool: Tool, ctx: &Ctx, verb: &str, socket: &Path) -> io::Result<()>
             socket,
          )
       },
-      (Tool::Rebar3, "test") => run("rebar3", &["eunit".to_owned()], &[]),
+      (Tool::Rebar3, "test") => run("rebar3", &["eunit"], &[]),
       (Tool::Rebar3, "install") => {
-         run("rebar3", &["escriptize".to_owned()], &[])?;
+         run("rebar3", &["escriptize"], &[])?;
          for name in sorted_names("_build/default/bin")? {
             install_escript(ctx, &format!("_build/default/bin/{name}"))?;
          }
          Ok(())
       },
       (Tool::Mix, "build") => {
-         let mut args = vec!["compile".to_owned(), "--no-deps-check".to_owned()];
-         args.extend(options.flags.iter().cloned());
+         let mut args = vec!["compile", "--no-deps-check"];
+         args.extend(strs(&options.flags));
          run("mix", &args, &[])
       },
-      (Tool::Mix, "test") => {
-         run(
-            "mix",
-            &["test".to_owned(), "--no-deps-check".to_owned()],
-            &[],
-         )
-      },
+      (Tool::Mix, "test") => run("mix", &["test", "--no-deps-check"], &[]),
       (Tool::Mix, "install") => mix_install(ctx, &options),
       _ => Err(unknown(tool.name(), verb)),
    }
@@ -317,11 +324,7 @@ pub fn phase(tool: Tool, ctx: &Ctx, verb: &str, socket: &Path) -> io::Result<()>
 
 fn mix_install(ctx: &Ctx, options: &Options) -> io::Result<()> {
    if !options.escript.is_empty() {
-      run(
-         "mix",
-         &["escript.build".to_owned(), "--no-deps-check".to_owned()],
-         &[],
-      )?;
+      run("mix", &["escript.build", "--no-deps-check"], &[])?;
       for escript in &options.escript {
          install_escript(ctx, escript)?;
       }
@@ -329,16 +332,7 @@ fn mix_install(ctx: &Ctx, options: &Options) -> io::Result<()> {
    }
    let name = ctx.spec()?.name;
    let release = format!("{}/lib/{name}", ctx.out);
-   run(
-      "mix",
-      &[
-         "release".to_owned(),
-         "--overwrite".to_owned(),
-         "--path".to_owned(),
-         release.clone(),
-      ],
-      &[],
-   )?;
+   run("mix", &["release", "--overwrite", "--path", &release], &[])?;
    let bin = format!("{}/bin", ctx.out);
    create_dir_all(&bin)?;
    for file in sorted_names(&format!("{release}/bin"))? {

@@ -30,10 +30,13 @@ use crate::{
    prepare::succeed,
    system::{
       command::{
+         Env,
          dep_root,
          run,
+         strs,
          unknown,
       },
+      dispatch::System,
       syslibs,
    },
    tree::{
@@ -57,8 +60,91 @@ fn app_dir(ctx: &Ctx) -> io::Result<String> {
    Ok(format!("{}/lib/{}", ctx.out, ctx.spec()?.name))
 }
 
-pub fn workdir(ctx: &Ctx) -> io::Result<PathBuf> {
-   Ok(PathBuf::from(app_dir(ctx)?))
+pub struct Bundler;
+
+impl System for Bundler {
+   fn name(&self) -> &'static str {
+      "bundler"
+   }
+
+   fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
+      Ok(PathBuf::from(app_dir(ctx)?))
+   }
+
+   /// bundler is configured entirely through BUNDLE_* env, so there is no
+   /// .bundle/config to clean up afterwards.
+   fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
+      let options: Options = ctx.options("bundler")?;
+      let app = app_dir(ctx)?;
+      succeed(
+         Command::new("cp").args([
+            "-r",
+            &format!("{}/.", ctx.project_dir(&options.root).display()),
+            &app,
+         ]),
+         "cp",
+      )?;
+      create_dir_all("vendor")?;
+      succeed(
+         Command::new("cp").args([
+            "-rL",
+            &format!("{}/vendor/cache", options.deps),
+            "vendor/cache",
+         ]),
+         "cp",
+      )?;
+      succeed(
+         Command::new("cp").args([
+            "-f",
+            &format!("{}/Gemfile.lock", options.deps),
+            "Gemfile.lock",
+         ]),
+         "cp",
+      )?;
+      succeed(
+         Command::new("chmod").args(["-R", "u+w", "vendor", "Gemfile.lock"]),
+         "chmod",
+      )?;
+      let mut env = BTreeMap::from([
+         ("BUNDLE_PATH".to_owned(), format!("{app}/vendor/bundle")),
+         (
+            "BUNDLE_CACHE_PATH".to_owned(),
+            format!("{app}/vendor/cache"),
+         ),
+         ("BUNDLE_FROZEN".to_owned(), "true".to_owned()),
+         ("BUNDLE_WITHOUT".to_owned(), options.without.join(":")),
+         ("BUNDLE_JOBS".to_owned(), ctx.njobs.to_string()),
+         ("BUNDLE_RETRY".to_owned(), "0".to_owned()),
+         (
+            "BUNDLE_USER_HOME".to_owned(),
+            format!("{}/bundle-home", ctx.build),
+         ),
+         ("GEM_HOME".to_owned(), format!("{}/gem-home", ctx.build)),
+         ("MAKEFLAGS".to_owned(), format!("-j{}", ctx.njobs)),
+      ]);
+      syslibs::check(attrs, Path::new(&app), ctx.spec()?.sys.as_deref())?;
+      env.extend(syslibs::active(attrs, "gems", &ctx.deps)?.env);
+      gem_build_env(attrs, ctx, &mut env)?;
+      cross_rbconfig(ctx, &mut env)?;
+      Ok(env.into())
+   }
+
+   fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
+      let options: Options = ctx.options("bundler")?;
+      match verb {
+         "build" => build(&options),
+         "test" => {
+            let Some(ref command) = options.test else {
+               return Ok(());
+            };
+            let mut args = vec!["exec"];
+            args.extend(strs(command));
+            run("bundle", &args, &[])
+         },
+         "install" => install(ctx, &options),
+         _ => Err(unknown("bundler", verb)),
+      }
+   }
 }
 
 /// mkmf runs on the host ruby but must describe the target, so the target's
@@ -108,90 +194,11 @@ fn gem_build_env(attrs: &Attrs, ctx: &Ctx, env: &mut BTreeMap<String, String>) -
    Ok(())
 }
 
-/// bundler is configured entirely through BUNDLE_* env, so there is no
-/// .bundle/config to clean up afterwards.
-pub fn setup(ctx: &Ctx, attrs: &Attrs) -> io::Result<BTreeMap<String, String>> {
-   let options: Options = ctx.options("bundler")?;
-   let app = app_dir(ctx)?;
-   succeed(
-      Command::new("cp").args([
-         "-r",
-         &format!("{}/.", ctx.project_dir(&options.root).display()),
-         &app,
-      ]),
-      "cp",
-   )?;
-   create_dir_all("vendor")?;
-   succeed(
-      Command::new("cp").args([
-         "-rL",
-         &format!("{}/vendor/cache", options.deps),
-         "vendor/cache",
-      ]),
-      "cp",
-   )?;
-   succeed(
-      Command::new("cp").args([
-         "-f",
-         &format!("{}/Gemfile.lock", options.deps),
-         "Gemfile.lock",
-      ]),
-      "cp",
-   )?;
-   succeed(
-      Command::new("chmod").args(["-R", "u+w", "vendor", "Gemfile.lock"]),
-      "chmod",
-   )?;
-   let mut env = BTreeMap::from([
-      ("BUNDLE_PATH".to_owned(), format!("{app}/vendor/bundle")),
-      (
-         "BUNDLE_CACHE_PATH".to_owned(),
-         format!("{app}/vendor/cache"),
-      ),
-      ("BUNDLE_FROZEN".to_owned(), "true".to_owned()),
-      ("BUNDLE_WITHOUT".to_owned(), options.without.join(":")),
-      ("BUNDLE_JOBS".to_owned(), ctx.njobs.to_string()),
-      ("BUNDLE_RETRY".to_owned(), "0".to_owned()),
-      (
-         "BUNDLE_USER_HOME".to_owned(),
-         format!("{}/bundle-home", ctx.build),
-      ),
-      ("GEM_HOME".to_owned(), format!("{}/gem-home", ctx.build)),
-      ("MAKEFLAGS".to_owned(), format!("-j{}", ctx.njobs)),
-   ]);
-   syslibs::check(attrs, Path::new(&app), ctx.spec()?.sys.as_deref())?;
-   env.extend(syslibs::active(attrs, "gems", &ctx.deps)?.env);
-   gem_build_env(attrs, ctx, &mut env)?;
-   cross_rbconfig(ctx, &mut env)?;
-   Ok(env)
-}
-
-pub fn phase(ctx: &Ctx, verb: &str) -> io::Result<()> {
-   let options: Options = ctx.options("bundler")?;
-   match verb {
-      "build" => build(&options),
-      "test" => {
-         let Some(ref command) = options.test else {
-            return Ok(());
-         };
-         let mut args = vec!["exec".to_owned()];
-         args.extend(command.iter().cloned());
-         run("bundle", &args, &[])
-      },
-      "install" => install(ctx, &options),
-      _ => Err(unknown("bundler", verb)),
-   }
-}
-
 /// the .gem archives, bundler's download cache, the extension build logs and
 /// the mkmf Makefiles, which embed the build dir, all go.
 fn build(options: &Options) -> io::Result<()> {
-   let mut args = vec![
-      "install".to_owned(),
-      "--local".to_owned(),
-      "--no-cache".to_owned(),
-   ];
-   args.extend(options.flags.iter().cloned());
+   let mut args = vec!["install", "--local", "--no-cache"];
+   args.extend(strs(&options.flags));
    run("bundle", &args, &[])?;
    let mut doomed = vec![PathBuf::from("vendor/cache")];
    doomed.extend(glob("vendor/bundle/ruby/*/cache")?);

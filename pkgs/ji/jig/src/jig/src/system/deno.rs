@@ -2,23 +2,28 @@ use std::{
    collections::BTreeMap,
    fs::create_dir_all,
    io,
-   path::{
-      Path,
-      PathBuf,
-   },
+   path::Path,
    process::Command,
 };
 
 use serde::Deserialize;
 
 use crate::{
-   attrs::Ctx,
+   attrs::{
+      Attrs,
+      Ctx,
+   },
    launchers,
    prepare::succeed,
-   system::command::{
-      dep_root,
-      run,
-      unknown,
+   system::{
+      command::{
+         Env,
+         dep_root,
+         run,
+         strs,
+         unknown,
+      },
+      dispatch::System,
    },
 };
 
@@ -33,105 +38,103 @@ struct Options {
    flags:       Vec<String>,
 }
 
-pub fn workdir(ctx: &Ctx) -> io::Result<PathBuf> {
-   let options: Options = ctx.options("deno")?;
-   Ok(ctx.project_dir(&options.root))
+pub struct Deno;
+
+impl System for Deno {
+   fn name(&self) -> &'static str {
+      "deno"
+   }
+
+   /// deno adds gen/ and `*_cache_v2` next to npm/ and remote/, so `DENO_DIR`
+   /// is a writable copy of the fetched one.
+   fn setup(&self, ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
+      let options: Options = ctx.options("deno")?;
+      let deno_dir = format!("{}/deno-dir", ctx.build);
+      succeed(
+         Command::new("cp").args(["-r", &options.deps, &deno_dir]),
+         "cp",
+      )?;
+      succeed(
+         Command::new("chmod").args(["-R", "u+w", &deno_dir]),
+         "chmod",
+      )?;
+      Ok([
+         ("DENO_DIR", deno_dir),
+         ("DENO_NO_UPDATE_CHECK", "1".to_owned()),
+         ("NO_COLOR", "1".to_owned()),
+      ]
+      .into())
+   }
+
+   fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
+      let options: Options = ctx.options("deno")?;
+      match verb {
+         "build" => {
+            if !options.check || options.entry.is_empty() {
+               return Ok(());
+            }
+            let mut args = vec!["check", "--cached-only", "--frozen"];
+            args.extend(options.entry.values().map(String::as_str));
+            run("deno", &args, &[])
+         },
+         "test" => {
+            let mut args = vec!["test", "--cached-only", "--frozen"];
+            args.extend(strs(&options.permissions));
+            args.extend(strs(&options.flags));
+            run("deno", &args, &[])
+         },
+         "install" => Self::install(ctx, &options),
+         _ => Err(unknown("deno", verb)),
+      }
+   }
 }
 
-/// deno adds gen/ and `*_cache_v2` next to npm/ and remote/, so `DENO_DIR` is a
-/// writable copy of the fetched one.
-pub fn setup(ctx: &Ctx) -> io::Result<BTreeMap<String, String>> {
-   let options: Options = ctx.options("deno")?;
-   let deno_dir = format!("{}/deno-dir", ctx.build);
-   succeed(
-      Command::new("cp").args(["-r", &options.deps, &deno_dir]),
-      "cp",
-   )?;
-   succeed(
-      Command::new("chmod").args(["-R", "u+w", &deno_dir]),
-      "chmod",
-   )?;
-   Ok(BTreeMap::from([
-      ("DENO_DIR".to_owned(), deno_dir),
-      ("DENO_NO_UPDATE_CHECK".to_owned(), "1".to_owned()),
-      ("NO_COLOR".to_owned(), "1".to_owned()),
-   ]))
-}
-
-pub fn phase(ctx: &Ctx, verb: &str) -> io::Result<()> {
-   let options: Options = ctx.options("deno")?;
-   match verb {
-      "build" => {
-         if !options.check || options.entry.is_empty() {
-            return Ok(());
-         }
+impl Deno {
+   /// no `deno compile`, it splices into upstream's denort ELF, which would
+   /// need relinking first.
+   fn install(ctx: &Ctx, options: &Options) -> io::Result<()> {
+      let deno = dep_root(ctx, "deno", "deno applications run on it")?;
+      let app = format!("{}/lib/{}", ctx.out, ctx.spec()?.name);
+      create_dir_all(format!("{}/lib", ctx.out))?;
+      succeed(
+         Command::new("cp").args([
+            "-r",
+            &ctx.project_dir(&options.root).to_string_lossy(),
+            &app,
+         ]),
+         "cp",
+      )?;
+      succeed(
+         Command::new("cp").args(["-r", &options.deps, &format!("{app}/deno-dir")]),
+         "cp",
+      )?;
+      let config: Vec<String> = ["deno.json", "deno.jsonc"]
+         .iter()
+         .map(|name| format!("{app}/{name}"))
+         .filter(|path| Path::new(path).exists())
+         .map(|path| format!("--config={path}"))
+         .collect();
+      for (name, module) in &options.entry {
          let mut args = vec![
-            "check".to_owned(),
+            "run".to_owned(),
             "--cached-only".to_owned(),
             "--frozen".to_owned(),
          ];
-         args.extend(options.entry.values().cloned());
-         run("deno", &args, &[])
-      },
-      "test" => {
-         let mut args = vec![
-            "test".to_owned(),
-            "--cached-only".to_owned(),
-            "--frozen".to_owned(),
-         ];
+         args.extend(config.iter().cloned());
          args.extend(options.permissions.iter().cloned());
          args.extend(options.flags.iter().cloned());
-         run("deno", &args, &[])
-      },
-      "install" => install(ctx, &options),
-      _ => Err(unknown("deno", verb)),
+         args.push(format!("{app}/{module}"));
+         launchers::write(
+            ctx,
+            name,
+            &format!("{deno}/bin/deno"),
+            &args,
+            &BTreeMap::from([
+               ("DENO_DIR".to_owned(), format!("{app}/deno-dir")),
+               ("DENO_NO_UPDATE_CHECK".to_owned(), "1".to_owned()),
+            ]),
+         )?;
+      }
+      Ok(())
    }
-}
-
-/// no `deno compile`, it splices into upstream's denort ELF, which would need
-/// relinking first.
-fn install(ctx: &Ctx, options: &Options) -> io::Result<()> {
-   let deno = dep_root(ctx, "deno", "deno applications run on it")?;
-   let app = format!("{}/lib/{}", ctx.out, ctx.spec()?.name);
-   create_dir_all(format!("{}/lib", ctx.out))?;
-   succeed(
-      Command::new("cp").args([
-         "-r",
-         &ctx.project_dir(&options.root).to_string_lossy(),
-         &app,
-      ]),
-      "cp",
-   )?;
-   succeed(
-      Command::new("cp").args(["-r", &options.deps, &format!("{app}/deno-dir")]),
-      "cp",
-   )?;
-   let config: Vec<String> = ["deno.json", "deno.jsonc"]
-      .iter()
-      .map(|name| format!("{app}/{name}"))
-      .filter(|path| Path::new(path).exists())
-      .map(|path| format!("--config={path}"))
-      .collect();
-   for (name, module) in &options.entry {
-      let mut args = vec![
-         "run".to_owned(),
-         "--cached-only".to_owned(),
-         "--frozen".to_owned(),
-      ];
-      args.extend(config.iter().cloned());
-      args.extend(options.permissions.iter().cloned());
-      args.extend(options.flags.iter().cloned());
-      args.push(format!("{app}/{module}"));
-      launchers::write(
-         ctx,
-         name,
-         &format!("{deno}/bin/deno"),
-         &args,
-         &BTreeMap::from([
-            ("DENO_DIR".to_owned(), format!("{app}/deno-dir")),
-            ("DENO_NO_UPDATE_CHECK".to_owned(), "1".to_owned()),
-         ]),
-      )?;
-   }
-   Ok(())
 }

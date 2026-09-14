@@ -16,10 +16,7 @@ use std::{
    },
    io,
    os::unix::fs::PermissionsExt,
-   path::{
-      Path,
-      PathBuf,
-   },
+   path::Path,
    process::Command,
 };
 
@@ -38,9 +35,11 @@ use crate::{
    prepare::succeed,
    system::{
       command::{
+         Env,
          run,
          unknown,
       },
+      dispatch::System,
       python::tool_site_packages,
       syslibs,
    },
@@ -70,51 +69,51 @@ fn site_packages(ctx: &Ctx) -> io::Result<String> {
    ))
 }
 
-pub fn workdir(ctx: &Ctx) -> io::Result<PathBuf> {
-   let options: Options = ctx.options("pyapp")?;
-   Ok(ctx.project_dir(&options.root))
-}
+pub struct Pyapp;
 
-/// PYTHONPATH is the application's site-packages, filling up during the
-/// build, then the build backends.
-pub fn setup(ctx: &Ctx, attrs: &Attrs) -> io::Result<BTreeMap<String, String>> {
-   let options: Options = ctx.options("pyapp")?;
-   let site = site_packages(ctx)?;
-   create_dir_all(&site)?;
-   let mut path = vec![site];
-   path.extend(tool_site_packages()?);
-   let mut env = BTreeMap::from([
-      ("PYTHONPATH".to_owned(), path.join(":")),
-      ("PYTHONDONTWRITEBYTECODE".to_owned(), "1".to_owned()),
-      ("PYTHONNOUSERSITE".to_owned(), "1".to_owned()),
-      ("PIP_NO_INDEX".to_owned(), "1".to_owned()),
-   ]);
-   syslibs::check(
-      attrs,
-      &ctx.project_dir(&options.root),
-      ctx.spec()?.sys.as_deref(),
-   )?;
-   env.extend(syslibs::active(attrs, "python", &ctx.deps)?.env);
-   Ok(env)
-}
+impl System for Pyapp {
+   fn name(&self) -> &'static str {
+      "pyapp"
+   }
 
-pub fn phase(ctx: &Ctx, verb: &str, attrs: &Attrs) -> io::Result<()> {
-   let options: Options = ctx.options("pyapp")?;
-   match verb {
-      "build" => build(ctx, attrs, &options),
-      "test" => {
-         let site = site_packages(ctx)?;
-         for module in &options.check {
-            run(
-               "python3",
-               &["-c".to_owned(), format!("import {module}")],
-               &[("PYTHONPATH", site.clone())],
-            )?;
-         }
-         Ok(())
-      },
-      "install" => install(ctx),
-      _ => Err(unknown("pyapp", verb)),
+   /// PYTHONPATH is the application's site-packages, filling up during the
+   /// build, then the build backends.
+   fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
+      let options: Options = ctx.options("pyapp")?;
+      let site = site_packages(ctx)?;
+      create_dir_all(&site)?;
+      let mut path = vec![site];
+      path.extend(tool_site_packages()?);
+      let mut env = BTreeMap::from([
+         ("PYTHONPATH".to_owned(), path.join(":")),
+         ("PYTHONDONTWRITEBYTECODE".to_owned(), "1".to_owned()),
+         ("PYTHONNOUSERSITE".to_owned(), "1".to_owned()),
+         ("PIP_NO_INDEX".to_owned(), "1".to_owned()),
+      ]);
+      syslibs::check(
+         attrs,
+         &ctx.project_dir(&options.root),
+         ctx.spec()?.sys.as_deref(),
+      )?;
+      env.extend(syslibs::active(attrs, "python", &ctx.deps)?.env);
+      Ok(env.into())
+   }
+
+   fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
+      let options: Options = ctx.options("pyapp")?;
+      match verb {
+         "build" => build(ctx, attrs, &options),
+         "test" => {
+            let site = site_packages(ctx)?;
+            for module in &options.check {
+               let check = format!("import {module}");
+               run("python3", &["-c", &check], &[("PYTHONPATH", site.as_str())])?;
+            }
+            Ok(())
+         },
+         "install" => install(ctx),
+         _ => Err(unknown("pyapp", verb)),
+      }
    }
 }
 
@@ -164,16 +163,16 @@ fn build(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<()> {
    )
 }
 
-fn wheel_args(outdir: &str) -> Vec<String> {
-   vec![
-      "-m".to_owned(),
-      "build".to_owned(),
-      "--wheel".to_owned(),
-      "--no-isolation".to_owned(),
-      "--skip-dependency-check".to_owned(),
-      "--outdir".to_owned(),
-      outdir.to_owned(),
-      ".".to_owned(),
+const fn wheel_args(outdir: &str) -> [&str; 8] {
+   [
+      "-m",
+      "build",
+      "--wheel",
+      "--no-isolation",
+      "--skip-dependency-check",
+      "--outdir",
+      outdir,
+      ".",
    ]
 }
 
@@ -183,14 +182,7 @@ fn build_sdist(ctx: &Ctx, tarball: &str, name: &str, outdir: &str) -> io::Result
    create_dir_all(&dir)?;
    run(
       "bsdtar",
-      &[
-         "-xf".to_owned(),
-         tarball.to_owned(),
-         "-C".to_owned(),
-         dir.clone(),
-         "--strip-components".to_owned(),
-         "1".to_owned(),
-      ],
+      &["-xf", tarball, "-C", &dir, "--strip-components", "1"],
       &[],
    )?;
    let back = current_dir()?;
@@ -220,7 +212,7 @@ fn install_wheel(ctx: &Ctx, wheel: &str, scripts: bool) -> io::Result<()> {
    )?;
    let site = site_packages(ctx)?;
    for packages in glob(&format!("{stage}/lib/python3*/site-packages"))? {
-      let mut entries: Vec<PathBuf> = read_dir(&packages)?
+      let mut entries: Vec<_> = read_dir(&packages)?
          .map(|entry| entry.map(|found| found.path()))
          .collect::<io::Result<_>>()?;
       entries.sort();

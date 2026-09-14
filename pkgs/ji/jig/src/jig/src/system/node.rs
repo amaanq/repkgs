@@ -15,10 +15,7 @@ use std::{
       PermissionsExt,
       symlink,
    },
-   path::{
-      Path,
-      PathBuf,
-   },
+   path::Path,
    process::Command,
 };
 
@@ -30,18 +27,21 @@ use crate::{
       Ctx,
    },
    prepare::succeed,
-   system::command::{
-      Env,
-      Setting,
-      run,
-      tool_root,
-      unknown,
+   system::{
+      command::{
+         Env,
+         run,
+         strs,
+         tool_root,
+         unknown,
+      },
+      dispatch::System,
    },
    tree::shebangs,
 };
 
 #[derive(Clone, Copy)]
-pub enum Manager {
+enum Manager {
    Npm,
    Pnpm,
    Yarn,
@@ -62,7 +62,6 @@ impl Manager {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Options {
-   root:    String,
    #[serde(default)]
    script:  Option<String>,
    deps:    String,
@@ -85,9 +84,33 @@ enum Bin {
    Many(BTreeMap<String, String>),
 }
 
-pub fn workdir(manager: Manager, ctx: &Ctx) -> io::Result<PathBuf> {
-   let options: Options = ctx.options(manager.name())?;
-   Ok(ctx.project_dir(&options.root))
+macro_rules! managers {
+   ($($name:ident => $manager:expr),* $(,)?) => {
+      $(
+         pub struct $name;
+
+         impl System for $name {
+            fn name(&self) -> &'static str {
+               $manager.name()
+            }
+
+            fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
+               setup($manager, ctx, attrs)
+            }
+
+            fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
+               phase($manager, ctx, verb)
+            }
+         }
+      )*
+   };
+}
+
+managers! {
+   Npm => Manager::Npm,
+   Pnpm => Manager::Pnpm,
+   Yarn => Manager::Yarn,
+   Bun => Manager::Bun,
 }
 
 fn text(pairs: &[(&str, String)]) -> Vec<(String, String)> {
@@ -115,32 +138,32 @@ fn install_command(
    ctx: &Ctx,
    attrs: &Attrs,
    options: &Options,
-) -> io::Result<Vec<String>> {
-   let mut args: Vec<String> = match manager {
+) -> io::Result<Vec<&'static str>> {
+   let args = match manager {
       Manager::Npm => {
          copy(
             format!("{}/package-lock.json", options.deps),
             "package-lock.json",
          )?;
          set_permissions("package-lock.json", PermissionsExt::from_mode(0o644))?;
-         vec!["ci".to_owned(), "--ignore-scripts".to_owned()]
+         vec!["ci", "--ignore-scripts"]
       },
       Manager::Pnpm => {
          vec![
-            "install".to_owned(),
-            "--offline".to_owned(),
-            "--frozen-lockfile".to_owned(),
-            "--ignore-scripts".to_owned(),
+            "install",
+            "--offline",
+            "--frozen-lockfile",
+            "--ignore-scripts",
          ]
       },
       Manager::Yarn => {
          vec![
-            "install".to_owned(),
-            "--offline".to_owned(),
-            "--frozen-lockfile".to_owned(),
-            "--ignore-scripts".to_owned(),
-            "--non-interactive".to_owned(),
-            "--no-progress".to_owned(),
+            "install",
+            "--offline",
+            "--frozen-lockfile",
+            "--ignore-scripts",
+            "--non-interactive",
+            "--no-progress",
          ]
       },
       Manager::Bun => {
@@ -148,24 +171,17 @@ fn install_command(
             .probe_inputs
             .first()
             .ok_or_else(|| io::Error::other("the builder tree is not among probeInputs"))?;
-         run(
-            "bun",
-            &[
-               format!("{builder}/systems/bun-cache.ts"),
-               options.deps.clone(),
-               format!("{}/bun-cache", ctx.build),
-            ],
-            &[],
-         )?;
+         let script = format!("{builder}/systems/bun-cache.ts");
+         let cache = format!("{}/bun-cache", ctx.build);
+         run("bun", &[&script, &options.deps, &cache], &[])?;
          vec![
-            "install".to_owned(),
-            "--frozen-lockfile".to_owned(),
-            "--offline".to_owned(),
-            "--ignore-scripts".to_owned(),
+            "install",
+            "--frozen-lockfile",
+            "--offline",
+            "--ignore-scripts",
          ]
       },
    };
-   args.extend(options.flags.iter().cloned());
    Ok(args)
 }
 
@@ -220,18 +236,18 @@ fn manager_env(manager: Manager, ctx: &Ctx, options: &Options) -> Vec<(String, S
 
 /// the prebuilt .node addons in `node_modules/.bin` (rollup, esbuild) want
 /// `libgcc_s.so.1` findable.
-pub fn setup(manager: Manager, ctx: &Ctx, attrs: &Attrs) -> io::Result<Env> {
+fn setup(manager: Manager, ctx: &Ctx, attrs: &Attrs) -> io::Result<Env> {
    let options: Options = ctx.options(manager.name())?;
    let vars = manager_env(manager, ctx, &options);
-   let borrowed: Vec<(&str, String)> = vars
+   let env_vars: Vec<(&str, &str)> = vars
       .iter()
-      .map(|pair| (pair.0.as_str(), pair.1.clone()))
+      .map(|pair| (pair.0.as_str(), pair.1.as_str()))
       .collect();
-   run(
-      manager.name(),
-      &install_command(manager, ctx, attrs, &options)?,
-      &borrowed,
-   )?;
+   let mut args: Vec<&str> = install_command(manager, ctx, attrs, &options)?
+      .into_iter()
+      .collect();
+   args.extend(strs(&options.flags));
+   run(manager.name(), &args, &env_vars)?;
    shebangs(Path::new("node_modules"), false)?;
    let mut path: Vec<String> = vec![format!("{}/node_modules/.bin", current_dir()?.display())];
    path.extend(
@@ -240,19 +256,16 @@ pub fn setup(manager: Manager, ctx: &Ctx, attrs: &Attrs) -> io::Result<Env> {
          .split(':')
          .map(str::to_owned),
    );
-   let mut env: Env = vars
-      .into_iter()
-      .map(|pair| (pair.0, Setting::Text(pair.1)))
-      .collect();
-   env.insert("PATH".to_owned(), Setting::List(path));
-   env.insert(
-      "LD_LIBRARY_PATH".to_owned(),
-      Setting::Text(format!("{}/lib", tool_root(attrs, "libgcc-shim")?)),
+   let mut env = Env::from(vars.into_iter().collect::<BTreeMap<String, String>>());
+   env.set_list("PATH", path);
+   env.set(
+      "LD_LIBRARY_PATH",
+      format!("{}/lib", tool_root(attrs, "libgcc-shim")?),
    );
    Ok(env)
 }
 
-pub fn phase(manager: Manager, ctx: &Ctx, verb: &str) -> io::Result<()> {
+fn phase(manager: Manager, ctx: &Ctx, verb: &str) -> io::Result<()> {
    let options: Options = ctx.options(manager.name())?;
    let name = manager.name();
    match verb {
@@ -260,17 +273,17 @@ pub fn phase(manager: Manager, ctx: &Ctx, verb: &str) -> io::Result<()> {
          let Some(ref script) = options.script else {
             return Ok(());
          };
-         let mut args = vec!["run".to_owned()];
+         let mut args = vec!["run"];
          if matches!(manager, Manager::Yarn) {
-            args.push("--offline".to_owned());
+            args.push("--offline");
          }
-         args.push(script.clone());
+         args.push(script.as_str());
          run(name, &args, &[])
       },
       "test" => {
-         let mut args = vec!["test".to_owned()];
+         let mut args = vec!["test"];
          if matches!(manager, Manager::Yarn) {
-            args.push("--offline".to_owned());
+            args.push("--offline");
          }
          run(name, &args, &[])
       },
@@ -282,38 +295,22 @@ pub fn phase(manager: Manager, ctx: &Ctx, verb: &str) -> io::Result<()> {
 fn install(manager: Manager, ctx: &Ctx, options: &Options) -> io::Result<()> {
    match manager {
       Manager::Npm => {
-         run(
-            "npm",
-            &[
-               "prune".to_owned(),
-               "--omit=dev".to_owned(),
-               "--ignore-scripts".to_owned(),
-            ],
-            &[],
-         )?;
+         run("npm", &["prune", "--omit=dev", "--ignore-scripts"], &[])?;
       },
       Manager::Pnpm => {
-         run(
-            "pnpm",
-            &[
-               "prune".to_owned(),
-               "--prod".to_owned(),
-               "--ignore-scripts".to_owned(),
-            ],
-            &[],
-         )?;
+         run("pnpm", &["prune", "--prod", "--ignore-scripts"], &[])?;
       },
       Manager::Yarn => {
          let mut args = vec![
-            "install".to_owned(),
-            "--offline".to_owned(),
-            "--frozen-lockfile".to_owned(),
-            "--ignore-scripts".to_owned(),
-            "--production".to_owned(),
-            "--non-interactive".to_owned(),
-            "--no-progress".to_owned(),
+            "install",
+            "--offline",
+            "--frozen-lockfile",
+            "--ignore-scripts",
+            "--production",
+            "--non-interactive",
+            "--no-progress",
          ];
-         args.extend(options.flags.iter().cloned());
+         args.extend(strs(&options.flags));
          run("yarn", &args, &[])?;
       },
       Manager::Bun => {
@@ -321,15 +318,16 @@ fn install(manager: Manager, ctx: &Ctx, options: &Options) -> io::Result<()> {
             let bin = format!("{}/bin", ctx.out);
             create_dir_all(&bin)?;
             for (exe, entry) in &options.compile {
+               let outfile = format!("{bin}/{exe}");
                run(
                   "bun",
                   &[
-                     "build".to_owned(),
-                     "--compile".to_owned(),
-                     "--minify".to_owned(),
-                     entry.clone(),
-                     "--outfile".to_owned(),
-                     format!("{bin}/{exe}"),
+                     "build",
+                     "--compile",
+                     "--minify",
+                     entry.as_str(),
+                     "--outfile",
+                     outfile.as_str(),
                   ],
                   &[],
                )?;

@@ -32,7 +32,42 @@ pub enum Setting {
    List(Vec<String>),
 }
 
-pub type Env = BTreeMap<String, Setting>;
+/// what a build system's setup hands the build script to load, PATH as a list.
+#[derive(Serialize, Default)]
+#[serde(transparent)]
+pub struct Env(BTreeMap<String, Setting>);
+
+impl Env {
+   pub fn set(&mut self, name: &str, value: String) {
+      self.0.insert(name.to_owned(), Setting::Text(value));
+   }
+
+   pub fn set_list(&mut self, name: &str, values: Vec<String>) {
+      self.0.insert(name.to_owned(), Setting::List(values));
+   }
+}
+
+impl From<BTreeMap<String, String>> for Env {
+   fn from(vars: BTreeMap<String, String>) -> Self {
+      Self(
+         vars
+            .into_iter()
+            .map(|(name, value)| (name, Setting::Text(value)))
+            .collect(),
+      )
+   }
+}
+
+impl<const COUNT: usize> From<[(&str, String); COUNT]> for Env {
+   fn from(vars: [(&str, String); COUNT]) -> Self {
+      Self(
+         vars
+            .into_iter()
+            .map(|(name, value)| (name.to_owned(), Setting::Text(value)))
+            .collect(),
+      )
+   }
+}
 
 pub fn dep_root(ctx: &Ctx, name: &str, why: &str) -> io::Result<String> {
    ctx.deps
@@ -61,15 +96,23 @@ pub fn tool(name: &str) -> io::Result<PathBuf> {
    Ok(path)
 }
 
-pub fn run(program: &str, args: &[String], env: &[(&str, String)]) -> io::Result<()> {
+pub fn strs(values: &[String]) -> impl Iterator<Item = &str> {
+   values.iter().map(String::as_str)
+}
+
+fn echo(program: &str, args: &[&str]) {
    drop(writeln!(
       io::stderr().lock(),
       "+ {program} {}",
       args.join(" ")
    ));
+}
+
+pub fn run(program: &str, args: &[&str], env: &[(&str, &str)]) -> io::Result<()> {
+   echo(program, args);
    let status = Command::new(program)
       .args(args)
-      .envs(env.iter().cloned())
+      .envs(env.iter().copied())
       .status()?;
    if !status.success() {
       return Err(io::Error::other(format!(
@@ -80,12 +123,8 @@ pub fn run(program: &str, args: &[String], env: &[(&str, String)]) -> io::Result
    Ok(())
 }
 
-pub fn capture(program: &str, args: &[String]) -> io::Result<String> {
-   drop(writeln!(
-      io::stderr().lock(),
-      "+ {program} {}",
-      args.join(" ")
-   ));
+pub fn capture(program: &str, args: &[&str]) -> io::Result<String> {
+   echo(program, args);
    let output = Command::new(program)
       .args(args)
       .stderr(Stdio::inherit())
