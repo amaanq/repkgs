@@ -1,6 +1,7 @@
 use std::{
    env::{
       current_dir,
+      temp_dir,
       var,
    },
    ffi::OsStr,
@@ -439,11 +440,16 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    };
    let explained = format!("{subject} {miss}");
 
-   let parent = invocation
-      .output
-      .parent()
-      .filter(|path| !path.as_os_str().is_empty())
-      .unwrap_or_else(|| Path::new("."));
+   let scratch = temp_dir();
+   let parent = if invocation.stdout {
+      scratch.as_path()
+   } else {
+      invocation
+         .output
+         .parent()
+         .filter(|path| !path.as_os_str().is_empty())
+         .unwrap_or_else(|| Path::new("."))
+   };
    let dependency = Builder::new()
       .prefix(".jig-")
       .suffix(".d")
