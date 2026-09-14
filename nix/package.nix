@@ -1,6 +1,6 @@
 # The `package` function: spec attrset -> derivation (+ `.tests` when tests.separate).
 # Validates field and option names at eval time, then generates the nu script
-#   use core.nu *; use prepare.nu; use finish.nu; use implant.nu; use <bs>.nu …; prepare; <bs> setup …; <phase> …; finish
+#   use core.nu *; use prepare.nu; use finish.nu; use implant.nu; prepare; <bs> setup …; <phase> …; finish
 # that nu executes in a single nu process. Vocabulary: README.md "Writing a package".
 {
   platform,
@@ -454,7 +454,7 @@ let
         else if elem (elemAt p 0) uses then
           {
             test = false;
-            body = "note phase ${s}\ndo {\ncd (${elemAt p 0} workdir)\n${elemAt p 0} ${elemAt p 1}\n}";
+            body = "note phase ${s}\n^jig system phase ${elemAt p 0} ${elemAt p 1}";
           }
         else
           {
@@ -509,13 +509,11 @@ let
   prelude = [
     preludeCommon
   ]
-  ++ map (u: "use ${tree}/${buildSystems.${u}.module}") uses
   ++ map (m: "use ${storeModule m}") modules;
-  # each build system's OPTIONS table for prepare.nu to merge the spec over
-  systemsArg = "{${join ", " (map (u: "${u}: $" + u + ".OPTIONS") uses)}}";
-  # every phase starts in a known directory: `<bs> workdir` for a build system's phases, the first
-  # build system's for inline phases and package modules. setup exports env, hence --env
-  workdir = if uses == [ ] then "(ctx).src" else "${builtins.head uses} workdir";
+  # every phase starts in a known directory, its build system's workdir, the first build
+  # system's for inline phases and package modules
+  workdir =
+    if uses == [ ] then "(ctx).src" else "^jig system workdir ${builtins.head uses} | str trim";
   setups = map (u: buildSystems.${u}.setup) uses;
   # also `pkg.script`: lints/package-scripts.nu has nu parse it before anything builds
   script = lines (

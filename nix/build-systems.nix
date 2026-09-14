@@ -1,13 +1,14 @@
-# What `uses = [ "<name>" ]` means at eval time: builder/systems/<name>.nu implements the phases
-# and declares the options (its OPTIONS, merged and checked by prepare.nu, read as `options
-# <name>`). Here is only what forms derivation inputs: `phases`, the default order (build test
-# install unless said otherwise), `tool` (swappable per package as `<name>.tool`) and `tools` (a
-# list, or spec -> list) on PATH, `dependencies` added to the package's, `deps` (spec -> the
-# fetched tree of locked dependencies, by default from the package's own lock file, a package
-# overrides it as `<name>.deps`), `prebuilt` as the package's default for that field, and
-# `unsupported`, a reason (or null) why no user of it can build on this platform. Every system
-# also takes `<name>.root`, the directory below the source the project lives in. `sh` is for
-# tools that spawn a shell by name (ninja, npm run, libtool).
+# What `uses = [ "<name>" ]` means: jig's system/<name>.rs implements the phases, `phases` is the default
+# order (build test install unless said otherwise), `tool` (swappable per package as `<name>.tool`)
+# and `tools` (a list, or spec -> list) go on PATH, `dependencies` add to
+# the package's, `prebuilt` is the package's default for that field, `unsupported` is a reason
+# (or null) why no user of it can build on this platform, and `options` are what a
+# package may set under `<name>.*`: `{ type; default; doc; }` each, `type` the `builtins.typeOf`
+# names allowed, checked at eval time along with the name. The system reads the merged result
+# from the spec under `<name>`. Every system has `root`; `deps` (the fetched tree of locked dependencies,
+# `lock.deps = fetcher` defaults it to the package's own lock file) and `flags` (extra words on
+# the tool's command line) mean the same wherever they exist. `repkgs options` renders this as a
+# table. `sh` is for tools that spawn a shell by name (ninja, npm run, libtool).
 {
   buildPkgs,
   pkgs,
@@ -31,7 +32,7 @@ builtins.mapAttrs
       extra = if builtins.isFunction (bs.tools or [ ]) then bs.tools else _: bs.tools or [ ];
     in
     {
-      module = "systems/${name}.nu";
+      inherit options;
       phases = map (v: "${name}.${v}") (
         bs.phases or [
           "build"
@@ -41,14 +42,16 @@ builtins.mapAttrs
       );
       # script text nix/package.nix would otherwise assemble per package: the setup block and,
       # for any "<name>.<verb>" a package may list, its body and whether it is a test phase
-      setup = "note setup ${name}\ndo --env {\nmkdir (${name} workdir)\ncd (${name} workdir)\n${name} setup\n}";
+      setup = "note setup ${name}\nload-env (^jig system setup ${name} | from json)\n${
+        if bs ? postSetup then "${bs.postSetup}\n" else ""
+      }cd (^jig system workdir ${name} | str trim)";
       phase = builtins.listToAttrs (
         map
           (verb: {
             name = "${name}.${verb}";
             value = {
               test = verb == "test";
-              body = "note phase ${name}.${verb}\ndo {\ncd (${name} workdir)\n${name} ${verb}\n}";
+              body = "note phase ${name}.${verb}\n^jig system phase ${name} ${verb}";
             };
           })
           [
@@ -161,7 +164,18 @@ builtins.mapAttrs
       # built (formatelf, git). Cross: std for the target is its own package, <tool>-std
       tool = buildPkgs.rust;
       tools = spec: lib.on platform.cross [ pkgs."${spec.cargo.tool.pname}-std" ];
-      deps = fetch.cargoVendor;
+      postSetup = "hide-env -i RUSTFLAGS";
+      lock.deps = fetch.cargoVendor;
+      options = {
+        features = strs [ ] "--features";
+        noDefaultFeatures = bool false "--no-default-features";
+        flags = flags "cargo build and cargo test";
+        skipTests = strs [ ] "cargo test --skip filters (substring of the test path)";
+        deps = deps true "fetch.cargoVendor";
+        cratePatches =
+          attrs { }
+            "crate name -> patches applied to its vendored copy (-p1 inside the crate)";
+      };
     };
     cabal = {
       unsupported = if platform.cross then "ghc-bootstrap only targets the build machine" else null;

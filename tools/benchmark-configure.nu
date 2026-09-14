@@ -1,7 +1,6 @@
 #!/usr/bin/env nu
 
 use ../builder/prepare.nu
-use ../builder/systems/autotools.nu
 
 def capture [program: string, arguments: list<string>]: nothing -> string {
   let result = (^$program ...$arguments | complete)
@@ -106,9 +105,9 @@ def "main work" [directory: path, mode: string]: nothing -> nothing {
   prepare
   $env.PKGS_CTX = ($env.PKGS_CTX | update cache ($mode starts-with shared or $mode starts-with whole))
   $env.JIG_LOG = ($directory | path join $"($mode)-jig.log")
-  cd (autotools workdir)
-  autotools setup
-  let elapsed = (timeit { autotools configure })
+  load-env (^jig system setup autotools | from json)
+  cd (^jig system workdir autotools | str trim)
+  let elapsed = (timeit { ^jig system phase autotools configure })
   let outputs = (glob **/{Makefile,config.h} | sort | each {|file|
     {file: ($file | path relative-to $directory), hash: (open --raw $file | hash sha256)}
   })

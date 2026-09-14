@@ -59,7 +59,7 @@ let
 in
 {
   # Cargo.lock -> a directory cargo accepts as [source.vendored-sources] (crates unpacked, with
-  # .cargo-checksum.json). builder/systems/cargo.nu points CARGO_HOME's config at it.
+  # .cargo-checksum.json). jig's cargo system points CARGO_HOME's config at it.
   cargoVendor =
     {
       source,
