@@ -117,6 +117,21 @@ fn locked(ecosystem: &str, text: &str) -> Vec<String> {
    }
 }
 
+// our packages the locked names of one ecosystem can link, sorted
+pub fn wanted_for(attrs: &Attrs, ecosystem: &str, names: &[String]) -> io::Result<Vec<String>> {
+   let tables = tables(attrs)?;
+   let mut found = Vec::new();
+   if let Some(table) = tables.get(ecosystem) {
+      for (name, entry) in table {
+         if names.contains(name) && !found.contains(&entry.pkg) {
+            found.push(entry.pkg.clone());
+         }
+      }
+   }
+   found.sort();
+   Ok(found)
+}
+
 // our packages the lock files in `dir` can link, sorted, what [pin] sys should
 // say
 pub fn wanted(attrs: &Attrs, dir: &Path) -> io::Result<Vec<String>> {
@@ -142,19 +157,24 @@ pub fn wanted(attrs: &Attrs, dir: &Path) -> io::Result<Vec<String>> {
 // the lock can link libraries [pin] sys does not name, the pin is stale. None
 // means no sources.toml, dependencies are by hand
 pub fn check(attrs: &Attrs, dir: &Path, sys: Option<&[String]>) -> io::Result<()> {
+   check_names(&wanted(attrs, dir)?, sys, "rehash")
+}
+
+pub fn check_names(wanted: &[String], sys: Option<&[String]>, command: &str) -> io::Result<()> {
    let Some(pinned) = sys else {
       return Ok(());
    };
-   let missing: Vec<String> = wanted(attrs, dir)?
-      .into_iter()
+   let missing: Vec<&str> = wanted
+      .iter()
       .filter(|name| !pinned.contains(name))
+      .map(String::as_str)
       .collect();
    if missing.is_empty() {
       return Ok(());
    }
    Err(io::Error::other(format!(
       "sys-libs: the lock can link {}, missing from [pin] sys in sources.toml. `repkgs update \
-       rehash <pkg>` rewrites it",
+       {command} <pkg>` rewrites it",
       missing.join(", ")
    )))
 }

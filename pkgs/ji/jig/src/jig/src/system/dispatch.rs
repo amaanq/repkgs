@@ -22,8 +22,10 @@ use crate::{
    cli::SystemOperation,
    system::{
       autotools,
+      cabal,
       cargo,
       cmake,
+      go,
       make,
       meson,
       python,
@@ -37,6 +39,8 @@ pub enum System {
    Meson,
    Cargo,
    Python,
+   Cabal,
+   Go,
 }
 
 impl FromStr for System {
@@ -50,6 +54,8 @@ impl FromStr for System {
          "meson" => Ok(Self::Meson),
          "cargo" => Ok(Self::Cargo),
          "python" => Ok(Self::Python),
+         "cabal" => Ok(Self::Cabal),
+         "go" => Ok(Self::Go),
          _ => {
             Err(io::Error::other(format!(
                "{name} is not a build system jig knows"
@@ -77,6 +83,8 @@ fn setup(name: &str) -> io::Result<()> {
       System::Cmake | System::Meson => BTreeMap::<String, String>::new(),
       System::Cargo => cargo::setup(&ctx, &Attrs::load()?)?,
       System::Python => python::setup(&ctx)?,
+      System::Cabal => cabal::setup(&ctx)?,
+      System::Go => go::setup(&ctx, &Attrs::load()?)?,
    };
    let mut stdout = io::stdout().lock();
    serde_json::to_writer(&mut stdout, &env)?;
@@ -98,6 +106,8 @@ fn workdir_of(ctx: &Ctx, name: &str) -> io::Result<PathBuf> {
       System::Meson => Ok(meson::workdir(ctx)),
       System::Cargo => cargo::workdir(ctx),
       System::Python => python::workdir(ctx),
+      System::Cabal => cabal::workdir(ctx),
+      System::Go => go::workdir(ctx),
    }
 }
 
@@ -111,5 +121,7 @@ fn phase(name: &str, verb: &str, socket: &Path) -> io::Result<()> {
       System::Meson => meson::phase(&ctx, verb),
       System::Cargo => cargo::phase(&ctx, verb),
       System::Python => python::phase(&ctx, verb, &Attrs::load()?),
+      System::Cabal => cabal::phase(&ctx, verb, &Attrs::load()?, socket),
+      System::Go => go::phase(&ctx, verb, &Attrs::load()?),
    }
 }

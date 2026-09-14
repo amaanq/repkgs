@@ -1,0 +1,340 @@
+use std::{
+   collections::BTreeMap,
+   env::var,
+   fs::{
+      copy,
+      create_dir_all,
+      read,
+      read_dir,
+      read_to_string,
+      remove_file,
+   },
+   io,
+   os::unix::fs::symlink,
+   path::{
+      Path,
+      PathBuf,
+   },
+   process::Command,
+};
+
+use serde::Deserialize;
+use wire::client::Client;
+
+use crate::{
+   attrs::{
+      Attrs,
+      Ctx,
+   },
+   files::write_file,
+   prepare::succeed,
+   system::{
+      command::{
+         capture,
+         run,
+         tool,
+         unknown,
+      },
+      syslibs,
+   },
+   tree::{
+      note,
+      parallel,
+      walk,
+   },
+};
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Options {
+   root:    String,
+   deps:    String,
+   flags:   Vec<String>,
+   exes:    Vec<String>,
+   project: String,
+}
+
+#[derive(Deserialize)]
+struct Plan {
+   #[serde(rename = "install-plan")]
+   install_plan: Vec<Unit>,
+}
+
+#[derive(Deserialize)]
+struct Unit {
+   #[serde(rename = "type")]
+   kind:     String,
+   #[serde(default)]
+   style:    Option<String>,
+   id:       String,
+   #[serde(rename = "pkg-name")]
+   pkg_name: String,
+}
+
+/// the same fixed path in every sandbox, so the paths inside cached units
+/// agree.
+const STORE: &str = "/build/cabal-store";
+
+pub fn workdir(ctx: &Ctx) -> io::Result<PathBuf> {
+   let options: Options = ctx.options("cabal")?;
+   Ok(ctx.project_dir(&options.root))
+}
+
+fn is_cabal(name: &str) -> bool {
+   Path::new(name)
+      .extension()
+      .is_some_and(|extension| extension.eq_ignore_ascii_case("cabal"))
+}
+
+fn units() -> io::Result<String> {
+   var("CABAL_UNITS").map_err(|_unset| io::Error::other("CABAL_UNITS is not set"))
+}
+
+fn recache(units: &str) -> io::Result<()> {
+   succeed(
+      Command::new("ghc-pkg")
+         .arg("recache")
+         .arg(format!("--package-db={units}/package.db")),
+      "ghc-pkg",
+   )
+}
+
+/// cabal writes its index cache into a noindex repository's directory, so the
+/// repository is a writable directory of symlinks. cabal passes -jsem to ghc
+/// itself, outside the ghc-options that unit ids hash, and jsem feeds it from
+/// jigd's slots.
+pub fn setup(ctx: &Ctx) -> io::Result<BTreeMap<String, String>> {
+   let options: Options = ctx.options("cabal")?;
+   let repo = format!("{}/repo", ctx.build);
+   create_dir_all(&repo)?;
+   let mut sources: Vec<String> = read_dir(&options.deps)?
+      .map(|entry| entry.map(|found| found.file_name().to_string_lossy().into_owned()))
+      .collect::<io::Result<_>>()?;
+   sources.sort();
+   for name in sources
+      .iter()
+      .filter(|name| name.ends_with(".tar.gz") || is_cabal(name))
+   {
+      symlink(format!("{}/{name}", options.deps), format!("{repo}/{name}"))?;
+   }
+   let output = Command::new("ghc").arg("--info").output()?;
+   if !output.status.success() {
+      return Err(io::Error::other("ghc --info failed"));
+   }
+   let info = String::from_utf8_lossy(&output.stdout);
+   let unit_id = info
+      .split("\"Project Unit Id\",\"")
+      .nth(1)
+      .and_then(|rest| rest.split('"').next())
+      .ok_or_else(|| io::Error::other("ghc --info names no Project Unit Id"))?;
+   let cabal_dir = format!("{}/cabal", ctx.build);
+   let units = format!("{STORE}/{unit_id}");
+   create_dir_all(&cabal_dir)?;
+   create_dir_all(format!("{units}/package.db"))?;
+   recache(&units)?;
+   let ghc = format!("{}/ghc", ctx.build);
+   write_file(
+      Path::new(&ghc),
+      format!(
+         "#!{}\nexec {} {} \"$@\"\n",
+         tool("sh")?.display(),
+         tool("jsem")?.display(),
+         tool("ghc")?.display()
+      )
+      .as_bytes(),
+      Some(0o755),
+   )?;
+   write_file(
+      Path::new(&format!("{cabal_dir}/config")),
+      format!(
+         "repository local\n  url: file+noindex://{repo}\nstore-dir: {STORE}\njobs: \
+          {}\nsemaphore: True\nwith-compiler: {ghc}\nwith-hc-pkg: {}\n",
+         ctx.njobs,
+         tool("ghc-pkg")?.display()
+      )
+      .as_bytes(),
+      None,
+   )?;
+   let debug = if ctx.spec()?.debug {
+      "  ghc-options: -g\n"
+   } else {
+      ""
+   };
+   write_file(
+      Path::new("cabal.project.local"),
+      format!(
+         "program-locations\n  gcc-location: {}\npackage *\n  split-sections: True\n{debug}{}",
+         tool("cc")?.display(),
+         options.project
+      )
+      .as_bytes(),
+      None,
+   )?;
+   Ok(BTreeMap::from([
+      ("CABAL_DIR".to_owned(), cabal_dir),
+      ("CABAL_UNITS".to_owned(), units),
+   ]))
+}
+
+pub fn phase(ctx: &Ctx, verb: &str, attrs: &Attrs, socket: &Path) -> io::Result<()> {
+   let options: Options = ctx.options("cabal")?;
+   match verb {
+      "build" => build(ctx, attrs, &options, socket),
+      "test" => test(ctx, &options),
+      "install" => install(ctx, &options),
+      _ => Err(unknown("cabal", verb)),
+   }
+}
+
+/// flags go to every cabal subcommand, build, test and list-bin must agree.
+fn targets(options: &Options) -> Vec<String> {
+   let mut args = options.flags.clone();
+   args.extend(options.exes.iter().map(|exe| format!("exe:{exe}")));
+   args
+}
+
+fn plan() -> io::Result<Vec<Unit>> {
+   let plan: Plan = serde_json::from_str(&read_to_string("dist-newstyle/cache/plan.json")?)?;
+   Ok(plan
+      .install_plan
+      .into_iter()
+      .filter(|unit| unit.kind == "configured" && unit.style.as_deref() == Some("global"))
+      .collect())
+}
+
+fn unit_dirs(units: &str) -> io::Result<Vec<String>> {
+   let mut names = Vec::new();
+   for entry in read_dir(units)? {
+      let found = entry?;
+      let name = found.file_name().to_string_lossy().into_owned();
+      if found.file_type()?.is_dir() && name != "package.db" && name != "incoming" {
+         names.push(name);
+      }
+   }
+   names.sort();
+   Ok(names)
+}
+
+fn restore(ctx: &Ctx, ids: &[String], socket: &Path) -> io::Result<()> {
+   let units = units()?;
+   let got: Vec<bool> = parallel(ids, |id| {
+      let Some(bytes) = Client::connect(socket)
+         .ok()
+         .and_then(|mut client| client.get(&format!("hs:{id}")).ok().flatten())
+      else {
+         return Ok(false);
+      };
+      let tar = format!("{}/{id}.tar.zst", ctx.build);
+      write_file(Path::new(&tar), &bytes, None)?;
+      succeed(
+         Command::new("bsdtar").args(["-xf", &tar, "-C", &units]),
+         "bsdtar",
+      )?;
+      remove_file(&tar)?;
+      Ok(true)
+   })?;
+   recache(&units)?;
+   note(
+      "cabal",
+      &format!(
+         "{}/{} units cached",
+         got.iter().filter(|hit| **hit).count(),
+         ids.len()
+      ),
+   );
+   Ok(())
+}
+
+/// executable units (alex, happy, build tools of other packages) have no
+/// package.db entry, just bin/.
+fn save_units(ctx: &Ctx, before: &[String], socket: &Path) -> io::Result<()> {
+   let units = units()?;
+   let new: Vec<String> = unit_dirs(&units)?
+      .into_iter()
+      .filter(|id| !before.contains(id))
+      .collect();
+   parallel(&new, |id| {
+      let tar = format!("{}/{id}.tar.zst", ctx.build);
+      let mut command = Command::new("bsdtar");
+      command.args(["-c", "--zstd", "-f", &tar, "-C", &units, id]);
+      let conf = format!("package.db/{id}.conf");
+      if Path::new(&units).join(&conf).exists() {
+         command.arg(&conf);
+      }
+      succeed(&mut command, "bsdtar")?;
+      if let Ok(mut client) = Client::connect(socket) {
+         drop(client.put(&format!("hs:{id}"), &read(&tar)?));
+      }
+      remove_file(&tar)
+   })?;
+   note("cabal", &format!("{} units stored", new.len()));
+   Ok(())
+}
+
+fn build(ctx: &Ctx, attrs: &Attrs, options: &Options, socket: &Path) -> io::Result<()> {
+   let mut dry = vec!["build".to_owned(), "--dry-run".to_owned()];
+   dry.extend(targets(options));
+   run("cabal", &dry, &[])?;
+   let planned = plan()?;
+   let names: Vec<String> = planned.iter().map(|unit| unit.pkg_name.clone()).collect();
+   syslibs::check_names(
+      &syslibs::wanted_for(attrs, "hackage", &names)?,
+      ctx.spec()?.sys.as_deref(),
+      "lock",
+   )?;
+   if ctx.cache {
+      let ids: Vec<String> = planned.into_iter().map(|unit| unit.id).collect();
+      restore(ctx, &ids, socket)?;
+   }
+   let before = unit_dirs(&units()?)?;
+   let mut args = vec!["build".to_owned()];
+   args.extend(targets(options));
+   run("cabal", &args, &[])?;
+   if ctx.cache {
+      save_units(ctx, &before, socket)?;
+   }
+   Ok(())
+}
+
+/// cabal test errors out (Cabal-7043) when the package declares no test-suite,
+/// which executable-only packages often do not.
+fn test(ctx: &Ctx, options: &Options) -> io::Result<()> {
+   let cabals: Vec<String> = walk(&ctx.project_dir(&options.root))?
+      .into_iter()
+      .filter(|entry| {
+         entry.kind == 'f' && is_cabal(&entry.rel) && !entry.rel.starts_with("dist-newstyle/")
+      })
+      .map(|entry| entry.path)
+      .collect();
+   let declares_tests = |path: &String| {
+      read_to_string(path).is_ok_and(|text| {
+         text.lines().any(|line| {
+            let lowered = line.trim_start().to_ascii_lowercase();
+            lowered
+               .strip_prefix("test-suite")
+               .is_some_and(|rest| rest.starts_with(char::is_whitespace))
+         })
+      })
+   };
+   if !cabals.is_empty() && !cabals.iter().any(declares_tests) {
+      note("cabal", "no test suites");
+      return Ok(());
+   }
+   let mut args = vec!["test".to_owned(), "--enable-tests".to_owned()];
+   args.extend(options.flags.iter().cloned());
+   args.push("all:tests".to_owned());
+   run("cabal", &args, &[])
+}
+
+fn install(ctx: &Ctx, options: &Options) -> io::Result<()> {
+   let bin = format!("{}/bin", ctx.out);
+   create_dir_all(&bin)?;
+   for exe in &options.exes {
+      let mut args = vec!["list-bin".to_owned()];
+      args.extend(options.flags.iter().cloned());
+      args.push(format!("exe:{exe}"));
+      let built = capture("cabal", &args)?;
+      copy(built.trim(), format!("{bin}/{exe}"))?;
+   }
+   Ok(())
+}

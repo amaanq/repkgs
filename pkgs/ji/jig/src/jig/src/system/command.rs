@@ -4,7 +4,10 @@ use std::{
       Write as _,
    },
    path::PathBuf,
-   process::Command,
+   process::{
+      Command,
+      Stdio,
+   },
 };
 
 use crate::store::on_path;
@@ -34,6 +37,25 @@ pub fn run(program: &str, args: &[String], env: &[(&str, String)]) -> io::Result
       )));
    }
    Ok(())
+}
+
+pub fn capture(program: &str, args: &[String]) -> io::Result<String> {
+   drop(writeln!(
+      io::stderr().lock(),
+      "+ {program} {}",
+      args.join(" ")
+   ));
+   let output = Command::new(program)
+      .args(args)
+      .stderr(Stdio::inherit())
+      .output()?;
+   if !output.status.success() {
+      return Err(io::Error::other(format!(
+         "{program} failed with {}",
+         output.status.code().unwrap_or(-1)
+      )));
+   }
+   Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 pub fn unknown(name: &str, verb: &str) -> io::Error {

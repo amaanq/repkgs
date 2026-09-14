@@ -1,8 +1,10 @@
 mod autotools;
+mod cabal;
 mod cargo;
 mod cmake;
 pub mod command;
 pub mod dispatch;
+mod go;
 mod make;
 mod meson;
 mod python;

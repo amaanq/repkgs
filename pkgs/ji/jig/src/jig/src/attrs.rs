@@ -164,6 +164,8 @@ pub struct OsNames {
    #[serde(default)]
    pub cmake:        String,
    #[serde(default)]
+   pub go:           String,
+   #[serde(default)]
    pub meson:        String,
    #[serde(default)]
    pub meson_kernel: String,
@@ -171,6 +173,8 @@ pub struct OsNames {
 
 #[derive(Deserialize, Default)]
 pub struct Names {
+   #[serde(default)]
+   pub go:    String,
    #[serde(default)]
    pub meson: String,
 }
