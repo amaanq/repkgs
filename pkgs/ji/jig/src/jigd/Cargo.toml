@@ -1,10 +1,10 @@
 [package]
-name         = "jigd"
-description  = "Compilation cache and compiler slot daemon for repkgs"
-license      = "EUPL-1.2"
-repository   = "https://github.com/amaanq/repkgs"
-keywords     = [ "cache", "compiler", "nix", "bootstrap" ]
-categories   = [ "command-line-utilities", "development-tools" ]
+name                   = "jigd"
+description            = "Compilation cache and compiler slot daemon for repkgs"
+license                = "EUPL-1.2"
+repository             = "https://github.com/amaanq/repkgs"
+keywords               = [ "cache", "compiler", "nix", "bootstrap" ]
+categories             = [ "command-line-utilities", "development-tools" ]
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
@@ -13,7 +13,7 @@ rust-version.workspace = true
 blake3      = { workspace = true }
 color-eyre  = { workspace = true }
 eyre        = { workspace = true }
-pound       = "0.1.6"
+pound       = "0.1.7"
 rustix      = { workspace = true }
 signal-hook = { default-features = false, version = "0.3" }
 wire        = { workspace = true }
