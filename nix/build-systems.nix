@@ -40,18 +40,12 @@ builtins.mapAttrs
           "install"
         ]
       );
-      # script text nix/package.nix would otherwise assemble per package: the setup block and,
-      # for any "<name>.<verb>" a package may list, its body and whether it is a test phase
-      setup = "note setup ${name}\nload-env (^jib system setup ${name} | from json)\n${
-        if bs ? postSetup then "${bs.postSetup}\n" else ""
-      }cd (^jib system workdir ${name} | str trim)";
       phase = builtins.listToAttrs (
         map
           (verb: {
             name = "${name}.${verb}";
             value = {
               test = verb == "test";
-              body = "note phase ${name}.${verb}\n^jib system phase ${name} ${verb}";
             };
           })
           [
@@ -164,7 +158,6 @@ builtins.mapAttrs
       # built (formatelf, git). Cross: std for the target is its own package, <tool>-std
       tool = buildPkgs.rust;
       tools = spec: lib.on platform.cross [ pkgs."${spec.cargo.tool.pname}-std" ];
-      postSetup = "hide-env -i RUSTFLAGS";
       lock.deps = fetch.cargoVendor;
       options = {
         features = strs [ ] "--features";

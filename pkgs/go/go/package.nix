@@ -16,7 +16,7 @@ package {
         $env.GOROOT_FINAL = $c.out
         $env.GOCACHE = $"($c.build)/go-cache"
         $env.GOFLAGS = "-trimpath"
-        # a GNU build-id for finish.nu's debug split
+        # a GNU build-id for jib finish's debug split
         $env.GO_LDFLAGS = "-B gobuildid"
         if $c.cache { $env.GOCACHEPROG = (which gocacheprog | get 0.path) }
         $env.CC = "cc"

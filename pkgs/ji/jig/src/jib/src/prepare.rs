@@ -49,13 +49,21 @@ use crate::{
 };
 
 #[derive(Serialize)]
-struct Prepared {
-   env: BTreeMap<String, Value>,
-   cwd: String,
-   ctx: Ctx,
+pub struct Prepared {
+   pub env: BTreeMap<String, Value>,
+   pub cwd: String,
+   pub ctx: Ctx,
 }
 
 pub fn run(from_tree: Option<&Path>) -> io::Result<()> {
+   let prepared = prepare(from_tree)?;
+   let mut stdout = io::stdout().lock();
+   serde_json::to_writer(&mut stdout, &prepared)?;
+   writeln!(stdout)?;
+   Ok(())
+}
+
+pub fn prepare(from_tree: Option<&Path>) -> io::Result<Prepared> {
    let attrs = Attrs::load()?;
    let spec = attrs.spec()?;
    let top = build_top()?;
@@ -123,15 +131,11 @@ pub fn run(from_tree: Option<&Path>) -> io::Result<()> {
       cache,
    };
    ctx.save(&top)?;
-   let prepared = Prepared {
+   Ok(Prepared {
       env,
       cwd: cwd.to_string_lossy().into_owned(),
       ctx,
-   };
-   let mut stdout = io::stdout().lock();
-   serde_json::to_writer(&mut stdout, &prepared)?;
-   writeln!(stdout)?;
-   Ok(())
+   })
 }
 
 fn resolve_platform(

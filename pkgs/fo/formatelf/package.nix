@@ -9,7 +9,7 @@
 package {
   name = "formatelf";
   uses = [ "cargo" ];
-  # finish.nu needs it on Linux before llvm + rust exist
+  # jib finish needs it on Linux before llvm + rust exist
   cargo = on (platform.os == "linux") { tool = buildPkgs.rust-bootstrap; };
   links."bin/auto-formatelf" = "formatelf";
   links."bin/patchelf" = "formatelf";

@@ -7,6 +7,14 @@ use pound::Parse;
 #[derive(Parse)]
 #[pound(name = "jib")]
 pub enum Mode {
+   /// the whole package build from the structured attrs, the derivation's
+   /// builder.
+   Build {
+      #[pound(long)]
+      tests:     bool,
+      #[pound(long)]
+      from_tree: Option<PathBuf>,
+   },
    /// point #!/usr/bin/env scripts at the build's env, or back with --undo.
    Shebangs {
       directory: PathBuf,

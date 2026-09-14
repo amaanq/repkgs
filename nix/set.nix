@@ -34,7 +34,7 @@ let
     buildTriple = builtins.replaceStrings [ "-unknown-" ] [ "-build-" ] bootstrap.stage1.${
       builtins.head (builtins.split "-" system)
     }.platform.gnuTriple;
-    # its address cap is $QEMU_RESERVED_VA (builder/prepare.nu), build systems want one word here
+    # its address cap is $QEMU_RESERVED_VA (jib prepare), build systems want one word here
     emulator =
       if cross && os == "linux" then
         [ "${buildPkgs.qemu}/bin/qemu-${stage.platform.names.qemu}" ]
@@ -125,7 +125,6 @@ let
 
   package = import ./package.nix {
     platform = plat;
-    nu = bootstrap.seed;
     inherit lib;
     # `prebuilt = true` patches upstream ELFs with it (builder/implant.nu)
     relocTools = [ buildPkgs.formatelf ];

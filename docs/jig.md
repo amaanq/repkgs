@@ -34,6 +34,7 @@ first argument.
 
 | invoked as                                                                      | mode                                                                                |
 | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `jib build [--tests --from-tree <tree>]`                                       | the whole package build, the derivation's builder, see §11                          |
 | `jib shebangs <directory> [--undo]`                                             | point `#!/usr/bin/env` scripts at the build's env, or back                          |
 | `jib exports <store path…>`, `jib deps <store path…>`                           | a package's exports with defaults, or the propagated closure, as JSON               |
 | `jib write-exports <output>`                                                    | write `exports.json` from the spec on stdin, propagating .pc and cmake requirements |
@@ -509,13 +510,13 @@ told apart from a first compile.
 | `header` | `compile-hit`, `hit`, `miss`, `unsupported-compiler`, `unsupported-options`, `preprocess-failed`, `diagnostics`                      |
 | `go`     | `cached`, `compiled`, `compiled-unstored`                                                                                            |
 
-`builder/finish.nu` tallies the file per package and treats `cached`, `cached-error`, `hit` and
+`jib finish` tallies the file per package and treats `cached`, `cached-error`, `hit` and
 `compile-hit` as hits. `JIG_LOG_ARGS` gets `outcome\t<arguments joined by spaces>` for every
 non query invocation that ran the compiler.
 
 ## 11. Builder modes
 
-These serve `builder/prepare.nu` and `builder/finish.nu`, which used to do the work in nu.
+`jib build` runs these in order, prepare, each build system's setup, the phases, finish. `jib prepare` and `jib finish` stay callable on their own.
 Paths and errors follow the nu functions they replaced.
 
 `prepare` computes the `env` environment, resolves the platform (a cross build probes

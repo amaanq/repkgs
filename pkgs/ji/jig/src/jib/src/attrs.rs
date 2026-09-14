@@ -48,6 +48,36 @@ pub struct Attrs {
    pub platform:           Value,
    #[serde(rename = "probeInputs", default)]
    pub probe_inputs:       Vec<String>,
+   #[serde(default)]
+   pub plan:               Plan,
+}
+
+/// what nix/package.nix used to render as the build script.
+#[derive(Deserialize, Default)]
+pub struct Plan {
+   #[serde(default)]
+   pub prelude:  String,
+   #[serde(default)]
+   pub setups:   Vec<String>,
+   #[serde(default)]
+   pub phases:   Vec<Step>,
+   #[serde(default)]
+   pub separate: bool,
+}
+
+#[derive(Deserialize)]
+pub struct Step {
+   pub name: String,
+   pub test: bool,
+   #[serde(flatten)]
+   pub kind: Kind,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Kind {
+   System { system: String, verb: String },
+   Nu { body: String },
 }
 
 #[derive(Deserialize)]

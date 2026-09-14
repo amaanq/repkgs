@@ -64,7 +64,9 @@ impl System for Cargo {
    }
 
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      Ok(Self::environment(ctx, attrs)?.into())
+      let mut env: Env = Self::environment(ctx, attrs)?.into();
+      env.unset("RUSTFLAGS");
+      Ok(env)
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {

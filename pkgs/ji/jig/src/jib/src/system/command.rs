@@ -1,5 +1,9 @@
 use std::{
    collections::BTreeMap,
+   env::{
+      remove_var,
+      set_var,
+   },
    io::{
       self,
       Write as _,
@@ -30,6 +34,7 @@ use crate::{
 pub enum Setting {
    Text(String),
    List(Vec<String>),
+   Unset(()),
 }
 
 /// what a build system's setup hands the build script to load, PATH as a list.
@@ -45,6 +50,29 @@ impl Env {
    pub fn set_list(&mut self, name: &str, values: Vec<String>) {
       self.0.insert(name.to_owned(), Setting::List(values));
    }
+
+   pub fn unset(&mut self, name: &str) {
+      self.0.insert(name.to_owned(), Setting::Unset(()));
+   }
+
+   /// into this process, lists joined the way nu exports PATH.
+   pub fn apply(&self) {
+      for (name, setting) in &self.0 {
+         match *setting {
+            Setting::Text(ref value) => export(name, value),
+            Setting::List(ref values) => export(name, &values.join(":")),
+            Setting::Unset(()) => {
+               // SAFETY: the build runs single-threaded between phases
+               unsafe { remove_var(name) }
+            },
+         }
+      }
+   }
+}
+
+pub fn export(name: &str, value: &str) {
+   // SAFETY: the build runs single-threaded between phases
+   unsafe { set_var(name, value) }
 }
 
 impl From<BTreeMap<String, String>> for Env {

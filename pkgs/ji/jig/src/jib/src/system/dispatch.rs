@@ -82,32 +82,41 @@ fn system(name: &str) -> io::Result<&'static dyn System> {
       .ok_or_else(|| io::Error::other(format!("{name} is not a build system jig knows")))
 }
 
+/// the working directory created and entered, the setup environment back.
+pub fn setup(name: &str, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<Env> {
+   let system = system(name)?;
+   let directory = system.workdir(ctx)?;
+   create_dir_all(&directory)?;
+   set_current_dir(&directory)?;
+   system.setup(ctx, attrs, socket)
+}
+
+pub fn workdir(name: &str, ctx: &Ctx) -> io::Result<PathBuf> {
+   system(name)?.workdir(ctx)
+}
+
+pub fn phase(name: &str, verb: &str, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<()> {
+   let system = system(name)?;
+   set_current_dir(system.workdir(ctx)?)?;
+   system.phase(ctx, attrs, verb, socket)
+}
+
 pub fn mode(operation: SystemOperation, socket: &Path) -> io::Result<()> {
    let ctx = Ctx::load(&build_top()?)?;
    match operation {
       SystemOperation::Setup { system: name } => {
-         let system = system(&name)?;
-         let directory = system.workdir(&ctx)?;
-         create_dir_all(&directory)?;
-         set_current_dir(&directory)?;
-         let env = system.setup(&ctx, &Attrs::load()?, socket)?;
+         let env = setup(&name, &ctx, &Attrs::load()?, socket)?;
          let mut stdout = io::stdout().lock();
          serde_json::to_writer(&mut stdout, &env)?;
          writeln!(stdout)?;
          Ok(())
       },
       SystemOperation::Workdir { system: name } => {
-         writeln!(
-            io::stdout().lock(),
-            "{}",
-            system(&name)?.workdir(&ctx)?.display()
-         )?;
+         writeln!(io::stdout().lock(), "{}", workdir(&name, &ctx)?.display())?;
          Ok(())
       },
       SystemOperation::Phase { system: name, verb } => {
-         let system = system(&name)?;
-         set_current_dir(system.workdir(&ctx)?)?;
-         system.phase(&ctx, &Attrs::load()?, &verb, socket)
+         phase(&name, &verb, &ctx, &Attrs::load()?, socket)
       },
    }
 }

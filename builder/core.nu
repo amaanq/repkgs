@@ -1,7 +1,6 @@
-# The package builder's shared vocabulary. nix/package.nix generates, per package, the script
-#   use core.nu *; use prepare.nu; use finish.nu; use <bs>.nu …; prepare; <bs> setup …; <phases> …; finish
-# which runs in one nu process, so `def --env` phases hand cwd and environment on to later ones.
-# This module is what build systems and inline phases import: ctx, options, x, tool, note, exports.
+# The package builder's shared vocabulary. jib build spawns nu on each nu phase with this
+# directory on the include path and hands what the phase exported on to the next one.
+# This module is what inline phases and package modules import: ctx, options, x, tool, note, exports.
 
 export use glob.nu *
 export use log.nu *
@@ -9,7 +8,7 @@ export use exports.nu *
 use names.nu
 
 # what build-system and inline phases get to see: {spec out deps njobs src build platform testsRun}
-export def ctx []: nothing -> record<spec: record, out: string, dest: string, deps: list<record<name: string, root: string>>, roots: list<string>, njobs: int, src: string, build: string, platform: record, testsRun: bool, cache: bool> { $env.PKGS_CTX }
+export def ctx []: nothing -> record<spec: record, out: string, dest: string, deps: list<record<name: string, root: string>>, roots: list<string>, njobs: int, src: string, build: string, platform: record, testsRun: bool, cache: bool> { open $"($env.NIX_BUILD_TOP)/ctx.json" }
 
 # a build system's options: its OPTIONS defaults merged with the package's `<bs>.*` (prepare.nu)
 export def options [bs: string]: nothing -> record { (ctx).spec | get $bs }

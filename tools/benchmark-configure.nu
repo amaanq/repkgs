@@ -1,7 +1,5 @@
 #!/usr/bin/env nu
 
-use ../builder/prepare.nu
-
 def capture [program: string, arguments: list<string>]: nothing -> string {
   let result = (^$program ...$arguments | complete)
   if $result.exit_code != 0 { error make {msg: $result.stderr} }
@@ -102,8 +100,11 @@ def "main work" [directory: path, mode: string]: nothing -> nothing {
     let path = ($directory | path join $name)
     if ($path | path exists) { rm --recursive $path }
   }
-  prepare
-  $env.PKGS_CTX = ($env.PKGS_CTX | update cache ($mode starts-with shared or $mode starts-with whole))
+  let prepared = (^jib prepare | from json)
+  load-env $prepared.env
+  cd $prepared.cwd
+  let ctx = ($env.NIX_BUILD_TOP | path join ctx.json)
+  open $ctx | update cache ($mode starts-with shared or $mode starts-with whole) | save --force $ctx
   $env.JIG_LOG = ($directory | path join $"($mode)-jig.log")
   load-env (^jib system setup autotools | from json)
   cd (^jib system workdir autotools | str trim)

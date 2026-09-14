@@ -1,7 +1,7 @@
 # The `package` function: spec attrset -> derivation (+ `.tests` when tests.separate).
-# Validates field and option names at eval time, then generates the nu script
-#   use core.nu *; use prepare.nu; use finish.nu; use implant.nu; prepare; <bs> setup …; <phase> …; finish
-# that nu executes in a single nu process. Vocabulary: README.md "Writing a package".
+# Validates field and option names at eval time, then hands jib a plan, the build systems to set
+# up and the phases in order, which `jib build` runs in one process, spawning nu only for the
+# phases written in it. Vocabulary: README.md "Writing a package".
 {
   platform,
   toolchain,
@@ -11,7 +11,6 @@
   buildSystems,
   baseTools,
   relocTools,
-  nu,
   # overrides applied to a spec before validation: name -> spec -> spec (nix/overrides.nix)
   edit,
   # [pin] sys in sources.toml names packages of the set
@@ -44,7 +43,7 @@ let
     ;
 
   # the builder modules every script imports: one string for the set
-  preludeCommon = "use ${tree}/core.nu *\nuse ${tree}/prepare.nu\nuse ${tree}/finish.nu\nuse ${tree}/implant.nu";
+  preludeCommon = "use ${tree}/core.nu *\nuse ${tree}/implant.nu";
   tree = builtins.path {
     path = ../builder;
     name = "build";
@@ -83,7 +82,7 @@ let
     __contentAddressed = true;
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    builder = "${nu}/bin/nu";
+    builder = "${jib}/bin/jib";
     # platform facts autoconf would otherwise probe (or guess, when cross): nix/config.site
     CONFIG_SITE = "${../nix/config.site}";
     platform = {
@@ -121,7 +120,7 @@ let
           "${launch}/bin/launch.exe"
         else
           "";
-      # finish.nu runs the version check under it: a failed dlopen fails the build
+      # jib finish runs the version check under it: a failed dlopen fails the build
       dlaudit = if elf then "${dlaudit}/lib/dlaudit.so" else "";
       relocStub = "${toolchain}/lib/reloc_stub.bin";
     };
@@ -404,7 +403,6 @@ let
           else
             asList (e.before.${p} or [ ]) ++ asList (e.replace.${p} or p) ++ asList (e.after.${p} or [ ])
         ) known;
-  testsRun = args.tests.run or true;
   # a build system's `stack` (tools that are themselves built with it): a member sees only the
   # members before it, everyone else sees all of it
   stackBefore =
@@ -427,61 +425,39 @@ let
   # how the base tools test with perl (built with them) without a cycle
   testDeps = if testsRun then args.tests.dependencies or [ ] else [ ];
 
-  # same flags as treefmt's nu-typecheck, so what lints clean parses the same way here
-  # include path: a package's own module says `use core.nu *` wherever it lives
-  nuArgs = [
-    "--no-config-file"
-    "--include-path=${tree}"
-    "--experimental-options=[cell-path-types]"
-    "-c"
-  ];
-  # a phase as { test, body }: inline ones and package-module ones built here, a build system's
-  # come ready from nix/build-systems.nix. A prefix that is neither: nix reports "path …/<bs>.nu
+  # a phase as a plan step for jib: a build system's verb runs in jib, anything else is nu text,
+  # inline or a package module's command. A prefix that is neither: nix reports "path …/<bs>.nu
   # does not exist". An inline phase's env changes carry over to later phases, its cwd does not
-  phase =
+  step =
     s:
     if isAttrs s then
       {
+        kind = "nu";
+        inherit (s) name;
         test = s.name == "test";
-        body = "note phase ${s.name}\nlet pwd = $env.PWD\ndo --env {\ncd (${workdir})\nlet c = (ctx)\n${s.run}\n}\ncd $pwd";
+        body = "note phase ${s.name}\ndo --env {\nlet c = (ctx)\n${s.run}\n}";
       }
     else
-      bsPhases.${s} or (
-        let
-          p = match phaseRe s;
-        in
-        if p == null then
-          fail "phase '${s}' is not <build system or module>.<phase>"
-        else if elem (elemAt p 0) uses then
-          {
-            test = false;
-            body = "note phase ${s}\n^jib system phase ${elemAt p 0} ${elemAt p 1}";
-          }
-        else
-          {
-            test = elemAt p 1 == "test";
-            body = "note phase ${s}\n${elemAt p 0} ${elemAt p 1}";
-          }
-      );
-  # "<bs>.<verb>" -> { test, body } for the build systems in use, ready made in build-systems.nix
-  bsPhases =
-    if length uses == 1 then
-      buildSystems.${head uses}.phase
-    else
-      foldl' (a: u: a // buildSystems.${u}.phase) { } uses;
-  # in the build script: test phases drop out when disabled or separate, and otherwise ask prepare
-  # (cross without binfmt decides at build time that tests cannot run)
-  phaseLine =
-    s:
-    let
-      p = phase s;
-    in
-    if !p.test then
-      p.body
-    else if !testsRun || separate then
-      ""
-    else
-      "if (ctx).testsRun {\n${p.body}\n}";
+      let
+        p = match phaseRe s;
+      in
+      if p == null then
+        fail "phase '${s}' is not <build system or module>.<phase>"
+      else if elem (elemAt p 0) uses then
+        {
+          kind = "system";
+          name = s;
+          system = elemAt p 0;
+          verb = elemAt p 1;
+          test = elemAt p 1 == "test";
+        }
+      else
+        {
+          kind = "nu";
+          name = s;
+          test = elemAt p 1 == "test";
+          body = "note phase ${s}\n${elemAt p 0} ${elemAt p 1}";
+        };
   # a phase "zig.restore" whose prefix is no `uses` entry is the package's own module zig.nu next
   # to package.nix, for phases too long to read inline. It imports the builder by bare name
   modules =
@@ -507,34 +483,22 @@ let
         filter = p: _: baseNameOf p == "${m}.nu";
       }
     }/${m}.nu";
-  prelude = [
-    preludeCommon
-  ]
-  ++ map (m: "use ${storeModule m}") modules;
-  # every phase starts in a known directory, its build system's workdir, the first build
-  # system's for inline phases and package modules
-  workdir =
-    if uses == [ ] then "(ctx).src" else "^jib system workdir ${builtins.head uses} | str trim";
-  setups = map (u: buildSystems.${u}.setup) uses;
-  # also `pkg.script`: lints/package-scripts.nu has nu parse it before anything builds
-  script = lines (
-    prelude
-    ++ [ "prepare ${systemsArg}" ]
-    ++ setups
-    ++ map phaseLine phases
-    ++ [ (if separate then "finish --keep-tree" else "finish") ]
+  prelude = lines (
+    [
+      preludeCommon
+    ]
+    ++ map (m: "use ${storeModule m}") modules
   );
-  testScript = lines (
-    prelude
-    ++ [ "prepare ${systemsArg} --from-tree ${drv.tree}" ]
-    ++ setups
-    ++ map (p: p.body) (filter (p: p.test) (map phase phases))
-    ++ [ "finish tests" ]
-  );
-
+  plan = {
+    inherit prelude separate;
+    setups = uses;
+    phases = map step phases;
+  };
+  # what nu parses of a package, for lints/package-scripts.nu
+  script = lines ([ prelude ] ++ map (p: p.body) (filter (p: p.kind == "nu") plan.phases));
   # an upstream-binary package says `prebuilt`, or one of its build systems does (pyapp: wheels)
   prebuilt = args.prebuilt or (any (u: buildSystems.${u}.prebuilt == true) uses);
-  # DWARF goes to the `debug` output (finish.nu). false when the build cannot be made to keep it
+  # DWARF goes to the `debug` output (jib finish). false when the build cannot be made to keep it
   debug = args.debug or (prebuilt == false);
   # [pin] sys of sources.toml. null: no sources.toml, dependencies are all by hand
   sys = args.sys or (if sources == null then null else sources.sys);
@@ -581,7 +545,7 @@ let
     probeInputs = [ tree ] ++ map storeModule modules;
     inherit (args) version;
     patches = args.patches or [ ];
-    inherit spec;
+    inherit spec plan;
     buildDependencies = buildDeps {
       tests = if separate then [ ] else testDeps;
       base = if args.bootstrapTools or false then baseTools.bootstrap else baseTools.full;
@@ -602,7 +566,7 @@ let
         "debug"
       ]
       ++ (if separate then [ "tree" ] else [ ]);
-      args = nuArgs ++ [ script ];
+      args = [ "build" ];
     }
   );
   testsDrv = derivation (
@@ -615,7 +579,12 @@ let
         base = baseTools.full;
       };
       package = drv.out;
-      args = nuArgs ++ [ testScript ];
+      args = [
+        "build"
+        "--tests"
+        "--from-tree"
+        "${drv.tree}"
+      ];
     }
   );
 in
