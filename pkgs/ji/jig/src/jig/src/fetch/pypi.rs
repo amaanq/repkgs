@@ -5,6 +5,7 @@ use std::{
    },
    fs::read_to_string,
    io,
+   ptr::eq,
 };
 
 use serde::{
@@ -47,13 +48,15 @@ struct Lock {
 #[derive(Deserialize)]
 struct Package {
    name:                  String,
-   version:               String,
+   version:               Option<String>,
    #[serde(default)]
    source:                BTreeMap<String, String>,
    #[serde(default)]
    dependencies:          Vec<Edge>,
    #[serde(default, rename = "optional-dependencies")]
    optional_dependencies: BTreeMap<String, Vec<Edge>>,
+   #[serde(default, rename = "resolution-markers")]
+   resolution_markers:    Vec<String>,
    #[serde(default)]
    wheels:                Vec<Artefact>,
    sdist:                 Option<Artefact>,
@@ -170,7 +173,9 @@ impl Platform {
          ("os_name", "posix".to_owned()),
          ("implementation_name", "cpython".to_owned()),
          ("implementation_cap", "CPython".to_owned()),
+         ("implementation_version", python.clone()),
          ("platform_release", String::new()),
+         ("platform_version", String::new()),
          ("extra", String::new()),
       ]);
       Ok(Self {
@@ -276,7 +281,10 @@ impl Platform {
          || {
             Err(io::Error::other(format!(
                "pythonDeps: {} {}: no wheel for cp{} linux/{} and no sdist",
-               package.name, package.version, self.python, self.cpu
+               package.name,
+               package.version.as_deref().unwrap_or_default(),
+               self.python,
+               self.cpu
             )))
          },
          |sdist| Ok((sdist, "sdist")),
@@ -290,7 +298,25 @@ struct Closure<'lock> {
    env:      &'lock BTreeMap<&'static str, String>,
 }
 
+struct Visit<'lock> {
+   extras: Vec<&'lock str>,
+   entry:  &'lock Package,
+}
+
 impl<'lock> Closure<'lock> {
+   fn marker_holds(
+      holds: &mut BTreeMap<&'lock str, bool>,
+      env: &BTreeMap<&str, String>,
+      marker: &'lock str,
+   ) -> io::Result<bool> {
+      if let Some(known) = holds.get(marker) {
+         return Ok(*known);
+      }
+      let value = evaluate(marker, env)?;
+      holds.insert(marker, value);
+      Ok(value)
+   }
+
    fn edges(&mut self, package: &'lock Package, extras: &[String]) -> io::Result<Vec<&'lock Edge>> {
       let optional = extras
          .iter()
@@ -302,70 +328,97 @@ impl<'lock> Closure<'lock> {
             kept.push(edge);
             continue;
          };
-         let holds = if let Some(known) = self.holds.get(marker) {
-            *known
-         } else {
-            let value = evaluate(marker, self.env)?;
-            self.holds.insert(marker, value);
-            value
-         };
-         if holds {
+         if Self::marker_holds(&mut self.holds, self.env, marker)? {
             kept.push(edge);
          }
       }
       Ok(kept)
    }
 
-   /// names of every package the project needs at run time, breadth-first
+   fn resolve(&mut self, edge: &Edge) -> io::Result<&'lock Package> {
+      let candidates = self
+         .packages
+         .get(edge.name.as_str())
+         .ok_or_else(|| io::Error::other(format!("pythonDeps: {} is not in uv.lock", edge.name)))?;
+      if let Some(version) = edge.version.as_deref() {
+         return candidates
+            .iter()
+            .copied()
+            .find(|candidate| candidate.version.as_deref() == Some(version))
+            .ok_or_else(|| {
+               io::Error::other(format!("pythonDeps: no lock entry for {}", edge.name))
+            });
+      }
+      if candidates.len() == 1 {
+         return Ok(candidates[0]);
+      }
+      let mut ours = Vec::new();
+      for candidate in candidates.iter().copied() {
+         for marker in &candidate.resolution_markers {
+            if Self::marker_holds(&mut self.holds, self.env, marker)? {
+               ours.push(candidate);
+               break;
+            }
+         }
+      }
+      if ours.len() != 1 {
+         return Err(io::Error::other(format!(
+            "pythonDeps: {} has {} in uv.lock and resolution-markers pick {} of them",
+            edge.name,
+            candidates
+               .iter()
+               .map(|candidate| candidate.version.as_deref().unwrap_or_default())
+               .collect::<Vec<_>>()
+               .join(", "),
+            ours.len(),
+         )));
+      }
+      Ok(ours[0])
+   }
+
+   /// entries of every package the project needs at run time, breadth-first
    /// from the project's own lock entry over `dependencies` plus the requested
    /// extras, skipping edges whose marker is false here.
    fn runtime(
       &mut self,
       project: &'lock Package,
       extras: &[String],
-   ) -> io::Result<Vec<&'lock str>> {
-      let mut visited: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+   ) -> io::Result<Vec<&'lock Package>> {
+      let mut visited: BTreeMap<&str, Visit<'lock>> = BTreeMap::new();
       let mut order = Vec::new();
       let mut queue: VecDeque<&Edge> = self.edges(project, extras)?.into();
       while let Some(edge) = queue.pop_front() {
          let wanted = &edge.extra;
-         if let Some(done) = visited.get(edge.name.as_str())
-            && wanted.iter().all(|extra| done.contains(extra))
-         {
-            continue;
-         }
-         let seen = visited.entry(edge.name.as_str()).or_default();
-         if seen.is_empty() {
-            order.push(edge.name.as_str());
-         }
-         for extra in wanted {
-            if !seen.contains(extra) {
-               seen.push(extra.clone());
+         let target = self.resolve(edge)?;
+         if let Some(done) = visited.get(edge.name.as_str()) {
+            if !eq(done.entry, target) {
+               return Err(io::Error::other(format!(
+                  "pythonDeps: conflicting lock entries for {}",
+                  edge.name
+               )));
+            }
+            if wanted
+               .iter()
+               .all(|extra| done.extras.contains(&extra.as_str()))
+            {
+               continue;
             }
          }
-         // several lock entries share a name only under conflicting forks, the
-         // edge then pins a version
-         let candidates = self.packages.get(edge.name.as_str()).ok_or_else(|| {
-            io::Error::other(format!("pythonDeps: {} is not in uv.lock", edge.name))
-         })?;
-         let target = edge
-            .version
-            .as_deref()
-            .map_or_else(
-               || candidates.first().copied(),
-               |version| {
-                  candidates
-                     .iter()
-                     .copied()
-                     .find(|candidate| candidate.version == version)
-               },
-            )
-            .ok_or_else(|| {
-               io::Error::other(format!("pythonDeps: no lock entry for {}", edge.name))
-            })?;
+         let seen = visited.entry(edge.name.as_str()).or_insert_with(|| {
+            order.push(edge.name.as_str());
+            Visit {
+               extras: Vec::new(),
+               entry:  target,
+            }
+         });
+         for extra in wanted {
+            if !seen.extras.contains(&extra.as_str()) {
+               seen.extras.push(extra.as_str());
+            }
+         }
          queue.extend(self.edges(target, wanted)?);
       }
-      Ok(order)
+      Ok(order.into_iter().map(|name| visited[name].entry).collect())
    }
 }
 
@@ -421,17 +474,13 @@ impl Producer for Pypi {
          holds: BTreeMap::new(),
          env: &platform.marker_env,
       };
-      let names = closure.runtime(project, &extras)?;
+      let selected = closure.runtime(project, &extras)?;
 
-      let mut rows = Vec::with_capacity(names.len());
-      let mut plan = Vec::with_capacity(names.len());
-      for name in names {
-         let package = closure
-            .packages
-            .get(name)
-            .and_then(|candidates| candidates.first().copied())
-            .ok_or_else(|| io::Error::other(format!("pythonDeps: {name} is not in uv.lock")))?;
-         let (artefact, kind) = platform.choose(package, force_sdist.contains(&name.to_owned()))?;
+      let mut rows = Vec::with_capacity(selected.len());
+      let mut plan = Vec::with_capacity(selected.len());
+      for package in selected {
+         let name = package.name.as_str();
+         let (artefact, kind) = platform.choose(package, force_sdist.contains(&package.name))?;
          let url = artefact
             .url
             .clone()
@@ -445,7 +494,7 @@ impl Producer for Pypi {
          let file = percent_decode(basename(url_path(&url)));
          plan.push(Planned {
             name,
-            version: &package.version,
+            version: package.version.as_deref().unwrap_or_default(),
             file: file.clone(),
             kind,
          });
