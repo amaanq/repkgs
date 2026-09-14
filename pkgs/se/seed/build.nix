@@ -167,6 +167,7 @@ let
       inherit rustPlatform;
       withDefaultFeatures = false;
       additionalFeatures = _features: [
+        "network"
         "sqlite"
         "trash-support"
         "rustls-tls"
