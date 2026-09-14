@@ -4,10 +4,12 @@ use std::{
    fs::{
       File,
       canonicalize,
+      create_dir_all,
       metadata,
       read,
       read_dir,
       read_link,
+      remove_file,
       rename,
       symlink_metadata,
    },
@@ -27,6 +29,7 @@ use std::{
 use serde::Serialize;
 
 use crate::{
+   attrs::Ctx,
    elf::{
       has_segment,
       is_elf,
@@ -52,6 +55,7 @@ use crate::{
 enum Variable {
    Prepend(Vec<String>),
    Default(String),
+   Set(String),
 }
 
 #[derive(Serialize)]
@@ -83,6 +87,45 @@ impl Context<'_> {
          .replace(&self.out, "{root}")
          .replace(&self.store, "{store}")
    }
+}
+
+/// bin/<name> as a launch record for entry points that are not files with a
+/// #! line (deno modules, escripts), paths made package-relative.
+pub fn write(
+   ctx: &Ctx,
+   name: &str,
+   program: &str,
+   args: &[String],
+   vars: &BTreeMap<String, String>,
+) -> io::Result<()> {
+   let nix_store = var("NIX_STORE").unwrap_or_else(|_| STORE_DIR.to_owned());
+   let rel = |path: &str| {
+      path
+         .replace(&ctx.out, "{root}")
+         .replace(&nix_store, "{store}")
+   };
+   let bin = Path::new(&ctx.out).join("bin");
+   create_dir_all(&bin)?;
+   let env: BTreeMap<String, Variable> = vars
+      .iter()
+      .map(|(key, value)| (key.clone(), Variable::Set(rel(value))))
+      .collect();
+   let record = Record {
+      env:     &env,
+      program: rel(program),
+      args:    Some(args.iter().map(|arg| rel(arg)).collect()),
+      argv0:   None,
+   };
+   let mut text = serde_json::to_string(&record)?;
+   text.push('\n');
+   File::create(bin.join(format!(".{name}.launch")))?.write_all(text.as_bytes())?;
+   let link = bin.join(name);
+   if symlink_metadata(&link).is_ok() {
+      remove_file(&link)?;
+   }
+   symlink(&ctx.platform()?.launch, &link)?;
+   note("launcher", &format!("bin/{name} -> {program}"));
+   Ok(())
 }
 
 pub fn run(

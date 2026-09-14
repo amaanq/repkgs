@@ -145,6 +145,8 @@ pub struct Platform {
    #[serde(default)]
    pub build_triple: String,
    #[serde(default)]
+   pub launch:       String,
+   #[serde(default)]
    pub sysroot:      String,
    #[serde(default)]
    pub gnu_triple:   String,

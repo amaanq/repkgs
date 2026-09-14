@@ -37,7 +37,7 @@ arguments through untouched, every other mode parses them and fails on an unknow
 | `jig launchers <output> --launch <bin> --interp <ld.so> [--ldso] <dependency…>` | put launch records in front of bin/ scripts and wrapped binaries                    |
 | `jig identify <store path…>`                                                    | content identity per store path, memoized in jigd                                  |
 | `jig probe key\|restore\|store\|restore-dir\|store-dir\|cmake-init …`           | configure-time probe results shared through jigd                                   |
-| `jig system setup\|workdir\|phase <system> …`                                   | the make, autotools, cmake, meson, cargo, python, cabal and go build systems        |
+| `jig system setup\|workdir\|phase <system> …`                                   | every build system but pyapp and bundler                                           |
 
 **jigd** runs on the host, outside every sandbox, as `jigd <socket>`. It owns the compile
 cache, the file identity cache and the build slots. Nothing in a derivation names it, so
@@ -533,8 +533,8 @@ environment, `CONFIG_SITE` files and `extra`, store hashes masked. `restore` and
 file through jigd with the roots as `{rootN}`, `restore-dir` and `store-dir` a tree,
 `cmake-init` renders a `CMakeCache.txt`'s path-free `INTERNAL` entries as a `-C` script.
 
-`system setup|workdir|phase <name> [<verb>]` is `make`, `autotools`, `cmake`, `meson`, `cargo`,
-`python`, `cabal` and `go`, as `builder/systems/*.nu` did them. autotools keeps `config.cache`
+`system setup|workdir|phase <name> [<verb>]` is every build system but `pyapp` and `bundler`,
+as `builder/systems/*.nu` did them. autotools keeps `config.cache`
 and cmake its `INTERNAL` entries under the probe key of the same name. cargo and python read
 `builder/sys-libs.json`, the table of locked C bindings and the libraries and environment
 they get, through the builder tree in `probeInputs`.

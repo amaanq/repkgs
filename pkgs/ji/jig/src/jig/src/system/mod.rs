@@ -1,11 +1,15 @@
 mod autotools;
+mod beam;
 mod cabal;
 mod cargo;
 mod cmake;
 pub mod command;
+mod deno;
 pub mod dispatch;
 mod go;
+mod luarocks;
 mod make;
 mod meson;
+mod node;
 mod python;
 mod syslibs;

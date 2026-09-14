@@ -1,39 +1,6 @@
-use ../core.nu *
-use ../node-common.nu
-
-# yarn (classic) install --offline from fetch.yarnDeps (`yarn.deps`: an offline mirror directory,
-# yarn checks each tarball against yarn.lock's integrity), `yarn run <script>`, `yarn test`, and
-# the pruned package as lib/node_modules/<name> with its bin links.
-# `yarn install --offline --frozen-lockfile` against the mirror
-export const OPTIONS = {
-  script: {default: build, nullable: true, doc: "package.json script `build` runs (null: none)"}
-  flags: {default: [], doc: "extra arguments for yarn install"}
-}
-
-export def --env setup []: nothing -> nothing {
-  let c = (ctx)
-  let o = (options yarn)
-  load-env {
-    YARN_CACHE_FOLDER: $"($c.build)/yarn-cache", YARN_YARN_OFFLINE_MIRROR: $o.deps, YARN_ENABLE_PROGRESS_BARS: "false"
-    YARN_DISABLE_SELF_UPDATE_CHECK: "true", NODE_OPTIONS: "--no-deprecation"
-  }
-  x yarn install --offline --frozen-lockfile --ignore-scripts --non-interactive --no-progress ...$o.flags
-  node-common after-install $env.PWD
-}
-
-export def workdir []: nothing -> string { project-dir yarn }
-
-# yarn run <yarn.script> (null: nothing to build)
-export def build []: nothing -> nothing {
-  let script = (options yarn).script
-  if $script != null { x yarn run --offline $script }
-}
-
-# yarn test
-export def test []: nothing -> nothing { x yarn test --offline }
-
-# pruned to production dependencies, as lib/node_modules/<name>
-export def install []: nothing -> nothing {
-  x yarn install --offline --frozen-lockfile --ignore-scripts --production --non-interactive --no-progress ...(options yarn).flags
-  node-common install-tree
-}
+# yarn install from the fetched tree, run <script>, test, and the pruned tree or compiled bins, jig phase yarn <verb>
+export def --env setup []: nothing -> nothing { load-env (^jig system setup yarn | from json) }
+export def workdir []: nothing -> string { ^jig system workdir yarn | str trim }
+export def build []: nothing -> nothing { ^jig system phase yarn build }
+export def test []: nothing -> nothing { ^jig system phase yarn test }
+export def install []: nothing -> nothing { ^jig system phase yarn install }
