@@ -68,11 +68,13 @@ fn mix_lock(text: &str) -> io::Result<Vec<Package>> {
       };
       let name = after.split(',').next().unwrap_or_default().to_owned();
       let strings = quoted(after);
+      // a dependency's `repo: "hexpm"` comes first, the outer hash follows the
+      // last one
       let outer = strings
-         .iter()
-         .position(|word| *word == "hexpm")
-         .and_then(|at| strings.get(at + 1).copied())
-         .filter(|hash| is_sha256(hash));
+         .windows(2)
+         .rev()
+         .find(|pair| matches!(**pair, [repo, hash] if repo == "hexpm" && is_sha256(hash)))
+         .and_then(|pair| pair.get(1).copied());
       if let (Some(version), Some(sha256)) = (strings.first(), outer) {
          packages.push(Package {
             name,
