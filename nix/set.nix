@@ -57,6 +57,7 @@ let
   };
   missingRust = builtins.filter (path: !builtins.pathExists "${rustPath}/${path}") [
     "bin/rustc"
+    "bin/rustdoc"
     "bin/cargo"
     "lib/rustlib/${plat.buildRustTriple}/lib"
   ];

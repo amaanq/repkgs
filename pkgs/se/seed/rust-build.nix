@@ -111,7 +111,10 @@ let
               cargo = "${stage0}/bin/cargo";
               docs = false;
               extended = true;
-              tools = [ "cargo" ];
+              tools = [
+                "cargo"
+                "rustdoc"
+              ];
               vendor = true;
               locked-deps = true;
               optimized-compiler-builtins = false;
