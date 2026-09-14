@@ -46,7 +46,8 @@ pub struct Attrs {
 #[derive(Deserialize)]
 pub struct Outputs {
    pub out:   String,
-   pub debug: String,
+   #[serde(default)]
+   pub debug: Option<String>,
    #[serde(default)]
    pub tree:  Option<String>,
 }

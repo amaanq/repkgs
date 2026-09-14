@@ -87,8 +87,13 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    prune(out)?;
    layout_check(out)?;
    shebangs(out, true)?;
-   create_dir_all(&attrs.outputs.debug)?;
-   relocate(&attrs, &spec, &ctx)?;
+   let debug = attrs
+      .outputs
+      .debug
+      .as_deref()
+      .ok_or_else(|| io::Error::other("no debug output"))?;
+   create_dir_all(debug)?;
+   relocate(&attrs, &spec, &ctx, debug)?;
    write_request(out, &Request {
       name:    spec.name.clone(),
       exports: spec.exports.clone(),
@@ -282,7 +287,7 @@ fn layout_check(out: &Path) -> io::Result<()> {
    Ok(())
 }
 
-fn relocate(attrs: &Attrs, spec: &Spec, ctx: &Ctx) -> io::Result<()> {
+fn relocate(attrs: &Attrs, spec: &Spec, ctx: &Ctx, debug: &str) -> io::Result<()> {
    let out = Path::new(&ctx.out);
    let platform = &ctx.platform;
    let implanted = spec.prebuilt_is(&Value::Bool(true));
@@ -290,7 +295,7 @@ fn relocate(attrs: &Attrs, spec: &Spec, ctx: &Ctx) -> io::Result<()> {
    if text(platform, "binfmt") == "elf" {
       let interp = Path::new(text(platform, "interp"));
       if spec.debug {
-         debug::run(out, Path::new(&attrs.outputs.debug))?;
+         debug::run(out, Path::new(debug))?;
       }
       if implanted {
          implant::run(
