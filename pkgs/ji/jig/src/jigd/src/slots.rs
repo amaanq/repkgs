@@ -102,7 +102,10 @@ impl Slots {
       }
    }
 
-   #[expect(clippy::expect_used, reason = "release requires a slot owned by the build")]
+   #[expect(
+      clippy::expect_used,
+      reason = "release requires a slot owned by the build"
+   )]
    pub fn release(&self, build: &str, count: usize) {
       let mut state = self.state.lock().expect("slot lock poisoned");
       let held = state.held.get_mut(build).expect("released an unowned slot");
@@ -116,13 +119,19 @@ impl Slots {
       self.changed.notify_all();
    }
 
-   #[expect(clippy::expect_used, reason = "poisoned slot state violates scheduling invariants")]
+   #[expect(
+      clippy::expect_used,
+      reason = "poisoned slot state violates scheduling invariants"
+   )]
    pub fn stats(&self) -> (usize, usize) {
       let state = self.state.lock().expect("slot lock poisoned");
       (state.occupied, state.waiting.len())
    }
 
-   #[expect(clippy::expect_used, reason = "poisoned slot state violates scheduling invariants")]
+   #[expect(
+      clippy::expect_used,
+      reason = "poisoned slot state violates scheduling invariants"
+   )]
    pub fn stop(&self) {
       let mut state = self.state.lock().expect("slot lock poisoned");
       state.stopped = true;

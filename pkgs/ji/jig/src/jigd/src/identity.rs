@@ -65,7 +65,10 @@ impl Identities {
       Ok(identity)
    }
 
-   #[expect(clippy::expect_used, reason = "poisoned identity cache violates its invariants")]
+   #[expect(
+      clippy::expect_used,
+      reason = "poisoned identity cache violates its invariants"
+   )]
    pub fn len(&self) -> usize {
       self.known.read().expect("identity lock poisoned").len()
    }

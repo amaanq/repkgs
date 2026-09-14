@@ -164,7 +164,10 @@ struct State {
 }
 
 impl State {
-   #[expect(clippy::expect_used, reason = "indexed locations must refer to loaded packs")]
+   #[expect(
+      clippy::expect_used,
+      reason = "indexed locations must refer to loaded packs"
+   )]
    fn insert(&mut self, key: String, location: Location) {
       self
          .packs
@@ -217,12 +220,18 @@ impl Shared {
          .join(format!("{identifier:06}.{extension}"))
    }
 
-   #[expect(clippy::expect_used, reason = "poisoned store state violates its invariants")]
+   #[expect(
+      clippy::expect_used,
+      reason = "poisoned store state violates its invariants"
+   )]
    fn read(&self) -> RwLockReadGuard<'_, State> {
       self.state.read().expect("store lock poisoned")
    }
 
-   #[expect(clippy::expect_used, reason = "poisoned store state violates its invariants")]
+   #[expect(
+      clippy::expect_used,
+      reason = "poisoned store state violates its invariants"
+   )]
    fn write(&self) -> RwLockWriteGuard<'_, State> {
       self.state.write().expect("store lock poisoned")
    }
@@ -231,7 +240,10 @@ impl Shared {
       clippy::too_many_lines,
       reason = "pack loading handles hint parsing and fallback scan in one place"
    )]
-   #[expect(clippy::expect_used, reason = "the pack was inserted before its size is updated")]
+   #[expect(
+      clippy::expect_used,
+      reason = "the pack was inserted before its size is updated"
+   )]
    fn load(&self, state: &mut State, tier: usize, identifier: u64) -> io::Result<()> {
       let file = Arc::new(
          OpenOptions::new()
@@ -418,7 +430,10 @@ impl Shared {
       None
    }
 
-   #[expect(clippy::expect_used, reason = "selected packs must remain in the index")]
+   #[expect(
+      clippy::expect_used,
+      reason = "selected packs must remain in the index"
+   )]
    fn move_down(&self, identifier: u64) -> io::Result<()> {
       let (from, used) = {
          let state = self.read();
@@ -621,7 +636,10 @@ impl Store {
       })
    }
 
-   #[expect(clippy::expect_used, reason = "the active pack must exist after rotation")]
+   #[expect(
+      clippy::expect_used,
+      reason = "the active pack must exist after rotation"
+   )]
    pub fn put(&self, key: &str, value: &[u8]) -> io::Result<()> {
       let key_length = u32::try_from(key.len()).map_err(io::Error::other)?;
       let length = u32::try_from(value.len()).map_err(io::Error::other)?;
@@ -634,10 +652,7 @@ impl Store {
          self.shared.rotate(&mut state)?;
       }
       let active = state.active;
-      let pack = state
-         .packs
-         .get_mut(&active)
-         .expect("missing active pack");
+      let pack = state.packs.get_mut(&active).expect("missing active pack");
       let mut header = Vec::with_capacity(8 + key.len());
       header.extend_from_slice(&key_length.to_le_bytes());
       header.extend_from_slice(&length.to_le_bytes());

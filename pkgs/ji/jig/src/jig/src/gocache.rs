@@ -111,7 +111,7 @@ fn identifier(encoded: &str) -> io::Result<(Vec<u8>, String)> {
    let mut hex = String::with_capacity(64);
    for byte in &bytes {
       hex.push(char::from(HEX[usize::from(*byte >> 4_u8)]));
-      hex.push(char::from(HEX[usize::from(*byte & 0x0f)]));
+      hex.push(char::from(HEX[usize::from(*byte & 0x0F)]));
    }
    Ok((bytes, hex))
 }
