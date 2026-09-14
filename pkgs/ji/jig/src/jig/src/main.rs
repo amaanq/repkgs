@@ -22,6 +22,7 @@ mod launchers;
 mod macho;
 mod make;
 mod manifest;
+mod meson;
 mod nix_store;
 mod prepare;
 mod probe;

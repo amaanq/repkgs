@@ -25,6 +25,7 @@ use crate::{
    cli::SystemOperation,
    cmake,
    make,
+   meson,
    python,
    store::{
       normalize,
@@ -36,6 +37,7 @@ pub enum System {
    Make,
    Autotools,
    Cmake,
+   Meson,
    Cargo,
    Python,
 }
@@ -48,6 +50,7 @@ impl FromStr for System {
          "make" => Ok(Self::Make),
          "autotools" => Ok(Self::Autotools),
          "cmake" => Ok(Self::Cmake),
+         "meson" => Ok(Self::Meson),
          "cargo" => Ok(Self::Cargo),
          "python" => Ok(Self::Python),
          _ => {
@@ -74,7 +77,7 @@ fn setup(name: &str) -> io::Result<()> {
    set_current_dir(&directory)?;
    let env = match name.parse::<System>()? {
       System::Make | System::Autotools => make::setup()?,
-      System::Cmake => BTreeMap::<String, String>::new(),
+      System::Cmake | System::Meson => BTreeMap::<String, String>::new(),
       System::Cargo => cargo::setup(&ctx, &Attrs::load()?)?,
       System::Python => python::setup(&ctx)?,
    };
@@ -95,6 +98,7 @@ fn workdir_of(ctx: &Ctx, name: &str) -> io::Result<PathBuf> {
       System::Make => make::workdir(ctx),
       System::Autotools => autotools::workdir(ctx),
       System::Cmake => Ok(cmake::workdir(ctx)),
+      System::Meson => Ok(meson::workdir(ctx)),
       System::Cargo => cargo::workdir(ctx),
       System::Python => python::workdir(ctx),
    }
@@ -107,6 +111,7 @@ fn phase(name: &str, verb: &str, socket: &Path) -> io::Result<()> {
       System::Make => make::phase(&ctx, verb),
       System::Autotools => autotools::phase(&ctx, verb, socket),
       System::Cmake => cmake::phase(&ctx, verb, socket),
+      System::Meson => meson::phase(&ctx, verb),
       System::Cargo => cargo::phase(&ctx, verb),
       System::Python => python::phase(&ctx, verb, &Attrs::load()?),
    }

@@ -134,6 +134,11 @@ builtins.mapAttrs
         buildPkgs.ninja
         sh
       ];
+      options = {
+        defs = attrs { } "-D options, merged over prefix/libdir/buildtype defaults";
+        flags = flags "meson setup";
+        skipTests = strs [ ] "substrings of `meson test --list` names";
+      };
     };
     python = {
       phases = [
