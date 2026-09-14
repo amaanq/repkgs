@@ -47,6 +47,7 @@ use crate::{
       Slot,
       diagnostic,
       log,
+      log_uncached,
       run,
       run_slotted,
    },
@@ -235,18 +236,17 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
          (!invocation.query).then_some(socket),
          false,
       )?;
-      log(
-         "rustc",
-         if invocation.query {
-            "query"
-         } else if invocation.cacheable {
-            "no-daemon"
-         } else {
-            "uncacheable"
-         },
-         &label,
-         started,
-      );
+      let outcome = if invocation.query {
+         "query"
+      } else if invocation.cacheable {
+         "no-daemon"
+      } else {
+         "uncacheable"
+      };
+      log("rustc", outcome, &label, started);
+      if outcome == "uncacheable" {
+         log_uncached(outcome, arguments);
+      }
       return Ok(result.status);
    };
    let hit = lookup(client, &mut store, key)
