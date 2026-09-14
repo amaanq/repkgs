@@ -24,10 +24,13 @@ use serde::{
 };
 use serde_json::Value;
 
-use crate::exports::{
-   Exports,
-   closure,
-   exports_of,
+use crate::{
+   exports::{
+      Exports,
+      closure,
+      exports_of,
+   },
+   store::is_store_path,
 };
 
 const EPOCH: &str = "315532800";
@@ -53,11 +56,25 @@ struct Hardening {
 
 #[derive(Deserialize)]
 struct Spec {
-   debug: bool,
+   debug:   bool,
    #[serde(default)]
-   cc:    Option<Cc>,
+   cc:      Option<Cc>,
    #[serde(default)]
-   env:   BTreeMap<String, Value>,
+   env:     BTreeMap<String, Value>,
+   #[serde(default)]
+   uses:    Vec<String>,
+   #[serde(flatten)]
+   systems: BTreeMap<String, Value>,
+}
+
+impl Spec {
+   fn lock_trees(&self) -> impl Iterator<Item = &str> {
+      self
+         .uses
+         .iter()
+         .filter_map(|name| self.systems.get(name)?.get("deps")?.as_str())
+         .filter(|tree| is_store_path(tree))
+   }
 }
 
 #[derive(Deserialize, Default)]
@@ -187,6 +204,7 @@ fn toolchain(
 ) -> io::Result<()> {
    let mut roots: Vec<String> = deps.iter().map(|dep| dep.root.clone()).collect();
    roots.extend(attrs.build_dependencies.iter().cloned());
+   roots.extend(attrs.spec.lock_trees().map(str::to_owned));
    if let Some(cc) = find_tool(bins, "cc") {
       let package = cc
          .parent()
