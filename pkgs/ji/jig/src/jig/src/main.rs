@@ -2,6 +2,7 @@ mod cc;
 mod directory;
 mod driver;
 mod elf;
+mod exports;
 mod files;
 mod fixup;
 mod gocache;
@@ -13,6 +14,7 @@ mod nix_store;
 mod process;
 mod rustc;
 mod store;
+mod tree;
 
 use std::{
    env::{
@@ -81,7 +83,9 @@ fn dispatch() -> Result<i32> {
           cache get-dir|put-dir <key> <directory>\njig slot <program> [args...]\njig \
           gocacheprog\njig header-key <context> <warning-policy> <compiler> <args...>\njig \
           reloc-fixup <directory> [--dest <path>] [--deny <path>]\njig nix-store \
-          add-text|add-drv|fetchurls|submit <args>"
+          add-text|add-drv|fetchurls|submit <args>\njig shebangs <directory> [--undo]\njig \
+          exports|deps <store path...>\njig write-exports <output>\njig prune <output>\njig \
+          relativize <prefix> <store path> [--macho]"
       )?;
       return Ok(0);
    }
@@ -118,6 +122,26 @@ fn dispatch() -> Result<i32> {
    }
    if mode == "nix-store" {
       nix_store::run(&text_args)?;
+      return Ok(0);
+   }
+   if mode == "shebangs" {
+      tree::shebangs(&text_args)?;
+      return Ok(0);
+   }
+   if mode == "exports" || mode == "deps" {
+      exports::print(&text_args, mode == "deps")?;
+      return Ok(0);
+   }
+   if mode == "write-exports" {
+      exports::write(&text_args)?;
+      return Ok(0);
+   }
+   if mode == "prune" {
+      tree::prune(&text_args)?;
+      return Ok(0);
+   }
+   if mode == "relativize" {
+      tree::relativize(&text_args)?;
       return Ok(0);
    }
    Ok(cc::run_cc(&mode.to_string_lossy(), &text_args, &socket)?)

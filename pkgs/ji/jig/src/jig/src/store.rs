@@ -6,9 +6,11 @@ use std::{
    env::var,
    fs::{
       canonicalize,
+      metadata,
       read,
    },
    io,
+   os::unix::fs::PermissionsExt as _,
    path::{
       Component,
       Path,
@@ -291,7 +293,9 @@ pub fn on_path(program: &str) -> PathBuf {
    if !program.contains('/') {
       for directory in var("PATH").unwrap_or_default().split(':') {
          let path = Path::new(directory).join(program);
-         if path.is_file() {
+         if metadata(&path)
+            .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+         {
             return path;
          }
       }

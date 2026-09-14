@@ -44,7 +44,7 @@ def --env unpack [a: record, src: path, njobs: int]: nothing -> nothing {
   cd $src
   # -F0: a hunk whose context does not match is an error, not applied somewhere similar
   for p in $a.patches { note patch $p; ^patch -p1 -F0 -i $p }
-  fix-shebangs . $njobs
+  fix-env-shebangs .
 }
 
 # tests derivation: the kept source+build tree back at the same absolute paths, so configured
@@ -61,7 +61,8 @@ export def --env main [
   --from-tree: string = ""  # tests derivation: restore the package's tree instead of unpacking
 ]: nothing -> nothing {
   let a = (attrs)
-  let spec = ($systems | transpose bs table | reduce -f $a.spec {|it, acc| $acc | upsert $it.bs (merge-options $it.bs $it.table ($acc | get -o $it.bs | default {})) })
+  $env.PATH = ($a.buildDependencies | each { $"($in)/bin" })
+  let spec = $a.spec
   # the build installs outside the store, finish moves it (docs/design.md, Relocatable). In the
   # tests derivation $out is the built package and our own output just the log
   let out = (if $from_tree == "" { $"($env.NIX_BUILD_TOP)/prefix" } else { $a.package })

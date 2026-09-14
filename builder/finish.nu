@@ -1,6 +1,6 @@
 # Everything after the last phase, in the order `main` lists it.
 use core.nu *
-use debug.nu [split-debug split-debug-macho strip-archives]
+use debug.nu split-debug
 use implant.nu
 use launchers.nu
 
@@ -15,83 +15,26 @@ export def --env main [
   for b in (bins $c) {
     if not ($"($c.out)/bin/($b)($c.platform.ext.exe)" | path exists) { error make {msg: $"bin/($b)($c.platform.ext.exe) missing in output"} }
   }
-  let inv = (prune $c.out (inventory $c.out))
+  let inv = (prune $c.out)
   layout-check $c.out
   # installed copies of source scripts carry the build env's path from prepare: not a dependency
-  fix-shebangs $c.out $c.njobs --undo
+  fix-env-shebangs $c.out --undo
   mkdir (attrs).outputs.debug
   relocate $c $inv
   write-exports $c.out $c.spec $c.platform $c.deps
   note exports (open --raw $"($c.out)/exports.json" | from json | to json -r)
   cd $env.NIX_BUILD_TOP
-  to-store $c.out $c.dest $inv
+  to-store $c.out $c.dest
   version-check ($c | update out $c.dest)
   cache-summary
 }
 
-# Rewrite the absolute prefix in `files` as `<var>/../..`, i.e. relative to the file itself:
-# ${pcfiledir} for .pc files, ${CMAKE_CURRENT_LIST_DIR} for autoconf-substituted FooConfig.cmake
-# (fftw), which is what cmake-generated ones use
-def relativize-text [prefix: string, var: string, files: list<string>]: nothing -> nothing {
-  if ($files | is-empty) { return }
-  for f in (^grep -lF $prefix ...$files | complete | get stdout | lines) {
-    let up = ($f | path dirname | path relative-to $prefix | path split | each { ".." } | str join "/")
-    let text = (open --raw $f | str replace -a $prefix $"${($var)}/($up)")
-    $text | save -f $f
-  }
-}
-
-# documentation quoting the configured prefix has no relative form
-def generic-man-prefix [prefix: string, pages: list<string>]: nothing -> nothing {
-  if ($pages | is-empty) { return }
-  let hits = (^grep -lF $prefix ...$pages | complete | get stdout | lines)
-  for f in $hits {
-    let text = (open --raw $f | str replace -a $prefix "/usr")
-    $text | save -f $f
-  }
-  if ($hits | is-not-empty) { note man $"($hits | length) pages named the prefix, now /usr" }
-}
-
-# foo-config style sh scripts: prefix from $0
-def relativize-scripts [prefix: string]: nothing -> nothing {
-  # listed afresh: launchers renamed bin/x to bin/.x
-  let scripts = (if ($"($prefix)/bin" | path exists) { ^find $"($prefix)/bin" -maxdepth 1 -type f | lines } else { [] })
-  if ($scripts | is-empty) { return }
-  const FROM_0 = 'prefix=$(cd "$(dirname "$0")/.." && pwd -P)'
-  for f in (^grep -lF $prefix ...$scripts | complete | get stdout | lines) {
-    let lines = (open --raw $f | lines)
-    if ($lines.0 !~ '^#!.*sh$') or not ($lines | any { ($in | str replace -ar `["']` "") == $"prefix=($prefix)" }) { continue }
-    ($lines
-      | each {|l| if ($l | str replace -ar `["']` "") == $"prefix=($prefix)" { $FROM_0 } else { $l | str replace -a $prefix '${prefix}' } }
-      | str join "\n" | save -f $f)
-    note script $"bin/($f | path basename): prefix from $0"
-  }
-}
-
-
-# prefix -> store, anything still naming the prefix is an error
-export def to-store [prefix: string, dest: string, inv: table]: nothing -> nothing {
+# prefix -> store: .pc files, foo-config scripts and absolute links made relative, anything
+# still naming the prefix is an error
+export def to-store [prefix: string, dest: string]: nothing -> nothing {
   ^chmod -R u+w $prefix # some install -m 0444
-  relativize-text $prefix pcfiledir ($inv | where type == f and rel =~ '\.pc$' | get path)
-  relativize-text $prefix CMAKE_CURRENT_LIST_DIR ($inv | where type == f and rel =~ '\.cmake$' | get path)
-  generic-man-prefix $prefix ($inv | where type == f and rel starts-with share/man/ | get path)
-  relativize-scripts $prefix
-  relativize-links $prefix $dest
-  let hits = (^grep -rlF $prefix $prefix | complete | get stdout | lines)
-  if ($hits | is-not-empty) {
-    let detail = ($hits | first 10 | each {|f|
-      let found = (^strings -n ($prefix | str length) $f | lines | where { $in | str contains $prefix } | uniq | first 3
-        | each { str replace -a $prefix '$out' | str substring 0..120 })
-      $"  ($f | path relative-to $prefix): ($found | str join ', ')"
-    })
-    let more = if ($hits | length) > 10 { $"
-  ... and (($hits | length) - 10) more" } else { "" }
-    error make {msg: $"not relocatable: ($hits | length) files name the install prefix \(shown as $out). Make the path relative to the file \(reloc.h RELOC, ${pcfiledir}, $ORIGIN) or configure it away:
-($detail | str join "
-")($more)"}
-  }
-  # a Windows store (and tar on a runner) holds no symlinks: openssl's 5600 man aliases become copies
-  if (ctx).platform.os == "windows" { ^cp -rL $prefix $dest; ^rm -rf $prefix } else { ^mv $prefix $dest }
+  ^jig relativize $prefix $dest ...(if (ctx).platform.os == "macos" { [--macho] } else { [] })
+  ^mv $prefix $dest
 }
 
 # tests derivation output: a result marker. The package itself is untouched
@@ -137,29 +80,9 @@ def bins [c: record]: nothing -> list<string> {
   $c.spec.bin? | default (if ($"($c.out)/bin/($c.spec.name)($c.platform.ext.exe)" | path exists) { [$c.spec.name] } else { [] })
 }
 
-# the tree walked once, later steps filter it (toybox find has no %y)
-export def inventory [out: path]: nothing -> table {
-  let n = (($out | str length) + 1)
-  [f l d] | each {|t|
-    ^find $out -mindepth 1 -type $t -printf '%s\t%p\t%l\n' | from tsv --noheaders --no-infer
-    | rename size path target | insert type $t
-  } | flatten | update size { into int } | insert rel { $in.path | str substring $n.. }
-}
-
-# docs, junk with absolute paths or timestamps. Returns the inventory minus what it removed.
-# x.dSYM is what `clang -g a.c -o x` leaves on Darwin. split-debug-macho makes its own
-export def prune [out: path, inv: table]: nothing -> table {
-  let dirs = ([share/doc share/info share/gtk-doc] ++ ($inv | where type == d and rel =~ '\.dSYM$' | get rel))
-  for d in $dirs { rm -rf $"($out)/($d)" }
-  let inv = ($inv | where {|e| not ($dirs | any {|d| $e.rel == $d or ($e.rel | str starts-with $"($d)/") }) })
-  let files = ($inv | where type == f)
-  let junk = ($files | where { $in.rel =~ '(\.la|/perllocal\.pod|/\.packlist|^lib/charset\.alias)$' })
-  if ($junk | is-not-empty) { rm ...$junk.path }
-  let gz = ($files | where rel =~ '^share/man/.*\.gz$')
-  if ($gz | is-not-empty) { x gzip -d ...$gz.path }
-  let pch = ($files | where rel =~ '\.[pg]ch$')
-  if ($pch | is-not-empty) { error make {msg: $"precompiled headers in output do not relocate: ($pch.rel | first 3 | str join ' ')"} }
-  $inv | where rel not-in $junk.rel | update rel {|e| if $e.rel in $gz.rel { $e.rel | str replace -r '\.gz$' "" } else { $e.rel } } | update path {|e| $"($out)/($e.rel)" }
+# docs, junk with absolute paths or timestamps removed. Returns the inventory of what is left
+export def prune [out: path]: nothing -> table {
+  ^jig prune $out | from json
 }
 
 # lib/ and bin/ only
@@ -169,56 +92,19 @@ export def layout-check [out: path]: nothing -> nothing {
   }
 }
 
-# absolute links become relative to their place in the store, none may dangle
-def relativize-links [prefix: string, dest: string]: nothing -> nothing {
-  # listed afresh: launchers added links
-  for l in (^find $prefix -type l -printf '%P\t%l\n' | from tsv --noheaders --no-infer | rename rel target) {
-    # where it points once the tree is at dest
-    let target = (if ($l.target | str starts-with $"($prefix)/") { $"($dest)/($l.target | path relative-to $prefix)" } else { $"($dest)/($l.rel)" | path dirname | path join $l.target | path expand -n })
-    if not ($target | str starts-with $"($env.NIX_STORE)/") { error make {msg: $"symlink ($l.rel) -> ($l.target) leaves the store"} }
-    if ($l.target | str starts-with "/") { ^ln -sfn (relative-link $"($dest)/($l.rel)" $target) $"($prefix)/($l.rel)" }
-    let here = (if ($target | str starts-with $"($dest)/") { $"($prefix)/($target | path relative-to $dest)" } else { $target })
-    if not ($here | path exists -n) { error make {msg: $"symlink ($l.rel) -> ($l.target) dangles"} }
-  }
-}
-
-# link at `from` pointing to `to`, both absolute: the relative target
-def relative-link [from: string, to: string]: nothing -> string {
-  let f = ($from | path split | drop 1 | skip 1)
-  let t = ($to | path split | skip 1)
-  let common = ($f | zip $t | take while { $in.0 == $in.1 } | length)
-  $f | skip $common | each { ".." } | append ($t | skip $common) | path join
-}
-
-# What the binaries of each format need before reloc-fixup. prebuilt `true` implants interp +
-# stub, "ldso" stays byte-identical behind a launcher
-def binaries-elf [c: record, inv: table]: nothing -> nothing {
-  if $c.spec.debug { split-debug $c.out (attrs).outputs.debug $c.njobs ($inv | where type == f) }
-  if $c.spec.prebuilt? == true { implant $c }
-  launchers $c
-}
-
-def binaries-macho [c: record, inv: table]: nothing -> nothing {
-  if $c.spec.debug { split-debug-macho $c.out (attrs).outputs.debug $c.njobs ($inv | where type == f) }
-}
-
-# no debug output yet, but CodeView LF_BUILDINFO in static libraries names the compiler's store path
-def binaries-coff [c: record, inv: table]: nothing -> nothing {
-  strip-archives $c.out ($inv | where type == f and rel =~ '\.(lib|obj|a)$')
-  launchers $c
-}
-
-# --deny: a cross output must not mention build-machine packages, --sdk: system dylibs must be in it
+# prebuilt `true` implants interp + stub, "ldso" stays byte-identical behind a launcher.
+# --deny: a cross output must not mention build-machine packages. Debug split, implant and
+# launchers are ELF only so far, reloc-fixup does ELF and Mach-O
 def relocate [c: record, inv: table]: nothing -> nothing {
-  match $c.platform.binfmt {
-    "elf" => { binaries-elf $c $inv }
-    "macho" => { binaries-macho $c $inv }
-    "coff" => { binaries-coff $c $inv }
+  let prebuilt = ($c.spec.prebuilt? | default false)
+  if $c.platform.binfmt == "elf" {
+    if $c.spec.debug { split-debug $c.out (attrs).outputs.debug $c.njobs ($inv | where type == f) }
+    if $prebuilt == true { implant $c }
+    launchers $c
   }
   let a = (attrs)
   let deny = (if $c.platform.cross { $a.buildDependencies | where { $in not-in $a.dependencies } | each { [--deny $in] } | flatten } else { [] })
-  let sdk = (if $c.platform.binfmt == "macho" { [--sdk $c.platform.sysroot] } else { [] })
-  if $c.spec.prebuilt? != "ldso" { x reloc-fixup $c.out --dest $c.dest ...$sdk ...$deny }
+  if $prebuilt != "ldso" { x reloc-fixup $c.out --dest $c.dest ...$deny }
 }
 
 # tests.version: a command whose output must contain the pinned version (true = --version), its

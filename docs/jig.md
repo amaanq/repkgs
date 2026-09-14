@@ -22,6 +22,11 @@ or from the first argument when `argv[0]` is `jig`.
 | `jig header-key <context> <warning-policy> <compiler> <args…>`             | autoconf header probe key                      |
 | `jig reloc-fixup <directory> [--dest <store path>] [--deny <store path>]…` | post-link relocation                           |
 | `jig nix-store add-text\|add-drv\|fetchurls\|submit …`                     | builder RPC to the Nix daemon                  |
+| `jig shebangs <directory> [--undo]`                                        | point `#!/usr/bin/env` scripts at the build's env, or back |
+| `jig exports <store path…>`, `jig deps <store path…>`                       | a package's exports with defaults, or the propagated closure, as JSON |
+| `jig write-exports <output>`                                               | write `exports.json` from the spec on stdin, propagating .pc and cmake requirements |
+| `jig prune <output>`                                                       | drop docs and junk, unpack man pages, print the inventory as JSON |
+| `jig relativize <prefix> <store path>`                                     | make .pc files, foo-config scripts and links relative, fail on a leaked prefix |
 
 **jigd** runs on the host, outside every sandbox, as `jigd <socket>`. It owns the compile
 cache, the file identity cache and the build slots. Nothing in a derivation names it, so
@@ -485,7 +490,36 @@ told apart from a first compile.
 `compile-hit` as hits. `JIG_LOG_ARGS` gets `outcome\t<arguments joined by spaces>` for every
 non query invocation that ran the compiler.
 
-## 11. nix-store mode
+## 11. Output tree modes
+
+These serve `builder/prepare.nu` and `builder/finish.nu`, which used to walk the tree in nu.
+Paths and errors follow the nu functions they replaced.
+
+`shebangs` rewrites the first line of every executable regular file under 1 MiB that starts
+with `#!/usr/bin/env` to `#!<env on PATH>`, writing in place and restoring the file's mtime.
+`--undo` looks at every regular file, replaces that spelling on any line with `#!/usr/bin/env`,
+and leaves mtimes alone.
+
+`exports` prints one record per store path with the `exports.json` fields filled from the tree
+when absent (§ `builder/exports.nu` documents the defaults), `env` values with `{root}` expanded,
+and `root` added. `deps` prints the breadth first closure over `propagate`, each root once, in
+discovery order. `write-exports` reads `{ name, exports, deps }`, where `exports` is the spec's
+record, `false` for nothing to link against, or null, and writes the merged record with the
+dependencies named by `Requires` lines in the output's `.pc` files and `find_dependency` calls
+in its cmake configs appended to `propagate`.
+
+`prune` removes `share/doc`, `share/info` and `share/gtk-doc`, `.la` files, `perllocal.pod`,
+`.packlist` and `lib/charset.alias`, gunzips `share/man/**/*.gz` and fails on a `.pch` or
+`.gch`. It prints the remaining entries as `[{ type, size, path, target, rel }]` sorted by
+`rel`, with `type` one of `f`, `l`, `d`.
+
+`relativize` rewrites the prefix in `.pc` files to `${pcfiledir}/..` chains, turns
+`prefix=<prefix>` assignments in `bin/` shell scripts into a `$0` relative form, rewrites
+absolute symlinks to relative ones as they will sit under the store path, refuses a link that
+leaves the store or dangles, and finally fails if any regular file still contains the prefix,
+naming up to ten files and the printable runs around the hit.
+
+## 12. nix-store mode
 
 `jig nix-store` speaks the Nix daemon's builder RPC over `NIX_REMOTE=unix://<socket>` with
 protocol 1.38 and the features `realisation-with-path-not-hash`, `disable-set-options`,
