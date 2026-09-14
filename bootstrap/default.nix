@@ -11,6 +11,10 @@
 let
   platforms = import ../nix/platforms.nix;
   pkg = name: ../pkgs + "/${builtins.substring 0 2 name}/${name}";
+  # the vendor field says build, so configure sees a cross build even on the same cpu
+  buildTriple =
+    builtins.replaceStrings [ "-unknown-" ] [ "-build-" ]
+      (platforms.forSystem system "glibc").gnuTriple;
 
   seedPath =
     if seed == null then
@@ -137,8 +141,9 @@ let
           interp
           ;
         karch = platform.names.kernel;
+        inherit buildTriple;
         site_libc = platform.libc;
-        flags = toString platform.march;
+        flags = toString (platform.march ++ hardening.enabledFlags (hardening.forPlatform platform) hardening.cpuOnly);
         llvm = clang;
         JIG_CC = "${clang}/bin/clang";
       };
@@ -338,6 +343,7 @@ let
 in
 {
   seed = seedPath;
+  inherit buildTriple;
   inherit (seedBuild) jib jig nu;
   inherit
     stage0

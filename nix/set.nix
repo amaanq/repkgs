@@ -30,10 +30,7 @@ let
     inherit system;
     cross = platform != system;
     buildRustTriple = bootstrap.stage1.${builtins.head (builtins.split "-" system)}.platform.rustTriple;
-    # the vendor field says build, so configure sees a cross build even on the same cpu
-    buildTriple = builtins.replaceStrings [ "-unknown-" ] [ "-build-" ] bootstrap.stage1.${
-      builtins.head (builtins.split "-" system)
-    }.platform.gnuTriple;
+    inherit (bootstrap) buildTriple;
     # its address cap is $QEMU_RESERVED_VA (jib prepare), build systems want one word here
     emulator =
       if cross && os == "linux" then

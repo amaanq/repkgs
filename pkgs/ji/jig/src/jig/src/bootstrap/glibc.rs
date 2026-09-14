@@ -124,6 +124,7 @@ impl Glibc {
       let configure_script = src.join("configure").to_string_lossy().into_owned();
       let prefix_arg = format!("--prefix={out}");
       let host_arg = format!("--host={}", stage.clang_target);
+      let build_arg = format!("--build={}", stage.build_triple);
       let headers_arg = format!("--with-headers={linux_headers}/include");
       let slibdir_arg = format!("libc_cv_slibdir={out}/lib");
       let rtlddir_arg = format!("libc_cv_rtlddir={out}/lib");
@@ -131,7 +132,7 @@ impl Glibc {
          configure_script.as_str(),
          &prefix_arg,
          &host_arg,
-         "--build=x86_64-build-linux-gnu",
+         &build_arg,
          &headers_arg,
          "--enable-kernel=5.10",
          "--disable-werror",

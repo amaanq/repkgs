@@ -42,6 +42,7 @@ pub struct Outputs {
 pub struct Stage {
    pub outputs:       Outputs,
    pub clang_target:  String,
+   pub build_triple:  String,
    pub cpu:           String,
    pub libc:          String,
    pub os:            String,
