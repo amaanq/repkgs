@@ -186,10 +186,7 @@ pub fn print(roots: &[String], transitive: bool) -> io::Result<()> {
    Ok(())
 }
 
-pub fn write(args: &[String]) -> io::Result<()> {
-   let [ref out] = *args else {
-      return Err(io::Error::other("write-exports takes the output directory"));
-   };
+pub fn write(root: &Path) -> io::Result<()> {
    let mut text = String::new();
    io::stdin().read_to_string(&mut text)?;
    let request = serde_json::from_str::<Request>(&text)?;
@@ -212,7 +209,6 @@ pub fn write(args: &[String]) -> io::Result<()> {
          return Err(io::Error::other("exports must be a record or false"));
       },
    };
-   let root = Path::new(out);
    let mut exports = match serde_json::to_value(exports_of(root)?)? {
       Value::Object(fields) => fields,
       Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) | Value::Array(_) => {

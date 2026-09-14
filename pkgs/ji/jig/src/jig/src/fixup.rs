@@ -86,40 +86,37 @@ struct SearchDirectory {
    clippy::too_many_lines,
    reason = "single-pass directory walk and file handling, splitting would duplicate policy"
 )]
-pub fn run(args: &[String]) -> io::Result<()> {
-   let Some((prefix, remaining)) = args.split_first() else {
-      return Err(io::Error::other("reloc-fixup requires an output directory"));
-   };
+pub fn run(prefix: &Path, dest: Option<&str>, denied_paths: &[String]) -> io::Result<()> {
+   if let Some(path) = dest
+      && !is_store_path(path)
+   {
+      return Err(io::Error::other(format!(
+         "invalid --dest store path {path}"
+      )));
+   }
    let mut context = Context {
-      prefix:      normalize(Path::new(prefix)),
-      dest:        normalize(Path::new(prefix)),
+      prefix:      normalize(prefix),
+      dest:        normalize(dest.map_or(prefix, Path::new)),
       directories: BTreeSet::new(),
    };
    let mut denied = Vec::new();
-   for pair in remaining.chunks(2) {
-      let [ref flag, ref path] = *pair else {
-         return Err(io::Error::other("reloc-fixup options take a store path"));
-      };
+   for path in denied_paths {
       if !is_store_path(path) {
-         return Err(io::Error::other("invalid reloc-fixup argument"));
+         return Err(io::Error::other(format!(
+            "invalid --deny store path {path}"
+         )));
       }
-      match flag.as_str() {
-         "--dest" => context.dest = normalize(Path::new(path)),
-         "--deny" => {
-            let name = Path::new(path)
-               .file_name()
-               .and_then(|name| name.to_str())
-               .ok_or_else(|| io::Error::other("invalid denied store path"))?;
-            denied.push(
-               name
-                  .get(..32)
-                  .ok_or_else(|| io::Error::other("denied store path has no hash"))?
-                  .as_bytes()
-                  .to_vec(),
-            );
-         },
-         _ => return Err(io::Error::other("invalid reloc-fixup argument")),
-      }
+      let name = Path::new(path)
+         .file_name()
+         .and_then(|name| name.to_str())
+         .ok_or_else(|| io::Error::other("invalid denied store path"))?;
+      denied.push(
+         name
+            .get(..32)
+            .ok_or_else(|| io::Error::other("denied store path has no hash"))?
+            .as_bytes()
+            .to_vec(),
+      );
    }
    if !is_store_path(&context.dest.to_string_lossy()) {
       return Err(io::Error::other(

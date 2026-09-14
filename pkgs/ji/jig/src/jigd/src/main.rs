@@ -4,12 +4,7 @@ mod slots;
 mod store;
 
 use std::{
-   env::{
-      VarError,
-      args_os,
-      var,
-      var_os,
-   },
+   env::var_os,
    fmt::Arguments,
    fs::{
       Permissions,
@@ -34,10 +29,7 @@ use std::{
          UnixStream,
       },
    },
-   path::{
-      Path,
-      PathBuf,
-   },
+   path::PathBuf,
    sync::{
       Arc,
       atomic::{
@@ -62,6 +54,7 @@ use eyre::{
    bail,
    eyre,
 };
+use pound::Parse;
 use rustix::{
    event::{
       PollFd,
@@ -90,11 +83,26 @@ use crate::{
    },
 };
 
-const USAGE: &str = "jigd <socket>\n\nJIGD_SIZE sets the cache budget in GiB, default 50, zero \
-                     means unlimited\nJIGD_COLD names a second, slower pack directory that takes \
-                     what JIGD_SIZE pushes out\nJIGD_COLD_SIZE sets its budget in GiB, default \
-                     unlimited\nJIGD_SLOTS sets concurrent compiler slots, default available \
-                     CPUs\nXDG_CACHE_HOME holds jigd/packs, default $HOME/.cache\n";
+/// Compile cache and compiler slot daemon behind jig. Packs live under
+/// `XDG_CACHE_HOME/jigd/packs`, default `$HOME/.cache`.
+#[derive(Parse)]
+#[pound(name = "jigd")]
+struct Options {
+   /// The Unix socket to listen on.
+   socket:    PathBuf,
+   /// Cache budget in GiB, zero means unlimited.
+   #[pound(long, env = "JIGD_SIZE", default = "50")]
+   size:      u64,
+   /// A second, slower pack directory that takes what the budget pushes out.
+   #[pound(long, env = "JIGD_COLD")]
+   cold:      Option<PathBuf>,
+   /// Budget of the cold directory in GiB, zero means unlimited.
+   #[pound(long, env = "JIGD_COLD_SIZE", default = "0")]
+   cold_size: u64,
+   /// Concurrent compiler slots, default the number of CPUs.
+   #[pound(long, env = "JIGD_SLOTS")]
+   slots:     Option<usize>,
+}
 
 struct Socket {
    listener: UnixListener,
@@ -162,15 +170,8 @@ impl Drop for Socket {
 }
 
 fn main() -> Result<()> {
+   let options = Options::parse();
    color_eyre::install()?;
-   let arguments = args_os().skip(1).collect::<Vec<_>>();
-   if arguments.len() == 1 && (arguments[0] == "--help" || arguments[0] == "-h") {
-      io::stdout().lock().write_all(USAGE.as_bytes())?;
-      return Ok(());
-   }
-   let [ref socket_path] = *arguments.as_slice() else {
-      bail!("{USAGE}");
-   };
    let cache = match var_os("XDG_CACHE_HOME") {
       Some(path) if !path.is_empty() => PathBuf::from(path),
       Some(_) | None => {
@@ -179,33 +180,27 @@ fn main() -> Result<()> {
    };
    let mut tiers = vec![Tier {
       directory: cache.join("jigd/packs"),
-      budget:    gibibytes("JIGD_SIZE", 50)?,
+      budget:    gibibytes(options.size, "--size")?,
    }];
-   match var_os("JIGD_COLD") {
-      Some(path) if !path.is_empty() => {
-         tiers.push(Tier {
-            directory: PathBuf::from(path),
-            budget:    gibibytes("JIGD_COLD_SIZE", 0)?,
-         });
-      },
-      Some(_) | None => {},
+   if let Some(cold) = options
+      .cold
+      .filter(|directory| !directory.as_os_str().is_empty())
+   {
+      tiers.push(Tier {
+         directory: cold,
+         budget:    gibibytes(options.cold_size, "--cold-size")?,
+      });
    }
-   let limit = match var("JIGD_SLOTS") {
-      Ok(value) => {
-         value
-            .parse::<usize>()
-            .wrap_err("JIGD_SLOTS must be a positive integer")?
-      },
-      Err(VarError::NotPresent) => available_parallelism()?.get(),
-      Err(error) => return Err(error.into()),
+   let limit = match options.slots {
+      Some(slots) => slots,
+      None => available_parallelism()?.get(),
    };
    if limit == 0 {
-      bail!("JIGD_SLOTS must be positive");
+      bail!("--slots must be positive");
    }
 
    let store = Store::open(tiers).wrap_err("could not open cache")?;
-   let socket =
-      Socket::bind(Path::new(socket_path).to_owned()).wrap_err("could not bind socket")?;
+   let socket = Socket::bind(options.socket).wrap_err("could not bind socket")?;
    let stopped = Arc::new(AtomicBool::new(false));
    register(SIGINT, Arc::clone(&stopped))?;
    register(SIGTERM, Arc::clone(&stopped))?;
@@ -226,7 +221,9 @@ fn main() -> Result<()> {
       }
    }
    for (worker, _) in workers {
-      worker.join().map_err(|_error| eyre!("cache worker panicked"))?;
+      worker
+         .join()
+         .map_err(|_error| eyre!("cache worker panicked"))?;
    }
    daemon.close()?;
    result.map_err(Into::into)
@@ -239,7 +236,11 @@ pub fn note(message: Arguments<'_>) {
 
 #[inline]
 pub fn warn(message: Arguments<'_>) {
-   drop(writeln!(io::stderr().lock(), "{} warning: {message}", timestamp()));
+   drop(writeln!(
+      io::stderr().lock(),
+      "{} warning: {message}",
+      timestamp()
+   ));
 }
 
 fn timestamp() -> String {
@@ -270,19 +271,10 @@ fn timestamp() -> String {
    )
 }
 
-fn gibibytes(name: &str, fallback: u64) -> Result<u64> {
-   let size = match var(name) {
-      Ok(value) => {
-         value
-            .parse::<u64>()
-            .wrap_err_with(|| format!("{name} must be a nonnegative integer"))?
-      },
-      Err(VarError::NotPresent) => fallback,
-      Err(error) => return Err(error.into()),
-   };
+fn gibibytes(size: u64, option: &str) -> Result<u64> {
    size
       .checked_mul(1 << 30)
-      .ok_or_else(|| eyre!("{name} is too large"))
+      .ok_or_else(|| eyre!("{option} is too large"))
 }
 
 fn serve(

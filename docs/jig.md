@@ -8,7 +8,9 @@ here is an implementation choice.
 ## 1. Binaries and modes
 
 **jig** is one static executable copied into every toolchain. It picks its mode from `argv[0]`,
-or from the first argument when `argv[0]` is `jig`.
+or from the first argument when `argv[0]` is `jig`. `jig --help` and `jig <mode> --help` describe
+the modes and their flags. The compiler, `rustcwrap`, `slot` and `header-key` modes hand their
+arguments through untouched, every other mode parses them and fails on an unknown one.
 
 | invoked as                                                                 | mode                                           |
 | -------------------------------------------------------------------------- | ---------------------------------------------- |
@@ -77,15 +79,18 @@ unchanged, and `JIG_CC` must name the compiler.
 | `TMPDIR`                | link dependencies under it are not inputs                                           |
 | `GOCACHEPROG_DIR`       | where `gocacheprog` materialises outputs, default `$TMPDIR/gocacheprog`             |
 
-### 2.3 Environment read by jigd
+### 2.3 jigd options
 
-| variable         | meaning                                                   |
-| ---------------- | --------------------------------------------------------- |
-| `XDG_CACHE_HOME` | packs live in `<it>/jigd/packs`, default `$HOME/.cache`   |
-| `JIGD_SIZE`      | tier 0 budget in GiB, default 50, 0 means unlimited       |
-| `JIGD_COLD`      | a second tier directory that takes what tier 0 pushes out |
-| `JIGD_COLD_SIZE` | its budget in GiB, default unlimited                      |
-| `JIGD_SLOTS`     | concurrent compiler slots, default the CPU count          |
+`jigd <socket>` takes its options as flags, each with an environment variable that supplies
+the value when the flag is absent. `jigd --help` lists them.
+
+| flag          | variable         | meaning                                                   |
+| ------------- | ---------------- | --------------------------------------------------------- |
+|               | `XDG_CACHE_HOME` | packs live in `<it>/jigd/packs`, default `$HOME/.cache`   |
+| `--size`      | `JIGD_SIZE`      | tier 0 budget in GiB, default 50, 0 means unlimited       |
+| `--cold`      | `JIGD_COLD`      | a second tier directory that takes what tier 0 pushes out |
+| `--cold-size` | `JIGD_COLD_SIZE` | its budget in GiB, default unlimited                      |
+| `--slots`     | `JIGD_SLOTS`     | concurrent compiler slots, default the CPU count          |
 
 ## 3. Store paths, masking and identity
 

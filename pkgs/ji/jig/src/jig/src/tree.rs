@@ -124,16 +124,7 @@ fn writable(path: &Path) -> io::Result<()> {
    Ok(())
 }
 
-pub fn shebangs(args: &[String]) -> io::Result<()> {
-   let (directory, undo) = match *args {
-      [ref directory] => (directory, false),
-      [ref directory, ref flag] if flag == "--undo" => (directory, true),
-      _ => {
-         return Err(io::Error::other(
-            "shebangs takes a directory and optionally --undo",
-         ));
-      },
-   };
+pub fn shebangs(directory: &Path, undo: bool) -> io::Result<()> {
    let env = on_path("env");
    if !env.is_absolute() {
       return Err(io::Error::other("env not on PATH"));
@@ -144,7 +135,7 @@ pub fn shebangs(args: &[String]) -> io::Result<()> {
    } else {
       (&[b"#!/usr/bin/env", b"#! /usr/bin/env"], ours.as_bytes())
    };
-   let candidates: Vec<PathBuf> = walk(Path::new(directory))?
+   let candidates: Vec<PathBuf> = walk(directory)?
       .into_iter()
       .filter(|entry| entry.kind == 'f' && entry.size < SMALL_FILE)
       .map(|entry| PathBuf::from(entry.path))
@@ -231,11 +222,7 @@ fn find(text: &[u8], needle: &[u8]) -> Option<usize> {
       .position(|window| window == needle)
 }
 
-pub fn prune(args: &[String]) -> io::Result<()> {
-   let [ref out] = *args else {
-      return Err(io::Error::other("prune takes the output directory"));
-   };
-   let root = Path::new(out);
+pub fn prune(root: &Path) -> io::Result<()> {
    for docs in DOCS {
       match remove_dir_all(root.join(docs)) {
          Ok(()) => {},
@@ -287,7 +274,7 @@ pub fn prune(args: &[String]) -> io::Result<()> {
    for entry in &mut inventory {
       if compressed.contains(&entry.path) {
          entry.rel.truncate(entry.rel.len() - 3);
-         entry.path = format!("{out}/{}", entry.rel);
+         entry.path = format!("{}/{}", root.display(), entry.rel);
       }
    }
    let mut stdout = io::stdout().lock();
@@ -296,16 +283,7 @@ pub fn prune(args: &[String]) -> io::Result<()> {
    Ok(())
 }
 
-pub fn relativize(args: &[String]) -> io::Result<()> {
-   let (prefix, dest, macho) = match *args {
-      [ref prefix, ref dest] => (prefix, dest, false),
-      [ref prefix, ref dest, ref flag] if flag == "--macho" => (prefix, dest, true),
-      _ => {
-         return Err(io::Error::other(
-            "relativize takes the prefix, its store destination and optionally --macho",
-         ));
-      },
-   };
+pub fn relativize(prefix: &str, dest: &str, macho: bool) -> io::Result<()> {
    let root = Path::new(prefix);
    let inventory = walk(root)?;
    if macho {

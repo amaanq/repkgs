@@ -13,6 +13,7 @@ rust-version.workspace = true
 blake3      = { workspace = true }
 color-eyre  = { workspace = true }
 eyre        = { workspace = true }
+pound       = "0.1.6"
 rustix      = { workspace = true }
 signal-hook = { default-features = false, version = "0.3" }
 wire        = { workspace = true }

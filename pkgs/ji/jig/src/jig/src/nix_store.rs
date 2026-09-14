@@ -23,6 +23,7 @@ use sha2::{
 };
 
 use crate::{
+   cli::StoreOperation,
    process::diagnostic,
    store::STORE_DIR,
 };
@@ -424,44 +425,44 @@ struct Realisation {
    out: String,
 }
 
-pub fn run(args: &[String]) -> io::Result<()> {
+fn add_from_stdin(
+   connection: &mut Option<Connection>,
+   name: &str,
+   references: &[String],
+   derivation: bool,
+) -> io::Result<()> {
+   let mut bytes = Vec::new();
+   io::stdin().read_to_end(&mut bytes)?;
+   if derivation {
+      bytes = serde_json::from_slice::<Derivation>(&bytes)?
+         .aterm()
+         .into_bytes();
+   }
+   let path = add_text(
+      connection,
+      name,
+      &references.iter().cloned().collect(),
+      &bytes,
+   )?;
+   writeln!(io::stdout().lock(), "{path}")
+}
+
+pub fn run(operation: &StoreOperation) -> io::Result<()> {
    let mut connection = if var("JIG_NIX_STORE_OFFLINE").is_ok_and(|value| !value.is_empty()) {
       None
    } else {
       Some(Connection::connect()?)
    };
-   let Some(operation) = args.first() else {
-      return Err(io::Error::other(
-         "jig nix-store requires add-text, add-drv, fetchurls, or submit",
-      ));
-   };
-   match operation.as_str() {
-      "add-text" | "add-drv" => {
-         let Some(name) = args.get(1) else {
-            return Err(io::Error::other("jig nix-store add-text requires a name"));
-         };
-         let references = args.get(2..).unwrap_or(&[]);
-         let mut bytes = Vec::new();
-         io::stdin().read_to_end(&mut bytes)?;
-         if operation == "add-drv" {
-            bytes = serde_json::from_slice::<Derivation>(&bytes)?
-               .aterm()
-               .into_bytes();
-         }
-         let path = add_text(
-            &mut connection,
-            name,
-            &references.iter().cloned().collect(),
-            &bytes,
-         )?;
-         writeln!(io::stdout().lock(), "{path}")?;
-      },
-      "fetchurls" => {
-         if args.len() != 1 {
-            return Err(io::Error::other(
-               "jig nix-store fetchurls takes no arguments",
-            ));
-         }
+   match *operation {
+      StoreOperation::AddText {
+         ref name,
+         ref references,
+      } => add_from_stdin(&mut connection, name, references, false)?,
+      StoreOperation::AddDrv {
+         ref name,
+         ref references,
+      } => add_from_stdin(&mut connection, name, references, true)?,
+      StoreOperation::Fetchurls => {
          let files = serde_json::from_reader::<_, Vec<FetchFile>>(io::stdin().lock())?;
          let mut results = Vec::new();
          for file in files {
@@ -484,20 +485,13 @@ pub fn run(args: &[String]) -> io::Result<()> {
          serde_json::to_writer(io::stdout().lock(), &results)?;
          writeln!(io::stdout().lock())?;
       },
-      "submit" => {
-         let [_, ref path, ref output] = *args else {
-            return Err(io::Error::other(
-               "jig nix-store submit requires path and output",
-            ));
-         };
+      StoreOperation::Submit {
+         ref path,
+         ref output,
+      } => {
          if let Some(daemon) = connection.as_mut() {
             daemon.submit(path, output)?;
          }
-      },
-      _ => {
-         return Err(io::Error::other(
-            "jig nix-store requires add-text, add-drv, fetchurls, or submit",
-         ));
       },
    }
    Ok(())

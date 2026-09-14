@@ -1,0 +1,148 @@
+use std::{
+   ffi::OsString,
+   iter::once,
+   path::PathBuf,
+};
+
+use eyre::{
+   Result,
+   eyre,
+};
+use pound::{
+   Parse,
+   ValueEnum,
+};
+
+/// compiler wrapper, compile cache client and output tree tool for repkgs.
+#[derive(Parse)]
+#[pound(name = "jig")]
+pub enum Mode {
+   /// the C compiler, with the toolchain's flags and the compile cache in
+   /// front.
+   #[pound(
+      alias = "gcc",
+      alias = "clang",
+      alias = "cc-build",
+      alias = "gcc-build",
+      alias = "clang-build"
+   )]
+   Cc,
+   /// the C++ compiler.
+   #[pound(
+      name = "c++",
+      alias = "g++",
+      alias = "clang++",
+      alias = "c++-build",
+      alias = "g++-build",
+      alias = "clang++-build"
+   )]
+   Cxx,
+   /// rustc with the crate cache in front, `jig rustcwrap <rustc> <args...>`.
+   Rustcwrap,
+   /// one object or directory tree in the cache, exit 1 on a miss and 2 without
+   /// a daemon.
+   Cache {
+      operation: CacheOperation,
+      key:       String,
+      path:      PathBuf,
+   },
+   /// run a program under a compiler slot, `jig slot <program> [args...]`.
+   Slot,
+   /// Go's GOCACHEPROG protocol on stdin and stdout.
+   Gocacheprog,
+   /// autoconf header probe key, `jig header-key <context> <warning-policy>
+   /// <compiler> <args...>`.
+   HeaderKey,
+   /// make an output tree relocatable, ELF and Mach-O.
+   RelocFixup {
+      directory: PathBuf,
+      #[pound(long)]
+      dest:      Option<String>,
+      #[pound(long)]
+      deny:      Vec<String>,
+   },
+   /// builder RPC to the Nix daemon.
+   NixStore {
+      #[pound(subcommand)]
+      operation: StoreOperation,
+   },
+   /// point #!/usr/bin/env scripts at the build's env, or back with --undo.
+   Shebangs {
+      directory: PathBuf,
+      #[pound(long)]
+      undo:      bool,
+   },
+   /// each store path's exports with defaults filled in, as JSON.
+   Exports { roots: Vec<String> },
+   /// the dependency closure over propagate, as JSON.
+   Deps { roots: Vec<String> },
+   /// write exports.json from the spec on stdin.
+   WriteExports { output: PathBuf },
+   /// drop docs and junk, unpack man pages, print the inventory as JSON.
+   Prune { output: PathBuf },
+   /// make .pc files, foo-config scripts and links relative to the store path,
+   /// with --macho cmake's exported sonames too.
+   Relativize {
+      prefix: String,
+      dest:   String,
+      #[pound(long)]
+      macho:  bool,
+   },
+}
+
+impl Mode {
+   pub fn from_arguments(name: &str, args: &[OsString]) -> Result<Self> {
+      match name {
+         "cc" | "gcc" | "clang" | "cc-build" | "gcc-build" | "clang-build" => return Ok(Self::Cc),
+         "c++" | "g++" | "clang++" | "c++-build" | "g++-build" | "clang++-build" => {
+            return Ok(Self::Cxx);
+         },
+         "rustcwrap" => return Ok(Self::Rustcwrap),
+         "slot" => return Ok(Self::Slot),
+         "header-key" => return Ok(Self::HeaderKey),
+         _ => {},
+      }
+
+      let text = text_arguments(args)?;
+      Ok(Self::try_parse_from(
+         once(name).chain(text.iter().map(String::as_str)),
+      )?)
+   }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum CacheOperation {
+   Get,
+   Put,
+   GetDir,
+   PutDir,
+}
+
+#[derive(Parse)]
+pub enum StoreOperation {
+   /// add stdin as a text store path with the given references, print its path.
+   AddText {
+      name:       String,
+      references: Vec<String>,
+   },
+   /// add a derivation given as JSON on stdin, print its path.
+   AddDrv {
+      name:       String,
+      references: Vec<String>,
+   },
+   /// add one builtin:fetchurl derivation per JSON record on stdin.
+   Fetchurls,
+   /// register an output of a derivation.
+   Submit { path: String, output: String },
+}
+
+pub fn text_arguments(args: &[OsString]) -> Result<Vec<String>> {
+   args
+      .iter()
+      .map(|arg| {
+         arg.to_str()
+            .map(str::to_owned)
+            .ok_or_else(|| eyre!("argument {arg:?} is not UTF-8"))
+      })
+      .collect()
+}
