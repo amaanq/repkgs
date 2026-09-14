@@ -101,6 +101,8 @@ pub struct Spec {
    pub env:      BTreeMap<String, Value>,
    #[serde(default)]
    pub uses:     Vec<String>,
+   #[serde(default)]
+   pub sys:      Option<Vec<String>>,
    #[serde(flatten)]
    pub systems:  Map<String, Value>,
 }

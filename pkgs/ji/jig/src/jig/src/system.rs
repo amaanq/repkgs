@@ -16,13 +16,16 @@ use std::{
 
 use crate::{
    attrs::{
+      Attrs,
       Ctx,
       build_top,
    },
    autotools,
+   cargo,
    cli::SystemOperation,
    cmake,
    make,
+   python,
    store::{
       normalize,
       on_path,
@@ -33,6 +36,8 @@ pub enum System {
    Make,
    Autotools,
    Cmake,
+   Cargo,
+   Python,
 }
 
 impl FromStr for System {
@@ -43,6 +48,8 @@ impl FromStr for System {
          "make" => Ok(Self::Make),
          "autotools" => Ok(Self::Autotools),
          "cmake" => Ok(Self::Cmake),
+         "cargo" => Ok(Self::Cargo),
+         "python" => Ok(Self::Python),
          _ => {
             Err(io::Error::other(format!(
                "{name} is not a build system jig knows"
@@ -68,6 +75,8 @@ fn setup(name: &str) -> io::Result<()> {
    let env = match name.parse::<System>()? {
       System::Make | System::Autotools => make::setup()?,
       System::Cmake => BTreeMap::<String, String>::new(),
+      System::Cargo => cargo::setup(&ctx, &Attrs::load()?)?,
+      System::Python => python::setup(&ctx)?,
    };
    let mut stdout = io::stdout().lock();
    serde_json::to_writer(&mut stdout, &env)?;
@@ -86,6 +95,8 @@ fn workdir_of(ctx: &Ctx, name: &str) -> io::Result<PathBuf> {
       System::Make => make::workdir(ctx),
       System::Autotools => autotools::workdir(ctx),
       System::Cmake => Ok(cmake::workdir(ctx)),
+      System::Cargo => cargo::workdir(ctx),
+      System::Python => python::workdir(ctx),
    }
 }
 
@@ -96,6 +107,8 @@ fn phase(name: &str, verb: &str, socket: &Path) -> io::Result<()> {
       System::Make => make::phase(&ctx, verb),
       System::Autotools => autotools::phase(&ctx, verb, socket),
       System::Cmake => cmake::phase(&ctx, verb, socket),
+      System::Cargo => cargo::phase(&ctx, verb),
+      System::Python => python::phase(&ctx, verb, &Attrs::load()?),
    }
 }
 

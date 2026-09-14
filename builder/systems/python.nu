@@ -1,94 +1,16 @@
+# PEP 517 wheel build and install, jig system phase python <verb>
 use ../core.nu *
 
-# PEP 517 wheel build + install (setuptools/flit/hatch via `build`, maturin directly), import check, optional pytest.
-export const OPTIONS = {
-  backend: {default: setuptools, doc: "PEP 517 backend when pyproject.toml names none: setuptools, flit_core, maturin"}
-  module: {default: null, type: string, doc: "module the import test loads (null: the package name with - as _)"}
-  pytest: {default: false, doc: "also run pytest on tests/"}
-}
+export def --env setup []: nothing -> nothing { load-env (^jig system setup python | from json) }
+export def workdir []: nothing -> string { ^jig system workdir python | str trim }
+export def build []: nothing -> nothing { ^jig system phase python build }
+export def install []: nothing -> nothing { ^jig system phase python install }
+export def test []: nothing -> nothing { ^jig system phase python test }
 
 def site-packages [roots: list<string>]: nothing -> list<string> { $roots | each {|r| files --dirs $"($r)/lib/python3*/site-packages" } | flatten }
 
 # those of the python build tools on PATH (PEP 517 backends and friends) and of what they
-# propagate: a backend imports its own dependencies. pyapp.nu uses this too
+# propagate, pyapp.nu's PYTHONPATH
 export def tool-site-packages []: nothing -> list<string> {
   site-packages (dep-closure ($env.PATH | each { path dirname } | where { (site-packages [$in]) | is-not-empty }) | get root)
-}
-
-# PYTHONPATH = dependencies' site-packages, cwd = `python.root`
-export def --env setup []: nothing -> nothing {
-  let c = (ctx)
-  load-env {PYTHONDONTWRITEBYTECODE: "1", PIP_NO_INDEX: "1"}
-  # python deps and build backends are packages with a site-packages dir. The source tree comes
-  # last so a backend can build itself (flit_core, setuptools) before any of the stack exists
-  let root = (project-dir python)
-  let own = ([$root $"($root)/src"] | where { $in | path exists })
-  $env.PYTHONPATH = ((site-packages ($c.deps | get root)) ++ (tool-site-packages) ++ $own | str join ":")
-}
-
-export def workdir []: nothing -> string { project-dir python }
-
-# pythonX.Y: cross, maturin does not run the interpreter and wants the version in the name
-export def maturin-interpreter []: nothing -> string {
-  $"python(^python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
-}
-
-# build one wheel into the build dir: `python -m build` for PEP 517 backends, `maturin build` for maturin
-export def build []: nothing -> nothing {
-  let c = (ctx); let o = (options python)
-  let dist = $"($c.build)/dist"
-  if $o.backend == "maturin" {
-    # maturin's PEP 517 backend only shells out to `maturin`. Call it directly. cargo setup came from `uses`.
-    # auditwheel=skip: the wheel is installed into this closure, not shipped to PyPI. Bundling our libunwind is wrong.
-    x maturin build --release --offline $"-j($c.njobs)" --interpreter (maturin-interpreter) --auditwheel skip -o $dist
-  } else if $o.backend == "flit_core" {
-    # flit_core builds wheels stand-alone: no `build`/`pyproject_hooks` needed (bootstraps the stack)
-    x python3 -m flit_core.wheel --outdir $dist .
-  } else {
-    x python3 -m build --wheel --no-isolation --skip-dependency-check --outdir $dist .
-  }
-}
-
-# install the wheel into $out with `installer`, or unzip it when installer is not packaged yet.
-# Bytecode compiled here, source paths in it relative to the prefix like the stdlib's
-export def install []: nothing -> nothing {
-  let c = (ctx)
-  let whl = (files $"($c.build)/dist/*.whl" | first)
-  if (^python3 -c "import installer" | complete).exit_code == 0 {
-    x python3 -m installer --prefix $c.out --no-compile-bytecode $whl
-  } else {
-    let ver = (^python3 -c "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')" | str trim)
-    let sp = $"($c.out)/lib/python($ver)/site-packages"
-    mkdir $sp
-    x bsdtar -xf $whl -C $sp
-  }
-  x python3 -m compileall -q -o 0 -o 1 -s $c.out $"($c.out)/lib"
-  # entry-point scripts run under another package's interpreter and get re-exec'd by path (meson
-  # --internal), so no env var will do: each script puts our and our python dependencies'
-  # site-packages on sys.path itself, relative to its own location
-  let rels = (site-packages ([$c.out] ++ ($c.deps | get root))
-    | each {|p| if ($p | str starts-with $c.out) { $"..($p | str substring ($c.out | str length)..)" } else { $"../../($p | path relative-to $env.NIX_STORE)" } })
-  let boot = ('import os, sys; sys.path[0:0] = [os.path.join(os.path.dirname(os.path.realpath(__file__)), p) for p in RELS]' | str replace RELS ($rels | to json -r))
-  for f in (files --no-symlink $"($c.out)/bin/*") {
-    let text = (open --raw $f | into binary)
-    if not ($text | bytes starts-with ("#!" | into binary)) { continue }
-    let lines = ($text | decode utf-8 | lines)
-    if ($lines | first) !~ "python" { continue }
-    # installer wrote sys.executable, the build machine's python when cross
-    let interp = (if $c.platform.cross { "#!/usr/bin/env python3" } else { $lines | first })
-    [$interp $boot] ++ ($lines | skip 1) | str join "\n" | save -f $f
-  }
-  # an import needs the imports below it: whoever depends on (or runs) this module gets our
-  # dependencies' site-packages too. finish merges this into the final exports.json
-  {propagate: (attrs).dependencies} | to json | save -f $"($c.out)/exports.json"
-}
-
-# runs after install: imports from $out, not from the source tree
-export def test []: nothing -> nothing {
-  let c = (ctx); let o = (options python)
-  let mod = ($o.module | default ($c.spec.name | str replace -a "-" "_"))
-  cd $c.build
-  $env.PYTHONPATH = (site-packages [$c.out] | append $env.PYTHONPATH | str join ":")
-  x python3 -c $"import ($mod)"
-  if $o.pytest { x python3 -m pytest -q $"($c.src)/tests" }
 }

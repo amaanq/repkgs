@@ -1,5 +1,6 @@
 mod attrs;
 mod autotools;
+mod cargo;
 mod cc;
 mod cli;
 mod cmake;
@@ -25,8 +26,10 @@ mod nix_store;
 mod prepare;
 mod probe;
 mod process;
+mod python;
 mod rustc;
 mod store;
+mod syslibs;
 mod system;
 mod tree;
 

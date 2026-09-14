@@ -111,7 +111,8 @@ pub enum Mode {
       #[pound(subcommand)]
       operation: ProbeOperation,
    },
-   /// the build systems jig implements, make, autotools and cmake.
+   /// the build systems jig implements, make, autotools, cmake, cargo and
+   /// python.
    System {
       #[pound(subcommand)]
       operation: SystemOperation,

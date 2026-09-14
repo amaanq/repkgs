@@ -1,6 +1,9 @@
-# Locked third-party packages that link a C library, per ecosystem: which package of ours provides
-# it (`pkg`) and how the build is told to use it instead of a bundled copy (`env`, plus `tags` for
-# go and `flags` for bundler; `{root}` stands for the library's store path).
+# Locked third-party packages that link a C library, per ecosystem in sys-libs.json: which
+# package of ours provides it (`pkg`) and how the build is told to use it instead of a bundled
+# copy (`env`, plus `tags` for go and `flags` for bundler as `bundle config build.<gem>`
+# arguments, `{root}` stands for the library's store path). Keyed by the lock file's names,
+# Cargo.lock packages, go.sum module paths (cgo), uv.lock names (built from sdist so they link
+# ours instead of a wheel's copy), Gemfile.lock gems, and hackage packages from the solved plan.
 #
 # Decided when the package is pinned: uptrack looks the lock files of the tree it just hashed up
 # here (`wanted`) and writes `sys = [..]` into [pin] of sources.toml, nix/package.nix makes those
