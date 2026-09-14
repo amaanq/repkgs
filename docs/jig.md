@@ -577,18 +577,20 @@ and one `implant:` note names each rewritten file, sorted.
 
 `launchers` walks `bin/` of the output in name order, skipping dotfiles, dangling links, entries
 that already have a `.<name>.launch` record and symlinks whose target sits in `bin/` (aliases
-like `python3 -> python3.14`). The env part is the same for every record, PATH prepended with
-each direct dependency's `bin/` and each dependency's `exports.env` as `default`s, values with
-the output replaced by `{root}` and the store by `{store}`. A file starting with `#!` is a
-script, its first line split on whitespace with a leading `env` dropped. `/bin/sh` needs no
-launcher unless there is env to inject. An interpreter under the store that neither the output
-nor a direct dependency owns is a leaked build tool, the line is rewritten to
+like `python3 -> python3.14`). Records for scripts carry PATH prepended with each direct
+dependency's `bin/` plus every dependency's `exports.env` as `default`s, records for binaries
+only the `exports.env` part, since a binary never needs a library's tools on PATH and the
+launcher costs an execve. Values have the output replaced by `{root}` and the store by
+`{store}`. A file starting with `#!` is a script, its first line split on whitespace with a
+leading `env` dropped. `/bin/sh` needs no launcher unless there is script env to inject. An
+interpreter under the store that neither the output nor a direct dependency owns is a leaked
+build tool, the line is rewritten to
 `#!/usr/bin/env <name>` with a `script:` note and the file left alone. A bare name is looked up
 as `bin/<name>` in the output and its direct dependencies, never on the build PATH, and a line
 into the output itself is rewritten to the `env` form because it would dangle. A 64-bit ELF with
 a `PT_INTERP` under `--ldso` runs as `<ld.so> --argv0 {self} --library-path <interp dir and
-closure lib dirs> {root}/bin/.<name>`, any other ELF gets a record only when there is env to
-inject, with `argv0` set to `{argv0}`. The file moves to `bin/.<name>`, the record
+closure lib dirs> {root}/bin/.<name>`, any other ELF gets a record only when a dependency
+exports `env`, with `argv0` set to `{argv0}`. The file moves to `bin/.<name>`, the record
 `{ env, program, args | argv0 }` is written to `bin/.<name>.launch`, `bin/<name>` becomes a
 symlink to the launch binary and a `launcher:` note says what it runs. A symlinked script is
 run by its resolved path so its `$0` logic holds.

@@ -47,7 +47,7 @@ use crate::{
    },
 };
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
 enum Variable {
    Prepend(Vec<String>),
@@ -65,15 +65,16 @@ struct Record<'env> {
 }
 
 struct Context<'run> {
-   out:    String,
-   store:  String,
-   bin:    PathBuf,
-   launch: &'run Path,
-   interp: &'run Path,
-   ldso:   bool,
-   owners: Vec<String>,
-   deps:   &'run [String],
-   inject: bool,
+   out:          String,
+   store:        String,
+   bin:          PathBuf,
+   launch:       &'run Path,
+   interp:       &'run Path,
+   ldso:         bool,
+   owners:       Vec<String>,
+   deps:         &'run [String],
+   scripts_env:  BTreeMap<String, Variable>,
+   binaries_env: BTreeMap<String, Variable>,
 }
 
 impl Context<'_> {
@@ -104,11 +105,11 @@ pub fn run(
       ldso,
       owners: once(out.clone()).chain(deps.iter().cloned()).collect(),
       deps,
-      inject: false,
+      scripts_env: BTreeMap::new(),
+      binaries_env: BTreeMap::new(),
       out,
    };
-   let env = runtime_env(&context)?;
-   context.inject = !env.is_empty();
+   (context.scripts_env, context.binaries_env) = runtime_env(&context)?;
    let mut names: Vec<String> = read_dir(&context.bin)?
       .map(|entry| entry.map(|found| found.file_name().to_string_lossy().into_owned()))
       .collect::<io::Result<_>>()?;
@@ -129,7 +130,7 @@ pub fn run(
       let hidden = context.bin.join(format!(".{name}"));
       rename(&path, &hidden)?;
       let record = Record {
-         env:     &env,
+         env:     target.env,
          program: target.program.clone(),
          args:    target.args,
          argv0:   target.argv0,
@@ -143,23 +144,32 @@ pub fn run(
    Ok(())
 }
 
-fn runtime_env(context: &Context<'_>) -> io::Result<BTreeMap<String, Variable>> {
-   let mut env = BTreeMap::new();
+type Env = BTreeMap<String, Variable>;
+
+// a script may exec sibling tools by name, a binary linked against a library
+// never needs the library's bin/, so PATH alone does not earn a binary the
+// extra execve
+fn runtime_env(context: &Context<'_>) -> io::Result<(Env, Env)> {
+   let mut binaries = BTreeMap::new();
    let mut path = Vec::new();
-   let mut exported = Vec::new();
    for dep in context.deps {
       if Path::new(dep).join("bin").exists() {
          path.push(context.storerel(&format!("{dep}/bin")));
       }
-      exported.extend(exports_of(Path::new(dep))?.env);
+      for (name, value) in exports_of(Path::new(dep))?.env {
+         binaries.insert(name, Variable::Default(context.storerel(&value)));
+      }
    }
+   let mut scripts = BTreeMap::new();
    if !path.is_empty() {
-      env.insert("PATH".to_owned(), Variable::Prepend(path));
+      scripts.insert("PATH".to_owned(), Variable::Prepend(path));
    }
-   for (name, value) in exported {
-      env.insert(name, Variable::Default(context.storerel(&value)));
-   }
-   Ok(env)
+   scripts.extend(
+      binaries
+         .iter()
+         .map(|(name, value)| (name.clone(), value.clone())),
+   );
+   Ok((scripts, binaries))
 }
 
 fn sibling(bin: &Path, path: &Path) -> io::Result<bool> {
@@ -170,13 +180,18 @@ fn sibling(bin: &Path, path: &Path) -> io::Result<bool> {
    Ok(target.parent() == Some(bin))
 }
 
-struct Target {
+struct Target<'env> {
+   env:     &'env Env,
    program: String,
    args:    Option<Vec<String>>,
    argv0:   Option<&'static str>,
 }
 
-fn target(context: &Context<'_>, path: &Path, name: &str) -> io::Result<Option<Target>> {
+fn target<'env>(
+   context: &'env Context<'_>,
+   path: &Path,
+   name: &str,
+) -> io::Result<Option<Target<'env>>> {
    let mut head = [0_u8; 256];
    let mut file = File::open(path)?;
    let mut filled = 0;
@@ -201,6 +216,7 @@ fn target(context: &Context<'_>, path: &Path, name: &str) -> io::Result<Option<T
       let mut args = interpreter.args;
       args.push(script);
       return Ok(Some(Target {
+         env:     &context.scripts_env,
          program: context.storerel(&interpreter.program),
          args:    Some(args),
          argv0:   None,
@@ -216,6 +232,7 @@ fn target(context: &Context<'_>, path: &Path, name: &str) -> io::Result<Option<T
          .map(|dir| context.storerel(dir))
          .collect();
       return Ok(Some(Target {
+         env:     &context.binaries_env,
          program: context.storerel(&context.interp.to_string_lossy()),
          args:    Some(vec![
             "--argv0".to_owned(),
@@ -228,8 +245,9 @@ fn target(context: &Context<'_>, path: &Path, name: &str) -> io::Result<Option<T
       }));
    }
    // argv[0] stays what the user ran
-   if context.inject {
+   if !context.binaries_env.is_empty() {
       return Ok(Some(Target {
+         env:     &context.binaries_env,
          program: real,
          args:    None,
          argv0:   Some("{argv0}"),
@@ -261,7 +279,7 @@ fn script_interpreter(
    let Some(&first) = line.first() else {
       return Ok(None);
    };
-   if first == "/bin/sh" && !context.inject {
+   if first == "/bin/sh" && context.scripts_env.is_empty() {
       return Ok(None);
    }
    let words = if basename(first) == "env" {
