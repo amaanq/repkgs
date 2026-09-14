@@ -12,9 +12,10 @@ package {
     {
       name = "bootstrap";
       run = ''
-        use beam.nu
         with-env {HOME: $c.build, REBAR_OFFLINE: "1"} { x escript bootstrap }
-        beam install-escript _build/prod/bin/rebar3
+        mkdir $"($c.out)/lib/escript"
+        cp _build/prod/bin/rebar3 $"($c.out)/lib/escript/rebar3"
+        write-launcher rebar3 $"(dep-root erlang "escripts run under the target erlang")/bin/escript" [$"($c.out)/lib/escript/rebar3"]
       '';
     }
   ];
