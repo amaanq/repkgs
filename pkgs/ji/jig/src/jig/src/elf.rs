@@ -12,6 +12,7 @@ use crate::{
 };
 
 pub struct Section {
+   pub name:   u32,
    pub kind:   u32,
    pub offset: usize,
    pub size:   usize,
@@ -44,6 +45,7 @@ pub fn sections(image: &Image) -> io::Result<Vec<Section>> {
          .ok_or_else(|| io::Error::other("ELF section offset overflows"))?;
       image.array::<64>(start)?;
       let section = Section {
+         name:   image.long(start)?,
          kind:   image.long(start + 4)?,
          offset: image.size(start + 24)?,
          size:   image.size(start + 32)?,
@@ -64,6 +66,58 @@ pub fn sections(image: &Image) -> io::Result<Vec<Section>> {
       sections.push(section);
    }
    Ok(sections)
+}
+
+pub fn names(image: &Image, sections: &[Section]) -> io::Result<Vec<String>> {
+   let strings = sections
+      .get(usize::from(image.word(62)?))
+      .ok_or_else(|| io::Error::other("ELF has no section name table"))?;
+   sections
+      .iter()
+      .map(|section| {
+         let offset = strings
+            .offset
+            .checked_add(usize::try_from(section.name).map_err(io::Error::other)?)
+            .ok_or_else(|| io::Error::other("ELF section name offset overflows"))?;
+         image.string(offset)
+      })
+      .collect()
+}
+
+pub struct Note {
+   pub owner:       String,
+   pub kind:        u32,
+   pub description: Vec<u8>,
+}
+
+pub fn notes(image: &Image, sections: &[Section]) -> io::Result<Vec<Note>> {
+   let mut notes = Vec::new();
+   for section in sections.iter().filter(|section| section.kind == 7) {
+      let end = section.offset + section.size;
+      let mut cursor = section.offset;
+      while cursor + 12 <= end {
+         let owner_size = usize::try_from(image.long(cursor)?).map_err(io::Error::other)?;
+         let description_size =
+            usize::try_from(image.long(cursor + 4)?).map_err(io::Error::other)?;
+         let kind = image.long(cursor + 8)?;
+         let owner_start = cursor + 12;
+         let description_start = owner_start + owner_size.next_multiple_of(4);
+         let next = description_start + description_size.next_multiple_of(4);
+         if next > end {
+            return Err(io::Error::other("ELF note extends beyond its section"));
+         }
+         let raw_owner = &image.bytes[owner_start..owner_start + owner_size];
+         let owner = raw_owner.strip_suffix(b"\0").unwrap_or(raw_owner);
+         notes.push(Note {
+            owner: String::from_utf8_lossy(owner).into_owned(),
+            kind,
+            description: image.bytes[description_start..description_start + description_size]
+               .to_vec(),
+         });
+         cursor = next;
+      }
+   }
+   Ok(notes)
 }
 
 pub fn segments(image: &Image) -> io::Result<Vec<Segment>> {

@@ -120,7 +120,7 @@ export def output [out: path, seed: path, elfs: int = 120, data: int = 3000]: no
   # distinct build-ids: relink with a different symbol each
   for i in 0..<$elfs {
     let dir = (if $i mod 3 == 0 { "bin" } else { "lib" })
-    ^$"($seed)/bin/clang" -g -O0 -shared -fPIC -nostdlib -Wl,--build-id=sha1 $"-Wl,--defsym=id($i)=entry" $src -o $"($out)/($dir)/elf($i).so"
+    ^$"($seed)/bin/clang" -g -O0 -shared -fPIC -nostdlib -Wl,--build-id=sha1 $"-Wl,--defsym=id($i)=entry" '-Wl,--package-metadata={"type":"repkgs"}' $src -o $"($out)/($dir)/elf($i).so"
   }
   for i in 0..<$data {
     match ($i mod 6) {

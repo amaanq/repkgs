@@ -29,6 +29,7 @@ arguments through untouched, every other mode parses them and fails on an unknow
 | `jig write-exports <output>`                                               | write `exports.json` from the spec on stdin, propagating .pc and cmake requirements |
 | `jig prune <output>`                                                       | drop docs and junk, unpack man pages, print the inventory as JSON |
 | `jig relativize <prefix> <store path>`                                     | make .pc files, foo-config scripts and links relative, fail on a leaked prefix |
+| `jig split-debug <output> <debug output>`                                  | move the DWARF of every ELF jig linked into the debug output, by build-id |
 
 **jigd** runs on the host, outside every sandbox, as `jigd <socket>`. It owns the compile
 cache, the file identity cache and the build slots. Nothing in a derivation names it, so
@@ -523,6 +524,19 @@ in its cmake configs appended to `propagate`.
 absolute symlinks to relative ones as they will sit under the store path, refuses a link that
 leaves the store or dangles, and finally fails if any regular file still contains the prefix,
 naming up to ten files and the printable runs around the hit.
+
+`split-debug` runs `llvm-objcopy --strip-debug` over every `.a` and `.o` in the output, noting
+the ones it refuses (archives with LTO bitcode or `lib.rmeta` members keep their DWARF). It then
+reads every other regular file over 3072 bytes that is a 64-bit ELF and classes it by its notes
+and section names. An ELF is *ours* when it carries the FDO package note (type `0xcafe1a7e`)
+the driver's `--package-metadata` produces (§ 8), *split* when it has a `.gnu_debuglink`, and it
+has DWARF when a `.debug_info` section is present. Ours without DWARF and without a debuglink
+is an error, since the build stripped what the driver compiled with `-g`. Anything not ours or
+already split is left alone and counted in a `debug:` note. The rest is grouped by GNU build-id
+(ours without one is an error), each group's first file copied with `--only-keep-debug` to
+`<debug>/lib/debug/.build-id/<id[..2]>/<id[2..]>.debug` and every member stripped with
+`--strip-debug --add-gnu-debuglink=<that file>`, groups in parallel. A final `debug:` note gives
+the number of build-ids and the apparent size of the debug output.
 
 ## 12. nix-store mode
 

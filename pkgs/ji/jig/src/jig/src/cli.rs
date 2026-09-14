@@ -88,6 +88,8 @@ pub enum Mode {
       #[pound(long)]
       macho:  bool,
    },
+   /// move the DWARF of what jig linked into the debug output, by build-id.
+   SplitDebug { output: PathBuf, debug: PathBuf },
 }
 
 impl Mode {

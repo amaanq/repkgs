@@ -1,5 +1,6 @@
 mod cc;
 mod cli;
+mod debug;
 mod directory;
 mod driver;
 mod elf;
@@ -118,6 +119,7 @@ fn dispatch() -> Result<i32> {
          dest,
          macho,
       } => tree::relativize(&prefix, &dest, macho)?,
+      Mode::SplitDebug { output, debug } => debug::run(&output, &debug)?,
    }
    Ok(0)
 }

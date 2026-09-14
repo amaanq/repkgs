@@ -1,6 +1,5 @@
 # Everything after the last phase, in the order `main` lists it.
 use core.nu *
-use debug.nu split-debug
 use implant.nu
 use launchers.nu
 
@@ -15,13 +14,13 @@ export def --env main [
   for b in (bins $c) {
     if not ($"($c.out)/bin/($b)($c.platform.ext.exe)" | path exists) { error make {msg: $"bin/($b)($c.platform.ext.exe) missing in output"} }
   }
-  let inv = (prune $c.out)
+  prune $c.out | ignore
   layout-check $c.out
   # installed copies of source scripts carry the build env's path from prepare: not a dependency
   fix-env-shebangs $c.out --undo
   mkdir (attrs).outputs.debug
-  relocate $c $inv
-  write-exports $c.out $c.spec $c.platform $c.deps
+  relocate $c
+  write-exports $c.out $c.spec $c.deps
   note exports (open --raw $"($c.out)/exports.json" | from json | to json -r)
   cd $env.NIX_BUILD_TOP
   to-store $c.out $c.dest
@@ -85,6 +84,13 @@ export def prune [out: path]: nothing -> table {
   ^jig prune $out | from json
 }
 
+# DWARF -> `debug` under lib/debug/.build-id/, .symtab and a .gnu_debuglink stay. Only for what
+# jig linked (its package note): no DWARF and no debuglink there means the build strips, an error.
+# Upstream binaries and ours copied from a dependency (already split) are left alone
+export def split-debug [out: path, debug: path]: nothing -> nothing {
+  ^jig split-debug $out $debug
+}
+
 # lib/ and bin/ only
 export def layout-check [out: path]: nothing -> nothing {
   for d in [lib64 sbin] {
@@ -95,10 +101,10 @@ export def layout-check [out: path]: nothing -> nothing {
 # prebuilt `true` implants interp + stub, "ldso" stays byte-identical behind a launcher.
 # --deny: a cross output must not mention build-machine packages. Debug split, implant and
 # launchers are ELF only so far, reloc-fixup does ELF and Mach-O
-def relocate [c: record, inv: table]: nothing -> nothing {
+def relocate [c: record]: nothing -> nothing {
   let prebuilt = ($c.spec.prebuilt? | default false)
   if $c.platform.binfmt == "elf" {
-    if $c.spec.debug { split-debug $c.out (attrs).outputs.debug $c.njobs ($inv | where type == f) }
+    if $c.spec.debug { split-debug $c.out (attrs).outputs.debug }
     if $prebuilt == true { implant $c }
     launchers $c
   }

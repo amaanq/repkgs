@@ -48,13 +48,13 @@ const DOCS: [&str; 3] = ["share/doc", "share/info", "share/gtk-doc"];
 const FROM_ZERO: &str = r#"prefix=$(cd "$(dirname "$0")/.." && pwd -P)"#;
 
 #[derive(Serialize)]
-struct Entry {
+pub struct Entry {
    #[serde(rename = "type")]
-   kind:   char,
-   size:   u64,
-   path:   String,
-   target: String,
-   rel:    String,
+   pub kind:   char,
+   pub size:   u64,
+   pub path:   String,
+   pub target: String,
+   pub rel:    String,
 }
 
 pub fn note(kind: &str, message: &str) {
@@ -69,7 +69,7 @@ fn children(directory: &Path) -> io::Result<Vec<DirEntry>> {
    Ok(entries)
 }
 
-fn walk(root: &Path) -> io::Result<Vec<Entry>> {
+pub fn walk(root: &Path) -> io::Result<Vec<Entry>> {
    let mut found = Vec::new();
    let mut pending = vec![root.to_path_buf()];
    while let Some(directory) = pending.pop() {
@@ -116,7 +116,7 @@ fn precompiled(rel: &str) -> bool {
    extension_is(rel, "pch") || extension_is(rel, "gch")
 }
 
-fn writable(path: &Path) -> io::Result<()> {
+pub fn writable(path: &Path) -> io::Result<()> {
    let mode = metadata(path)?.permissions().mode();
    if mode & 0o200 == 0 {
       set_permissions(path, PermissionsExt::from_mode(mode | 0o200))?;
