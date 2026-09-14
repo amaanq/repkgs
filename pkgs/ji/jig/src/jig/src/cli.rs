@@ -69,6 +69,14 @@ pub enum Mode {
    Identify { roots: Vec<String> },
    /// one bootstrap stage from its structured attrs, `jig bootstrap <recipe>`.
    Bootstrap { recipe: String },
+   /// one lock-file producer under builder-rpc-v0, `jig fetch <kind>`.
+   Fetch { kind: String },
+   /// lay a collecting derivation out from its structured attrs.
+   Assemble,
+   /// unpack the Windows SDK payloads of a collecting derivation.
+   WinsdkAssemble,
+   /// the first of `$urls` that answers, unpacked into `$out`.
+   Unpack,
 }
 
 impl Mode {

@@ -1,8 +1,9 @@
 # Reads a sources.toml (docs/uptrack.md). URL templates expand like pkgs/up/uptrack/src/pipeline.nu `expand`.
-# `unpacker`: store path with bin/{nu,bsdtar} (the seed; nu's `http get` does the download).
-# Only the seed's own sources.toml (a .nar) is read without one.
+# `unpacker`: store path with bin/bsdtar (the seed), `jig`: the jig that downloads and unpacks.
+# Only the seed's own sources.toml (a .nar) is read without them.
 {
   unpacker,
+  jig ? null,
   system ? null,
 }:
 let
@@ -34,12 +35,8 @@ let
   # what every fetch-and-unpack derivation shares
   fetchCommon = {
     inherit system unpacker;
-    builder = "${unpacker}/bin/nu";
-    args = [
-      "--no-config-file"
-      ../pkgs/up/uptrack/src/unpack.nu
-      "--fetch"
-    ];
+    builder = "${jig}/bin/jig";
+    args = [ "unpack" ];
     outputHashMode = "recursive";
     preferLocalBuild = true;
     impureEnvVars = [
@@ -133,8 +130,8 @@ let
         in
         # `hash` is the NAR hash of what lands in the store: for archives the unpacked tree (single
         # top-level directory stripped, u+w; uptrack's unpack.nu so its hashes agree), fetched and
-        # unpacked by one fixed-output derivation running the seed's nu (http get, rustls + built-in
-        # roots) and bsdtar, so builds copy a directory instead of decompressing every time.
+        # unpacked by one fixed-output derivation running `jig unpack` (rustls with built-in roots)
+        # and the seed's bsdtar, so builds copy a directory instead of decompressing every time.
         # `unpack = false` and .nar urls (the seed itself) go through builtin:fetchurl.
         if !(s.unpack or true) || isNar then
           fetchurl {

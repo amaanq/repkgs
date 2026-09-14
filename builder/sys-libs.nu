@@ -43,6 +43,3 @@ export def wanted [dir: path]: nothing -> list<string> {
     if ($f | path exists) { wanted-for $eco (locked $eco $f) } else { [] }
   } | flatten | uniq | sort
 }
-
-# python packages that build from sdist whenever they appear (fetch/pypi.nu)
-export def sdist-packages []: nothing -> list<string> { (tables).python | transpose locked entry | where { $in.entry.pkg? != null } | get locked }

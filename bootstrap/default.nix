@@ -22,6 +22,7 @@ let
   # the seed's own sources.toml is read without an unpacker: it is the unpacker
   sources = import ../nix/sources.nix {
     unpacker = seedPath;
+    jig = seedBuild.jig;
     inherit system;
   };
   source' =
@@ -337,7 +338,7 @@ let
 in
 {
   seed = seedPath;
-  inherit (seedBuild) jib;
+  inherit (seedBuild) jib jig;
   inherit
     stage0
     stage1

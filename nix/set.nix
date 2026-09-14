@@ -145,7 +145,7 @@ let
   fetch = import ./fetch.nix {
     inherit (bootstrap.stage0) jig;
     sevenzip = buildPkgs."7zip";
-    nu = bootstrap.seed;
+    seed = bootstrap.seed;
     inherit system;
     inherit (plat) cpu;
   };
@@ -175,6 +175,7 @@ let
   };
   readSources = import ./sources.nix {
     unpacker = bootstrap.seed;
+    inherit (bootstrap) jig;
     inherit system;
   };
   callPackage =

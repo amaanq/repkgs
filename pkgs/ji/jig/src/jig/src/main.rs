@@ -2,6 +2,7 @@ mod bootstrap;
 mod cc;
 mod cli;
 mod driver;
+mod fetch;
 mod gocache;
 mod header;
 mod manifest;
@@ -99,6 +100,10 @@ fn run(mode: Mode, name: &str, args: &[OsString], socket: &Path) -> Result<i32> 
       Mode::NixStore { operation } => nix_store::run(&operation)?,
       Mode::Identify { roots } => identify::run(&roots, socket)?,
       Mode::Bootstrap { recipe } => bootstrap::dispatch::mode(&recipe)?,
+      Mode::Fetch { kind } => fetch::dispatch::mode(&kind)?,
+      Mode::Assemble => fetch::assemble::run_mode()?,
+      Mode::WinsdkAssemble => fetch::winsdk_assemble::run_mode()?,
+      Mode::Unpack => fetch::unpack::run_mode()?,
    }
    Ok(0)
 }

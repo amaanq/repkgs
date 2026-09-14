@@ -2,7 +2,6 @@
 # Builder hot paths on synthetic fixtures: bench/run.nu [name…] [-n rounds] [--save f | --compare f]
 use std/bench
 use builder.nu
-use producers.nu
 use finish.nu
 
 const HERE = path self .
@@ -23,7 +22,7 @@ def main [
   $env.NIX_BUILD_TOP = $tmp
   $env.PATH = ([$"($jig)/bin" $"($seed)/bin"] ++ $env.PATH)
   $env.JIG_NIX_STORE_OFFLINE = "1"
-  let all = ((builder benches $tmp) ++ (finish benches $tmp $seed) ++ (producers benches $tmp))
+  let all = ((builder benches $tmp) ++ (finish benches $tmp $seed))
   let chosen = (if ($only | is-empty) { $all } else { $all | where {|b| $only | any {|o| $b.name | str contains $o } } })
   let old = (if $compare != null { open $compare } else { [] })
   let results = ($chosen | each {|b|

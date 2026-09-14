@@ -26,6 +26,10 @@ arguments through untouched, every other mode parses them and fails on an unknow
 | `jig nix-store add-text\|add-drv\|fetchurls\|submit …`                     | builder RPC to the Nix daemon                  |
 | `jig identify <store path…>`                                               | content identity per store path, memoized in jigd |
 | `jig bootstrap <recipe>`                                                   | one toolchain stage from its structured attrs, see §13 |
+| `jig fetch <kind>`                                                         | one lock-file producer under builder-rpc-v0, see §14 |
+| `jig assemble`                                                             | lay a producer's collecting derivation out, see §14 |
+| `jig winsdk-assemble`                                                      | the Windows SDK's collecting derivation, see §14 |
+| `jig unpack`                                                               | nix/sources.nix's fetch-and-unpack builder, see §14 |
 
 **jib** is the build script executor, a second static executable on every package build's PATH
 and nowhere in the bootstrap. It links jig's library for the store, ELF, tree and cache client
@@ -663,3 +667,20 @@ names a store path plus the sysroot's `roots` file, runs the recipe, prints `== 
 `compiler-rt`, `runtimes` and `cc`, each a `Recipe` in `jig/src/bootstrap/`. A libc recipe
 writes `etc/cc/include-dirs`, and an SDK adds `etc/cc/flags` and `etc/cc/cxxflags` with the
 words `SYSROOT` and `LLD` standing for the final paths, which `compiler-rt` and `cc` read.
+
+## 14. fetch modes
+
+`jig fetch <kind>` is the producer of every lock-file fetcher in nix/fetch.nix, run under
+`builder-rpc-v0` with its attrs as environment. A producer reads the lock out of `source`
+(`root` below it), builds one `builtin:fetchurl` row per artefact from the hash the lock
+carries, adds them through the daemon, and submits a collecting derivation as its own output.
+The kinds are `cargo`, `npm`, `pnpm`, `yarn`, `bun`, `deno` (then `deno-files`, a second
+stage over the fetched jsr manifests), `pypi` (uv.lock, markers evaluated by the PEP 508 subset
+in `fetch/pep508.rs`, sdists forced by `sysLibs`), `gems`, `hex`, `go`, `hackage`, `luarocks`
+and `winsdk`, each a `Producer` in `jig/src/fetch/`. The collecting derivation is
+content-addressed and runs `jig assemble`, which reads its `layout` from the structured attrs,
+each entry `{ to, link | unpack | write | copy+append }`, with bsdtar and chmod from `seed`.
+`winsdk` submits `jig winsdk-assemble` instead, which unpacks the .vsix and .msi payloads with
+7zz and writes the sysroot's `etc/cc` facts. `jig unpack` is nix/sources.nix's fixed-output
+builder, it downloads the first of `urls` that answers (rustls, built-in roots, proxies from the
+environment) and unpacks it into `out` the way uptrack's unpack.nu does, so their hashes agree.

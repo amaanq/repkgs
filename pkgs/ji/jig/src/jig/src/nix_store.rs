@@ -29,29 +29,29 @@ use sha2::{
 use crate::cli::StoreOperation;
 
 #[derive(Default, Deserialize, Serialize)]
-struct Output {
+pub struct Output {
    #[serde(default)]
-   path:      String,
+   pub path:      String,
    #[serde(default, rename = "hashAlgo")]
-   algorithm: String,
+   pub algorithm: String,
    #[serde(default)]
-   hash:      String,
+   pub hash:      String,
 }
 
 #[derive(Default, Deserialize)]
-struct Derivation {
+pub struct Derivation {
    #[serde(default)]
-   outputs: BTreeMap<String, Output>,
+   pub outputs: BTreeMap<String, Output>,
    #[serde(default, rename = "inputDrvs")]
-   inputs:  BTreeMap<String, BTreeSet<String>>,
+   pub inputs:  BTreeMap<String, BTreeSet<String>>,
    #[serde(default, rename = "inputSrcs")]
-   sources: BTreeSet<String>,
-   system:  String,
-   builder: String,
+   pub sources: BTreeSet<String>,
+   pub system:  String,
+   pub builder: String,
    #[serde(default)]
-   args:    Vec<String>,
+   pub args:    Vec<String>,
    #[serde(default)]
-   env:     BTreeMap<String, String>,
+   pub env:     BTreeMap<String, String>,
 }
 
 impl Derivation {
@@ -157,12 +157,12 @@ fn store_path(kind: &str, name: &str, contents: &[u8]) -> String {
 }
 
 #[derive(Deserialize)]
-struct FetchFile {
-   name: String,
-   url:  String,
-   algo: String,
-   hex:  String,
-   sri:  String,
+pub struct FetchFile {
+   pub name: String,
+   pub url:  String,
+   pub algo: String,
+   pub hex:  String,
+   pub sri:  String,
 }
 
 impl FetchFile {
@@ -400,33 +400,83 @@ impl Connection {
    }
 }
 
-fn add_text(
-   connection: &mut Option<Connection>,
-   name: &str,
-   references: &BTreeSet<String>,
-   bytes: &[u8],
-) -> io::Result<String> {
-   connection.as_mut().map_or_else(
-      || {
-         let mut kind = "text".to_owned();
-         for reference in references {
-            kind.push(':');
-            kind.push_str(reference);
-         }
-         Ok(store_path(&kind, name, bytes))
-      },
-      |daemon| daemon.add_text(name, references, bytes),
-   )
+#[derive(Serialize)]
+pub struct Realisation {
+   pub drv: String,
+   pub out: String,
 }
 
-#[derive(Serialize)]
-struct Realisation {
-   drv: String,
-   out: String,
+/// the daemon behind `NIX_REMOTE`, or path arithmetic alone under
+/// `JIG_NIX_STORE_OFFLINE`.
+pub struct Store {
+   connection: Option<Connection>,
+}
+
+impl Store {
+   pub fn open() -> io::Result<Self> {
+      let connection = if var("JIG_NIX_STORE_OFFLINE").is_ok_and(|value| !value.is_empty()) {
+         None
+      } else {
+         Some(Connection::connect()?)
+      };
+      Ok(Self { connection })
+   }
+
+   pub fn add_text(
+      &mut self,
+      name: &str,
+      references: &BTreeSet<String>,
+      bytes: &[u8],
+   ) -> io::Result<String> {
+      self.connection.as_mut().map_or_else(
+         || {
+            let mut kind = "text".to_owned();
+            for reference in references {
+               kind.push(':');
+               kind.push_str(reference);
+            }
+            Ok(store_path(&kind, name, bytes))
+         },
+         |daemon| daemon.add_text(name, references, bytes),
+      )
+   }
+
+   pub fn add_derivation(
+      &mut self,
+      name: &str,
+      references: &BTreeSet<String>,
+      derivation: &Derivation,
+   ) -> io::Result<String> {
+      self.add_text(name, references, derivation.aterm().as_bytes())
+   }
+
+   pub fn fetchurls(&mut self, files: &[FetchFile]) -> io::Result<Vec<Realisation>> {
+      let mut results = Vec::with_capacity(files.len());
+      for file in files {
+         let derivation = file.derivation();
+         let name = format!("{}.drv", file.name);
+         let drv = self.add_derivation(&name, &BTreeSet::new(), &derivation)?;
+         let out = derivation
+            .outputs
+            .into_values()
+            .next()
+            .ok_or_else(|| io::Error::other("fetchurl has no outputs"))?
+            .path;
+         results.push(Realisation { drv, out });
+      }
+      Ok(results)
+   }
+
+   pub fn submit(&mut self, path: &str, output: &str) -> io::Result<()> {
+      self
+         .connection
+         .as_mut()
+         .map_or(Ok(()), |daemon| daemon.submit(path, output))
+   }
 }
 
 fn add_from_stdin(
-   connection: &mut Option<Connection>,
+   store: &mut Store,
    name: &str,
    references: &[String],
    derivation: bool,
@@ -438,61 +488,31 @@ fn add_from_stdin(
          .aterm()
          .into_bytes();
    }
-   let path = add_text(
-      connection,
-      name,
-      &references.iter().cloned().collect(),
-      &bytes,
-   )?;
+   let path = store.add_text(name, &references.iter().cloned().collect(), &bytes)?;
    writeln!(io::stdout().lock(), "{path}")
 }
 
 pub fn run(operation: &StoreOperation) -> io::Result<()> {
-   let mut connection = if var("JIG_NIX_STORE_OFFLINE").is_ok_and(|value| !value.is_empty()) {
-      None
-   } else {
-      Some(Connection::connect()?)
-   };
+   let mut store = Store::open()?;
    match *operation {
       StoreOperation::AddText {
          ref name,
          ref references,
-      } => add_from_stdin(&mut connection, name, references, false)?,
+      } => add_from_stdin(&mut store, name, references, false)?,
       StoreOperation::AddDrv {
          ref name,
          ref references,
-      } => add_from_stdin(&mut connection, name, references, true)?,
+      } => add_from_stdin(&mut store, name, references, true)?,
       StoreOperation::Fetchurls => {
          let files = serde_json::from_reader::<_, Vec<FetchFile>>(io::stdin().lock())?;
-         let mut results = Vec::new();
-         for file in files {
-            let derivation = file.derivation();
-            let name = format!("{}.drv", file.name);
-            let drv = add_text(
-               &mut connection,
-               &name,
-               &BTreeSet::new(),
-               derivation.aterm().as_bytes(),
-            )?;
-            let out = derivation
-               .outputs
-               .into_values()
-               .next()
-               .ok_or_else(|| io::Error::other("fetchurl has no outputs"))?
-               .path;
-            results.push(Realisation { drv, out });
-         }
+         let results = store.fetchurls(&files)?;
          serde_json::to_writer(io::stdout().lock(), &results)?;
          writeln!(io::stdout().lock())?;
       },
       StoreOperation::Submit {
          ref path,
          ref output,
-      } => {
-         if let Some(daemon) = connection.as_mut() {
-            daemon.submit(path, output)?;
-         }
-      },
+      } => store.submit(path, output)?,
    }
    Ok(())
 }
