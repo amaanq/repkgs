@@ -26,7 +26,7 @@ in
 variant pkgs.cmake-bootstrap {
   name.set = "cmake";
   uses.set = [ "cmake" ];
-  make.remove = true;
+  phases.remove = true;
   platforms.remove = true;
   cmake.set = {
     tool = buildPkgs.cmake-bootstrap;
