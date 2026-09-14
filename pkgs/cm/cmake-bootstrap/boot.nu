@@ -1,5 +1,3 @@
-# ./bootstrap builds a minimal cmake and configures the real one with it. That configure runs
-# the same check_*/try_compile probes cmake.nu caches through -C, here they go in as --init
 use core.nu *
 use probe-cache.nu
 
