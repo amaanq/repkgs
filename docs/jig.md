@@ -31,6 +31,8 @@ arguments through untouched, every other mode parses them and fails on an unknow
 | `jig relativize <prefix> <store path>`                                     | make .pc files, foo-config scripts and links relative, fail on a leaked prefix |
 | `jig split-debug <output> <debug output>`                                  | move the DWARF of every ELF jig linked into the debug output, by build-id |
 | `jig env <prefix> [--cache]`                                               | the build environment from the structured attrs, as JSON |
+| `jig prepare [--from-tree <tree>]`                                         | environment, platform, source tree and ctx before the first build phase |
+| `jig finish [--keep-tree] [--tests]`                                       | everything after the last build phase, up to the version check |
 | `jig implant <dir> --interp <ld.so> [--stub <blob>] <dependency…>`         | give upstream ELFs our interpreter, the relocation stub and a padded RUNPATH |
 | `jig launchers <output> --launch <bin> --interp <ld.so> [--ldso] <dependency…>` | put launch records in front of bin/ scripts and wrapped binaries |
 
@@ -503,6 +505,19 @@ non query invocation that ran the compiler.
 
 These serve `builder/prepare.nu` and `builder/finish.nu`, which used to do the work in nu.
 Paths and errors follow the nu functions they replaced.
+
+`prepare` computes the `env` environment, resolves the platform (a cross build probes
+`platform.probe --version` for transparent binfmt and drops the emulator when it has it), copies
+and patches the source into `source/` or restores a tests derivation's tree, and writes the
+`ctx` record to `$NIX_BUILD_TOP/ctx.json`. It prints `{ env, cwd, ctx }` on stdout, tool output
+goes to stderr.
+
+`finish` reads `ctx.json` and runs the finish sequence in the directory the last phase left.
+That is `spec.install` and `spec.links`, `--keep-tree`, the `bin` check, `prune`, the layout check,
+`shebangs --undo`, `split-debug`, `implant`, `launchers`, `reloc-fixup`, `exports.json`,
+`relativize`, the move into the store, the `tests.version` check from the store path and from a
+relocated copy under `env -i`, and the `jig:` cache summary. `--tests` writes the tests
+derivation's `result.json` instead.
 
 `env` reads the derivation's structured attrs from `NIX_ATTRS_JSON_FILE` and prints the
 environment every build step inherits, one JSON object for `load-env`, with `PATH` as a list.

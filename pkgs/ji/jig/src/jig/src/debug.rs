@@ -2,6 +2,7 @@ use std::{
    collections::BTreeMap,
    fs::{
       DirBuilder,
+      metadata,
       read,
    },
    io,
@@ -105,9 +106,10 @@ pub fn run(output: &Path, debug: &Path) -> io::Result<()> {
    parallel(&grouped, |group| split(debug, group.0, &group.1))?;
    let size = walk(debug)?
       .iter()
-      .filter(|entry| entry.kind == 'f')
+      .filter(|entry| entry.kind != 'l')
       .map(|entry| entry.size)
-      .sum::<u64>();
+      .sum::<u64>()
+      + metadata(debug)?.len();
    note(
       "debug",
       &format!("{} files, {}", grouped.len(), human(size)),

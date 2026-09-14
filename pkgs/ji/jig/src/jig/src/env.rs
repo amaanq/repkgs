@@ -1,6 +1,5 @@
 use std::{
    collections::BTreeMap,
-   env::var,
    fs::{
       canonicalize,
       create_dir_all,
@@ -18,76 +17,25 @@ use std::{
    },
 };
 
-use serde::{
-   Deserialize,
-   Serialize,
-};
+use serde::Serialize;
 use serde_json::Value;
 
 use crate::{
+   attrs::{
+      Attrs,
+      Cc,
+      Hardening,
+      Spec,
+      build_top,
+   },
    exports::{
       Exports,
       closure,
       exports_of,
    },
-   store::is_store_path,
 };
 
 const EPOCH: &str = "315532800";
-
-#[derive(Deserialize)]
-struct Attrs {
-   #[serde(rename = "buildDependencies")]
-   build_dependencies: Vec<String>,
-   dependencies:       Vec<String>,
-   #[serde(rename = "CONFIG_SITE")]
-   config_site:        String,
-   hardening:          Hardening,
-   spec:               Spec,
-}
-
-#[derive(Deserialize)]
-struct Hardening {
-   flags:   BTreeMap<String, Vec<String>>,
-   cxx:     Vec<String>,
-   link:    Vec<String>,
-   enabled: BTreeMap<String, bool>,
-}
-
-#[derive(Deserialize)]
-struct Spec {
-   debug:   bool,
-   #[serde(default)]
-   cc:      Option<Cc>,
-   #[serde(default)]
-   env:     BTreeMap<String, Value>,
-   #[serde(default)]
-   uses:    Vec<String>,
-   #[serde(flatten)]
-   systems: BTreeMap<String, Value>,
-}
-
-impl Spec {
-   fn lock_trees(&self) -> impl Iterator<Item = &str> {
-      self
-         .uses
-         .iter()
-         .filter_map(|name| self.systems.get(name)?.get("deps")?.as_str())
-         .filter(|tree| is_store_path(tree))
-   }
-}
-
-#[derive(Deserialize, Default)]
-struct Cc {
-   #[serde(default)]
-   hardening: Option<Value>,
-   #[serde(default)]
-   cflags:    Vec<String>,
-   #[serde(default)]
-   cxxflags:  Vec<String>,
-   #[serde(default)]
-   ldflags:   Vec<String>,
-}
 
 #[derive(Serialize)]
 struct PackageFlags {
@@ -97,11 +45,24 @@ struct PackageFlags {
 }
 
 pub fn run(out: &Path, cache: bool) -> io::Result<()> {
-   let attrs_path = var("NIX_ATTRS_JSON_FILE")
-      .map_err(|_unset| io::Error::other("NIX_ATTRS_JSON_FILE is not set"))?;
-   let attrs: Attrs = serde_json::from_str(&read_to_string(attrs_path)?)?;
-   let top = var("NIX_BUILD_TOP").map_err(|_unset| io::Error::other("NIX_BUILD_TOP is not set"))?;
+   let attrs = Attrs::load()?;
+   let spec = attrs.spec()?;
    let deps = closure(&attrs.dependencies)?;
+   let env = compute(&attrs, &spec, &deps, out, cache)?;
+   let mut stdout = io::stdout().lock();
+   serde_json::to_writer(&mut stdout, &env)?;
+   writeln!(stdout)?;
+   Ok(())
+}
+
+pub fn compute(
+   attrs: &Attrs,
+   spec: &Spec,
+   deps: &[Exports],
+   out: &Path,
+   cache: bool,
+) -> io::Result<BTreeMap<String, Value>> {
+   let top = build_top()?;
    let bins: Vec<PathBuf> = attrs
       .build_dependencies
       .iter()
@@ -109,24 +70,24 @@ pub fn run(out: &Path, cache: bool) -> io::Result<()> {
       .collect();
    let mut env: BTreeMap<String, Value> = BTreeMap::new();
    sandbox_dirs(&mut env, &top, &bins, out)?;
-   reproducible(&mut env, &attrs);
-   toolchain(&mut env, &attrs, &deps, &top, &bins)?;
-   package_cc(&mut env, &attrs, &deps, &bins)?;
-   // exported env is for what runs during the build, from build tools, not
-   // target dependencies
+   reproducible(&mut env, attrs);
+   toolchain(&mut env, attrs, spec, deps, &top, &bins)?;
+   package_cc(&mut env, spec, &attrs.hardening, deps, &bins)?;
    for root in &attrs.build_dependencies {
       for (name, value) in exports_of(Path::new(root))?.env {
          env.insert(name, Value::String(value));
       }
    }
-   env.extend(attrs.spec.env);
+   env.extend(
+      spec
+         .env
+         .iter()
+         .map(|(name, value)| (name.clone(), value.clone())),
+   );
    if cache {
       compiler_caches(&mut env, &bins);
    }
-   let mut stdout = io::stdout().lock();
-   serde_json::to_writer(&mut stdout, &env)?;
-   writeln!(stdout)?;
-   Ok(())
+   Ok(env)
 }
 
 fn set(env: &mut BTreeMap<String, Value>, name: &str, value: impl Into<String>) {
@@ -198,13 +159,14 @@ fn masked(path: &str, under: &str) -> String {
 fn toolchain(
    env: &mut BTreeMap<String, Value>,
    attrs: &Attrs,
+   spec: &Spec,
    deps: &[Exports],
    top: &str,
    bins: &[PathBuf],
 ) -> io::Result<()> {
    let mut roots: Vec<String> = deps.iter().map(|dep| dep.root.clone()).collect();
    roots.extend(attrs.build_dependencies.iter().cloned());
-   roots.extend(attrs.spec.lock_trees().map(str::to_owned));
+   roots.extend(spec.lock_trees().map(str::to_owned));
    if let Some(cc) = find_tool(bins, "cc") {
       let package = cc
          .parent()
@@ -262,14 +224,14 @@ fn toolchain(
 
 fn package_cc(
    env: &mut BTreeMap<String, Value>,
-   attrs: &Attrs,
+   spec: &Spec,
+   hardening: &Hardening,
    deps: &[Exports],
    bins: &[PathBuf],
 ) -> io::Result<()> {
    // keyed by toolchain root so cc-build gets none of it, and not CFLAGS
    // because a Makefile that sets CFLAGS must not lose them
-   let cc = attrs.spec.cc.as_ref();
-   let hardening = &attrs.hardening;
+   let cc = spec.cc.as_ref();
    let choice = cc.and_then(|found| found.hardening.as_ref());
    let enabled = if choice.is_some_and(|value| *value == Value::Bool(false)) {
       BTreeMap::<&str, bool>::new()
@@ -305,7 +267,7 @@ fn package_cc(
       .collect();
    let cxx: Vec<&str> = hardening.cxx.iter().map(String::as_str).collect();
    let link: Vec<&str> = hardening.link.iter().map(String::as_str).collect();
-   let (debug_flag, cargo_debug) = if attrs.spec.debug {
+   let (debug_flag, cargo_debug) = if spec.debug {
       ("-g", "full")
    } else {
       ("-g0", "none")
@@ -353,8 +315,6 @@ fn package_cc(
 }
 
 fn compiler_caches(env: &mut BTreeMap<String, Value>, bins: &[PathBuf]) {
-   // RUSTC is absolute so the cache key names the toolchain, incremental
-   // artefacts are not cacheable
    if let Some(rustc) = find_tool(bins, "rustc") {
       set(env, "RUSTC", rustc.to_string_lossy());
       if let Some(wrapper) = find_tool(bins, "rustcwrap") {

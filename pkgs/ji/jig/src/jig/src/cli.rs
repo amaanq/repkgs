@@ -90,6 +90,20 @@ pub enum Mode {
    },
    /// move the DWARF of what jig linked into the debug output, by build-id.
    SplitDebug { output: PathBuf, debug: PathBuf },
+   /// everything before the first build phase, prints { env, cwd, ctx } as
+   /// JSON and writes ctx.json under the build top.
+   Prepare {
+      #[pound(long)]
+      from_tree: Option<PathBuf>,
+   },
+   /// everything after the last build phase, up to the version check and the
+   /// cache summary.
+   Finish {
+      #[pound(long)]
+      keep_tree: bool,
+      #[pound(long)]
+      tests:     bool,
+   },
    /// the build environment from the structured attrs, as JSON for load-env.
    Env {
       out:   PathBuf,

@@ -233,7 +233,7 @@ fn find(text: &[u8], needle: &[u8]) -> Option<usize> {
       .position(|window| window == needle)
 }
 
-pub fn prune(root: &Path) -> io::Result<()> {
+pub fn prune(root: &Path) -> io::Result<Vec<Entry>> {
    for docs in DOCS {
       match remove_dir_all(root.join(docs)) {
          Ok(()) => {},
@@ -288,6 +288,11 @@ pub fn prune(root: &Path) -> io::Result<()> {
          entry.path = format!("{}/{}", root.display(), entry.rel);
       }
    }
+   Ok(inventory)
+}
+
+pub fn print_pruned(root: &Path) -> io::Result<()> {
+   let inventory = prune(root)?;
    let mut stdout = io::stdout().lock();
    serde_json::to_writer(&mut stdout, &inventory)?;
    writeln!(stdout)?;

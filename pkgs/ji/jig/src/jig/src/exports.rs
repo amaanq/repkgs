@@ -42,7 +42,7 @@ struct Stored {
    propagate:      Option<Vec<String>>,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Exports {
    pub name:           String,
@@ -57,12 +57,12 @@ pub struct Exports {
 }
 
 #[derive(Deserialize)]
-struct Request {
-   name:    String,
+pub struct Request {
+   pub name:    String,
    #[serde(default)]
-   exports: Value,
+   pub exports: Value,
    #[serde(default)]
-   deps:    Vec<String>,
+   pub deps:    Vec<String>,
 }
 
 fn existing(root: &Path, candidates: &[&str]) -> Vec<String> {
@@ -208,7 +208,10 @@ pub fn print(roots: &[String], transitive: bool) -> io::Result<()> {
 pub fn write(root: &Path) -> io::Result<()> {
    let mut text = String::new();
    io::stdin().read_to_string(&mut text)?;
-   let request = serde_json::from_str::<Request>(&text)?;
+   write_request(root, &serde_json::from_str::<Request>(&text)?)
+}
+
+pub fn write_request(root: &Path, request: &Request) -> io::Result<()> {
    let own = match request.exports {
       Value::Bool(false) => {
          [
@@ -223,7 +226,7 @@ pub fn write(root: &Path) -> io::Result<()> {
          .collect()
       },
       Value::Null => Map::new(),
-      Value::Object(fields) => fields,
+      Value::Object(ref fields) => fields.clone(),
       Value::Bool(true) | Value::Number(_) | Value::String(_) | Value::Array(_) => {
          return Err(io::Error::other("exports must be a record or false"));
       },

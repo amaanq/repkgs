@@ -146,9 +146,6 @@ pub fn run(
 
 type Env = BTreeMap<String, Variable>;
 
-// a script may exec sibling tools by name, a binary linked against a library
-// never needs the library's bin/, so PATH alone does not earn a binary the
-// extra execve
 fn runtime_env(context: &Context<'_>) -> io::Result<(Env, Env)> {
    let mut binaries = BTreeMap::new();
    let mut path = Vec::new();

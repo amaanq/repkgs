@@ -1,3 +1,4 @@
+mod attrs;
 mod cc;
 mod cli;
 mod debug;
@@ -7,6 +8,7 @@ mod elf;
 mod env;
 mod exports;
 mod files;
+mod finish;
 mod fixup;
 mod gocache;
 mod header;
@@ -16,6 +18,7 @@ mod launchers;
 mod macho;
 mod manifest;
 mod nix_store;
+mod prepare;
 mod process;
 mod rustc;
 mod store;
@@ -26,6 +29,7 @@ use std::{
       args_os,
       var_os,
    },
+   ffi::OsString,
    fs::read,
    io::{
       self,
@@ -89,23 +93,33 @@ fn dispatch() -> Result<i32> {
    let name_text = name
       .to_str()
       .ok_or_else(|| eyre!("mode {name:?} is not UTF-8"))?;
-   let mode = Mode::from_arguments(name_text, args)?;
+   run(
+      Mode::from_arguments(name_text, args)?,
+      name_text,
+      args,
+      &socket,
+   )
+}
+
+fn slot_mode(args: &[OsString], socket: &Path) -> Result<i32> {
+   let Some((program, rest)) = args.split_first() else {
+      bail!("jig slot requires a program")
+   };
+   Ok(process::run_slotted(program, rest, Some(socket), false)?.status)
+}
+
+fn run(mode: Mode, name: &str, args: &[OsString], socket: &Path) -> Result<i32> {
    match mode {
-      Mode::Cc | Mode::Cxx => return Ok(cc::run_cc(name_text, &text_arguments(args)?, &socket)?),
-      Mode::Rustcwrap => return Ok(rustc::run_rustc(&text_arguments(args)?, &socket)?),
+      Mode::Cc | Mode::Cxx => return Ok(cc::run_cc(name, &text_arguments(args)?, socket)?),
+      Mode::Rustcwrap => return Ok(rustc::run_rustc(&text_arguments(args)?, socket)?),
       Mode::Cache {
          operation,
          key,
          path,
-      } => return cache_mode(operation, &key, &path, &socket),
-      Mode::Slot => {
-         let Some((program, rest)) = args.split_first() else {
-            bail!("jig slot requires a program")
-         };
-         return Ok(process::run_slotted(program, rest, Some(&socket), false)?.status);
-      },
-      Mode::Gocacheprog => gocache::run(&socket)?,
-      Mode::HeaderKey => return header::lookup(&text_arguments(args)?, &socket),
+      } => return cache_mode(operation, &key, &path, socket),
+      Mode::Slot => return slot_mode(args, socket),
+      Mode::Gocacheprog => gocache::run(socket)?,
+      Mode::HeaderKey => return header::lookup(&text_arguments(args)?, socket),
       Mode::RelocFixup {
          directory,
          dest,
@@ -116,7 +130,9 @@ fn dispatch() -> Result<i32> {
       Mode::Exports { roots } => exports::print(&roots, false)?,
       Mode::Deps { roots } => exports::print(&roots, true)?,
       Mode::WriteExports { output } => exports::write(&output)?,
-      Mode::Prune { output } => tree::prune(&output)?,
+      Mode::Prune { output } => tree::print_pruned(&output)?,
+      Mode::Prepare { from_tree } => prepare::run(from_tree.as_deref())?,
+      Mode::Finish { keep_tree, tests } => finish::mode(keep_tree, tests)?,
       Mode::Relativize {
          prefix,
          dest,
