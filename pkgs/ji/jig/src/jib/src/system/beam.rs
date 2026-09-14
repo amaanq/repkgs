@@ -15,6 +15,11 @@ use std::{
    },
 };
 
+use jig::{
+   files::write_file,
+   store::on_path,
+   tree::note,
+};
 use serde::Deserialize;
 
 use crate::{
@@ -22,10 +27,8 @@ use crate::{
       Attrs,
       Ctx,
    },
-   files::write_file,
    launchers,
    probe,
-   store::on_path,
    system::{
       command::{
          Env,
@@ -37,7 +40,6 @@ use crate::{
       },
       dispatch::System,
    },
-   tree::note,
 };
 
 #[derive(Clone, Copy)]
@@ -239,6 +241,18 @@ fn env(tool: Tool, ctx: &Ctx, attrs: &Attrs) -> io::Result<Vec<(String, String)>
       .collect())
 }
 
+fn checkout_name(tar: &str) -> &str {
+   let mut at = 0;
+   while let Some(offset) = tar[at..].find('-') {
+      let cut = at + offset;
+      if tar[cut + 1..].starts_with(|found: char| found.is_ascii_digit()) {
+         return &tar[..cut];
+      }
+      at = cut + 1;
+   }
+   tar
+}
+
 /// rebar3 takes _checkouts/ over the lock without asking a registry, mix
 /// wants deps/ the way `mix deps.get` leaves it, with a .hex manifest that
 /// `Hex.SCM.lock_status` accepts. Compiled deps round-trip through jigd.
@@ -253,7 +267,7 @@ fn setup(tool: Tool, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<Env>
                .extension()
                .is_some_and(|extension| extension.eq_ignore_ascii_case("tar"))
          }) {
-            let app = tar.rsplit_once('-').map_or(tar.as_str(), |split| split.0);
+            let app = checkout_name(tar);
             unpack(&format!("{packages}/{tar}"), &format!("_checkouts/{app}"))?;
          }
          ("_build/default/checkouts", "rebar3-deps")

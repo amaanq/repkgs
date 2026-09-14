@@ -7,7 +7,6 @@ use std::{
    fs::{
       create_dir_all,
       metadata,
-      read_dir,
       read_to_string,
       remove_dir_all,
       rename,
@@ -20,16 +19,19 @@ use std::{
    process::Command,
 };
 
+use jig::{
+   files::{
+      glob,
+      write_file,
+   },
+   tree::note,
+};
 use serde::Deserialize;
 
 use crate::{
    attrs::{
       Attrs,
       Ctx,
-   },
-   files::{
-      glob,
-      write_file,
    },
    implant,
    prepare::succeed,
@@ -43,7 +45,6 @@ use crate::{
       python::tool_site_packages,
       syslibs,
    },
-   tree::note,
 };
 
 #[derive(Deserialize)]
@@ -212,14 +213,11 @@ fn install_wheel(ctx: &Ctx, wheel: &str, scripts: bool) -> io::Result<()> {
    )?;
    let site = site_packages(ctx)?;
    for packages in glob(&format!("{stage}/lib/python3*/site-packages"))? {
-      let mut entries: Vec<_> = read_dir(&packages)?
-         .map(|entry| entry.map(|found| found.path()))
-         .collect::<io::Result<_>>()?;
-      entries.sort();
-      for entry in entries {
-         let name = entry.file_name().unwrap_or_default().to_owned();
-         rename(&entry, Path::new(&site).join(name))?;
-      }
+      succeed(
+         Command::new("cp").args(["-rlf", &format!("{}/.", packages.to_string_lossy()), &site]),
+         "cp",
+      )?;
+      remove_dir_all(&packages)?;
    }
    let bin = format!("{stage}/bin");
    if scripts && Path::new(&bin).exists() {

@@ -36,7 +36,16 @@ pub struct Store {
    identities:  HashMap<String, String>,
 }
 
+impl Default for Store {
+   #[inline]
+   fn default() -> Self {
+      Self::new()
+   }
+}
+
 impl Store {
+   #[must_use]
+   #[inline]
    pub fn new() -> Self {
       let content = var("JIG_STORE_IDENTITY").is_ok_and(|value| value == "content");
       let output = var("out").unwrap_or_default();
@@ -76,6 +85,8 @@ impl Store {
       }
    }
 
+   #[must_use]
+   #[inline]
    pub fn mask_for_replay(&self, text: &str) -> String {
       if self.content {
          mask_hashes(text)
@@ -84,10 +95,13 @@ impl Store {
       }
    }
 
+   #[must_use]
+   #[inline]
    pub fn key(&self, arg: &str) -> String {
       self.mask_for_replay(&mask_random_names(&normalize_path_arg(arg)))
    }
 
+   #[inline]
    pub fn mask_output(&self, data: &mut [u8], restore: bool) {
       if self.output_hash.len() != 32 {
          return;
@@ -108,6 +122,8 @@ impl Store {
       }
    }
 
+   #[must_use]
+   #[inline]
    pub fn resolve(&self, masked: &str) -> Option<String> {
       if !masked.starts_with(&format!("{STORE_DIR}/*-")) {
          return Some(masked.to_owned());
@@ -121,6 +137,8 @@ impl Store {
          .map(|root| format!("{root}{}", &masked[end..]))
    }
 
+   #[must_use]
+   #[inline]
    pub fn resolve_all(&self, text: &str) -> String {
       let mut resolved = text.to_owned();
       for (masked, real) in &self.roots {
@@ -142,16 +160,20 @@ impl Store {
       resolved
    }
 
+   #[must_use]
+   #[inline]
    pub fn daemon_may_identify(&self, path: &str) -> bool {
       self.content
          && is_store_path(path)
          && (self.output.is_empty() || !Path::new(path).starts_with(&self.output))
    }
 
+   #[inline]
    pub fn remember(&mut self, path: String, identity: String) {
       self.identities.insert(path, identity);
    }
 
+   #[inline]
    pub fn input_id(&self, path: &str) -> io::Result<String> {
       if is_store_path(path) && !self.content {
          return Ok(format!("S:{path}"));
@@ -166,6 +188,7 @@ impl Store {
       Ok(Identity::of(&bytes).to_string())
    }
 
+   #[inline]
    pub fn tool_id(&self, program: &str) -> io::Result<String> {
       let path = on_path(program);
       let parent = path.parent().unwrap_or_else(|| Path::new("."));
@@ -184,6 +207,7 @@ impl Store {
    }
 }
 
+#[inline]
 pub fn field<Data>(hasher: &mut Hasher, data: Data)
 where
    Data: AsRef<[u8]>,
@@ -193,12 +217,15 @@ where
    hasher.update(bytes);
 }
 
+#[must_use]
+#[inline]
 pub fn is_store_path(path: &str) -> bool {
    path
       .strip_prefix(STORE_DIR)
       .is_some_and(|tail| tail.starts_with('/'))
 }
 
+#[inline]
 pub fn mask_hashes(text: &str) -> String {
    let prefix = format!("{STORE_DIR}/");
    let mut remaining = text;
@@ -268,6 +295,8 @@ fn mask_random_names(text: &str) -> String {
    masked
 }
 
+#[must_use]
+#[inline]
 pub fn normalize(path: &Path) -> PathBuf {
    let mut normal = PathBuf::new();
    for component in path.components() {
@@ -289,6 +318,8 @@ pub fn normalize(path: &Path) -> PathBuf {
    normal
 }
 
+#[must_use]
+#[inline]
 pub fn on_path(program: &str) -> PathBuf {
    if !program.contains('/') {
       for directory in var("PATH").unwrap_or_default().split(':') {

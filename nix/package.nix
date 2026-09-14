@@ -5,6 +5,7 @@
 {
   platform,
   toolchain,
+  jib,
   launch,
   dlaudit,
   buildSystems,
@@ -124,7 +125,7 @@ let
       dlaudit = if elf then "${dlaudit}/lib/dlaudit.so" else "";
       relocStub = "${toolchain}/lib/reloc_stub.bin";
     };
-    # nix/hardening.nix as data for jig env: the flag table and what is on for this platform
+    # nix/hardening.nix as data for jib env: the flag table and what is on for this platform
     hardening = {
       inherit (hardening) flags cxx link;
       enabled = hardening.forPlatform platform;
@@ -454,7 +455,7 @@ let
         else if elem (elemAt p 0) uses then
           {
             test = false;
-            body = "note phase ${s}\n^jig system phase ${elemAt p 0} ${elemAt p 1}";
+            body = "note phase ${s}\n^jib system phase ${elemAt p 0} ${elemAt p 1}";
           }
         else
           {
@@ -513,7 +514,7 @@ let
   # every phase starts in a known directory, its build system's workdir, the first build
   # system's for inline phases and package modules
   workdir =
-    if uses == [ ] then "(ctx).src" else "^jig system workdir ${builtins.head uses} | str trim";
+    if uses == [ ] then "(ctx).src" else "^jib system workdir ${builtins.head uses} | str trim";
   setups = map (u: buildSystems.${u}.setup) uses;
   # also `pkg.script`: lints/package-scripts.nu has nu parse it before anything builds
   script = lines (
@@ -568,7 +569,7 @@ let
   buildDeps =
     { tests, base }:
     filter (d: !(elem d base)) (
-      [ toolchain ]
+      [ toolchain jib ]
       ++ (args.buildDependencies or [ ])
       ++ tests
       ++ (if prebuilt == true then relocTools else [ ])

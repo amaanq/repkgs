@@ -5,6 +5,7 @@ use std::{
    path::Path,
 };
 
+use jig::store::on_path;
 use serde::Deserialize;
 
 use crate::{
@@ -12,7 +13,6 @@ use crate::{
       Attrs,
       Ctx,
    },
-   store::on_path,
    system::{
       command::{
          Env,

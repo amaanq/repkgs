@@ -14,6 +14,7 @@ use std::{
    },
 };
 
+use jig::store::on_path;
 use serde::Serialize;
 
 use crate::{
@@ -22,7 +23,6 @@ use crate::{
       Ctx,
    },
    exports::exports_of,
-   store::on_path,
 };
 
 #[derive(Serialize)]

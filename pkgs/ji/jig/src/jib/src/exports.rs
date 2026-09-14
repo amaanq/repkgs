@@ -16,6 +16,7 @@ use std::{
    },
 };
 
+use jig::files::write_file;
 use serde::{
    Deserialize,
    Serialize,
@@ -24,8 +25,6 @@ use serde_json::{
    Map,
    Value,
 };
-
-use crate::files::write_file;
 
 const CPUS: [&str; 5] = ["x86_64", "aarch64", "riscv64", "loongarch64", "powerpc64le"];
 

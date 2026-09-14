@@ -17,5 +17,5 @@ use core.nu *
 export def main [c: record, dir?: path]: nothing -> nothing {
   let dir = ($dir | default $c.out)
   let stub = (if $dir == $c.out { [--stub $c.platform.relocStub] } else { [] })
-  ^jig implant $dir --interp $c.platform.interp ...$stub ...(attrs).dependencies
+  ^jib implant $dir --interp $c.platform.interp ...$stub ...(attrs).dependencies
 }

@@ -21,22 +21,8 @@ use std::{
 };
 
 use blake3::Hasher;
-use tempfile::Builder;
-use wire::client::Client;
-
-use crate::{
-   driver::{
-      BinaryFormat,
-      Driver,
-      expand_response_files,
-   },
+use jig::{
    files::write_file,
-   manifest::{
-      Manifest,
-      Miss,
-      lookup,
-      parse_depfile,
-   },
    process::{
       Slot,
       diagnostic,
@@ -48,6 +34,22 @@ use crate::{
    store::{
       Store,
       field,
+   },
+};
+use tempfile::Builder;
+use wire::client::Client;
+
+use crate::{
+   driver::{
+      BinaryFormat,
+      Driver,
+      expand_response_files,
+   },
+   manifest::{
+      Manifest,
+      Miss,
+      lookup,
+      parse_depfile,
    },
 };
 

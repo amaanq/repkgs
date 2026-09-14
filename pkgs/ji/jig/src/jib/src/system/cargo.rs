@@ -15,6 +15,11 @@ use std::{
    process::Command,
 };
 
+use jig::{
+   files::write_file,
+   store::on_path,
+   tree::note,
+};
 use serde::Deserialize;
 
 use crate::{
@@ -23,9 +28,7 @@ use crate::{
       Ctx,
    },
    exports::exports_of,
-   files::write_file,
    prepare::succeed,
-   store::on_path,
    system::{
       command::{
          Env,
@@ -37,7 +40,6 @@ use crate::{
       dispatch::System,
       syslibs,
    },
-   tree::note,
 };
 
 #[derive(Deserialize)]
@@ -154,12 +156,11 @@ impl Cargo {
       let mut rustflags = vec![
          format!("--remap-path-prefix={}=/src", ctx.src),
          format!("--remap-path-prefix={home}=/cargo"),
-         format!(
-            "--remap-path-prefix={}=/vendor",
-            options.deps.as_deref().unwrap_or_default()
-         ),
-         "-Cforce-frame-pointers=yes".to_owned(),
       ];
+      if let Some(deps) = options.deps.as_deref() {
+         rustflags.push(format!("--remap-path-prefix={deps}=/vendor"));
+      }
+      rustflags.push("-Cforce-frame-pointers=yes".to_owned());
       if platform.cross {
          rustflags.push(format!(
             "--sysroot={}",

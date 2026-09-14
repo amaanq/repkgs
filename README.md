@@ -202,7 +202,9 @@ tools/repkgs/     the cli (its README.md is for changing it)
 ```
 
 The build tools live in this tree. **jig** (pkgs/ji/jig, Rust) is what `cc` and `rustc`
-resolve to inside a build. It provides the compiler driver, cache client and ELF fixup. **jigd**
+resolve to inside a build. It provides the compiler driver, cache client and ELF fixup. **jib**
+(pkgs/ji/jig/src/jib, Rust) runs the build script's steps, from `prepare` through every build system
+to `finish`, and is on PATH in package builds only, so editing it leaves the toolchain alone. **jigd**
 (pkgs/ji/jigd, Rust) is the per-machine daemon behind the socket, holding the cache and the build
 slots. **launch** and **crt-interp** are the few hundred bytes that let scripts and ELF binaries
 run from any path. **uptrack** (nu) does the updates.

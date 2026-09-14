@@ -1,4 +1,4 @@
-# What `uses = [ "<name>" ]` means: jig's system/<name>.rs implements the phases, `phases` is the default
+# What `uses = [ "<name>" ]` means: jib's system/<name>.rs implements the phases, `phases` is the default
 # order (build test install unless said otherwise), `tool` (swappable per package as `<name>.tool`)
 # and `tools` (a list, or spec -> list) go on PATH, `dependencies` add to
 # the package's, `prebuilt` is the package's default for that field, `unsupported` is a reason
@@ -42,16 +42,16 @@ builtins.mapAttrs
       );
       # script text nix/package.nix would otherwise assemble per package: the setup block and,
       # for any "<name>.<verb>" a package may list, its body and whether it is a test phase
-      setup = "note setup ${name}\nload-env (^jig system setup ${name} | from json)\n${
+      setup = "note setup ${name}\nload-env (^jib system setup ${name} | from json)\n${
         if bs ? postSetup then "${bs.postSetup}\n" else ""
-      }cd (^jig system workdir ${name} | str trim)";
+      }cd (^jib system workdir ${name} | str trim)";
       phase = builtins.listToAttrs (
         map
           (verb: {
             name = "${name}.${verb}";
             value = {
               test = verb == "test";
-              body = "note phase ${name}.${verb}\n^jig system phase ${name} ${verb}";
+              body = "note phase ${name}.${verb}\n^jib system phase ${name} ${verb}";
             };
           })
           [

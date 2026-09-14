@@ -76,6 +76,7 @@ enum Kind {
    Directory,
 }
 
+#[inline]
 pub fn put_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<()> {
    let store = Store::new();
    let mut listing = String::new();
@@ -198,6 +199,7 @@ fn parse_listing(text: &str) -> io::Result<Vec<Entry>> {
    Ok(entries)
 }
 
+#[inline]
 pub fn get_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<bool> {
    let Some(listing) = cache.get(key)? else {
       return Ok(false);

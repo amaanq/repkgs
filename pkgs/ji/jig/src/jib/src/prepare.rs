@@ -19,8 +19,16 @@ use std::{
       Command,
       Stdio,
    },
+   thread::available_parallelism,
 };
 
+use jig::{
+   store::normalize,
+   tree::{
+      note,
+      shebangs,
+   },
+};
 use serde::Serialize;
 use serde_json::{
    Value,
@@ -38,11 +46,6 @@ use crate::{
    },
    env::compute,
    exports::closure,
-   store::normalize,
-   tree::{
-      note,
-      shebangs,
-   },
 };
 
 #[derive(Serialize)]
@@ -61,10 +64,14 @@ pub fn run(from_tree: Option<&Path>) -> io::Result<()> {
       None => format!("{top}/prefix"),
       Some(_) => attrs.package.clone(),
    };
-   let njobs = var("NIX_BUILD_CORES")
+   let njobs = match var("NIX_BUILD_CORES")
       .ok()
-      .and_then(|count| count.parse().ok())
-      .unwrap_or(4);
+      .and_then(|count| count.parse::<usize>().ok())
+      .filter(|count| *count > 0)
+   {
+      Some(count) => count,
+      None => available_parallelism()?.get(),
+   };
    let deps = closure(&attrs.dependencies)?;
    let cache = Path::new(&store)
       .parent()

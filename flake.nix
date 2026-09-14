@@ -28,6 +28,7 @@
           nix = import ./nix/nix { pkgs = nixpkgs.legacyPackages.${system}; };
           bootstrap-llvm = bootstrap.llvm;
           bootstrap-jig = bootstrap.jig;
+          bootstrap-jib = bootstrap.jib;
           bootstrap-rust-stage0 = bootstrap.stage0;
           bootstrap-rust = bootstrap.rust;
           bootstrap-nushell = bootstrap.nu;

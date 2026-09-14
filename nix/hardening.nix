@@ -1,6 +1,6 @@
 # Hardening flags by their nixpkgs names. `default` is on for every package unless the package
 # (`cc.hardening.<name> = false`) or the platform (nix/platforms.nix `hardening`) says otherwise.
-# jig env applies the result per package, bootstrap/ gives the toolchain recipes the
+# jib env applies the result per package, bootstrap/ gives the toolchain recipes the
 # platform's own additions.
 rec {
   flags = {

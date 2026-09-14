@@ -1,6 +1,6 @@
-# jig and jigd, the contract
+# jig, jib and jigd, the contract
 
-What the compiler wrapper and its daemon promise to the recipes, the builder and each other.
+What the compiler wrapper, the build executor and their daemon promise to the recipes, the builder and each other.
 `design.md` says why they exist. This file says exactly what they do, so either side can be
 replaced against it. Byte layouts and key shapes here are normative. Anything not written
 here is an implementation choice.
@@ -12,32 +12,40 @@ or from the first argument when `argv[0]` is `jig`. `jig --help` and `jig <mode>
 the modes and their flags. The compiler, `rustcwrap`, `slot` and `header-key` modes hand their
 arguments through untouched, every other mode parses them and fails on an unknown one.
 
+| invoked as                                                                 | mode                                           |
+| -------------------------------------------------------------------------- | ---------------------------------------------- |
+| `cc`, `gcc`, `clang`, `cc-build`, `gcc-build`, any other name              | C driver, `cc`                                 |
+| `c++`, `g++`, `clang++`, any name containing `++`                          | C++ driver, same code with C++ defaults        |
+| `jig rustcwrap <rustc> <args…>`                                            | rustc wrapper, set as cargo's `RUSTC`          |
+| `jig cache get\|put <key> <file>`                                          | one object, exit 1 on a miss, 2 with no daemon |
+| `jig cache get-dir\|put-dir <key> <directory>`                             | a directory tree, same exits                   |
+| `jig slot <program> [args…]`                                               | run under a build slot                         |
+| `jig gocacheprog`                                                          | Go's `GOCACHEPROG` protocol on stdin/stdout    |
+| `jig header-key <context> <warning-policy> <compiler> <args…>`             | autoconf header probe key                      |
+| `jig reloc-fixup <directory> [--dest <store path>] [--deny <store path>]…` | post-link relocation                           |
+| `jig nix-store add-text\|add-drv\|fetchurls\|submit …`                     | builder RPC to the Nix daemon                  |
+| `jig identify <store path…>`                                               | content identity per store path, memoized in jigd |
+
+**jib** is the build script executor, a second static executable on every package build's PATH
+and nowhere in the bootstrap. It links jig's library for the store, ELF, tree and cache client
+code, so a change to jib alone rebuilds packages and not the toolchain. It takes its mode from the
+first argument.
+
 | invoked as                                                                      | mode                                                                                |
 | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `cc`, `gcc`, `clang`, `cc-build`, `gcc-build`, any other name                   | C driver, `cc`                                                                      |
-| `c++`, `g++`, `clang++`, any name containing `++`                               | C++ driver, same code with C++ defaults                                             |
-| `jig rustcwrap <rustc> <args…>`                                                 | rustc wrapper, set as cargo's `RUSTC`                                               |
-| `jig cache get\|put <key> <file>`                                               | one object, exit 1 on a miss, 2 with no daemon                                      |
-| `jig cache get-dir\|put-dir <key> <directory>`                                  | a directory tree, same exits                                                        |
-| `jig slot <program> [args…]`                                                    | run under a build slot                                                              |
-| `jig gocacheprog`                                                               | Go's `GOCACHEPROG` protocol on stdin/stdout                                         |
-| `jig header-key <context> <warning-policy> <compiler> <args…>`                  | autoconf header probe key                                                           |
-| `jig reloc-fixup <directory> [--dest <store path>] [--deny <store path>]…`      | post-link relocation                                                                |
-| `jig nix-store add-text\|add-drv\|fetchurls\|submit …`                          | builder RPC to the Nix daemon                                                       |
-| `jig shebangs <directory> [--undo]`                                             | point `#!/usr/bin/env` scripts at the build's env, or back                          |
-| `jig exports <store path…>`, `jig deps <store path…>`                           | a package's exports with defaults, or the propagated closure, as JSON               |
-| `jig write-exports <output>`                                                    | write `exports.json` from the spec on stdin, propagating .pc and cmake requirements |
-| `jig prune <output>`                                                            | drop docs and junk, unpack man pages, print the inventory as JSON                   |
-| `jig relativize <prefix> <store path>`                                          | make .pc files, foo-config scripts and links relative, fail on a leaked prefix      |
-| `jig split-debug <output> <debug output>`                                       | move the DWARF of every ELF jig linked into the debug output, by build-id           |
-| `jig env <prefix> [--cache]`                                                    | the build environment from the structured attrs, as JSON                            |
-| `jig prepare [--from-tree <tree>]`                                              | environment, platform, source tree and ctx before the first build phase             |
-| `jig finish [--keep-tree] [--tests]`                                            | everything after the last build phase, up to the version check                      |
-| `jig implant <dir> --interp <ld.so> [--stub <blob>] <dependency…>`              | give upstream ELFs our interpreter, the relocation stub and a padded RUNPATH        |
-| `jig launchers <output> --launch <bin> --interp <ld.so> [--ldso] <dependency…>` | put launch records in front of bin/ scripts and wrapped binaries                    |
-| `jig identify <store path…>`                                                    | content identity per store path, memoized in jigd                                  |
-| `jig probe key\|restore\|store\|restore-dir\|store-dir\|cmake-init …`           | configure-time probe results shared through jigd                                   |
-| `jig system setup\|workdir\|phase <system> …`                                   | every build system                                                                 |
+| `jib shebangs <directory> [--undo]`                                             | point `#!/usr/bin/env` scripts at the build's env, or back                          |
+| `jib exports <store path…>`, `jib deps <store path…>`                           | a package's exports with defaults, or the propagated closure, as JSON               |
+| `jib write-exports <output>`                                                    | write `exports.json` from the spec on stdin, propagating .pc and cmake requirements |
+| `jib prune <output>`                                                            | drop docs and junk, unpack man pages, print the inventory as JSON                   |
+| `jib relativize <prefix> <store path>`                                          | make .pc files, foo-config scripts and links relative, fail on a leaked prefix      |
+| `jib split-debug <output> <debug output>`                                       | move the DWARF of every ELF jig linked into the debug output, by build-id           |
+| `jib env <prefix> [--cache]`                                                    | the build environment from the structured attrs, as JSON                            |
+| `jib prepare [--from-tree <tree>]`                                              | environment, platform, source tree and ctx before the first build phase             |
+| `jib finish [--keep-tree] [--tests]`                                            | everything after the last build phase, up to the version check                      |
+| `jib implant <dir> --interp <ld.so> [--stub <blob>] <dependency…>`              | give upstream ELFs our interpreter, the relocation stub and a padded RUNPATH        |
+| `jib launchers <output> --launch <bin> --interp <ld.so> [--ldso] <dependency…>` | put launch records in front of bin/ scripts and wrapped binaries                    |
+| `jib probe key\|restore\|store\|restore-dir\|store-dir\|cmake-init …`           | configure-time probe results shared through jigd                                   |
+| `jib system setup\|workdir\|phase <system> …`                                   | every build system                                                                 |
 
 **jigd** runs on the host, outside every sandbox, as `jigd <socket>`. It owns the compile
 cache, the file identity cache and the build slots. Nothing in a derivation names it, so

@@ -44,13 +44,13 @@ let
   # source once however many stage derivations use it
   json_hpp = source "nlohmann-json";
   llvmSrc = source "llvm";
+  seedBuild = import ../pkgs/se/seed {
+    inherit system;
+    buildSystem = system;
+  };
   recipeInputs = {
     jig = {
-      prebuilt =
-        (import ../pkgs/se/seed {
-          inherit system;
-          buildSystem = system;
-        }).jig;
+      prebuilt = seedBuild.jig;
     };
     launch = {
       launch = pkg "launch" + "/src/launch.cc";
@@ -385,6 +385,7 @@ let
 in
 {
   seed = seedPath;
+  inherit (seedBuild) jib;
   inherit
     stage0
     stage1

@@ -27,10 +27,13 @@ pub struct Segment {
    pub size:    usize,
 }
 
+#[must_use]
+#[inline]
 pub fn is_elf(image: &Image) -> bool {
    image.bytes.starts_with(b"\x7fELF\x02\x01")
 }
 
+#[inline]
 pub fn sections(image: &Image) -> io::Result<Vec<Section>> {
    let offset = image.size(40)?;
    let stride = usize::from(image.word(58)?);
@@ -68,6 +71,7 @@ pub fn sections(image: &Image) -> io::Result<Vec<Section>> {
    Ok(sections)
 }
 
+#[inline]
 pub fn names(image: &Image, sections: &[Section]) -> io::Result<Vec<String>> {
    let strings = sections
       .get(usize::from(image.word(62)?))
@@ -90,6 +94,7 @@ pub struct Note {
    pub description: Vec<u8>,
 }
 
+#[inline]
 pub fn notes(image: &Image, sections: &[Section]) -> io::Result<Vec<Note>> {
    let mut notes = Vec::new();
    for section in sections.iter().filter(|section| section.kind == 7) {
@@ -120,6 +125,7 @@ pub fn notes(image: &Image, sections: &[Section]) -> io::Result<Vec<Note>> {
    Ok(notes)
 }
 
+#[inline]
 pub fn segments(image: &Image) -> io::Result<Vec<Segment>> {
    let offset = image.size(32)?;
    let stride = usize::from(image.word(54)?);
@@ -152,6 +158,8 @@ pub fn segments(image: &Image) -> io::Result<Vec<Segment>> {
    Ok(segments)
 }
 
+#[must_use]
+#[inline]
 pub fn has_segment(segments: &[Segment], kind: u32) -> bool {
    segments.iter().any(|segment| segment.kind == kind)
 }
@@ -171,6 +179,7 @@ fn file_offset(segments: &[Segment], address: u64) -> Option<usize> {
       })
 }
 
+#[inline]
 pub fn runpath(image: &Image, segments: &[Segment]) -> io::Result<Option<String>> {
    let Some(dynamic) = segments.iter().find(|segment| segment.kind == 2) else {
       return Ok(None);
@@ -196,6 +205,8 @@ pub fn runpath(image: &Image, segments: &[Segment]) -> io::Result<Option<String>
    image.string(start).map(Some)
 }
 
+#[must_use]
+#[inline]
 pub fn relative_from(directory: &Path, target: &Path) -> PathBuf {
    let base = normalize(directory);
    let destination = normalize(target);
@@ -217,4 +228,25 @@ pub fn relative_from(directory: &Path, target: &Path) -> PathBuf {
       relative.push(".");
    }
    relative
+}
+
+pub const RUNPATH_SLACK: usize = 48;
+
+#[must_use]
+#[inline]
+pub fn shared_library(name: &str) -> bool {
+   if Path::new(name)
+      .extension()
+      .is_some_and(|extension| extension == "dylib")
+   {
+      return true;
+   }
+   name.rsplit_once(".so").is_some_and(|(_, tail)| {
+      tail.is_empty()
+         || tail.strip_prefix('.').is_some_and(|suffix| {
+            suffix
+               .bytes()
+               .all(|byte| byte == b'.' || byte.is_ascii_digit())
+         })
+   })
 }

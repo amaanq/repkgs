@@ -12,6 +12,16 @@ use std::{
    slice,
 };
 
+use jig::{
+   files::write_file,
+   tree::{
+      find,
+      note,
+      replace_all,
+      walk,
+      writable,
+   },
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -22,9 +32,8 @@ use crate::{
       Attrs,
       Ctx,
    },
-   files::write_file,
-   header::site,
    probe,
+   site::site,
    system::{
       command::{
          Env,
@@ -38,13 +47,6 @@ use crate::{
          self,
          shell,
       },
-   },
-   tree::{
-      find,
-      note,
-      replace_all,
-      walk,
-      writable,
    },
 };
 

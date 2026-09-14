@@ -14,6 +14,14 @@ use std::{
    process::Command,
 };
 
+use jig::{
+   files::write_file,
+   tree::{
+      note,
+      parallel,
+      walk,
+   },
+};
 use serde::Deserialize;
 use wire::client::Client;
 
@@ -22,7 +30,6 @@ use crate::{
       Attrs,
       Ctx,
    },
-   files::write_file,
    prepare::succeed,
    system::{
       command::{
@@ -35,11 +42,6 @@ use crate::{
       },
       dispatch::System,
       syslibs,
-   },
-   tree::{
-      note,
-      parallel,
-      walk,
    },
 };
 
@@ -111,6 +113,14 @@ impl System for Cabal {
          .ok_or_else(|| io::Error::other("ghc --info names no Project Unit Id"))?;
       let cabal_dir = format!("{}/cabal", ctx.build);
       let units = format!("{STORE}/{unit_id}");
+      let ghc_path = tool("ghc")?;
+      let ghc_store = ghc_path
+         .parent()
+         .and_then(Path::parent)
+         .and_then(|root| root.file_name())
+         .map(|name| name.to_string_lossy().into_owned())
+         .ok_or_else(|| io::Error::other("ghc has no store basename"))?;
+      let unit_key = format!("hs/{ghc_store}");
       create_dir_all(&cabal_dir)?;
       create_dir_all(format!("{units}/package.db"))?;
       Self::recache(&units)?;
@@ -152,7 +162,12 @@ impl System for Cabal {
          .as_bytes(),
          None,
       )?;
-      Ok([("CABAL_DIR", cabal_dir), ("CABAL_UNITS", units)].into())
+      Ok([
+         ("CABAL_DIR", cabal_dir),
+         ("CABAL_UNITS", units),
+         ("CABAL_UNIT_KEY", unit_key),
+      ]
+      .into())
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
@@ -175,6 +190,10 @@ impl Cabal {
 
    fn units() -> io::Result<String> {
       var("CABAL_UNITS").map_err(|_unset| io::Error::other("CABAL_UNITS is not set"))
+   }
+
+   fn unit_key() -> io::Result<String> {
+      var("CABAL_UNIT_KEY").map_err(|_unset| io::Error::other("CABAL_UNIT_KEY is not set"))
    }
 
    fn recache(units: &str) -> io::Result<()> {
@@ -217,10 +236,11 @@ impl Cabal {
 
    fn restore(ctx: &Ctx, ids: &[String], socket: &Path) -> io::Result<()> {
       let units = Self::units()?;
+      let key = Self::unit_key()?;
       let got: Vec<bool> = parallel(ids, |id| {
          let Some(bytes) = Client::connect(socket)
             .ok()
-            .and_then(|mut client| client.get(&format!("hs:{id}")).ok().flatten())
+            .and_then(|mut client| client.get(&format!("{key}/{id}")).ok().flatten())
          else {
             return Ok(false);
          };
@@ -249,6 +269,7 @@ impl Cabal {
    /// package.db entry, just bin/.
    fn save_units(ctx: &Ctx, before: &[String], socket: &Path) -> io::Result<()> {
       let units = Self::units()?;
+      let key = Self::unit_key()?;
       let new: Vec<String> = Self::unit_dirs(&units)?
          .into_iter()
          .filter(|id| !before.contains(id))
@@ -263,7 +284,7 @@ impl Cabal {
          }
          succeed(&mut command, "bsdtar")?;
          if let Ok(mut client) = Client::connect(socket) {
-            drop(client.put(&format!("hs:{id}"), &read(&tar)?));
+            drop(client.put(&format!("{key}/{id}"), &read(&tar)?));
          }
          remove_file(&tar)
       })?;

@@ -57,6 +57,7 @@ pub struct Entry {
    pub rel:    String,
 }
 
+#[inline]
 pub fn note(kind: &str, message: &str) {
    let event =
       serde_json::json!({ "action": "msg", "level": 3_u8, "msg": format!("{kind}: {message}") });
@@ -69,6 +70,7 @@ fn children(directory: &Path) -> io::Result<Vec<DirEntry>> {
    Ok(entries)
 }
 
+#[inline]
 pub fn walk(root: &Path) -> io::Result<Vec<Entry>> {
    let mut found = Vec::new();
    let mut pending = vec![root.to_path_buf()];
@@ -116,6 +118,7 @@ fn precompiled(rel: &str) -> bool {
    extension_is(rel, "pch") || extension_is(rel, "gch")
 }
 
+#[inline]
 pub fn writable(path: &Path) -> io::Result<()> {
    let mode = metadata(path)?.permissions().mode();
    if mode & 0o200 == 0 {
@@ -124,6 +127,7 @@ pub fn writable(path: &Path) -> io::Result<()> {
    Ok(())
 }
 
+#[inline]
 pub fn shebangs(directory: &Path, undo: bool) -> io::Result<()> {
    let env = on_path("env");
    if !env.is_absolute() {
@@ -147,6 +151,7 @@ pub fn shebangs(directory: &Path, undo: bool) -> io::Result<()> {
    Ok(())
 }
 
+#[inline]
 pub fn parallel<Item, Out, Work>(items: &[Item], work: Work) -> io::Result<Vec<Out>>
 where
    Item: Sync,
@@ -190,6 +195,8 @@ fn fix(path: &Path, from: &[&[u8]], to: &[u8], undo: bool) -> io::Result<()> {
    Ok(())
 }
 
+#[must_use]
+#[inline]
 pub fn replace_all(text: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
    let mut output = Vec::with_capacity(text.len());
    let mut rest = text;
@@ -224,6 +231,8 @@ fn replace_line_starts(text: &[u8], from: &[&[u8]], to: &[u8]) -> Vec<u8> {
    output
 }
 
+#[must_use]
+#[inline]
 pub fn find(text: &[u8], needle: &[u8]) -> Option<usize> {
    if needle.is_empty() || text.len() < needle.len() {
       return None;
@@ -233,6 +242,7 @@ pub fn find(text: &[u8], needle: &[u8]) -> Option<usize> {
       .position(|window| window == needle)
 }
 
+#[inline]
 pub fn prune(root: &Path) -> io::Result<Vec<Entry>> {
    for docs in DOCS {
       match remove_dir_all(root.join(docs)) {
@@ -291,6 +301,7 @@ pub fn prune(root: &Path) -> io::Result<Vec<Entry>> {
    Ok(inventory)
 }
 
+#[inline]
 pub fn print_pruned(root: &Path) -> io::Result<()> {
    let inventory = prune(root)?;
    let mut stdout = io::stdout().lock();
@@ -299,6 +310,7 @@ pub fn print_pruned(root: &Path) -> io::Result<()> {
    Ok(())
 }
 
+#[inline]
 pub fn relativize(prefix: &str, dest: &str, macho: bool) -> io::Result<()> {
    let root = Path::new(prefix);
    let inventory = walk(root)?;
@@ -338,7 +350,8 @@ pub fn relativize(prefix: &str, dest: &str, macho: bool) -> io::Result<()> {
 /// reloc-fixup made every `LC_ID_DYLIB` `@rpath/<name>`, cmake's exported
 /// targets still record the `install_name` the project chose (taglib sets
 /// `INSTALL_NAME_DIR` to its libdir).
-fn sonames(inventory: &[Entry], prefix: &str) -> io::Result<()> {
+#[inline]
+pub fn sonames(inventory: &[Entry], prefix: &str) -> io::Result<()> {
    for entry in inventory
       .iter()
       .filter(|entry| entry.kind == 'f' && extension_is(&entry.rel, "cmake"))
@@ -356,6 +369,7 @@ fn sonames(inventory: &[Entry], prefix: &str) -> io::Result<()> {
          joined.push('\n');
       }
       if joined != text {
+         writable(Path::new(&entry.path))?;
          write_file(Path::new(&entry.path), joined.as_bytes(), None)?;
       }
    }

@@ -11,6 +11,15 @@ use std::{
    path::Path,
 };
 
+use jig::{
+   directory::{
+      get_directory,
+      put_directory,
+   },
+   files::write_file,
+   identify::identities,
+   tree::note,
+};
 use serde::Serialize;
 use serde_json::{
    Value,
@@ -18,22 +27,10 @@ use serde_json::{
 };
 use wire::client::Client;
 
-use crate::{
-   attrs::{
-      Attrs,
-      Ctx,
-      build_top,
-   },
-   directory::{
-      get_directory,
-      put_directory,
-   },
-   files::write_file,
-   identify::{
-      identities,
-      masked_hashes,
-   },
-   tree::replace_all,
+use crate::attrs::{
+   Attrs,
+   Ctx,
+   build_top,
 };
 
 const PRIVATE: [&str; 4] = ["JIG_LOG", "JIG_LOG_ARGS", "JIG_SOCK", "JIG_SLOT"];
@@ -65,10 +62,9 @@ where
       })
       .collect();
    let mut by_content: Vec<String> = Vec::new();
-   for path in ctx
-      .roots
+   for path in attrs
+      .probe_inputs
       .iter()
-      .chain(&attrs.probe_inputs)
       .chain([&attrs.src])
       .chain(&attrs.patches)
    {
@@ -92,32 +88,19 @@ where
       "recipes": attrs.probe_inputs.iter().map(of).collect::<Vec<_>>(),
       "spec": ctx.spec,
       "platform": ctx.platform,
-      "roots": ctx.roots.iter().map(of).collect::<Vec<_>>(),
+      "roots": ctx.roots,
       "out": if no_out { Value::Null } else { Value::String(ctx.out.clone()) },
       "build": ctx.build,
       "environment": environment.iter().map(|pair| json!({ "name": pair.0, "value": pair.1 })).collect::<Vec<_>>(),
       "sites": sites,
       "extra": extra,
    });
-   let text = masked_hashes(serde_json::to_vec(&record)?);
+   let text = serde_json::to_vec(&record)?;
    Ok(format!("probe/v3/{kind}/{}", hex(&text)))
 }
 
 fn hex(bytes: &[u8]) -> String {
    blake3::hash(bytes).to_hex().to_string()
-}
-
-fn masked(ctx: &Ctx, text: &[u8], undo: bool) -> Vec<u8> {
-   let mut result = text.to_vec();
-   for (index, root) in ctx.roots.iter().enumerate() {
-      let placeholder = format!("{{root{index}}}");
-      result = if undo {
-         replace_all(&result, placeholder.as_bytes(), root.as_bytes())
-      } else {
-         replace_all(&result, root.as_bytes(), placeholder.as_bytes())
-      };
-   }
-   result
 }
 
 fn daemon(ctx: &Ctx, socket: &Path) -> Option<Client> {
@@ -135,7 +118,7 @@ pub fn restore(key: &str, file: &Path, socket: &Path) -> io::Result<bool> {
    let Some(bytes) = client.get(key)? else {
       return Ok(false);
    };
-   write_file(file, &masked(&ctx, &bytes, true), None)?;
+   write_file(file, &bytes, None)?;
    Ok(true)
 }
 
@@ -147,7 +130,10 @@ pub fn store(key: &str, file: &Path, socket: &Path) -> io::Result<()> {
    let Some(mut client) = daemon(&ctx, socket) else {
       return Ok(());
    };
-   client.put(key, &masked(&ctx, &read(file)?, false))
+   if let Err(error) = client.put(key, &read(file)?) {
+      note("probe-cache", &format!("store failed with {error}"));
+   }
+   Ok(())
 }
 
 pub fn restore_dir(key: &str, dir: &Path, socket: &Path) -> io::Result<bool> {

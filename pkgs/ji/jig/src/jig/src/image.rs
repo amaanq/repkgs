@@ -5,6 +5,7 @@ pub struct Image {
 }
 
 impl Image {
+   #[inline]
    pub fn array<const SIZE: usize>(&self, offset: usize) -> io::Result<[u8; SIZE]> {
       self
          .bytes
@@ -14,25 +15,32 @@ impl Image {
          .ok_or_else(|| io::Error::other("binary field is outside the file"))
    }
 
+   #[inline]
    pub fn byte(&self, offset: usize) -> io::Result<u8> {
       self.array(offset).map(|[byte]| byte)
    }
+   #[inline]
    pub fn word(&self, offset: usize) -> io::Result<u16> {
       self.array(offset).map(u16::from_le_bytes)
    }
+   #[inline]
    pub fn long(&self, offset: usize) -> io::Result<u32> {
       self.array(offset).map(u32::from_le_bytes)
    }
+   #[inline]
    pub fn big_long(&self, offset: usize) -> io::Result<u32> {
       self.array(offset).map(u32::from_be_bytes)
    }
+   #[inline]
    pub fn quad(&self, offset: usize) -> io::Result<u64> {
       self.array(offset).map(u64::from_le_bytes)
    }
+   #[inline]
    pub fn size(&self, offset: usize) -> io::Result<usize> {
       self.quad(offset)?.try_into().map_err(io::Error::other)
    }
 
+   #[inline]
    pub fn write(&mut self, offset: usize, data: &[u8]) -> io::Result<()> {
       self
          .bytes
@@ -43,6 +51,7 @@ impl Image {
       Ok(())
    }
 
+   #[inline]
    pub fn string(&self, offset: usize) -> io::Result<String> {
       let tail = self
          .bytes
@@ -55,6 +64,7 @@ impl Image {
       String::from_utf8(tail[..end].to_vec()).map_err(io::Error::other)
    }
 
+   #[inline]
    pub fn padded(&mut self, offset: usize, capacity: usize, data: &[u8]) -> io::Result<()> {
       if data.len() >= capacity {
          return Err(io::Error::other(

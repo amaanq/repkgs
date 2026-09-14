@@ -1,6 +1,6 @@
 [workspace]
 default-members = [ "jig" ]
-members         = [ "jig", "jigd", "wire" ]
+members         = [ "jib", "jig", "jigd", "wire" ]
 resolver        = "3"
 
 [workspace.package]
@@ -15,6 +15,7 @@ eyre       = "0.6.14"
 rustix     = { features = [ "event", "fs", "net" ], version = "1.1.4" }
 zstd       = { default-features = false, version = "0.14.0" }
 
+jig  = { path = "jig" }
 wire = { path = "wire" }
 
 [profile.release]

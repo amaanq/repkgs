@@ -137,31 +137,42 @@ let
     rustc = rustBootstrap.rust;
     cargo = rustBootstrap.rust;
   };
-  jig = rustPlatform.buildRustPackage {
-    pname = "seed-jig";
-    version = "3.0.0";
-    src = builtins.path {
-      path = ../../ji/jig/src;
-      name = "jig-rust-src";
-      filter =
-        path: type:
-        (type == "directory" && baseNameOf path != "target")
-        || builtins.match ".*\\.rs" path != null
-        || builtins.elem (baseNameOf path) [
-          "Cargo.toml"
-          "Cargo.lock"
-        ];
+  # jib's sources stay out of jig's so that editing the builder side does not rebuild the
+  # toolchain and everything under it. cargo still wants the workspace member to have its main.rs
+  rustCrate =
+    name: skipped:
+    rustPlatform.buildRustPackage {
+      pname = "seed-${name}";
+      version = "3.0.0";
+      src = builtins.path {
+        path = ../../ji/jig/src;
+        name = "${name}-rust-src";
+        filter =
+          path: type:
+          !(skipped path)
+          && (
+            (type == "directory" && baseNameOf path != "target")
+            || builtins.match ".*\\.rs" path != null
+            || builtins.elem (baseNameOf path) [
+              "Cargo.toml"
+              "Cargo.lock"
+            ]
+          );
+      };
+      cargoLock.lockFile = ../../ji/jig/src/Cargo.lock;
+      cargoBuildFlags = [
+        "-p"
+        name
+      ];
+      auditable = false;
+      doCheck = false;
+      env.JIG_STORE_DIR = builtins.storeDir;
+      allowedReferences = [ ];
     };
-    cargoLock.lockFile = ../../ji/jig/src/Cargo.lock;
-    cargoBuildFlags = [
-      "-p"
-      "jig"
-    ];
-    auditable = false;
-    doCheck = false;
-    env.JIG_STORE_DIR = builtins.storeDir;
-    allowedReferences = [ ];
-  };
+  jig = rustCrate "jig" (
+    path: builtins.match ".*/jib/src/.+" path != null && baseNameOf path != "main.rs"
+  );
+  jib = rustCrate "jib" (_path: false);
   nu =
     (ps.nushell.override {
       inherit rustPlatform;
@@ -285,6 +296,7 @@ in
   inherit
     llvm
     jig
+    jib
     nu
     bsdtar
     toybox

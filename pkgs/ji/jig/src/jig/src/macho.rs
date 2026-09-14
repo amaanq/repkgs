@@ -202,6 +202,7 @@ fn new_spelling(context: &Context, here: &Path, command: &Command) -> io::Result
    Ok(None)
 }
 
+#[inline]
 pub fn fix(context: &Context, path: &Path, image: &mut Image) -> io::Result<()> {
    if image.long(0).ok() != Some(MAGIC) {
       return Ok(());

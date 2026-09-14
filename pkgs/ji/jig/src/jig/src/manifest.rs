@@ -10,16 +10,15 @@ use std::{
 };
 
 use blake3::Hasher;
+use jig::store::{
+   Store,
+   field,
+};
 use serde::{
    Deserialize,
    Serialize,
 };
 use wire::client::Client;
-
-use crate::store::{
-   Store,
-   field,
-};
 
 #[derive(Deserialize, Serialize)]
 struct Input {

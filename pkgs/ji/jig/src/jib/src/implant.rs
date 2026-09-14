@@ -8,15 +8,14 @@ use std::{
    process::Command,
 };
 
-use crate::{
-   driver::RUNPATH_SLACK,
+use jig::{
    elf::{
+      RUNPATH_SLACK,
       has_segment,
       is_elf,
       runpath,
       segments,
    },
-   exports::lib_dirs,
    image::Image,
    tree::{
       Entry,
@@ -26,6 +25,8 @@ use crate::{
       writable,
    },
 };
+
+use crate::exports::lib_dirs;
 
 const INTERP_PADDING: usize = 12;
 

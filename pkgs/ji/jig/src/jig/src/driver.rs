@@ -13,11 +13,15 @@ use std::{
    path::Path,
 };
 
+use jig::{
+   elf::{
+      RUNPATH_SLACK,
+      shared_library,
+   },
+   store::is_store_path,
+};
 use serde::Deserialize;
 
-use crate::store::is_store_path;
-
-pub const RUNPATH_SLACK: usize = 48;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum BinaryFormat {
    Elf,
@@ -403,23 +407,6 @@ fn take_rpath(args: &[String]) -> Option<(&str, usize)> {
       return Some((value, 4));
    }
    None
-}
-
-pub fn shared_library(name: &str) -> bool {
-   if Path::new(name)
-      .extension()
-      .is_some_and(|extension| extension == "dylib")
-   {
-      return true;
-   }
-   name.rsplit_once(".so").is_some_and(|(_, tail)| {
-      tail.is_empty()
-         || tail.strip_prefix('.').is_some_and(|suffix| {
-            suffix
-               .bytes()
-               .all(|byte| byte == b'.' || byte.is_ascii_digit())
-         })
-   })
 }
 
 pub fn expand_response_files(args: &[String]) -> io::Result<Vec<String>> {

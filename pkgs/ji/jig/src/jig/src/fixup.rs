@@ -16,13 +16,13 @@ use std::{
 };
 
 use crate::{
-   driver::shared_library,
    elf::{
       Section,
       is_elf,
       relative_from,
       sections,
       segments,
+      shared_library,
    },
    files::write_file,
    image::Image,
@@ -42,6 +42,8 @@ pub struct Context {
 }
 
 impl Context {
+   #[must_use]
+   #[inline]
    pub fn final_path(&self, path: &Path) -> PathBuf {
       let normal = normalize(path);
       normal.strip_prefix(&self.prefix).map_or_else(
@@ -50,6 +52,8 @@ impl Context {
       )
    }
 
+   #[must_use]
+   #[inline]
    pub fn on_disk(&self, path: &Path) -> PathBuf {
       let normal = normalize(path);
       normal.strip_prefix(&self.dest).map_or_else(
@@ -58,6 +62,8 @@ impl Context {
       )
    }
 
+   #[must_use]
+   #[inline]
    pub fn shown(&self, path: &Path) -> String {
       path
          .strip_prefix(&self.prefix)
@@ -86,6 +92,7 @@ struct SearchDirectory {
    clippy::too_many_lines,
    reason = "single-pass directory walk and file handling, splitting would duplicate policy"
 )]
+#[inline]
 pub fn run(prefix: &Path, dest: Option<&str>, denied_paths: &[String]) -> io::Result<()> {
    if let Some(path) = dest
       && !is_store_path(path)
@@ -193,6 +200,7 @@ pub fn run(prefix: &Path, dest: Option<&str>, denied_paths: &[String]) -> io::Re
    Ok(())
 }
 
+#[inline]
 pub fn write_back(path: &Path, image: &Image) -> io::Result<()> {
    use std::os::unix::fs::PermissionsExt as _;
    write_file(

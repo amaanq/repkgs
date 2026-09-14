@@ -129,6 +129,7 @@ let
     inherit lib;
     # `prebuilt = true` patches upstream ELFs with it (builder/implant.nu)
     relocTools = [ buildPkgs.formatelf ];
+    inherit (bootstrap) jib;
     inherit
       toolchain
       launch

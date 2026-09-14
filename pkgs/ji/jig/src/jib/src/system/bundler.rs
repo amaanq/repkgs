@@ -16,16 +16,22 @@ use std::{
    process::Command,
 };
 
+use jig::{
+   files::{
+      glob,
+      write_file,
+   },
+   tree::{
+      note,
+      shebangs,
+   },
+};
 use serde::Deserialize;
 
 use crate::{
    attrs::{
       Attrs,
       Ctx,
-   },
-   files::{
-      glob,
-      write_file,
    },
    prepare::succeed,
    system::{
@@ -38,10 +44,6 @@ use crate::{
       },
       dispatch::System,
       syslibs,
-   },
-   tree::{
-      note,
-      shebangs,
    },
 };
 

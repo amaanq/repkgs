@@ -31,6 +31,7 @@ use crate::{
    },
 };
 
+#[inline]
 pub fn run(roots: &[String], socket: &Path) -> io::Result<()> {
    let found = identities(roots, socket)?;
    let mut stdout = io::stdout().lock();
@@ -39,6 +40,7 @@ pub fn run(roots: &[String], socket: &Path) -> io::Result<()> {
    Ok(())
 }
 
+#[inline]
 pub fn identities(roots: &[String], socket: &Path) -> io::Result<Map<String, Value>> {
    let mut client = Client::connect(socket).ok();
    let mut found = Map::new();
@@ -104,6 +106,8 @@ fn masked(bytes: Vec<u8>) -> Vec<u8> {
    masked_hashes(image.bytes)
 }
 
+#[must_use]
+#[inline]
 pub fn masked_hashes(mut bytes: Vec<u8>) -> Vec<u8> {
    let mut at = 0;
    while let Some(offset) = bytes[at..].iter().position(|byte| *byte == b'/') {

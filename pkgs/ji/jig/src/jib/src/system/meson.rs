@@ -18,6 +18,10 @@ use std::{
    },
 };
 
+use jig::{
+   files::write_file,
+   tree::note,
+};
 use serde::Deserialize;
 
 use crate::{
@@ -28,7 +32,6 @@ use crate::{
       Platform,
       Profile,
    },
-   files::write_file,
    system::{
       command::{
          run,
@@ -257,6 +260,10 @@ impl Meson {
                .filter(|name| !options.skip_tests.iter().any(|skip| name.contains(skip)))
                .map(str::to_owned),
          );
+         if kept.is_empty() {
+            note("meson-test", "every test matches meson.skipTests");
+            return Ok(());
+         }
       }
       args.extend(strs(&kept));
       run("meson", &args, &[])

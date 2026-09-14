@@ -13,6 +13,10 @@ use std::{
    os::unix::net::UnixStream,
 };
 
+use jig::{
+   process::diagnostic,
+   store::STORE_DIR,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -22,11 +26,7 @@ use sha2::{
    Sha256,
 };
 
-use crate::{
-   cli::StoreOperation,
-   process::diagnostic,
-   store::STORE_DIR,
-};
+use crate::cli::StoreOperation;
 
 #[derive(Default, Deserialize, Serialize)]
 struct Output {

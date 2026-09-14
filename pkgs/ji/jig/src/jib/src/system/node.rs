@@ -19,6 +19,7 @@ use std::{
    process::Command,
 };
 
+use jig::tree::shebangs;
 use serde::Deserialize;
 
 use crate::{
@@ -37,7 +38,6 @@ use crate::{
       },
       dispatch::System,
    },
-   tree::shebangs,
 };
 
 #[derive(Clone, Copy)]

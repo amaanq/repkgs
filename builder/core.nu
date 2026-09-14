@@ -123,5 +123,5 @@ export def write-launcher [name: string, program: string, args: list<string>, va
 # in the build tree: a generator script newer than its shipped output makes make regenerate it
 # (coreutils' cu-progs.m4 -> aclocal, ruby's prism templates -> baseruby)
 export def fix-env-shebangs [dir: path, --undo]: nothing -> nothing {
-  ^jig shebangs $dir ...(if $undo { [--undo] } else { [] })
+  ^jib shebangs $dir ...(if $undo { [--undo] } else { [] })
 }

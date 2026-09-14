@@ -7,6 +7,13 @@ use std::{
    },
 };
 
+use jig::{
+   files::write_file,
+   tree::{
+      note,
+      walk,
+   },
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -19,7 +26,6 @@ use crate::{
       Def,
       Profile,
    },
-   files::write_file,
    probe,
    system::{
       command::{
@@ -28,10 +34,6 @@ use crate::{
          unknown,
       },
       dispatch::System,
-   },
-   tree::{
-      note,
-      walk,
    },
 };
 

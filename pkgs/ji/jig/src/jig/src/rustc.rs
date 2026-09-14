@@ -23,25 +23,10 @@ use std::{
 };
 
 use blake3::Hasher;
-use serde::{
-   Deserialize,
-   Serialize,
-};
-use wire::{
-   client::Client,
-   digest,
-};
-
-use crate::{
+use jig::{
    files::{
       relative_path,
       write_file,
-   },
-   manifest::{
-      Manifest,
-      Miss,
-      lookup,
-      parse_depfile,
    },
    process::{
       Slot,
@@ -56,6 +41,21 @@ use crate::{
       field,
       on_path,
    },
+};
+use serde::{
+   Deserialize,
+   Serialize,
+};
+use wire::{
+   client::Client,
+   digest,
+};
+
+use crate::manifest::{
+   Manifest,
+   Miss,
+   lookup,
+   parse_depfile,
 };
 
 struct Invocation {

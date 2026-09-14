@@ -15,5 +15,5 @@ use core.nu *
 
 export def main [c: record]: nothing -> nothing {
   let ldso = (if ($c.spec.prebuilt? | default false) == "ldso" { [--ldso] } else { [] })
-  ^jig launchers $c.out --launch $c.platform.launch --interp $c.platform.interp ...$ldso ...(attrs).dependencies
+  ^jib launchers $c.out --launch $c.platform.launch --interp $c.platform.interp ...$ldso ...(attrs).dependencies
 }

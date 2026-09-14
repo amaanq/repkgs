@@ -26,18 +26,11 @@ use std::{
    },
 };
 
-use serde::Serialize;
-
-use crate::{
-   attrs::Ctx,
+use jig::{
    elf::{
       has_segment,
       is_elf,
       segments,
-   },
-   exports::{
-      exports_of,
-      lib_dirs,
    },
    image::Image,
    store::{
@@ -47,6 +40,15 @@ use crate::{
    tree::{
       note,
       writable,
+   },
+};
+use serde::Serialize;
+
+use crate::{
+   attrs::Ctx,
+   exports::{
+      exports_of,
+      lib_dirs,
    },
 };
 

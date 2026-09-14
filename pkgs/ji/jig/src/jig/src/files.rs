@@ -19,6 +19,7 @@ use std::{
 
 use tempfile::NamedTempFile;
 
+#[inline]
 pub fn write_file(path: &Path, bytes: &[u8], mode: Option<u32>) -> io::Result<()> {
    let parent = path
       .parent()
@@ -41,6 +42,7 @@ pub fn write_file(path: &Path, bytes: &[u8], mode: Option<u32>) -> io::Result<()
    Ok(())
 }
 
+#[inline]
 pub fn relative_path(text: &str) -> io::Result<&Path> {
    let path = Path::new(text);
    if text.is_empty()
@@ -54,6 +56,7 @@ pub fn relative_path(text: &str) -> io::Result<&Path> {
    Ok(path)
 }
 
+#[inline]
 pub fn glob(pattern: &str) -> io::Result<Vec<PathBuf>> {
    let mut found = Vec::new();
    for expanded in expand_braces(pattern) {

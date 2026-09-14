@@ -14,7 +14,7 @@ use std::{
    process::Command,
 };
 
-use crate::{
+use jig::{
    elf::{
       is_elf,
       names,
@@ -50,7 +50,7 @@ pub fn run(output: &Path, debug: &Path) -> io::Result<()> {
       .into_iter()
       .filter(|entry| entry.kind == 'f')
       .collect::<Vec<Entry>>();
-   strip_archives(&files)?;
+   strip_archives(&files, &["a", "o"])?;
    let candidates = files
       .iter()
       .filter(|entry| entry.size > SMALL_ELF && !has_extension(&entry.rel, &["a", "o", "rlib"]))
@@ -117,10 +117,10 @@ pub fn run(output: &Path, debug: &Path) -> io::Result<()> {
    Ok(())
 }
 
-fn strip_archives(files: &[Entry]) -> io::Result<()> {
+pub fn strip_archives(files: &[Entry], extensions: &[&str]) -> io::Result<()> {
    for entry in files
       .iter()
-      .filter(|entry| has_extension(&entry.rel, &["a", "o"]))
+      .filter(|entry| entry.kind == 'f' && has_extension(&entry.rel, extensions))
    {
       writable(Path::new(&entry.path))?;
       let done = Command::new("llvm-objcopy")

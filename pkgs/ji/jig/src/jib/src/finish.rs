@@ -23,6 +23,19 @@ use std::{
    process::Command,
 };
 
+use jig::{
+   files::glob,
+   fixup,
+   store::normalize,
+   tree::{
+      note,
+      prune,
+      relativize,
+      shebangs,
+      sonames,
+      walk,
+   },
+};
 use serde_json::{
    Value,
    json,
@@ -43,18 +56,9 @@ use crate::{
       Request,
       write_request,
    },
-   files::glob,
-   fixup,
    implant,
    launchers,
    prepare::succeed,
-   store::normalize,
-   tree::{
-      note,
-      prune,
-      relativize,
-      shebangs,
-   },
 };
 
 const CACHED: [&str; 4] = ["cached", "cached-error", "hit", "compile-hit"];
@@ -107,7 +111,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
       Command::new("chmod").arg("-R").arg("u+w").arg(&ctx.out),
       "chmod",
    )?;
-   relativize(&ctx.out, &ctx.dest, text(&ctx.platform, "os") == "macos")?;
+   relativize(&ctx.out, &ctx.dest, false)?;
    succeed(Command::new("mv").arg(&ctx.out).arg(&ctx.dest), "mv")?;
    version_check(&spec, &ctx, &top)?;
    cache_summary()
@@ -221,26 +225,31 @@ fn relocate(attrs: &Attrs, spec: &Spec, ctx: &Ctx, debug: &str) -> io::Result<()
    let platform = &ctx.platform;
    let implanted = spec.prebuilt_is(&Value::Bool(true));
    let ldso = spec.prebuilt_is(&Value::String("ldso".to_owned()));
-   if text(platform, "binfmt") == "elf" {
-      let interp = Path::new(text(platform, "interp"));
-      if spec.debug {
-         debug::run(out, Path::new(debug))?;
-      }
-      if implanted {
-         implant::run(
+   match text(platform, "binfmt") {
+      "elf" => {
+         let interp = Path::new(text(platform, "interp"));
+         if spec.debug {
+            debug::run(out, Path::new(debug))?;
+         }
+         if implanted {
+            implant::run(
+               out,
+               interp,
+               Some(Path::new(text(platform, "relocStub"))),
+               &attrs.dependencies,
+            )?;
+         }
+         launchers::run(
             out,
+            Path::new(text(platform, "launch")),
             interp,
-            Some(Path::new(text(platform, "relocStub"))),
+            ldso,
             &attrs.dependencies,
          )?;
-      }
-      launchers::run(
-         out,
-         Path::new(text(platform, "launch")),
-         interp,
-         ldso,
-         &attrs.dependencies,
-      )?;
+      },
+      "macho" => sonames(&walk(out)?, &ctx.out)?,
+      "coff" => debug::strip_archives(&walk(out)?, &["lib", "obj", "a"])?,
+      format => return Err(io::Error::other(format!("unknown binary format {format}"))),
    }
    let denied: Vec<String> = if flag(platform, "cross") {
       attrs

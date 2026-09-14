@@ -7,6 +7,10 @@ use std::{
    path::Path,
 };
 
+use jig::{
+   files::write_file,
+   tree::writable,
+};
 use serde::Deserialize;
 
 use crate::{
@@ -14,7 +18,6 @@ use crate::{
       Attrs,
       Ctx,
    },
-   files::write_file,
    system::{
       command::{
          dep_root,
@@ -24,7 +27,6 @@ use crate::{
       },
       dispatch::System,
    },
-   tree::writable,
 };
 
 #[derive(Deserialize)]

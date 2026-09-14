@@ -12,6 +12,10 @@ use std::{
    },
 };
 
+use jig::store::{
+   is_store_path,
+   normalize,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -22,13 +26,7 @@ use serde_json::{
    Value,
 };
 
-use crate::{
-   exports::Exports,
-   store::{
-      is_store_path,
-      normalize,
-   },
-};
+use crate::exports::Exports;
 
 #[derive(Deserialize)]
 pub struct Attrs {
