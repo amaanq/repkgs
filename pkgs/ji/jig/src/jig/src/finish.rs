@@ -48,6 +48,7 @@ use crate::{
    implant,
    launchers,
    prepare::succeed,
+   store::normalize,
    tree::{
       note,
       prune,
@@ -148,7 +149,7 @@ fn install_map(spec: &Spec, out: &Path) -> io::Result<()> {
             patterns.join(" ")
          )));
       }
-      let target = out.join(dest);
+      let target = normalize(&out.join(dest));
       if dest.ends_with('/') || matched.len() > 1 {
          create_dir_all(&target)?;
          for source in &matched {
