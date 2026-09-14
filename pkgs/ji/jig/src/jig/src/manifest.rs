@@ -92,17 +92,13 @@ pub enum Miss {
 }
 
 impl Display for Miss {
-   #[expect(
-      clippy::renamed_function_params,
-      reason = "Project names have at least two characters"
-   )]
-   fn fmt(&self, formatter: &mut Formatter<'_>) -> FormatResult {
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
       match *self {
-         Self::NewKey => formatter.write_str("new-key"),
-         Self::InputsChanged(ref path) => write!(formatter, "inputs-changed:{path}"),
-         Self::EnvironmentChanged(ref name) => write!(formatter, "env-changed:{name}"),
-         Self::ObjectGone => formatter.write_str("object-gone"),
-         Self::Failed(_) => formatter.write_str("replay-failed"),
+         Self::NewKey => f.write_str("new-key"),
+         Self::InputsChanged(ref path) => write!(f, "inputs-changed:{path}"),
+         Self::EnvironmentChanged(ref name) => write!(f, "env-changed:{name}"),
+         Self::ObjectGone => f.write_str("object-gone"),
+         Self::Failed(_) => f.write_str("replay-failed"),
       }
    }
 }

@@ -37,13 +37,9 @@ impl Identity {
 }
 
 impl Display for Identity {
-   #[expect(
-      clippy::renamed_function_params,
-      reason = "Project names have at least two characters"
-   )]
    #[inline]
-   fn fmt(&self, formatter: &mut Formatter<'_>) -> FormatResult {
-      formatter.write_str(&self.0)
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+      f.write_str(&self.0)
    }
 }
 
