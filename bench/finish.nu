@@ -1,7 +1,7 @@
 # builder/finish.nu steps on an installed prefix the size of a mid-sized package.
 use fixtures.nu
 use ../builder/core.nu *
-use ../builder/finish.nu [inventory prune layout-check]
+use ../builder/finish.nu [prune inventory layout-check]
 use ../builder/debug.nu [split-debug]
 use ../builder/exports.nu [write-exports]
 
