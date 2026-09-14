@@ -23,12 +23,12 @@ use serde::Deserialize;
 use crate::{
    attrs::{
       Ctx,
+      Def,
       Platform,
       Profile,
    },
    files::write_file,
-   system::{
-      Def,
+   system::command::{
       run,
       unknown,
    },
@@ -111,7 +111,7 @@ fn machine_file(path: &str, sections: &[(&str, Vec<(&str, Literal)>)]) -> io::Re
 }
 
 /// the build machine's pkg-config finds nothing so build-time tools never link
-/// target libraries, and sizeof/alignment properties spare cc.sizeof() an exe
+/// target libraries, and sizeof/alignment properties spare `cc.sizeof()` an exe
 /// wrapper.
 fn cross_files(ctx: &Ctx, platform: &Platform) -> io::Result<Vec<String>> {
    let word = platform.bits / 8;
@@ -184,7 +184,7 @@ fn render(def: &Def) -> String {
    }
 }
 
-/// buildtype plain because cc brings -O2 -g itself, auto_features disabled so
+/// buildtype plain because cc brings -O2 -g itself, `auto_features` disabled so
 /// packages enable what they declare.
 fn configure(ctx: &Ctx, options: &Options) -> io::Result<()> {
    let platform = ctx.platform()?;

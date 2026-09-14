@@ -14,7 +14,7 @@ use serde::Deserialize;
 use crate::{
    attrs::Ctx,
    store::on_path,
-   system::{
+   system::command::{
       run,
       tool,
       unknown,

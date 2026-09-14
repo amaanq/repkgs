@@ -39,7 +39,7 @@ use crate::{
    exports::closure,
    files::write_file,
    store::STORE_DIR,
-   system::{
+   system::command::{
       run,
       unknown,
    },

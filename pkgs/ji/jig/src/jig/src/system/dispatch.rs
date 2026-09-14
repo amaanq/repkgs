@@ -10,13 +10,7 @@ use std::{
       Path,
       PathBuf,
    },
-   process::Command,
    str::FromStr,
-};
-
-use serde::{
-   Deserialize,
-   Serialize,
 };
 
 use crate::{
@@ -26,24 +20,15 @@ use crate::{
       build_top,
    },
    cli::SystemOperation,
-   store::on_path,
+   system::{
+      autotools,
+      cargo,
+      cmake,
+      make,
+      meson,
+      python,
+   },
 };
-
-mod autotools;
-mod cargo;
-mod cmake;
-mod make;
-mod meson;
-mod python;
-mod syslibs;
-
-#[derive(Deserialize, Serialize, Clone)]
-#[serde(untagged)]
-pub enum Def {
-   Flag(bool),
-   Text(String),
-   Number(i64),
-}
 
 pub enum System {
    Make,
@@ -127,35 +112,4 @@ fn phase(name: &str, verb: &str, socket: &Path) -> io::Result<()> {
       System::Cargo => cargo::phase(&ctx, verb),
       System::Python => python::phase(&ctx, verb, &Attrs::load()?),
    }
-}
-
-pub fn tool(name: &str) -> io::Result<PathBuf> {
-   let path = on_path(name);
-   if !path.is_absolute() {
-      return Err(io::Error::other(format!("{name} not on PATH")));
-   }
-   Ok(path)
-}
-
-pub fn run(program: &str, args: &[String], env: &[(&str, String)]) -> io::Result<()> {
-   drop(writeln!(
-      io::stderr().lock(),
-      "+ {program} {}",
-      args.join(" ")
-   ));
-   let status = Command::new(program)
-      .args(args)
-      .envs(env.iter().cloned())
-      .status()?;
-   if !status.success() {
-      return Err(io::Error::other(format!(
-         "{program} failed with {}",
-         status.code().unwrap_or(-1)
-      )));
-   }
-   Ok(())
-}
-
-pub fn unknown(name: &str, verb: &str) -> io::Error {
-   io::Error::other(format!("{name} has no {verb} phase"))
 }

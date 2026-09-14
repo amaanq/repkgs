@@ -123,6 +123,14 @@ pub enum Profile {
    Debug,
 }
 
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(untagged)]
+pub enum Def {
+   Flag(bool),
+   Text(String),
+   Number(i64),
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Platform {

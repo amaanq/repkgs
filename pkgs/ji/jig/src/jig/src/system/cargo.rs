@@ -30,10 +30,12 @@ use crate::{
    prepare::succeed,
    store::on_path,
    system::{
-      run,
+      command::{
+         run,
+         tool,
+         unknown,
+      },
       syslibs,
-      tool,
-      unknown,
    },
    tree::note,
 };
@@ -79,9 +81,9 @@ fn list(values: &[String]) -> String {
 }
 
 /// pkg-config, the -sys crates' usual probe, refuses to answer under --target
-/// without ALLOW_CROSS. bindgen asks a clang executable for its include dirs,
+/// without `ALLOW_CROSS`. bindgen asks a clang executable for its include dirs,
 /// ours and not a bare one on PATH. rustflags go in the config because
-/// RUSTFLAGS from the environment would replace them
+/// RUSTFLAGS from the environment would replace them.
 pub fn setup(ctx: &Ctx, attrs: &Attrs) -> io::Result<BTreeMap<String, String>> {
    let options: Options = ctx.options("cargo")?;
    let home = format!("{}/cargo-home", ctx.build);
@@ -312,7 +314,7 @@ pub fn phase(ctx: &Ctx, verb: &str) -> io::Result<()> {
    }
 }
 
-/// with CARGO_BUILD_TARGET set cargo always builds into target/<triple>/. Its
+/// with `CARGO_BUILD_TARGET` set cargo always builds into target/<triple>/. Its
 /// own files there are lib*.rlib/.so/.d and .cargo-lock, the rest are the
 /// [[bin]] targets.
 fn install(ctx: &Ctx) -> io::Result<()> {

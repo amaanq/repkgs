@@ -66,6 +66,7 @@ use crate::{
    },
    files::write_file,
    process::diagnostic,
+   system::dispatch,
 };
 
 fn dispatch() -> Result<i32> {
@@ -175,7 +176,7 @@ fn run(mode: Mode, name: &str, args: &[OsString], socket: &Path) -> Result<i32> 
       Mode::SplitDebug { output, debug } => debug::run(&output, &debug)?,
       Mode::Identify { roots } => identify::run(&roots, socket)?,
       Mode::Probe { operation } => return probe_mode(operation, socket),
-      Mode::System { operation } => system::mode(operation, socket)?,
+      Mode::System { operation } => dispatch::mode(operation, socket)?,
       Mode::Env { out, cache } => env::run(&out, cache)?,
       Mode::Implant {
          directory,

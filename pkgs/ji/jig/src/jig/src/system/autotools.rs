@@ -23,10 +23,12 @@ use crate::{
    header::site,
    probe,
    system::{
+      command::{
+         run,
+         tool,
+         unknown,
+      },
       make,
-      run,
-      tool,
-      unknown,
    },
    tree::{
       find,

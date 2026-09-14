@@ -15,12 +15,12 @@ use serde::{
 use crate::{
    attrs::{
       Ctx,
+      Def,
       Profile,
    },
    files::write_file,
    probe,
-   system::{
-      Def,
+   system::command::{
       run,
       unknown,
    },
