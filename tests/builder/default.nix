@@ -1,4 +1,4 @@
-# Builder behaviour: every directory here is a test. Its test.nu runs under the seed's nu with
+# Builder behaviour: every directory here is a test. Its test.nu runs under the bootstrap's nu with
 # builder/ and lib/ on the include path and $env.fixtures set to the directory. One with a
 # package.nix is first built as out-of-tree package test-<name> ($env.pkg, $env.debug), so each test
 # needs only its own toolchain. `nix-build tests/builder -A <name>`, `repkgs test` for all.
@@ -50,9 +50,9 @@ mapAttrs (
       __contentAddressed = true;
       outputHashMode = "recursive";
       outputHashAlgo = "sha256";
-      PATH = "${seedPath}/bin";
+      PATH = "${set.bootstrap.nu}/bin:${seedPath}/bin";
       fixtures = dir;
-      builder = "${seedPath}/bin/nu";
+      builder = "${set.bootstrap.nu}/bin/nu";
       # nu separates include dirs with \x1e
       args = [
         "--no-config-file"

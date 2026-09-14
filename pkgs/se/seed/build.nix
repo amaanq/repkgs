@@ -263,7 +263,7 @@ let
 
   seed = pkgs.runCommand "seed-4-${system}" { allowedReferences = [ ]; } ''
     mkdir -p $out/bin $out/lib $out/share
-    cp ${nu}/bin/nu ${bsdtar}/bin/bsdtar ${toybox}/bin/toybox ${dash}/bin/dash $out/bin/
+    cp ${bsdtar}/bin/bsdtar ${toybox}/bin/toybox ${dash}/bin/dash $out/bin/
     ln -s dash $out/bin/sh
     ${pkgs.lib.concatStringsSep "\n" (
       pkgs.lib.mapAttrsToList (n: p: "cp ${p}/bin/${n} $out/bin/") tools
@@ -279,7 +279,7 @@ let
     cp -a ${llvm}/lib/clang $out/lib/
     chmod -R u+w $out
     cp ${jig}/bin/jig $out/bin/jig
-    ${llvm}/bin/llvm-strip $out/bin/nu $out/bin/bsdtar $out/bin/toybox $out/bin/dash $out/bin/python3 ${
+    ${llvm}/bin/llvm-strip $out/bin/bsdtar $out/bin/toybox $out/bin/dash $out/bin/python3 ${
       toString (map (n: "$out/bin/${n}") (builtins.attrNames tools))
     }
     find $out -type f -exec ${pkgs.nukeReferences}/bin/nuke-refs {} +

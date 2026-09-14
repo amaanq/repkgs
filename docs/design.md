@@ -268,7 +268,7 @@ bit-identical with the C++ wrapper. Request keys, manifests and the pack format 
 ## Toolchain, bootstrap, cross
 
 ```
-seed      static musl: nu, LLVM multicall (clang, lld, llvm-ar …), bsdtar, toybox, dash, make, python
+seed      static musl: LLVM multicall (clang, lld, llvm-ar …), bsdtar, toybox, dash, make, python
 → stage0  musl headers → compiler-rt → musl → linux headers → libc++ → jig → cc     (build machine, seed clang)
 → stage1  the same chain with glibc → cc-boot → cmake → llvm: clang, lld, libLLVM.so  (build machine, seed clang)
 → stage2  linux headers → glibc → compiler-rt → libc++ → cc-<platform>              (per target, stage1's clang)

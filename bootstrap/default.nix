@@ -338,7 +338,7 @@ let
 in
 {
   seed = seedPath;
-  inherit (seedBuild) jib jig;
+  inherit (seedBuild) jib jig nu;
   inherit
     stage0
     stage1

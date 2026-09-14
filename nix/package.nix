@@ -6,6 +6,7 @@
   platform,
   toolchain,
   jib,
+  nu,
   launch,
   dlaudit,
   buildSystems,
@@ -536,6 +537,7 @@ let
       [ toolchain jib ]
       ++ (args.buildDependencies or [ ])
       ++ tests
+      ++ (if any (p: p.kind == "nu") plan.phases then [ nu ] else [ ])
       ++ (if prebuilt == true then relocTools else [ ])
       ++ concatMap (u: buildSystems.${u}.tools spec ++ stackBefore buildSystems.${u}.stack) uses
     )

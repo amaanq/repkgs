@@ -229,7 +229,7 @@ $ repkgs cache stop
 ## How the bootstrap goes
 
 ```
-seed        static nu, clang, lld, bsdtar, toybox, make …
+seed        static clang, lld, bsdtar, toybox, make …
 → stage0    musl + libc++ + jig: a C/C++ compiler for the build machine
 → stage1    glibc + libc++, cmake, then clang + lld for all targets: the set's compiler
 → stage2    compiler-rt + libc + libc++: cc-<platform>, one per target, built by that clang

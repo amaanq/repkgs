@@ -98,7 +98,7 @@ let
   };
   # On PATH after the toolchain and the build systems' tools. GNU userland precedes the seed because
   # build scripts in the wild need more than toybox. llvm brings the object tools, the seed bsdtar,
-  # nu, sh. `bootstrap` is what the base userland itself is built with (`bootstrapTools = true`).
+  # sh. `bootstrap` is what the base userland itself is built with (`bootstrapTools = true`).
   baseTools = {
     full =
       (with buildPkgs; [
@@ -128,7 +128,7 @@ let
     inherit lib;
     # `prebuilt = true` patches upstream ELFs with it (builder/implant.nu)
     relocTools = [ buildPkgs.formatelf ];
-    inherit (bootstrap) jib;
+    inherit (bootstrap) jib nu;
     inherit
       toolchain
       launch
@@ -287,7 +287,7 @@ in
   );
   inherit bootstrap buildSystems toolchain;
   bundle = import ./bundle.nix {
-    nu = bootstrap.seed;
+    nu = bootstrap.nu;
     tools = [ buildPkgs.formatelf ] ++ baseTools.bootstrap;
     tree = ../builder;
   };

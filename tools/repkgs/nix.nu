@@ -11,7 +11,7 @@ export def platform-arg [p]: nothing -> list<string> { if $p == null { [] } else
 export def seed-path [seed: any]: nothing -> any {
   if $seed == null { return null }
   let path = ($seed | path expand --strict)
-  if not ($path | path join bin/nu | path exists) { fail $"($path) has no bin/nu" }
+  if not ($path | path join bin/jig | path exists) { fail $"($path) has no bin/jig" }
   $path
 }
 

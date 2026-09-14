@@ -16,7 +16,7 @@ def main [--seed: path, --daemon: path, --runs: int = 3, ...packages: string]: n
   let directory = (capture mktemp [-d /tmp/repkgs-configure-benchmark.XXXXXXXX])
   let unit = $"repkgs-configure-($directory | path basename)"
   let socket = ($directory | path join socket)
-  let shell = ($seed_path | path join bin/nu)
+  let shell = (which nu | first | get path | path expand)
   {seed: $seed_path, daemon: $daemon_path, daemon_hash: (capture nix [hash file $daemon_path]), runs: $runs, packages: $targets, started: (date now)}
     | to json | save ($directory | path join environment.json)
   print $"Results and logs in ($directory)"
