@@ -18,8 +18,8 @@
       packages = each (
         system:
         let
-          bootstrap = import ./pkgs/se/seed/build.nix {
-            inherit nixpkgs system;
+          bootstrap = import ./pkgs/se/seed {
+            inherit system;
             buildSystem = system;
           };
         in

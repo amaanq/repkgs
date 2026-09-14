@@ -13,7 +13,7 @@ def main [
   let build_system = (^nix config show system | str trim)
   let built = ($systems | split row "," | each {|sys|
     print -e $"building seed nar for ($sys)"
-    let out = (^nix-build $"($here)/build.nix" -A nar --argstr system $sys --argstr buildSystem $build_system --no-out-link | str trim)
+    let out = (^nix-build $"($here)/default.nix" -A nar --argstr system $sys --argstr buildSystem $build_system --no-out-link | str trim)
     let file = (ls $out | where name =~ '\.nar\.xz$' | first | get name)
     { sys: $sys, file: $file, hash: (open --raw $"($out)/nar-hash" | str trim),
       version: ($file | path basename | parse "seed-{v}-{rest}" | first | get v) }

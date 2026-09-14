@@ -116,9 +116,11 @@ the kernel headers and libc.
 
 `bootstrap-jig` builds the Rust compiler wrapper with the same source compiler and static musl
 target. Normal bootstrap recipes copy this binary into the cache wrapper and each configured
-toolchain. Its dependencies use the nixpkgs revision pinned in `flake.lock`, including for
-non-flake builds. Editing jig rebuilds this small binary without restarting the compiler chain.
-Seed assembly includes it alongside Nu.
+toolchain. Its dependencies use the nixpkgs revision pinned in `pkgs/se/seed/nixpkgs.json`,
+including for non-flake builds and CI. Ordinary flake updates leave the bootstrap compiler
+chain alone. Update this pin deliberately when rebuilding that chain. Editing jig rebuilds
+the wrapper without restarting the compiler chain. Seed assembly includes jig, while Nushell
+is a separate dependency for packages that use Nu phases.
 
 Once assembled, the seed can be stored and reused for ordinary package builds. Rebuilding
 the seed and checking its inputs remains separate from rebuilding an application.

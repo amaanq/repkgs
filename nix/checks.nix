@@ -55,8 +55,8 @@ lib.mergeAttrsList (map forPlatform platforms)
         }
       } src && chmod -R u+w src && cd src && treefmt --ci --tree-root . && touch $out";
   inherit
-    (import ../pkgs/se/seed/build.nix {
-      inherit nixpkgs system;
+    (import ../pkgs/se/seed {
+      inherit system;
       buildSystem = system;
     })
     seed
