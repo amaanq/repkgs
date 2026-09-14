@@ -14,6 +14,11 @@ use std::{
    str::FromStr,
 };
 
+use serde::{
+   Deserialize,
+   Serialize,
+};
+
 use crate::{
    attrs::{
       Attrs,
@@ -31,6 +36,14 @@ mod make;
 mod meson;
 mod python;
 mod syslibs;
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(untagged)]
+pub enum Def {
+   Flag(bool),
+   Text(String),
+   Number(i64),
+}
 
 pub enum System {
    Make,

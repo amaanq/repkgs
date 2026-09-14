@@ -11,6 +11,7 @@ use std::{
    path::Path,
 };
 
+use serde::Serialize;
 use serde_json::{
    Value,
    json,
@@ -37,13 +38,16 @@ use crate::{
 
 const PRIVATE: [&str; 4] = ["JIG_LOG", "JIG_LOG_ARGS", "JIG_SOCK", "JIG_SLOT"];
 
-pub fn key(
+pub fn key<Extra>(
    kind: &str,
    scripts: &[String],
-   extra: Option<&Value>,
+   extra: Option<&Extra>,
    no_out: bool,
    socket: &Path,
-) -> io::Result<String> {
+) -> io::Result<String>
+where
+   Extra: Serialize,
+{
    let attrs = Attrs::load()?;
    let ctx = Ctx::load(&build_top()?)?;
    let mut environment: Vec<(String, String)> = vars()
@@ -93,7 +97,7 @@ pub fn key(
       "build": ctx.build,
       "environment": environment.iter().map(|pair| json!({ "name": pair.0, "value": pair.1 })).collect::<Vec<_>>(),
       "sites": sites,
-      "extra": extra.cloned().unwrap_or(Value::Null),
+      "extra": extra,
    });
    let text = masked_hashes(serde_json::to_vec(&record)?);
    Ok(format!("probe/v3/{kind}/{}", hex(&text)))

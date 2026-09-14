@@ -109,8 +109,58 @@ pub struct Spec {
    pub uses:     Vec<String>,
    #[serde(default)]
    pub sys:      Option<Vec<String>>,
+   #[serde(default)]
+   pub profile:  Profile,
    #[serde(flatten)]
    pub systems:  Map<String, Value>,
+}
+
+#[derive(Deserialize, Clone, Copy, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Profile {
+   #[default]
+   Release,
+   Debug,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Platform {
+   #[serde(default)]
+   pub cross:       bool,
+   #[serde(default)]
+   pub cpu:         String,
+   #[serde(default)]
+   pub os:          String,
+   #[serde(default)]
+   pub sysroot:     String,
+   #[serde(default)]
+   pub gnu_triple:  String,
+   #[serde(default)]
+   pub rust_triple: String,
+   #[serde(default)]
+   pub emulator:    Vec<String>,
+   #[serde(default)]
+   pub os_names:    OsNames,
+   #[serde(default)]
+   pub names:       Names,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OsNames {
+   #[serde(default)]
+   pub cmake:        String,
+   #[serde(default)]
+   pub meson:        String,
+   #[serde(default)]
+   pub meson_kernel: String,
+}
+
+#[derive(Deserialize, Default)]
+pub struct Names {
+   #[serde(default)]
+   pub meson: String,
 }
 
 #[derive(Deserialize)]
@@ -209,9 +259,20 @@ impl Ctx {
       normalize(&Path::new(&self.src).join(root))
    }
 
+   pub fn spec(&self) -> io::Result<Spec> {
+      Ok(serde_json::from_value(self.spec.clone())?)
+   }
+
+   pub fn platform(&self) -> io::Result<Platform> {
+      Ok(serde_json::from_value(self.platform.clone())?)
+   }
+
    pub fn test_jobs(&self) -> io::Result<usize> {
-      let spec: Spec = serde_json::from_value(self.spec.clone())?;
-      Ok(if spec.tests.parallel { self.njobs } else { 1 })
+      Ok(if self.spec()?.tests.parallel {
+         self.njobs
+      } else {
+         1
+      })
    }
 }
 

@@ -12,15 +12,13 @@ use std::{
    slice,
 };
 
-use serde::Deserialize;
-use serde_json::json;
+use serde::{
+   Deserialize,
+   Serialize,
+};
 
 use crate::{
-   attrs::{
-      Ctx,
-      flag,
-      text,
-   },
+   attrs::Ctx,
    files::write_file,
    header::site,
    probe,
@@ -53,6 +51,13 @@ struct Options {
    out_of_tree:      bool,
 }
 
+#[derive(Serialize)]
+struct Extra<'options> {
+   script: &'options str,
+   flags:  &'options [String],
+   host:   &'options [String],
+}
+
 pub fn workdir(ctx: &Ctx) -> io::Result<PathBuf> {
    let options: Options = ctx.options("autotools")?;
    Ok(if options.out_of_tree {
@@ -80,9 +85,10 @@ pub fn phase(ctx: &Ctx, verb: &str, socket: &Path) -> io::Result<()> {
 
 fn configure(ctx: &Ctx, options: &Options, socket: &Path) -> io::Result<()> {
    let script = format!("{}/{}", ctx.src, options.configure_script);
-   let host_flags: Vec<String> = if flag(&ctx.platform, "cross") {
+   let platform = ctx.platform()?;
+   let host_flags: Vec<String> = if platform.cross {
       vec![
-         format!("--host={}", text(&ctx.platform, "gnuTriple")),
+         format!("--host={}", platform.gnu_triple),
          "--build=x86_64-build-linux-gnu".to_owned(),
       ]
    } else {
@@ -92,11 +98,11 @@ fn configure(ctx: &Ctx, options: &Options, socket: &Path) -> io::Result<()> {
    let key = probe::key(
       "autotools",
       slice::from_ref(&script),
-      Some(&json!({
-         "script": options.configure_script,
-         "flags": options.flags,
-         "host": host_flags,
-      })),
+      Some(&Extra {
+         script: &options.configure_script,
+         flags:  &options.flags,
+         host:   &host_flags,
+      }),
       false,
       socket,
    )?;

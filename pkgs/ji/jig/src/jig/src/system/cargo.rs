@@ -19,18 +19,11 @@ use std::{
 };
 
 use serde::Deserialize;
-use serde_json::{
-   Map,
-   Value,
-};
 
 use crate::{
    attrs::{
       Attrs,
       Ctx,
-      Spec,
-      flag,
-      text,
    },
    exports::exports_of,
    files::write_file,
@@ -56,7 +49,7 @@ struct Options {
    #[serde(default)]
    deps:                Option<String>,
    #[serde(default)]
-   crate_patches:       Map<String, Value>,
+   crate_patches:       BTreeMap<String, Vec<String>>,
 }
 
 fn arguments(options: &Options) -> Vec<String> {
@@ -87,8 +80,8 @@ fn list(values: &[String]) -> String {
 
 /// pkg-config, the -sys crates' usual probe, refuses to answer under --target
 /// without ALLOW_CROSS. bindgen asks a clang executable for its include dirs,
-/// ours and not a bare one on PATH. rustflags go in the config because RUSTFLAGS
-/// from the environment would replace them
+/// ours and not a bare one on PATH. rustflags go in the config because
+/// RUSTFLAGS from the environment would replace them
 pub fn setup(ctx: &Ctx, attrs: &Attrs) -> io::Result<BTreeMap<String, String>> {
    let options: Options = ctx.options("cargo")?;
    let home = format!("{}/cargo-home", ctx.build);
@@ -108,9 +101,10 @@ pub fn setup(ctx: &Ctx, attrs: &Attrs) -> io::Result<BTreeMap<String, String>> {
       .find_map(|line| line.strip_prefix("host: "))
       .ok_or_else(|| io::Error::other("rustc -vV names no host"))?
       .to_owned();
-   let target = text(&ctx.platform, "rustTriple").to_owned();
+   let platform = ctx.platform()?;
+   let target = platform.rust_triple;
    env.insert("CARGO_BUILD_TARGET".to_owned(), target.clone());
-   let spec: Spec = serde_json::from_value(ctx.spec.clone())?;
+   let spec = ctx.spec()?;
    syslibs::check(attrs, &ctx.project_dir(&options.root), spec.sys.as_deref())?;
    let sys = syslibs::active(attrs, "cargo", &ctx.deps)?.env;
    env.insert("PKG_CONFIG_ALLOW_CROSS".to_owned(), "1".to_owned());
@@ -132,7 +126,7 @@ pub fn setup(ctx: &Ctx, attrs: &Attrs) -> io::Result<BTreeMap<String, String>> {
       ),
       "-Cforce-frame-pointers=yes".to_owned(),
    ];
-   if flag(&ctx.platform, "cross") {
+   if platform.cross {
       rustflags.push(format!(
          "--sysroot={}",
          cross_sysroot(ctx, attrs, &rustc, &target)?
@@ -221,7 +215,11 @@ fn cross_sysroot(ctx: &Ctx, attrs: &Attrs, rustc: &Path, target: &str) -> io::Re
 
 /// the vendor dir with the named crates copied out and patched, the rest
 /// symlinked.
-fn patched_vendor(ctx: &Ctx, deps: &str, patches: &Map<String, Value>) -> io::Result<String> {
+fn patched_vendor(
+   ctx: &Ctx,
+   deps: &str,
+   patches: &BTreeMap<String, Vec<String>>,
+) -> io::Result<String> {
    let dir = format!("{}/vendor", ctx.build);
    create_dir_all(&dir)?;
    let mut names: Vec<String> = read_dir(deps)?
@@ -255,12 +253,7 @@ fn patched_vendor(ctx: &Ctx, deps: &str, patches: &Map<String, Value>) -> io::Re
             Command::new("chmod").arg("-R").arg("u+w").arg(&placed),
             "chmod",
          )?;
-         for file in files
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-         {
+         for file in files {
             note("patch", &format!("{name}: {file}"));
             succeed(
                Command::new("patch")
@@ -328,7 +321,7 @@ fn install(ctx: &Ctx) -> io::Result<()> {
       var("CARGO_TARGET_DIR").unwrap_or_default(),
       var("CARGO_BUILD_TARGET").unwrap_or_default()
    );
-   let spec: Spec = serde_json::from_value(ctx.spec.clone())?;
+   let spec = ctx.spec()?;
    let mut names: Vec<String> = Vec::new();
    for entry in read_dir(&release)? {
       let found = entry?;

@@ -1,6 +1,12 @@
 use std::{
+   collections::BTreeMap,
    env::var,
-   fmt::Write as _,
+   fmt::{
+      Display,
+      Formatter,
+      Result as FormatResult,
+      Write as _,
+   },
    io,
    path::{
       Path,
@@ -13,21 +19,16 @@ use std::{
 };
 
 use serde::Deserialize;
-use serde_json::{
-   Map,
-   Value,
-   json,
-};
 
 use crate::{
    attrs::{
       Ctx,
-      flag,
-      text,
-      words,
+      Platform,
+      Profile,
    },
    files::write_file,
    system::{
+      Def,
       run,
       unknown,
    },
@@ -37,9 +38,40 @@ use crate::{
 #[serde(rename_all = "camelCase")]
 struct Options {
    root:       String,
-   defs:       Map<String, Value>,
+   defs:       BTreeMap<String, Def>,
    flags:      Vec<String>,
    skip_tests: Vec<String>,
+}
+
+enum Literal {
+   Text(String),
+   List(Vec<String>),
+   Flag(bool),
+   Int(u8),
+}
+
+impl Display for Literal {
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+      match *self {
+         Self::Text(ref text) => write!(f, "'{text}'"),
+         Self::List(ref items) => {
+            f.write_str("[")?;
+            for (index, item) in items.iter().enumerate() {
+               if index > 0 {
+                  f.write_str(", ")?;
+               }
+               write!(f, "'{item}'")?;
+            }
+            f.write_str("]")
+         },
+         Self::Flag(flag) => write!(f, "{flag}"),
+         Self::Int(int) => write!(f, "{int}"),
+      }
+   }
+}
+
+fn text(value: &str) -> Literal {
+   Literal::Text(value.to_owned())
 }
 
 pub fn workdir(ctx: &Ctx) -> PathBuf {
@@ -63,20 +95,7 @@ pub fn phase(ctx: &Ctx, verb: &str) -> io::Result<()> {
    }
 }
 
-fn literal(value: &Value) -> String {
-   match *value {
-      Value::String(ref text) => format!("'{text}'"),
-      Value::Array(ref items) => {
-         format!(
-            "[{}]",
-            items.iter().map(literal).collect::<Vec<_>>().join(", ")
-         )
-      },
-      Value::Null | Value::Bool(_) | Value::Number(_) | Value::Object(_) => value.to_string(),
-   }
-}
-
-fn machine_file(path: &str, sections: &[(&str, Vec<(&str, Value)>)]) -> io::Result<String> {
+fn machine_file(path: &str, sections: &[(&str, Vec<(&str, Literal)>)]) -> io::Result<String> {
    let mut contents = String::new();
    for (index, section) in sections.iter().enumerate() {
       if index > 0 {
@@ -84,7 +103,7 @@ fn machine_file(path: &str, sections: &[(&str, Vec<(&str, Value)>)]) -> io::Resu
       }
       writeln!(contents, "[{}]", section.0).map_err(io::Error::other)?;
       for entry in &section.1 {
-         writeln!(contents, "{} = {}", entry.0, literal(&entry.1)).map_err(io::Error::other)?;
+         writeln!(contents, "{} = {}", entry.0, entry.1).map_err(io::Error::other)?;
       }
    }
    write_file(Path::new(path), contents.trim_end().as_bytes(), None)?;
@@ -94,55 +113,57 @@ fn machine_file(path: &str, sections: &[(&str, Vec<(&str, Value)>)]) -> io::Resu
 /// the build machine's pkg-config finds nothing so build-time tools never link
 /// target libraries, and sizeof/alignment properties spare cc.sizeof() an exe
 /// wrapper.
-fn cross_files(ctx: &Ctx) -> io::Result<Vec<String>> {
-   let platform = &ctx.platform;
-   let os_names = platform.get("osNames").cloned().unwrap_or(Value::Null);
-   let names = platform.get("names").cloned().unwrap_or(Value::Null);
-   let emulator = words(platform, "emulator");
+fn cross_files(ctx: &Ctx, platform: &Platform) -> io::Result<Vec<String>> {
    let mut binaries = vec![
-      ("c", json!("cc")),
-      ("cpp", json!("c++")),
-      ("ar", json!("llvm-ar")),
-      ("nm", json!("llvm-nm")),
-      ("strip", json!("llvm-strip")),
-      ("objcopy", json!("llvm-objcopy")),
-      ("pkg-config", json!("pkg-config")),
-      ("cmake", json!("cmake")),
+      ("c", text("cc")),
+      ("cpp", text("c++")),
+      ("ar", text("llvm-ar")),
+      ("nm", text("llvm-nm")),
+      ("strip", text("llvm-strip")),
+      ("objcopy", text("llvm-objcopy")),
+      ("pkg-config", text("pkg-config")),
+      ("cmake", text("cmake")),
    ];
-   if !emulator.is_empty() {
-      binaries.push(("exe_wrapper", json!(emulator)));
+   if !platform.emulator.is_empty() {
+      binaries.push(("exe_wrapper", Literal::List(platform.emulator.clone())));
    }
    let host = machine_file(&format!("{}/cross.ini", ctx.build), &[
       ("binaries", binaries),
       ("properties", vec![
-         ("needs_exe_wrapper", json!(true)),
-         ("sizeof_void_p", json!(8_u8)),
-         ("sizeof_long", json!(8_u8)),
-         ("sizeof_size_t", json!(8_u8)),
-         ("alignment_void_p", json!(8_u8)),
-         ("alignment_double", json!(8_u8)),
-         ("sys_root", json!(var("PKGS_SYSROOT").unwrap_or_default())),
+         ("needs_exe_wrapper", Literal::Flag(true)),
+         ("sizeof_void_p", Literal::Int(8)),
+         ("sizeof_long", Literal::Int(8)),
+         ("sizeof_size_t", Literal::Int(8)),
+         ("alignment_void_p", Literal::Int(8)),
+         ("alignment_double", Literal::Int(8)),
+         (
+            "sys_root",
+            Literal::Text(var("PKGS_SYSROOT").unwrap_or_default()),
+         ),
          (
             "pkg_config_libdir",
-            json!(var("PKG_CONFIG_PATH").unwrap_or_default()),
+            Literal::Text(var("PKG_CONFIG_PATH").unwrap_or_default()),
          ),
       ]),
       ("host_machine", vec![
-         ("system", json!(text(&os_names, "meson"))),
-         ("kernel", json!(text(&os_names, "mesonKernel"))),
-         ("cpu_family", json!(text(&names, "meson"))),
-         ("cpu", json!(text(platform, "cpu"))),
-         ("endian", json!("little")),
+         ("system", text(&platform.os_names.meson)),
+         ("kernel", text(&platform.os_names.meson_kernel)),
+         ("cpu_family", text(&platform.names.meson)),
+         ("cpu", text(&platform.cpu)),
+         ("endian", text("little")),
       ]),
    ])?;
    let native = machine_file(&format!("{}/native.ini", ctx.build), &[("binaries", vec![
-      ("c", json!(var("CC_FOR_BUILD").unwrap_or_default())),
-      ("cpp", json!(var("CXX_FOR_BUILD").unwrap_or_default())),
-      ("ar", json!("llvm-ar")),
-      ("strip", json!("llvm-strip")),
+      ("c", Literal::Text(var("CC_FOR_BUILD").unwrap_or_default())),
+      (
+         "cpp",
+         Literal::Text(var("CXX_FOR_BUILD").unwrap_or_default()),
+      ),
+      ("ar", text("llvm-ar")),
+      ("strip", text("llvm-strip")),
       (
          "pkg-config",
-         json!(var("PKG_CONFIG_FOR_BUILD").unwrap_or_default()),
+         Literal::Text(var("PKG_CONFIG_FOR_BUILD").unwrap_or_default()),
       ),
    ])])?;
    Ok(vec![
@@ -153,33 +174,29 @@ fn cross_files(ctx: &Ctx) -> io::Result<Vec<String>> {
    ])
 }
 
-fn render(value: &Value) -> String {
-   match *value {
-      Value::String(ref text) => text.clone(),
-      Value::Null | Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_) => {
-         value.to_string()
-      },
+fn render(def: &Def) -> String {
+   match *def {
+      Def::Flag(flag) => flag.to_string(),
+      Def::Text(ref text) => text.clone(),
+      Def::Number(number) => number.to_string(),
    }
 }
 
 /// buildtype plain because cc brings -O2 -g itself, auto_features disabled so
 /// packages enable what they declare.
 fn configure(ctx: &Ctx, options: &Options) -> io::Result<()> {
-   let profile = ctx
-      .spec
-      .get("profile")
-      .and_then(Value::as_str)
-      .unwrap_or("release");
-   let mut defs: Vec<(String, Value)> = vec![
-      ("prefix".to_owned(), json!(ctx.out)),
-      ("libdir".to_owned(), json!("lib")),
-      (
-         "buildtype".to_owned(),
-         json!(if profile == "debug" { "debug" } else { "plain" }),
-      ),
-      ("default_library".to_owned(), json!("shared")),
-      ("wrap_mode".to_owned(), json!("nodownload")),
-      ("auto_features".to_owned(), json!("disabled")),
+   let platform = ctx.platform()?;
+   let buildtype = match ctx.spec()?.profile {
+      Profile::Debug => "debug",
+      Profile::Release => "plain",
+   };
+   let mut defs = vec![
+      ("prefix".to_owned(), Def::Text(ctx.out.clone())),
+      ("libdir".to_owned(), Def::Text("lib".to_owned())),
+      ("buildtype".to_owned(), Def::Text(buildtype.to_owned())),
+      ("default_library".to_owned(), Def::Text("shared".to_owned())),
+      ("wrap_mode".to_owned(), Def::Text("nodownload".to_owned())),
+      ("auto_features".to_owned(), Def::Text("disabled".to_owned())),
    ];
    for (name, value) in &options.defs {
       match defs.iter_mut().find(|entry| entry.0 == *name) {
@@ -194,8 +211,8 @@ fn configure(ctx: &Ctx, options: &Options) -> io::Result<()> {
          .to_string_lossy()
          .into_owned(),
    ];
-   if flag(&ctx.platform, "cross") {
-      args.extend(cross_files(ctx)?);
+   if platform.cross {
+      args.extend(cross_files(ctx, &platform)?);
    }
    args.extend(
       defs

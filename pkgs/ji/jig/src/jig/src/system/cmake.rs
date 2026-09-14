@@ -1,4 +1,5 @@
 use std::{
+   collections::BTreeMap,
    io,
    path::{
       Path,
@@ -6,23 +7,20 @@ use std::{
    },
 };
 
-use serde::Deserialize;
-use serde_json::{
-   Map,
-   Value,
-   json,
+use serde::{
+   Deserialize,
+   Serialize,
 };
 
 use crate::{
    attrs::{
       Ctx,
-      flag,
-      text,
-      words,
+      Profile,
    },
    files::write_file,
    probe,
    system::{
+      Def,
       run,
       unknown,
    },
@@ -36,10 +34,17 @@ use crate::{
 #[serde(rename_all = "camelCase")]
 struct Options {
    root:       String,
-   defs:       Map<String, Value>,
+   defs:       BTreeMap<String, Def>,
    generator:  String,
    flags:      Vec<String>,
    skip_tests: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct Extra<'options> {
+   defs:      BTreeMap<&'options str, &'options Def>,
+   generator: &'options str,
+   flags:     &'options [String],
 }
 
 pub fn workdir(ctx: &Ctx) -> PathBuf {
@@ -78,16 +83,16 @@ pub fn phase(ctx: &Ctx, verb: &str, socket: &Path) -> io::Result<()> {
    }
 }
 
-fn render(value: &Value) -> String {
-   match *value {
-      Value::Bool(true) => "ON".to_owned(),
-      Value::Bool(false) => "OFF".to_owned(),
-      Value::String(ref text) => text.clone(),
-      Value::Null | Value::Number(_) | Value::Array(_) | Value::Object(_) => value.to_string(),
+fn render(def: &Def) -> String {
+   match *def {
+      Def::Flag(true) => "ON".to_owned(),
+      Def::Flag(false) => "OFF".to_owned(),
+      Def::Text(ref text) => text.clone(),
+      Def::Number(number) => number.to_string(),
    }
 }
 
-fn upsert(defs: &mut Vec<(String, Value)>, name: &str, value: Value) {
+fn upsert(defs: &mut Vec<(String, Def)>, name: &str, value: Def) {
    match defs.iter_mut().find(|entry| entry.0 == name) {
       Some(entry) => entry.1 = value,
       None => defs.push((name.to_owned(), value)),
@@ -96,75 +101,72 @@ fn upsert(defs: &mut Vec<(String, Value)>, name: &str, value: Value) {
 
 /// the sysroot's include/ and lib/ for find_path/find_library (an Apple SDK has
 /// them under usr/).
-fn defaults(ctx: &Ctx, options: &Options) -> Vec<(String, Value)> {
-   let platform = &ctx.platform;
-   let sysroot = text(platform, "sysroot");
-   let profile = ctx
-      .spec
-      .get("profile")
-      .and_then(Value::as_str)
-      .unwrap_or("release");
-   let mut defs: Vec<(String, Value)> = vec![
-      ("CMAKE_INSTALL_PREFIX".to_owned(), json!(ctx.out)),
+fn defaults(ctx: &Ctx, options: &Options) -> io::Result<Vec<(String, Def)>> {
+   let platform = ctx.platform()?;
+   let build_type = match ctx.spec()?.profile {
+      Profile::Debug => "Debug",
+      Profile::Release => "Release",
+   };
+   let mut defs = vec![
+      (
+         "CMAKE_INSTALL_PREFIX".to_owned(),
+         Def::Text(ctx.out.clone()),
+      ),
       (
          "CMAKE_BUILD_TYPE".to_owned(),
-         json!(if profile == "debug" {
-            "Debug"
-         } else {
-            "Release"
-         }),
+         Def::Text(build_type.to_owned()),
       ),
-      ("CMAKE_INSTALL_LIBDIR".to_owned(), json!("lib")),
+      (
+         "CMAKE_INSTALL_LIBDIR".to_owned(),
+         Def::Text("lib".to_owned()),
+      ),
       (
          "CMAKE_PREFIX_PATH".to_owned(),
-         json!(
+         Def::Text(
             ctx.deps
                .iter()
                .map(|dep| dep.root.as_str())
                .collect::<Vec<_>>()
-               .join(";")
+               .join(";"),
          ),
       ),
-      ("CMAKE_SYSTEM_PREFIX_PATH".to_owned(), json!(sysroot)),
-      ("BUILD_SHARED_LIBS".to_owned(), json!(true)),
-      ("BUILD_TESTING".to_owned(), json!(ctx.tests_run)),
+      (
+         "CMAKE_SYSTEM_PREFIX_PATH".to_owned(),
+         Def::Text(platform.sysroot.clone()),
+      ),
+      ("BUILD_SHARED_LIBS".to_owned(), Def::Flag(true)),
+      ("BUILD_TESTING".to_owned(), Def::Flag(ctx.tests_run)),
    ];
-   if flag(platform, "cross") {
+   if platform.cross {
       upsert(
          &mut defs,
          "CMAKE_SYSTEM_NAME",
-         json!(
-            platform
-               .get("osNames")
-               .map(|names| text(names, "cmake"))
-               .unwrap_or_default()
-         ),
+         Def::Text(platform.os_names.cmake),
       );
+      upsert(&mut defs, "CMAKE_SYSTEM_PROCESSOR", Def::Text(platform.cpu));
+   }
+   if platform.os == "macos" {
       upsert(
          &mut defs,
-         "CMAKE_SYSTEM_PROCESSOR",
-         json!(text(platform, "cpu")),
+         "CMAKE_OSX_SYSROOT",
+         Def::Text(platform.sysroot.clone()),
       );
    }
-   if text(platform, "os") == "macos" {
-      upsert(&mut defs, "CMAKE_OSX_SYSROOT", json!(sysroot));
-   }
-   let emulator = words(platform, "emulator");
-   if !emulator.is_empty() {
+   if !platform.emulator.is_empty() {
       upsert(
          &mut defs,
          "CMAKE_CROSSCOMPILING_EMULATOR",
-         json!(emulator.join(";")),
+         Def::Text(platform.emulator.join(";")),
       );
    }
    for (name, value) in &options.defs {
       upsert(&mut defs, name, value.clone());
    }
-   defs
+   Ok(defs)
 }
 
 fn configure(ctx: &Ctx, options: &Options, socket: &Path) -> io::Result<()> {
-   let defs = defaults(ctx, options);
+   let defs = defaults(ctx, options)?;
    let srcdir = ctx.project_dir(&options.root);
    let scripts: Vec<String> = walk(&srcdir)?
       .into_iter()
@@ -177,18 +179,17 @@ fn configure(ctx: &Ctx, options: &Options, socket: &Path) -> io::Result<()> {
       })
       .map(|entry| entry.path)
       .collect();
-   let rendered: Map<String, Value> = defs
-      .iter()
-      .map(|entry| (entry.0.clone(), entry.1.clone()))
-      .collect();
    let key = probe::key(
       "cmake",
       &scripts,
-      Some(&json!({
-         "defs": rendered,
-         "generator": options.generator,
-         "flags": options.flags,
-      })),
+      Some(&Extra {
+         defs:      defs
+            .iter()
+            .map(|entry| (entry.0.as_str(), &entry.1))
+            .collect(),
+         generator: &options.generator,
+         flags:     &options.flags,
+      }),
       false,
       socket,
    )?;

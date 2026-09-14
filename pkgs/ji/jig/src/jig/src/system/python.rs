@@ -26,14 +26,15 @@ use std::{
    slice,
 };
 
-use serde::Deserialize;
-use serde_json::json;
+use serde::{
+   Deserialize,
+   Serialize,
+};
 
 use crate::{
    attrs::{
       Attrs,
       Ctx,
-      Spec,
    },
    exports::closure,
    files::write_file,
@@ -53,6 +54,11 @@ struct Options {
    #[serde(default)]
    module:  Option<String>,
    pytest:  bool,
+}
+
+#[derive(Serialize)]
+struct Propagate<'deps> {
+   propagate: &'deps [String],
 }
 
 pub fn workdir(ctx: &Ctx) -> io::Result<PathBuf> {
@@ -81,8 +87,8 @@ fn site_packages(roots: &[String]) -> io::Result<Vec<String>> {
    Ok(found)
 }
 
-// a PEP 517 backend imports its own dependencies, so the python tools on PATH
-// bring what they propagate
+/// a PEP 517 backend imports its own dependencies, so the python tools on PATH
+/// bring what they propagate.
 fn tool_site_packages() -> io::Result<Vec<String>> {
    let mut roots = Vec::new();
    for directory in var("PATH").unwrap_or_default().split(':') {
@@ -99,8 +105,8 @@ fn tool_site_packages() -> io::Result<Vec<String>> {
    site_packages(&closure_roots)
 }
 
-// the source tree comes last so a backend can build itself (flit_core,
-// setuptools) before any of the stack exists
+/// the source tree comes last so a backend can build itself before any of the
+/// stack exists.
 pub fn setup(ctx: &Ctx) -> io::Result<BTreeMap<String, String>> {
    let options: Options = ctx.options("python")?;
    let root = ctx.project_dir(&options.root);
@@ -140,10 +146,7 @@ pub fn phase(ctx: &Ctx, verb: &str, attrs: &Attrs) -> io::Result<()> {
    }
 }
 
-// maturin's PEP 517 backend only shells out to `maturin`, so call it directly.
-// auditwheel=skip because the wheel is installed into this closure, not
-// shipped, and bundling our libunwind is wrong. flit_core builds wheels
-// stand-alone, which bootstraps the stack
+/// maturin's PEP 517 backend only shells out to `maturin`, so call it directly.
 fn build(ctx: &Ctx, options: &Options) -> io::Result<()> {
    let dist = format!("{}/dist", ctx.build);
    match options.backend.as_str() {
@@ -198,10 +201,10 @@ fn build(ctx: &Ctx, options: &Options) -> io::Result<()> {
    }
 }
 
-// entry-point scripts run under another package's interpreter and get re-exec'd
-// by path (meson --internal), so no env var will do, each script puts our and
-// our dependencies' site-packages on sys.path itself, relative to its own
-// location
+/// entry-point scripts run under another package's interpreter and get
+/// re-exec'd by path (meson --internal), so no env var will do, each script
+/// puts our and our dependencies' site-packages on sys.path itself, relative to
+/// its own location.
 fn install(ctx: &Ctx, attrs: &Attrs) -> io::Result<()> {
    let dist = format!("{}/dist", ctx.build);
    let mut wheels: Vec<PathBuf> = read_dir(&dist)?
@@ -284,7 +287,9 @@ fn install(ctx: &Ctx, attrs: &Attrs) -> io::Result<()> {
    boot_scripts(&Path::new(&ctx.out).join("bin"), &boot)?;
    // whoever depends on or runs this module gets our dependencies'
    // site-packages too, finish merges this into the final exports.json
-   let mut rendered = serde_json::to_vec_pretty(&json!({ "propagate": attrs.dependencies }))?;
+   let mut rendered = serde_json::to_vec_pretty(&Propagate {
+      propagate: &attrs.dependencies,
+   })?;
    rendered.push(b'\n');
    write_file(&Path::new(&ctx.out).join("exports.json"), &rendered, None)
 }
@@ -321,9 +326,9 @@ fn boot_scripts(bin: &Path, boot: &str) -> io::Result<()> {
    Ok(())
 }
 
-// runs after install, imports from $out, not from the source tree
+/// runs after install, imports from $out, not from the source tree.
 fn test(ctx: &Ctx, options: &Options) -> io::Result<()> {
-   let spec: Spec = serde_json::from_value(ctx.spec.clone())?;
+   let spec = ctx.spec()?;
    let module = options
       .module
       .clone()
