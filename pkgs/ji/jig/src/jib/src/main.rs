@@ -2,6 +2,7 @@ mod attrs;
 mod build;
 mod cli;
 mod debug;
+mod dev;
 mod env;
 mod exports;
 mod finish;
@@ -81,6 +82,7 @@ fn probe_mode(operation: ProbeOperation, socket: &Path) -> Result<i32> {
 fn run(mode: Mode, socket: &Path) -> Result<i32> {
    match mode {
       Mode::Build { tests, from_tree } => build::run(tests, from_tree.as_deref(), socket)?,
+      Mode::Dev { operation } => dev::run(operation, socket)?,
       Mode::Shebangs { directory, undo } => tree::shebangs(&directory, undo)?,
       Mode::Exports { roots } => exports::print(&roots, false)?,
       Mode::Deps { roots } => exports::print(&roots, true)?,

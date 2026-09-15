@@ -19,13 +19,20 @@ use serde_json::Value;
 use crate::{
    attrs::{
       Attrs,
+      Ctx,
       Kind,
       build_top,
    },
    finish,
-   prepare::prepare,
+   prepare::{
+      Source,
+      prepare,
+   },
    system::{
-      command::export,
+      command::{
+         Env,
+         export,
+      },
       dispatch,
    },
 };
@@ -85,6 +92,19 @@ fn nu_phase(attrs: &Attrs, index: usize, name: &str, body: &str, top: &str) -> i
    let handed: BTreeMap<String, String> =
       serde_json::from_str(&read_to_string(format!("{top}/phase-env.json"))?)?;
    let current: BTreeMap<String, String> = vars().collect();
+   let mut removed = Env::default();
+   for key in current.keys() {
+      if !handed.contains_key(key)
+         && !key.starts_with("NU_")
+         && !matches!(
+            key.as_str(),
+            "PWD" | "OLDPWD" | "CURRENT_FILE" | "FILE_PWD" | "PROCESS_PATH"
+         )
+      {
+         removed.unset(key);
+      }
+   }
+   removed.apply();
    for (key, value) in &handed {
       if current.get(key) != Some(value) {
          export(key, value);
@@ -98,51 +118,67 @@ fn nu_phase(attrs: &Attrs, index: usize, name: &str, body: &str, top: &str) -> i
 pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<()> {
    let attrs = Attrs::load()?;
    let spec = attrs.spec()?;
-   let top = build_top()?;
-   let bins: Vec<String> = attrs
-      .build_dependencies
-      .iter()
-      .map(|dep| format!("{dep}/bin"))
-      .collect();
-   export("PATH", &bins.join(":"));
-   let prepared = prepare(from_tree)?;
-   apply(&prepared.env);
-   set_current_dir(&prepared.cwd)?;
-   let ctx = prepared.ctx;
-   for system in &attrs.plan.setups {
-      note("setup", system);
-      dispatch::setup(system, &ctx, &attrs, socket)?.apply();
-   }
-   let workdir = match attrs.plan.setups.first() {
-      Some(system) => dispatch::workdir(system, &ctx)?,
-      None => Path::new(&ctx.src).to_path_buf(),
-   };
+   let ctx = setup(
+      &attrs,
+      from_tree.map_or(Source::Unpack, Source::Archive),
+      socket,
+   )?;
    for (index, step) in attrs.plan.phases.iter().enumerate() {
       let wanted = if tests {
          step.test
       } else {
          !step.test || (spec.tests.run && !attrs.plan.separate && ctx.tests_run)
       };
-      if !wanted {
-         continue;
-      }
-      match step.kind {
-         Kind::System {
-            ref system,
-            ref verb,
-         } => {
-            note("phase", &step.name);
-            dispatch::phase(system, verb, &ctx, &attrs, socket)?;
-         },
-         Kind::Nu { ref body } => {
-            set_current_dir(&workdir)?;
-            nu_phase(&attrs, index, &step.name, body, &top)?;
-         },
+      if wanted {
+         phase(&attrs, &ctx, index, socket)?;
       }
    }
    if tests {
       finish::tests()
    } else {
       finish::run(attrs.plan.separate)
+   }
+}
+
+pub fn setup(attrs: &Attrs, source: Source<'_>, socket: &Path) -> io::Result<Ctx> {
+   let bins: Vec<String> = attrs
+      .build_dependencies
+      .iter()
+      .map(|dep| format!("{dep}/bin"))
+      .collect();
+   export("PATH", &bins.join(":"));
+   let prepared = prepare(source)?;
+   apply(&prepared.env);
+   set_current_dir(&prepared.cwd)?;
+   let ctx = prepared.ctx;
+   for system in &attrs.plan.setups {
+      note("setup", system);
+      dispatch::setup(system, &ctx, attrs, socket)?.apply();
+   }
+   set_current_dir(match attrs.plan.setups.first() {
+      Some(system) => dispatch::workdir(system, &ctx)?,
+      None => Path::new(&ctx.src).to_path_buf(),
+   })?;
+   Ok(ctx)
+}
+
+pub fn phase(attrs: &Attrs, ctx: &Ctx, index: usize, socket: &Path) -> io::Result<()> {
+   let step = &attrs.plan.phases[index];
+   let workdir = match attrs.plan.setups.first() {
+      Some(system) => dispatch::workdir(system, ctx)?,
+      None => Path::new(&ctx.src).to_path_buf(),
+   };
+   match step.kind {
+      Kind::System {
+         ref system,
+         ref verb,
+      } => {
+         note("phase", &step.name);
+         dispatch::phase(system, verb, ctx, attrs, socket)
+      },
+      Kind::Nu { ref body } => {
+         set_current_dir(&workdir)?;
+         nu_phase(attrs, index, &step.name, body, &build_top()?)
+      },
    }
 }

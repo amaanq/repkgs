@@ -23,6 +23,7 @@ use std::{
 };
 
 use jig::{
+   process::socket,
    store::normalize,
    tree::{
       note,
@@ -55,22 +56,28 @@ pub struct Prepared {
    pub ctx: Ctx,
 }
 
+#[derive(Clone, Copy)]
+pub enum Source<'path> {
+   Unpack,
+   Archive(&'path Path),
+   Existing,
+}
+
 pub fn run(from_tree: Option<&Path>) -> io::Result<()> {
-   let prepared = prepare(from_tree)?;
+   let prepared = prepare(from_tree.map_or(Source::Unpack, Source::Archive))?;
    let mut stdout = io::stdout().lock();
    serde_json::to_writer(&mut stdout, &prepared)?;
    writeln!(stdout)?;
    Ok(())
 }
 
-pub fn prepare(from_tree: Option<&Path>) -> io::Result<Prepared> {
+pub fn prepare(source: Source<'_>) -> io::Result<Prepared> {
    let attrs = Attrs::load()?;
    let spec = attrs.spec()?;
    let top = build_top()?;
-   let store = var("NIX_STORE").map_err(|_unset| io::Error::other("NIX_STORE is not set"))?;
-   let out = match from_tree {
-      None => format!("{top}/prefix"),
-      Some(_) => attrs.package.clone(),
+   let out = match source {
+      Source::Unpack | Source::Existing => format!("{top}/prefix"),
+      Source::Archive(_) => attrs.package.clone(),
    };
    let njobs = match var("NIX_BUILD_CORES")
       .ok()
@@ -81,11 +88,7 @@ pub fn prepare(from_tree: Option<&Path>) -> io::Result<Prepared> {
       None => available_parallelism()?.get(),
    };
    let deps = closure(&attrs.dependencies)?;
-   let cache = Path::new(&store)
-      .parent()
-      .unwrap_or_else(|| Path::new("/"))
-      .join("var/nix/jigd/socket")
-      .exists();
+   let cache = socket().try_exists()?;
    let mut env = compute(&attrs, &spec, &deps, Path::new(&out), cache)?;
    env.insert(
       "PKGS_RESULT".to_owned(),
@@ -94,22 +97,29 @@ pub fn prepare(from_tree: Option<&Path>) -> io::Result<Prepared> {
    let platform = resolve_platform(&attrs.platform, &top, &mut env)?;
    let src = format!("{top}/source");
    let build = format!("{top}/build");
+   if matches!(source, Source::Existing) && !Path::new(&src).is_dir() {
+      return Err(io::Error::other(
+         "the development source directory is missing",
+      ));
+   }
    create_dir_all(&src)?;
    create_dir_all(&build)?;
-   match from_tree {
-      None => unpack(&attrs, &src)?,
-      Some(tree) => restore(tree, &top)?,
+   match source {
+      Source::Unpack => unpack(&attrs, &src)?,
+      Source::Archive(tree) => restore(tree, &top)?,
+      Source::Existing => {},
    }
    let cwd = normalize(&Path::new(&src).join(spec.root.as_deref().unwrap_or(".")));
    let cross = flag(&platform, "cross");
    let transparent = flag(&platform, "transparent");
-   if from_tree.is_none() && spec.tests.run && cross && !transparent {
+   let restored = matches!(source, Source::Archive(_));
+   if !restored && spec.tests.run && cross && !transparent {
       note(
          "untested",
          &format!("{}: no binfmt on this builder", text(&platform, "name")),
       );
    }
-   let tests_run = from_tree.is_some() || (spec.tests.run && (!cross || transparent));
+   let tests_run = restored || (spec.tests.run && (!cross || transparent));
    let roots = env
       .get("JIG_STORE_ROOTS")
       .and_then(Value::as_str)

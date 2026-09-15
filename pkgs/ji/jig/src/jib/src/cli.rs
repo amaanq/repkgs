@@ -15,6 +15,10 @@ pub enum Mode {
       #[pound(long)]
       from_tree: Option<PathBuf>,
    },
+   Dev {
+      #[pound(subcommand)]
+      operation: DevOperation,
+   },
    /// point #!/usr/bin/env scripts at the build's env, or back with --undo.
    Shebangs {
       directory: PathBuf,
@@ -91,6 +95,13 @@ pub enum Mode {
       ldso:   bool,
       deps:   Vec<String>,
    },
+}
+
+#[derive(Parse)]
+pub enum DevOperation {
+   Export,
+   Prepare,
+   Phase { name: String },
 }
 
 #[derive(Parse)]
