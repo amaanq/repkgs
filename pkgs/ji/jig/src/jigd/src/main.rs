@@ -3,6 +3,7 @@ mod server;
 mod slots;
 mod store;
 
+#[cfg(target_os = "linux")] use std::fs::read_to_string;
 use std::{
    env::var_os,
    fmt::Arguments,
@@ -63,6 +64,11 @@ use rustix::{
       poll,
    },
    io::Errno,
+};
+#[cfg(target_os = "linux")]
+use rustix::{
+   net::sockopt::socket_peercred,
+   process::getuid,
 };
 use signal_hook::{
    consts::{
@@ -209,7 +215,10 @@ fn main() -> Result<()> {
       socket.path.display(),
       store.stats()
    ));
-   let daemon = Arc::new(Daemon::new(store, limit));
+   let store_dir = var_os("NIX_STORE_DIR")
+      .filter(|path| !path.is_empty())
+      .map_or_else(|| PathBuf::from("/nix/store"), PathBuf::from);
+   let daemon = Arc::new(Daemon::new(store, limit, &store_dir)?);
    let mut workers = Vec::<(JoinHandle<()>, UnixStream)>::new();
    let result = serve(&socket.listener, &daemon, &stopped, &mut workers);
    daemon.stop();
@@ -283,6 +292,16 @@ fn serve(
    stopped: &AtomicBool,
    workers: &mut Vec<(JoinHandle<()>, UnixStream)>,
 ) -> io::Result<()> {
+   #[cfg(target_os = "linux")]
+   let nixbld = read_to_string("/etc/group")?
+      .lines()
+      .find_map(|line| {
+         let entry = line.strip_prefix("nixbld:")?;
+         entry.split(':').nth(1)
+      })
+      .map(str::parse::<u32>)
+      .transpose()
+      .map_err(io::Error::other)?;
    while !stopped.load(Ordering::Relaxed) {
       let mut position = 0;
       while position < workers.len() {
@@ -310,6 +329,10 @@ fn serve(
          Err(error) if error.kind() == io::ErrorKind::WouldBlock => continue,
          Err(error) => return Err(error),
       };
+      #[cfg(target_os = "linux")]
+      if !allowed_peer(&stream, nixbld) {
+         continue;
+      }
       let control = stream.try_clone()?;
       let mut connection = Connection::new(Arc::clone(daemon), stream)?;
       let worker = Builder::new().spawn(move || {
@@ -328,6 +351,18 @@ fn serve(
       workers.push((worker, control));
    }
    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn allowed_peer(stream: &UnixStream, nixbld: Option<u32>) -> bool {
+   let Ok(peer) = socket_peercred(stream) else {
+      return false;
+   };
+   let uid = peer.uid.as_raw();
+   peer.uid == getuid()
+      || uid == 0
+      || nixbld == Some(peer.gid.as_raw())
+      || (872_415_232..880_803_840).contains(&uid)
 }
 
 #[cfg(test)]

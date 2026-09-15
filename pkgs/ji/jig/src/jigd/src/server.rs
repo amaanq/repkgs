@@ -4,10 +4,10 @@ use std::{
       self,
       BufReader,
       BufWriter,
-      Read as _,
       Write as _,
    },
    os::unix::net::UnixStream,
+   path::Path,
    sync::{
       Arc,
       atomic::{
@@ -46,15 +46,15 @@ impl Daemon {
       self.store.close()
    }
 
-   pub fn new(store: Store, limit: usize) -> Self {
-      Self {
+   pub fn new(store: Store, limit: usize, store_dir: &Path) -> io::Result<Self> {
+      Ok(Self {
          store,
          slots: Slots::new(limit),
-         identities: Identities::default(),
+         identities: Identities::new(store_dir)?,
          gets: AtomicU64::new(0),
          hits: AtomicU64::new(0),
          puts: AtomicU64::new(0),
-      }
+      })
    }
 }
 
@@ -98,11 +98,7 @@ impl Connection {
                   .write_all(if exists { b"1\n" } else { b"0\n" })?;
             },
             Request::Put { key, length } => {
-               let mut value = Vec::new();
-               value.try_reserve_exact(length).map_err(io::Error::other)?;
-               value.resize(length, 0);
-               self.reader.read_exact(&mut value)?;
-               self.daemon.store.put(&key, &value)?;
+               self.daemon.store.put(&key, &mut self.reader, length)?;
                self.daemon.puts.fetch_add(1, Ordering::Relaxed);
                self.writer.write_all(b"OK\n")?;
             },
@@ -195,14 +191,18 @@ mod tests {
       let directory = TestDirectory::new();
       let header = directory.join("header.h");
       write(&header, b"abc").expect("write header");
-      let daemon = Arc::new(Daemon::new(
-         Store::open(vec![Tier {
-            directory: directory.join("packs"),
-            budget:    1 << 30,
-         }])
-         .expect("open store"),
-         1,
-      ));
+      let daemon = Arc::new(
+         Daemon::new(
+            Store::open(vec![Tier {
+               directory: directory.join("packs"),
+               budget:    1 << 30,
+            }])
+            .expect("open store"),
+            1,
+            &directory,
+         )
+         .expect("create daemon"),
+      );
       let (mut client, server) = UnixStream::pair().expect("socket pair");
       client
          .set_read_timeout(Some(Duration::from_secs(5)))

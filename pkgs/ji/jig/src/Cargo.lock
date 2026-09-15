@@ -319,6 +319,7 @@ dependencies = [
  "pound",
  "rustix",
  "signal-hook",
+ "tempfile",
  "wire",
 ]
 

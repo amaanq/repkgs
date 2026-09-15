@@ -1,9 +1,22 @@
 use std::{
    collections::HashMap,
-   fs::File,
+   fs::{
+      File,
+      canonicalize,
+   },
    io,
    os::unix::fs::MetadataExt as _,
+   path::{
+      Component,
+      Path,
+      PathBuf,
+   },
    sync::RwLock,
+};
+#[cfg(target_os = "linux")]
+use std::{
+   fs::read_link,
+   os::fd::AsRawFd as _,
 };
 
 use wire::identity::Identity;
@@ -22,14 +35,48 @@ struct Entry {
    identity: Identity,
 }
 
-#[derive(Default)]
 pub struct Identities {
-   known: RwLock<HashMap<String, Entry>>,
+   store:      PathBuf,
+   real_store: PathBuf,
+   known:      RwLock<HashMap<String, Entry>>,
 }
 
 impl Identities {
+   pub fn new(store: &Path) -> io::Result<Self> {
+      Ok(Self {
+         store:      store.to_path_buf(),
+         real_store: canonicalize(store)?,
+         known:      RwLock::new(HashMap::new()),
+      })
+   }
+
    pub fn of(&self, path: &str) -> io::Result<Identity> {
-      let mut file = File::open(path)?;
+      let requested = Path::new(path);
+      if !requested.starts_with(&self.store)
+         || requested
+            .components()
+            .any(|part| matches!(part, Component::ParentDir | Component::CurDir))
+      {
+         return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "identity path is outside the store",
+         ));
+      }
+      let real = canonicalize(requested)?;
+      if !real.starts_with(&self.real_store) {
+         return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "identity symlink leaves the store",
+         ));
+      }
+      let mut file = File::open(real)?;
+      #[cfg(target_os = "linux")]
+      if !read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))?.starts_with(&self.real_store) {
+         return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "opened identity file is outside the store",
+         ));
+      }
       let metadata = file.metadata()?;
       if !metadata.is_file() {
          return Err(io::Error::other("identity requires a regular file"));
@@ -90,7 +137,7 @@ mod tests {
       let path = directory.join("header.h");
       let filename = path.to_str().expect("UTF-8 test path");
       write(&path, b"abc").expect("write header");
-      let identities = Identities::default();
+      let identities = Identities::new(&directory).expect("identity store");
       let expected = "C:6437b3ac38465133ffb63b75273a8db5";
       assert_eq!(
          identities.of(filename).expect("hash header").to_string(),

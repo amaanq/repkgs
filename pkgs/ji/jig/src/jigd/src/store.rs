@@ -19,8 +19,10 @@ use std::{
       self,
       BufReader,
       BufWriter,
+      Cursor,
       Read,
-      Write as _,
+      Seek as _,
+      Write,
    },
    os::unix::{
       fs::FileExt as _,
@@ -61,6 +63,7 @@ use rustix::{
    },
    io::Errno,
 };
+use tempfile::tempfile_in;
 use wire::{
    MAX_KEY,
    MAX_OBJECT,
@@ -74,6 +77,7 @@ use crate::{
 
 const PACK_LIMIT: u64 = 256 << 20;
 const HEADER_SIZE: u64 = 8;
+const SPOOL_MIN: u64 = 4 << 20;
 const TOUCH_EVERY: Duration = Duration::from_secs(60);
 
 pub struct Tier {
@@ -161,6 +165,7 @@ struct State {
    packs:  BTreeMap<u64, Pack>,
    active: u64,
    totals: Vec<u64>,
+   closed: bool,
 }
 
 impl State {
@@ -169,6 +174,11 @@ impl State {
       reason = "indexed locations must refer to loaded packs"
    )]
    fn insert(&mut self, key: String, location: Location) {
+      if let Some(previous) = self.index.get(&key)
+         && previous.pack > location.pack
+      {
+         return;
+      }
       self
          .packs
          .get_mut(&location.pack)
@@ -282,16 +292,18 @@ impl Shared {
                      .try_into()
                      .map_err(|_error| io::Error::other("offset slice"))?,
                );
-               let offset = record_offset
-                  .checked_add(HEADER_SIZE + u64::from(key_length))
-                  .ok_or_else(|| io::Error::other("cache offset overflow"))?;
+               let key = read_key(&mut reader, key_length)?;
+               let Some(offset) = record_offset.checked_add(HEADER_SIZE + u64::from(key_length))
+               else {
+                  continue;
+               };
                if offset
                   .checked_add(u64::from(length))
                   .is_none_or(|end| end > size)
                {
-                  return Err(io::Error::other("cache hint exceeds pack size"));
+                  continue;
                }
-               records.push((read_key(&mut reader, key_length)?, offset, length));
+               records.push((key, offset, length));
             }
             state.packs.insert(identifier, pack);
             for (key, offset, length) in records {
@@ -529,6 +541,23 @@ impl Shared {
    }
 }
 
+struct Positioned<'file> {
+   file:   &'file File,
+   offset: u64,
+}
+
+impl Write for Positioned<'_> {
+   fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+      let written = self.file.write_at(buf, self.offset)?;
+      self.offset += u64::try_from(written).map_err(io::Error::other)?;
+      Ok(written)
+   }
+
+   fn flush(&mut self) -> io::Result<()> {
+      Ok(())
+   }
+}
+
 impl Store {
    pub fn open(tiers: Vec<Tier>) -> io::Result<Self> {
       let mut locks = Vec::new();
@@ -640,13 +669,38 @@ impl Store {
       clippy::expect_used,
       reason = "the active pack must exist after rotation"
    )]
-   pub fn put(&self, key: &str, value: &[u8]) -> io::Result<()> {
+   pub fn put<Reader>(&self, key: &str, body: &mut Reader, length: usize) -> io::Result<()>
+   where
+      Reader: Read,
+   {
       let key_length = u32::try_from(key.len()).map_err(io::Error::other)?;
-      let length = u32::try_from(value.len()).map_err(io::Error::other)?;
-      check_lengths(key_length, length)?;
+      let value_length = u32::try_from(length).map_err(io::Error::other)?;
+      check_lengths(key_length, value_length)?;
       check_key(key)?;
-      let record_size = HEADER_SIZE + u64::from(key_length) + u64::from(length);
+      let size = u64::from(value_length);
+      let record_size = HEADER_SIZE + u64::from(key_length) + size;
+      let staged: Box<dyn Read> = if size < SPOOL_MIN {
+         let mut buffer = Vec::new();
+         buffer.try_reserve_exact(length).map_err(io::Error::other)?;
+         buffer.resize(length, 0);
+         body.read_exact(&mut buffer)?;
+         Box::new(Cursor::new(buffer))
+      } else {
+         let mut spool = tempfile_in(&self.shared.tiers[0].directory)?;
+         let copied = io::copy(&mut body.take(size), &mut spool)?;
+         if copied != size {
+            return Err(io::Error::new(
+               io::ErrorKind::UnexpectedEof,
+               "short cache object body",
+            ));
+         }
+         spool.rewind()?;
+         Box::new(spool)
+      };
       let mut state = self.shared.write();
+      if state.closed {
+         return Err(io::Error::other("cache store is closed"));
+      }
       let active_size = state.packs[&state.active].size;
       if active_size > 0 && active_size + record_size > PACK_LIMIT {
          self.shared.rotate(&mut state)?;
@@ -655,16 +709,27 @@ impl Store {
       let pack = state.packs.get_mut(&active).expect("missing active pack");
       let mut header = Vec::with_capacity(8 + key.len());
       header.extend_from_slice(&key_length.to_le_bytes());
-      header.extend_from_slice(&length.to_le_bytes());
+      header.extend_from_slice(&value_length.to_le_bytes());
       header.extend_from_slice(key.as_bytes());
       let header_length = u64::try_from(header.len()).map_err(io::Error::other)?;
       let offset = pack.size + header_length;
-      let written = pack
-         .file
-         .write_all_at(&header, pack.size)
-         .and_then(|()| pack.file.write_all_at(value, offset));
+      let start = pack.size;
+      let written = (|| {
+         pack.file.write_all_at(&header, start)?;
+         let mut target = Positioned {
+            file: &pack.file,
+            offset,
+         };
+         if io::copy(&mut staged.take(size), &mut target)? != size {
+            return Err(io::Error::new(
+               io::ErrorKind::UnexpectedEof,
+               "short cache object body",
+            ));
+         }
+         Ok(())
+      })();
       if let Err(error) = written {
-         pack.file.set_len(pack.size)?;
+         pack.file.set_len(start)?;
          return Err(error);
       }
       pack.size += record_size;
@@ -672,7 +737,7 @@ impl Store {
       state.insert(key.to_owned(), Location {
          pack: active,
          offset,
-         length,
+         length: value_length,
       });
       let budget = self.shared.tiers[0].budget;
       let needs_kick = budget > 0 && state.totals[0] > budget;
@@ -707,7 +772,8 @@ impl Store {
 
    pub fn close(&self) -> io::Result<()> {
       self.stop();
-      let state = self.shared.read();
+      let mut state = self.shared.write();
+      state.closed = true;
       self.shared.seal(&state, state.active)
    }
 
@@ -823,11 +889,14 @@ mod tests {
    fn fill(store: &Store, numbers: Range<usize>) {
       let value = vec![1; 1 << 20];
       for number in numbers {
-         store
-            .put(&format!("o/{number}"), &value)
-            .expect("fill packs");
+         put(store, &format!("o/{number}"), &value);
       }
       store.wait();
+   }
+
+   fn put(store: &Store, key: &str, value: &[u8]) {
+      let length = value.len();
+      store.put(key, &mut &*value, length).expect("write value");
    }
 
    const PER_PACK: usize = PACK_LIMIT as usize / (1 << 20);
@@ -836,9 +905,9 @@ mod tests {
    fn put_get_reopen() {
       let directory = TestDirectory::new();
       let initial = open(&directory, 0);
-      initial.put("o/aa", b"one").expect("first value");
-      initial.put("o/bb", b"two").expect("second value");
-      initial.put("o/aa", b"three").expect("replace value");
+      put(&initial, "o/aa", b"one");
+      put(&initial, "o/bb", b"two");
+      put(&initial, "o/aa", b"three");
       assert_eq!(read(&initial, "o/aa").as_deref(), Some(b"three".as_slice()));
       assert_eq!(read(&initial, "o/zz"), None);
       drop(initial);
@@ -854,7 +923,7 @@ mod tests {
    fn torn_tail() {
       let directory = TestDirectory::new();
       let initial = open(&directory, 0);
-      initial.put("key", b"value").expect("write value");
+      put(&initial, "key", b"value");
       let path = directory.join("000001.pack");
       OpenOptions::new()
          .append(true)
