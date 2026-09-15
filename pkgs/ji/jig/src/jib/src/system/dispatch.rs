@@ -44,6 +44,7 @@ use crate::{
       },
       pyapp::Pyapp,
       python::Python,
+      vcxproj::Vcxproj,
    },
 };
 
@@ -71,7 +72,7 @@ struct Root {
 
 const SYSTEMS: &[&dyn System] = &[
    &Make, &Autotools, &Cmake, &Meson, &Cargo, &Python, &Cabal, &Go, &Npm, &Pnpm, &Yarn, &Bun,
-   &Rebar3, &Mix, &Luarocks, &Deno, &Pyapp, &Bundler,
+   &Rebar3, &Mix, &Luarocks, &Deno, &Pyapp, &Bundler, &Vcxproj,
 ];
 
 fn system(name: &str) -> io::Result<&'static dyn System> {

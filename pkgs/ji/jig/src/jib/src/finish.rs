@@ -68,8 +68,10 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    let spec = attrs.spec()?;
    let top = build_top()?;
    let ctx = Ctx::load(&top)?;
+   let platform = ctx.platform()?;
+   let exe = platform.ext.exe.as_str();
    let out = Path::new(&ctx.out);
-   install_map(&spec, out)?;
+   install_map(&spec, out, exe)?;
    if keep_tree {
       let tree = attrs
          .outputs
@@ -81,7 +83,6 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    if !out.exists() {
       return Err(io::Error::other("nothing was installed into $out"));
    }
-   let exe = text(&ctx.platform, "exe");
    for name in bins(&spec, out, exe) {
       if !out.join(format!("bin/{name}{exe}")).exists() {
          return Err(io::Error::other(format!(
@@ -99,11 +100,13 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
       .ok_or_else(|| io::Error::other("no debug output"))?;
    create_dir_all(debug)?;
    relocate(&attrs, &spec, &ctx, debug)?;
-   write_request(out, &Request {
+   let request = Request {
       name:    spec.name.clone(),
+      ext:     platform.ext,
       exports: spec.exports.clone(),
       deps:    ctx.deps.iter().map(|dep| dep.root.clone()).collect(),
-   })?;
+   };
+   write_request(out, &request)?;
    let exported: Value = serde_json::from_str(&read_to_string(out.join("exports.json"))?)?;
    note("exports", &serde_json::to_string(&exported)?);
    set_current_dir(&top)?;
@@ -113,7 +116,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    )?;
    relativize(&ctx.out, &ctx.dest, false)?;
    succeed(Command::new("mv").arg(&ctx.out).arg(&ctx.dest), "mv")?;
-   version_check(&spec, &ctx, &top)?;
+   version_check(&spec, &ctx, &top, &request.ext.exe)?;
    cache_summary()
 }
 
@@ -132,7 +135,7 @@ pub fn tests() -> io::Result<()> {
    Ok(())
 }
 
-fn install_map(spec: &Spec, out: &Path) -> io::Result<()> {
+fn install_map(spec: &Spec, out: &Path, exe: &str) -> io::Result<()> {
    for (dest, from) in &spec.install {
       let patterns: Vec<&str> = match *from {
          Value::String(ref one) => vec![one.as_str()],
@@ -168,12 +171,13 @@ fn install_map(spec: &Spec, out: &Path) -> io::Result<()> {
       }
    }
    for (path, link) in &spec.links {
-      let placed = out.join(path);
+      let suffix = if path.starts_with("bin/") { exe } else { "" };
+      let placed = out.join(format!("{path}{suffix}"));
       create_dir_all(placed.parent().unwrap_or(out))?;
       if symlink_metadata(&placed).is_ok() {
          remove_file(&placed)?;
       }
-      symlink(link, &placed)?;
+      symlink(format!("{link}{suffix}"), &placed)?;
    }
    Ok(())
 }
@@ -286,9 +290,8 @@ struct Probe<'check> {
 
 // run in place and from a copy of the closure under another root, where an
 // absolute store path would show
-fn version_check(spec: &Spec, ctx: &Ctx, top: &str) -> io::Result<()> {
+fn version_check(spec: &Spec, ctx: &Ctx, top: &str, exe: &str) -> io::Result<()> {
    let platform = &ctx.platform;
-   let exe = text(platform, "exe");
    let dest = Path::new(&ctx.dest);
    let bins = bins(spec, dest, exe);
    let line = if spec.tests.version.is_null() {

@@ -7,6 +7,7 @@ mod glibc;
 mod jig;
 mod launch;
 mod linux;
+mod mingw;
 mod musl;
 mod runtimes;
 pub mod stage;

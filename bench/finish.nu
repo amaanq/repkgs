@@ -20,6 +20,6 @@ export def benches [tmp: path, seed: path]: nothing -> table<name: string, note:
     {name: "finish/fix-env-shebangs-undo", note: $"($n) files", run: {|| on-copy $out {|o| fix-env-shebangs $o --undo } }}
     {name: "finish/split-debug", note: "120 ELF with DWARF", run: {|| on-copy $out {|o| mkdir $"($o)-debug"; ^jib prune $o | ignore; ^jib split-debug $o $"($o)-debug" } }}
     {name: "finish/exports-of", note: "include, lib, pkgconfig scan", run: {|| exports-of $out }}
-    {name: "finish/write-exports", note: "6 .pc + 1 cmake config resolved against 60 deps", run: {|| write-exports $out {name: pkg} {binfmt: elf, ext: {shared: ".so"}} $deps }}
+    {name: "finish/write-exports", note: "6 .pc + 1 cmake config resolved against 60 deps", run: {|| write-exports $out {name: pkg} {ext: {exe: "", shared: ".so", import: null}} $deps }}
   ]
 }

@@ -39,7 +39,10 @@ use crate::{
       Mode,
       ProbeOperation,
    },
-   system::dispatch,
+   system::{
+      dispatch,
+      msbuild,
+   },
 };
 
 fn dispatch() -> Result<i32> {
@@ -98,6 +101,7 @@ fn run(mode: Mode, socket: &Path) -> Result<i32> {
       Mode::Finish { keep_tree, tests } => finish::mode(keep_tree, tests)?,
       Mode::Probe { operation } => return probe_mode(operation, socket),
       Mode::System { operation } => dispatch::mode(operation, socket)?,
+      Mode::Msbuild { file } => msbuild::run(&file)?,
       Mode::Env { out, cache } => env::run(&out, cache)?,
       Mode::Implant {
          directory,

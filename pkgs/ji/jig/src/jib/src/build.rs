@@ -118,7 +118,7 @@ fn nu_phase(attrs: &Attrs, index: usize, name: &str, body: &str, top: &str) -> i
 pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<()> {
    let attrs = Attrs::load()?;
    let spec = attrs.spec()?;
-   let ctx = setup(
+   let mut ctx = setup(
       &attrs,
       from_tree.map_or(Source::Unpack, Source::Archive),
       socket,
@@ -130,9 +130,10 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
          !step.test || (spec.tests.run && !attrs.plan.separate && ctx.tests_run)
       };
       if wanted {
-         phase(&attrs, &ctx, index, socket)?;
+         phase(&attrs, &mut ctx, index, socket)?;
       }
    }
+   note("phase", "finish");
    if tests {
       finish::tests()
    } else {
@@ -141,6 +142,7 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
 }
 
 pub fn setup(attrs: &Attrs, source: Source<'_>, socket: &Path) -> io::Result<Ctx> {
+   note("phase", "prepare");
    let bins: Vec<String> = attrs
       .build_dependencies
       .iter()
@@ -152,6 +154,7 @@ pub fn setup(attrs: &Attrs, source: Source<'_>, socket: &Path) -> io::Result<Ctx
    set_current_dir(&prepared.cwd)?;
    let ctx = prepared.ctx;
    for system in &attrs.plan.setups {
+      note("phase", &format!("{system}.setup"));
       note("setup", system);
       dispatch::setup(system, &ctx, attrs, socket)?.apply();
    }
@@ -162,8 +165,9 @@ pub fn setup(attrs: &Attrs, source: Source<'_>, socket: &Path) -> io::Result<Ctx
    Ok(ctx)
 }
 
-pub fn phase(attrs: &Attrs, ctx: &Ctx, index: usize, socket: &Path) -> io::Result<()> {
+pub fn phase(attrs: &Attrs, ctx: &mut Ctx, index: usize, socket: &Path) -> io::Result<()> {
    let step = &attrs.plan.phases[index];
+   note("phase", &step.name);
    let workdir = match attrs.plan.setups.first() {
       Some(system) => dispatch::workdir(system, ctx)?,
       None => Path::new(&ctx.src).to_path_buf(),
@@ -172,13 +176,13 @@ pub fn phase(attrs: &Attrs, ctx: &Ctx, index: usize, socket: &Path) -> io::Resul
       Kind::System {
          ref system,
          ref verb,
-      } => {
-         note("phase", &step.name);
-         dispatch::phase(system, verb, ctx, attrs, socket)
-      },
+      } => dispatch::phase(system, verb, ctx, attrs, socket),
       Kind::Nu { ref body } => {
          set_current_dir(&workdir)?;
-         nu_phase(attrs, index, &step.name, body, &build_top()?)
+         let top = build_top()?;
+         nu_phase(attrs, index, &step.name, body, &top)?;
+         *ctx = Ctx::load(&top)?;
+         Ok(())
       },
    }
 }

@@ -52,6 +52,7 @@ first argument.
 | `jib launchers <output> --launch <bin> --interp <ld.so> [--ldso] <dependency…>` | put launch records in front of bin/ scripts and wrapped binaries                    |
 | `jib probe key\|restore\|store\|restore-dir\|store-dir\|cmake-init …`           | configure-time probe results shared through jigd                                   |
 | `jib system setup\|workdir\|phase <system> …`                                   | every build system                                                                 |
+| `jib msbuild <project>` | evaluate a project from `{properties, itemdefs}` on stdin |
 
 **jigd** runs on the host, outside every sandbox, as `jigd <socket>`. It owns the compile
 cache, the file identity cache and the build slots. Nothing in a derivation names it, so
@@ -537,6 +538,11 @@ non query invocation that ran the compiler.
 `jib build` runs these in order, prepare, each build system's setup, the phases, finish. `jib prepare` and `jib finish` stay callable on their own.
 Paths and errors follow the nu functions they replaced.
 
+`jib build` emits `@nix` JSON with `action = "setPhase"` before preparation, each build
+system's setup, each selected Rust or Nu phase, and finish. Setup names are `<system>.setup`,
+and package phases use their plan names. Nix attaches these updates to the build activity
+for ROM to display. Nu phase bodies do not repeat the dispatcher's announcement.
+
 `prepare` computes the `env` environment, resolves the platform (a cross build probes
 `platform.probe --version` for transparent binfmt and drops the emulator when it has it), copies
 and patches the source into `source/` or restores a tests derivation's tree, and writes the
@@ -602,7 +608,8 @@ and leaves mtimes alone.
 `exports` prints one record per store path with the `exports.json` fields filled from the tree
 when absent (§ `builder/exports.nu` documents the defaults), `env` values with `{root}` expanded,
 and `root` added. `deps` prints the breadth first closure over `propagate`, each root once, in
-discovery order. `write-exports` reads `{ name, exports, deps }`, where `exports` is the spec's
+discovery order. `write-exports` reads `{ name, ext, exports, deps }`, where `ext` carries the
+platform's executable, shared and import library suffixes, and `exports` is the spec's
 record, `false` for nothing to link against, or null, and writes the merged record with the
 dependencies named by `Requires` lines in the output's `.pc` files and `find_dependency` calls
 in its cmake configs appended to `propagate`.
@@ -623,8 +630,9 @@ the ones it refuses (archives with LTO bitcode or `lib.rmeta` members keep their
 reads every other regular file over 3072 bytes that is a 64-bit ELF and classes it by its notes
 and section names. An ELF is _ours_ when it carries the FDO package note (type `0xcafe1a7e`)
 the driver's `--package-metadata` produces (§ 8), _split_ when it has a `.gnu_debuglink`, and it
-has DWARF when a `.debug_info` section is present. Ours without DWARF and without a debuglink
-is an error, since the build stripped what the driver compiled with `-g`. Anything not ours or
+has DWARF when a `.debug_info` section is present. Ours with a nonempty `.text` section but
+without DWARF or a debuglink is an error, since the build stripped what the driver compiled
+with `-g`. Stubs with no code or DWARF stay unchanged. Anything not ours or
 already split is left alone and counted in a `debug:` note. The rest is grouped by GNU build-id
 (ours without one is an error), each group's first file copied with `--only-keep-debug` to
 `<debug>/lib/debug/.build-id/<id[..2]>/<id[2..]>.debug` and every member stripped with
@@ -683,7 +691,7 @@ text), sets `out`, `JIG_LOG` to `<build top>/jig.log` and `JIG_STORE_ROOTS` to e
 names a store path plus the sysroot's `roots` file, runs the recipe, prints `== cache:
 <kind>=<count>…` from the log, and clears group and other write bits on `$out`. The recipes are
 `jig`, `launch`, `dlaudit`, `linux-headers`, `sysroot`, `apple-sdk`, `musl`, `glibc`,
-`compiler-rt`, `runtimes` and `cc`, each a `Recipe` in `jig/src/bootstrap/`. A libc recipe
+`mingw-w64`, `compiler-rt`, `runtimes` and `cc`, each a `Recipe` in `jig/src/bootstrap/`. A libc recipe
 writes `etc/cc/include-dirs`, and an SDK adds `etc/cc/flags` and `etc/cc/cxxflags` with the
 words `SYSROOT` and `LLD` standing for the final paths, which `compiler-rt` and `cc` read.
 

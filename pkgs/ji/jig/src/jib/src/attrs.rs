@@ -168,6 +168,8 @@ pub struct Platform {
    pub cpu:          String,
    #[serde(default)]
    pub os:           String,
+   pub posix:        bool,
+   pub ext:          Extensions,
    pub bits:         u8,
    pub endian:       String,
    #[serde(default)]
@@ -190,6 +192,13 @@ pub struct Platform {
    pub os_names:     OsNames,
    #[serde(default)]
    pub names:        Names,
+}
+
+#[derive(Deserialize)]
+pub struct Extensions {
+   pub exe:    String,
+   pub shared: String,
+   pub import: Option<String>,
 }
 
 #[derive(Deserialize, Default)]

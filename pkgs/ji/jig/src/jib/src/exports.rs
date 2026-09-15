@@ -26,6 +26,8 @@ use serde_json::{
    Value,
 };
 
+use crate::attrs::Extensions;
+
 const CPUS: [&str; 5] = ["x86_64", "aarch64", "riscv64", "loongarch64", "powerpc64le"];
 
 #[derive(Default, Deserialize)]
@@ -58,6 +60,7 @@ pub struct Exports {
 #[derive(Deserialize)]
 pub struct Request {
    pub name:    String,
+   pub ext:     Extensions,
    #[serde(default)]
    pub exports: Value,
    #[serde(default)]
@@ -85,7 +88,7 @@ fn package_name(root: &Path) -> String {
          if !tail.is_empty()
             && tail
                .bytes()
-               .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+               .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
          {
             return name[..position].to_owned();
          }
@@ -94,7 +97,8 @@ fn package_name(root: &Path) -> String {
    name.to_owned()
 }
 
-fn shared_libraries(root: &Path) -> io::Result<Vec<String>> {
+fn linkable_libraries(root: &Path, extensions: &Extensions) -> io::Result<Vec<String>> {
+   let suffix = extensions.import.as_ref().unwrap_or(&extensions.shared);
    let mut names: Vec<(String, String)> = Vec::new();
    let entries = match read_dir(root.join("lib")) {
       Ok(entries) => entries,
@@ -107,11 +111,10 @@ fn shared_libraries(root: &Path) -> io::Result<Vec<String>> {
          continue;
       }
       let file = child.file_name().to_string_lossy().into_owned();
-      if let Some(stem) = file.strip_prefix("lib").and_then(|rest| {
-         rest
-            .strip_suffix(".so")
-            .or_else(|| rest.strip_suffix(".dylib"))
-      }) {
+      if let Some(stem) = file
+         .strip_prefix("lib")
+         .and_then(|rest| rest.strip_suffix(suffix))
+      {
          names.push((file.clone(), stem.to_owned()));
       }
    }
@@ -132,10 +135,7 @@ pub fn exports_of(root: &Path) -> io::Result<Exports> {
          .include_dirs
          .unwrap_or_else(|| existing(root, &["include"])),
       lib_dirs:       stored.lib_dirs.unwrap_or_else(|| existing(root, &["lib"])),
-      libs:           match stored.libs {
-         Some(libs) => libs,
-         None => shared_libraries(root)?,
-      },
+      libs:           stored.libs.unwrap_or_default(),
       pkgconfig_dirs: stored
          .pkgconfig_dirs
          .unwrap_or_else(|| existing(root, &["lib/pkgconfig", "share/pkgconfig"])),
@@ -237,6 +237,10 @@ pub fn write_request(root: &Path, request: &Request) -> io::Result<()> {
       },
    };
    exports.remove("root");
+   exports.insert(
+      "libs".to_owned(),
+      serde_json::to_value(linkable_libraries(root, &request.ext)?)?,
+   );
    for (key, value) in own {
       exports.insert(key, value);
    }

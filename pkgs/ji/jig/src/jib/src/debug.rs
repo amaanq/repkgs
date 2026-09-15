@@ -37,12 +37,13 @@ const SMALL_ELF: u64 = 3072;
 const HEX: &[u8; 16] = b"0123456789abcdef";
 
 struct Elf {
-   path:  String,
-   rel:   String,
-   id:    Option<String>,
-   ours:  bool,
-   dwarf: bool,
-   split: bool,
+   path:      String,
+   rel:       String,
+   id:        Option<String>,
+   ours:      bool,
+   dwarf:     bool,
+   split:     bool,
+   text_size: usize,
 }
 
 pub fn run(output: &Path, debug: &Path) -> io::Result<()> {
@@ -58,7 +59,7 @@ pub fn run(output: &Path, debug: &Path) -> io::Result<()> {
    let elfs = inspect(&candidates)?;
    let stripped = elfs
       .iter()
-      .filter(|elf| elf.ours && !elf.dwarf && !elf.split)
+      .filter(|elf| elf.ours && !elf.dwarf && !elf.split && elf.text_size != 0)
       .map(|elf| elf.rel.as_str())
       .take(3)
       .collect::<Vec<&str>>();
@@ -89,7 +90,10 @@ pub fn run(output: &Path, debug: &Path) -> io::Result<()> {
       );
    }
    let mut groups = BTreeMap::<&str, Vec<&str>>::new();
-   for elf in elfs.iter().filter(|elf| elf.ours && !elf.split) {
+   for elf in elfs
+      .iter()
+      .filter(|elf| elf.ours && elf.dwarf && !elf.split)
+   {
       let Some(id) = elf.id.as_deref() else {
          return Err(io::Error::other(format!(
             "debug: linked here but no build-id: {}",
@@ -153,9 +157,9 @@ fn examine(entry: &Entry) -> io::Result<Option<Elf>> {
    let names = names(&image, &sections)?;
    let notes = notes(&image, &sections)?;
    Ok(Some(Elf {
-      path:  entry.path.clone(),
-      rel:   entry.rel.clone(),
-      id:    notes
+      path:      entry.path.clone(),
+      rel:       entry.rel.clone(),
+      id:        notes
          .iter()
          .find(|found| found.owner == "GNU" && found.kind == BUILD_ID_NOTE)
          .map(|found| {
@@ -170,9 +174,16 @@ fn examine(entry: &Entry) -> io::Result<Option<Elf>> {
                })
                .collect()
          }),
-      ours:  notes.iter().any(|found| found.kind == PACKAGE_NOTE),
-      dwarf: names.iter().any(|name| name == ".debug_info"),
-      split: names.iter().any(|name| name == ".gnu_debuglink"),
+      ours:      notes.iter().any(|found| found.kind == PACKAGE_NOTE),
+      dwarf:     names.iter().any(|name| name == ".debug_info"),
+      split:     names.iter().any(|name| name == ".gnu_debuglink"),
+      text_size: names
+         .iter()
+         .zip(&sections)
+         .filter(|&(name, section)| name == ".text" && section.kind == 1)
+         .map(|(_name, section)| section.size)
+         .max()
+         .unwrap_or_default(),
    }))
 }
 

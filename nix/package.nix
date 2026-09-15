@@ -20,6 +20,7 @@
 }:
 let
   elf = platform.binfmt == "elf";
+  hardening = import ./hardening.nix;
   inherit (lib)
     join
     lines
@@ -222,6 +223,7 @@ let
       "ldflags"
       "hardening"
     ];
+    "cc.hardening" = attrNames hardening.flags;
     completions = attrNames completionDirs;
   };
   subKeys =
@@ -247,6 +249,25 @@ let
     ++ (if args ? tests then subKeys "tests" args.tests else [ ])
     ++ (if args ? cc then subKeys "cc" args.cc else [ ])
     ++ (if args ? completions then subKeys "completions" args.completions else [ ]);
+  badOptions = concatMap (
+    system:
+    let
+      declared = buildSystems.${system}.options;
+    in
+    concatMap (
+      key:
+      let
+        got = builtins.typeOf args.${system}.${key};
+        want = declared.${key}.type;
+      in
+      if !(declared ? ${key}) then
+        [ "unknown option ${system}.${key} (have: ${toString (attrNames declared)})" ]
+      else if !(elem got want) then
+        [ "option ${system}.${key} is a ${got}, expected ${join " or " want}" ]
+      else
+        [ ]
+    ) (attrNames (args.${system} or { }))
+  ) (filter (system: buildSystems ? ${system}) uses);
   # a library among the build tools or a tool among the libraries: natively both platforms
   # coincide and nothing would notice, so it is checked here
   wrongPlatform =
@@ -351,6 +372,8 @@ let
       fail "unknown build systems ${toString unknownUses} (have: ${toString (attrNames buildSystems)})"
     else if unknownFields != [ ] || unknownPlatformKeys != [ ] then
       fail "unknown fields ${toString (unknownFields ++ map (k: "platforms.${k}") unknownPlatformKeys)}"
+    else if badOptions != [ ] then
+      fail (join "; " badOptions)
     else if wrongPlatform != [ ] then
       fail (join "; " wrongPlatform)
     else
@@ -436,7 +459,7 @@ let
         kind = "nu";
         inherit (s) name;
         test = s.name == "test";
-        body = "note phase ${s.name}\ndo --env {\nlet c = (ctx)\n${s.run}\n}";
+        body = "do --env {\nlet c = (ctx)\n${s.run}\n}";
       }
     else
       let
@@ -457,7 +480,7 @@ let
           kind = "nu";
           name = s;
           test = elemAt p 1 == "test";
-          body = "note phase ${s}\n${elemAt p 0} ${elemAt p 1}";
+          body = "${elemAt p 0} ${elemAt p 1}";
         };
   # a phase "zig.restore" whose prefix is no `uses` entry is the package's own module zig.nu next
   # to package.nix, for phases too long to read inline. It imports the builder by bare name

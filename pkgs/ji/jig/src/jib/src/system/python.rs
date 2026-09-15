@@ -271,7 +271,11 @@ impl Python {
           [os.path.join(os.path.dirname(os.path.realpath(__file__)), p) for p in {}]",
          serde_json::to_string(&rels)?
       );
-      Self::boot_scripts(&Path::new(&ctx.out).join("bin"), &boot)?;
+      Self::boot_scripts(
+         &Path::new(&ctx.out).join("bin"),
+         &boot,
+         ctx.platform()?.cross,
+      )?;
       // whoever depends on or runs this module gets our dependencies'
       // site-packages too, finish merges this into the final exports.json
       let mut rendered = serde_json::to_vec_pretty(&Propagate {
@@ -281,7 +285,7 @@ impl Python {
       write_file(&Path::new(&ctx.out).join("exports.json"), &rendered, None)
    }
 
-   fn boot_scripts(bin: &Path, boot: &str) -> io::Result<()> {
+   fn boot_scripts(bin: &Path, boot: &str, cross: bool) -> io::Result<()> {
       if !bin.is_dir() {
          return Ok(());
       }
@@ -305,8 +309,13 @@ impl Python {
          if !first.contains("python") {
             continue;
          }
-         let mut fixed = vec![first.to_owned(), boot.to_owned()];
-         fixed.extend(lines.map(str::to_owned));
+         let interp = if cross {
+            "#!/usr/bin/env python3"
+         } else {
+            first
+         };
+         let mut fixed = vec![interp, boot];
+         fixed.extend(lines);
          writable(&script)?;
          File::create(&script)?.write_all(fixed.join("\n").as_bytes())?;
       }

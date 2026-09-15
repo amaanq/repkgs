@@ -19,6 +19,7 @@ use crate::bootstrap::{
    dispatch::Recipe,
    stage::{
       Stage,
+      TargetProfile,
       capture,
       cc_fact,
       run,
@@ -50,13 +51,50 @@ impl Cc {
    }
 
    fn lld(stage: &Stage) -> io::Result<String> {
-      let name = match stage.binfmt.as_str() {
-         "elf" => "ld.lld",
-         "macho" => "ld64.lld",
-         "coff" => "lld-link",
-         other => return Err(io::Error::other(format!("unknown binfmt {other}"))),
+      Ok(Self::seed_bin(stage, stage.profile()?.lld()))
+   }
+
+   fn linker_tools(stage: &Stage, out: &str, sysroot: &str) -> io::Result<()> {
+      // lld picks its personality from argv[0], and "ld" means ELF, spell the
+      // flavour out elsewhere
+      let profile = stage.profile()?;
+      let ldargs = if let Some(flavor) = profile.ld_flavor() {
+         Some(format!("{} -flavor {flavor}", Self::seed_bin(stage, "lld")))
+      } else if let TargetProfile::Mingw(machine) = profile {
+         Some(format!("{} -m {}", Self::lld(stage)?, machine.emulation()))
+      } else {
+         None
       };
-      Ok(Self::seed_bin(stage, name))
+      if let Some(args) = ldargs {
+         let script = format!("#!/bin/sh\nexec {args} \"$@\"\n");
+         write_file(
+            Path::new(&format!("{out}/bin/ld")),
+            script.as_bytes(),
+            Some(0o755),
+         )?;
+      } else {
+         symlink(Self::lld(stage)?, format!("{out}/bin/ld"))?;
+      }
+      if let TargetProfile::Mingw(machine) = profile {
+         let windres = format!(
+            "#!/bin/sh\nexec {} --target={} --preprocessor-arg=--sysroot={sysroot} \"$@\"\n",
+            Self::seed_bin(stage, "llvm-windres"),
+            machine.bfd(),
+         );
+         let dlltool = format!(
+            "#!/bin/sh\nexec {} -m {} \"$@\"\n",
+            Self::seed_bin(stage, "llvm-dlltool"),
+            machine.dlltool(),
+         );
+         for (name, script) in [("windres", windres), ("dlltool", dlltool)] {
+            write_file(
+               Path::new(&format!("{out}/bin/{name}")),
+               script.as_bytes(),
+               Some(0o755),
+            )?;
+         }
+      }
+      Ok(())
    }
 
    fn driver_flags(stage: &Stage, sysroot: &str) -> io::Result<Driver> {
@@ -154,7 +192,7 @@ impl Cc {
    }
 
    fn smoke_test(stage: &Stage, out: &str) -> io::Result<()> {
-      let exe = if stage.binfmt == "coff" { ".exe" } else { "" };
+      let exe = stage.profile()?.exe();
       let hello_c = "#include <stdio.h>\nint main(void) { puts(\"cc ok\"); }\n";
       write_file(Path::new("hello.c"), hello_c.as_bytes(), None)?;
       let hello_cc = "#include <print>\nint main() { std::println(\"c++ ok\"); }\n";
@@ -208,26 +246,7 @@ impl Recipe for Cc {
          symlink("jig", format!("{out}/bin/{name}"))?;
       }
 
-      // lld picks its personality from argv[0], and "ld" means ELF, spell the
-      // flavour out elsewhere
-      if stage.binfmt == "elf" {
-         symlink(Self::lld(stage)?, format!("{out}/bin/ld"))?;
-      } else {
-         let flavor = match stage.binfmt.as_str() {
-            "macho" => "darwin",
-            "coff" => "link",
-            other => return Err(io::Error::other(format!("unknown binfmt {other}"))),
-         };
-         let script = format!(
-            "#!/bin/sh\nexec {} -flavor {flavor} \"$@\"\n",
-            Self::seed_bin(stage, "lld")
-         );
-         write_file(
-            Path::new(&format!("{out}/bin/ld")),
-            script.as_bytes(),
-            Some(0o755),
-         )?;
-      }
+      Self::linker_tools(stage, out, sysroot)?;
 
       // CC_FOR_BUILD when cross, jig locates its conf via /proc/self/exe
       if let Some(native) = stage.native.as_deref() {

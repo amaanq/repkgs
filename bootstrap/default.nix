@@ -143,7 +143,7 @@ let
         karch = platform.names.kernel;
         inherit buildTriple;
         site_libc = platform.libc;
-        flags = toString (platform.march ++ hardening.enabledFlags (hardening.forPlatform platform) hardening.cpuOnly);
+        flags = toString platform.march;
         llvm = clang;
         JIG_CC = "${clang}/bin/clang";
       };

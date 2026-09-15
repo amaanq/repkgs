@@ -13,8 +13,10 @@ rust-version.workspace = true
 blake3     = { workspace = true }
 color-eyre = { workspace = true }
 eyre       = { workspace = true }
+glob       = "0.3"
 jig        = { workspace = true }
 pound      = "0.1.7"
+roxmltree  = "0.20"
 serde      = { features = [ "derive" ], version = "1" }
 serde_json = "1"
 wire       = { workspace = true }

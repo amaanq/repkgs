@@ -13,7 +13,7 @@ ELF post-processor, **jigd** the per-machine daemon behind it (compile cache, bu
    against nixpkgs on the shared packages in [eval.md](eval.md).
 2. **Relocatable outputs.** No output contains its own store path. Every derivation is
    content-addressed, so early cut-off works by default, and a closure runs from any directory.
-3. **Nushell builders.** Structured data, real errors, and a seed of a few static binaries.
+3. **Rust builders with Nushell phases.** Structured data, real errors, and a seed of a few static binaries.
 4. **One toolchain.** One LLVM targets every platform. Cross is an argument to the set.
 5. **A compile cache under Nix.** Editing a recipe recompiles what changed, not everything after it.
 
@@ -23,16 +23,17 @@ builds the seed and provides dev tools. The [source bootstrap](bootstrap.md) sta
 x86-64 LLVM, allowing GCC in the early compiler chain. NixOS modules, nixpkgs compatibility
 and GCC as a package-set compiler remain outside the scope.
 
-Build machines are x86_64- and aarch64-linux. riscv64, loongarch64, ppc64le, Windows (MSVC ABI
-over Microsoft's CRT and SDK) and macOS (Apple's SDK, `ld64.lld`) are cross targets. For the two
-non-Linux ones only compiler-rt is ours. The CPU baseline (x86-64-v3, armv8.2-a+lse, rv64gc) is
+Build machines are x86_64- and aarch64-linux. riscv64, loongarch64, ppc64le, Windows and macOS
+are cross targets. Windows supports Microsoft's CRT and SDK through the MSVC ABI, or MinGW
+with UCRT and our libc++. macOS uses Apple's SDK and `ld64.lld`. The CPU baseline
+(x86-64-v3, armv8.2-a+lse, rv64gc) is
 part of the platform and injected by jig, so no package carries `-march`.
 
 ## Evaluation
 
 A package is a function returning a small attrset, the *spec*. `nix/package.nix` checks it
 (unknown field, unknown or mistyped option → error) and makes one derivation whose builder is
-`nu -c <script>`, with everything that is not a dependency in one JSON attribute. No
+`jib build`, with a phase plan and structured JSON attributes. No
 `callPackage`/`mkDerivation`/module layers, no per-package fixpoint: 1000 packages evaluate in
 0.36 s and 10 MB, native or cross.
 
@@ -169,9 +170,10 @@ output is an error, not a silent reference.
 
 ## Builders
 
-One nu process per build: `prepare` (env, unpack, patch), the package's phases, `finish`
-(checks, debug split, launchers, fixup, version test, `exports.json`). Build systems are nu
-modules exporting `setup configure build test install`. A package names them:
+One jib process prepares the environment and source tree, executes the package's phases,
+then handles debug splitting, launchers, relocation, version checks and `exports.json`.
+Build systems implement the Rust `System` trait. Package-specific Nu phases run in child
+processes and hand their environment and build context back to jib. A package names them
 
 ```nix
 uses = [ "cmake" ];                                   # phases default to the build system's
@@ -188,7 +190,7 @@ phases = [ "foo.gen" "cmake.build" ];                 # foo.<phase> lives in foo
 - **Cross is the build system's job**, from one platform record: `--host` + `config.site`, meson
   cross file, cmake toolchain file, `CARGO_TARGET_*`, `GOARCH`. Tests run under qemu.
 - **Hardening and reproducibility are compiler defaults.** jig adds `-O2 -g`, frame pointers and
-  the nixpkgs hardening set outside `CFLAGS`, so no Makefile drops them. `builder/hardening.nu`
+  the nixpkgs hardening set outside `CFLAGS`, so no Makefile drops them. `nix/hardening.nix`
   is the table, a platform or package turns names off (`cc.hardening.fortify = false`).
   `SOURCE_DATE_EPOCH`, prefix maps and fixed seeds cover reproducibility.
 - **Tests run**, in the build or as `<pkg>.tests` (`tests.separate`). Every `bin/x --version`
@@ -275,7 +277,7 @@ seed      static musl: LLVM multicall (clang, lld, llvm-ar …), bsdtar, toybox,
 → pkgs/*
 ```
 
-Recipes are nu (`pkgs/*/bootstrap.nu`). musl, compiler-rt and the C++ runtimes compile from file
+Recipes run through `jig bootstrap` from `jig/src/bootstrap/`. musl, compiler-rt and the C++ runtimes compile from file
 lists without cmake. The source-built Rust chain compiles static jig before stage0 installs it.
 The generated source file is compiler-rt's per-cpu builtins list. What differs per target is keyed
 on object format (`platform.binfmt`: elf, macho, coff), and a libc or SDK tells compiler-rt and

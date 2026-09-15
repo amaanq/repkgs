@@ -26,13 +26,112 @@ use jig::{
       write_file,
    },
    store::on_path,
-   tree::parallel_with,
+   tree::{
+      note,
+      parallel_with,
+   },
 };
 use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct Outputs {
    pub out: String,
+}
+
+#[derive(Clone, Copy)]
+pub enum MingwMachine {
+   X86_64,
+   Aarch64,
+}
+
+impl MingwMachine {
+   pub const fn emulation(self) -> &'static str {
+      match self {
+         Self::X86_64 => "i386pep",
+         Self::Aarch64 => "arm64pe",
+      }
+   }
+
+   pub const fn bfd(self) -> &'static str {
+      match self {
+         Self::X86_64 => "pe-x86-64",
+         Self::Aarch64 => "pe-aarch64-little",
+      }
+   }
+
+   pub const fn dlltool(self) -> &'static str {
+      match self {
+         Self::X86_64 => "i386:x86-64",
+         Self::Aarch64 => "arm64",
+      }
+   }
+
+   const fn cpu(self) -> &'static str {
+      match self {
+         Self::X86_64 => "x86_64",
+         Self::Aarch64 => "aarch64",
+      }
+   }
+}
+
+#[derive(Clone, Copy)]
+pub enum TargetProfile<'target> {
+   Elf(&'target str),
+   Macho,
+   Msvc(&'target str),
+   Mingw(MingwMachine),
+}
+
+impl TargetProfile<'_> {
+   pub const fn posix(self) -> bool {
+      matches!(self, Self::Elf(_) | Self::Macho)
+   }
+
+   pub const fn pic(self) -> &'static [&'static str] {
+      match self {
+         Self::Elf(_) | Self::Macho => &["-fPIC"],
+         Self::Msvc(_) | Self::Mingw(_) => &[],
+      }
+   }
+
+   pub const fn exe(self) -> &'static str {
+      match self {
+         Self::Elf(_) | Self::Macho => "",
+         Self::Msvc(_) | Self::Mingw(_) => ".exe",
+      }
+   }
+
+   pub const fn lld(self) -> &'static str {
+      match self {
+         Self::Elf(_) | Self::Mingw(_) => "ld.lld",
+         Self::Macho => "ld64.lld",
+         Self::Msvc(_) => "lld-link",
+      }
+   }
+
+   pub const fn ld_flavor(self) -> Option<&'static str> {
+      match self {
+         Self::Elf(_) | Self::Mingw(_) => None,
+         Self::Macho => Some("darwin"),
+         Self::Msvc(_) => Some("link"),
+      }
+   }
+
+   pub fn runtime(self, name: &str) -> String {
+      match self {
+         Self::Elf(target) => format!("lib/{target}/libclang_rt.{name}.a"),
+         Self::Macho => {
+            let prefix = if name == "builtins" {
+               String::new()
+            } else {
+               format!("{name}_")
+            };
+            format!("lib/darwin/libclang_rt.{prefix}osx.a")
+         },
+         Self::Msvc(target) => format!("lib/{target}/clang_rt.{name}.lib"),
+         Self::Mingw(machine) => format!("lib/windows/libclang_rt.{name}-{}.a", machine.cpu()),
+      }
+   }
 }
 
 /// the structured attrs of one bootstrap stage, see bootstrap/default.nix
@@ -123,6 +222,23 @@ impl Stage {
       args
    }
 
+   pub fn profile(&self) -> io::Result<TargetProfile<'_>> {
+      match (self.binfmt.as_str(), self.libc.as_str()) {
+         ("coff", "mingw") => {
+            let machine = match self.cpu.as_str() {
+               "x86_64" => MingwMachine::X86_64,
+               "aarch64" => MingwMachine::Aarch64,
+               other => return Err(io::Error::other(format!("no mingw profile for {other}"))),
+            };
+            Ok(TargetProfile::Mingw(machine))
+         },
+         ("coff", _) => Ok(TargetProfile::Msvc(&self.clang_target)),
+         ("macho", _) => Ok(TargetProfile::Macho),
+         ("elf", _) => Ok(TargetProfile::Elf(&self.clang_target)),
+         (other, _) => Err(io::Error::other(format!("unknown binfmt {other}"))),
+      }
+   }
+
    /// compile and link against the sysroot with the raw seed clang, which
    /// defaults to libunwind, built last. Plain C needs no unwinder.
    pub fn ccflags(&self) -> io::Result<Vec<String>> {
@@ -171,10 +287,8 @@ pub fn wanted<'field>(field: Option<&'field str>, name: &str) -> io::Result<&'fi
 }
 
 pub fn say(message: &str) {
-   drop(writeln!(
-      io::stderr().lock(),
-      "\u{1b}[32m==\u{1b}[0m {message}"
-   ));
+   let (kind, detail) = message.split_once(": ").unwrap_or(("bootstrap", message));
+   note(kind, detail);
 }
 
 /// the parallelism Nix granted, 0 meaning every cpu.

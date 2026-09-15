@@ -29,9 +29,11 @@ use crate::{
    nix_store::Store,
 };
 
-const MSIS: [&str; 7] = [
+const MSIS: [&str; 9] = [
    "Windows SDK Desktop Headers x86",
+   "Windows SDK Desktop Headers {arch}",
    "Windows SDK Desktop Libs {arch}",
+   "Windows SDK OnecoreUap Headers x86",
    "Windows SDK OnecoreUap Headers {arch}",
    "Windows SDK for Windows Store Apps Headers",
    "Windows SDK for Windows Store Apps Headers OnecoreUap",

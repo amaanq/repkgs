@@ -44,6 +44,9 @@ impl BinaryFormat {
             ) {
                return None;
             }
+            if arg.starts_with("-l") && !arg.contains('/') {
+               return Some(arg.to_ascii_lowercase());
+            }
             if (arg.starts_with("-std=c") || arg.starts_with("-std=gnu"))
                && ["++98", "++03", "++0x", "++11"]
                   .iter()

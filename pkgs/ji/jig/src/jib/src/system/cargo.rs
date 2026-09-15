@@ -327,10 +327,12 @@ impl Cargo {
          var("CARGO_BUILD_TARGET").unwrap_or_default()
       );
       let spec = ctx.spec()?;
+      let exe = ctx.platform()?.ext.exe;
       let mut names: Vec<String> = Vec::new();
       for entry in read_dir(&release)? {
          let found = entry?;
          let name = found.file_name().to_string_lossy().into_owned();
+         let binary = name.strip_suffix(exe.as_str()).unwrap_or(&name);
          let extension = Path::new(&name)
             .extension()
             .map(|ext| ext.to_string_lossy().to_ascii_lowercase());
@@ -339,10 +341,11 @@ impl Cargo {
             || name.starts_with('.')
             || extension.as_deref() == Some("d")
             || extension.as_deref() == Some("rlib")
+            || extension.as_deref() == Some("pdb")
             || spec
                .bin
                .as_ref()
-               .is_some_and(|listed| !listed.contains(&name))
+               .is_some_and(|listed| !listed.iter().any(|candidate| candidate == binary))
          {
             continue;
          }

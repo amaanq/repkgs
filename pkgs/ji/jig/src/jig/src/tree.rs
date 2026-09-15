@@ -59,9 +59,26 @@ pub struct Entry {
 
 #[inline]
 pub fn note(kind: &str, message: &str) {
-   let event =
-      serde_json::json!({ "action": "msg", "level": 3_u8, "msg": format!("{kind}: {message}") });
-   drop(writeln!(io::stderr().lock(), "@nix {event}"));
+   #[derive(Serialize)]
+   #[serde(tag = "action", rename_all = "camelCase")]
+   enum Event<'message> {
+      SetPhase { phase: &'message str },
+      Msg { level: u8, msg: String },
+   }
+
+   let event = if kind == "phase" {
+      Event::SetPhase { phase: message }
+   } else {
+      Event::Msg {
+         level: 3,
+         msg:   format!("{kind}: {message}"),
+      }
+   };
+   let mut stderr = io::stderr().lock();
+   drop(write!(stderr, "@nix ").and_then(|()| {
+      serde_json::to_writer(&mut stderr, &event)?;
+      writeln!(stderr)
+   }));
 }
 
 fn children(directory: &Path) -> io::Result<Vec<DirEntry>> {

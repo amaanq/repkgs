@@ -97,9 +97,9 @@ pub fn run(operation: DevOperation, socket: &Path) -> io::Result<()> {
             .iter()
             .position(|step| step.name == name)
             .ok_or_else(|| io::Error::other(format!("no build phase {name}")))?;
-         let ctx = Ctx::load(&top)?;
+         let mut ctx = Ctx::load(&top)?;
          let previous = vars().map(|entry| entry.0).collect::<Vec<_>>();
-         build::phase(&attrs, &ctx, index, socket)?;
+         build::phase(&attrs, &mut ctx, index, socket)?;
          save(&top, &previous)
       },
    }

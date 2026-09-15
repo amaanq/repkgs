@@ -27,6 +27,7 @@ use crate::bootstrap::{
    jig::Jig,
    launch::Launch,
    linux::Linux,
+   mingw::Mingw,
    musl::Musl,
    runtimes::Runtimes,
    stage::{
@@ -50,6 +51,7 @@ const RECIPES: &[&dyn Recipe] = &[
    &AppleSdk,
    &Musl,
    &Glibc,
+   &Mingw,
    &CompilerRt,
    &Runtimes,
    &Cc,

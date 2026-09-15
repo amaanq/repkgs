@@ -19,6 +19,6 @@ export def dep-dirs [deps: list<record<name: string, root: string>>, field: stri
 
 # exports.json: spec.exports over the defaults, exports = false: nothing to link against. Dependencies
 # our .pc files (Requires) and cmake configs (find_dependency) name are propagated
-export def write-exports [out: string, spec: record, deps: list<record>]: nothing -> nothing {
-  {name: $spec.name, exports: $spec.exports?, deps: $deps.root} | to json -r | ^jib write-exports $out
+export def write-exports [out: string, spec: record, platform: record, deps: list<record>]: nothing -> nothing {
+  {name: $spec.name, ext: $platform.ext, exports: $spec.exports?, deps: $deps.root} | to json -r | ^jib write-exports $out
 }

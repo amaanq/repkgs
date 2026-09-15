@@ -33,14 +33,23 @@ use crate::bootstrap::{
 };
 
 struct Lib {
-   name:  &'static str,
-   dir:   &'static str,
-   glob:  &'static str,
-   skip:  &'static [&'static str],
-   extra: &'static [&'static str],
-   std:   &'static str,
-   so:    Option<&'static [&'static str]>,
-   flags: &'static [&'static str],
+   name:         &'static str,
+   dir:          &'static str,
+   glob:         &'static str,
+   glob_windows: Option<&'static str>,
+   skip:         &'static [&'static str],
+   skip_windows: &'static [&'static str],
+   extra:        &'static [&'static str],
+   std:          &'static str,
+   so:           Option<&'static [&'static str]>,
+   dll:          bool,
+   flags:        &'static [&'static str],
+   posix_flags:  &'static [&'static str],
+}
+
+struct Built {
+   objects: Vec<PathBuf>,
+   dll:     Vec<PathBuf>,
 }
 
 /// sources are each project's src/ minus the files cmake would leave out for
@@ -55,55 +64,62 @@ struct Lib {
 /// compiler-rt, libdispatch is the Apple PSTL backend.
 const LIBS: [Lib; 4] = [
    Lib {
-      name:  "unwind",
-      dir:   "libunwind/src",
-      glob:  "*.{cpp,c,S}",
-      skip:  &["Unwind_AIXExtras.cpp"],
-      extra: &["compiler-rt/lib/builtins/gcc_personality_v0.c"],
-      std:   "c++17",
-      so:    Some(&["-lc"]),
-      flags: &[
+      name:         "unwind",
+      dir:          "libunwind/src",
+      glob:         "*.{cpp,c,S}",
+      glob_windows: None,
+      skip:         &["Unwind_AIXExtras.cpp"],
+      skip_windows: &[],
+      extra:        &["compiler-rt/lib/builtins/gcc_personality_v0.c"],
+      std:          "c++17",
+      so:           Some(&["-lc"]),
+      dll:          true,
+      flags:        &[
          "-D_LIBUNWIND_IS_NATIVE_ONLY",
-         "-D_LIBUNWIND_LINK_DL_LIB",
-         "-D_LIBUNWIND_LINK_PTHREAD_LIB",
          "-fno-exceptions",
          "-fno-rtti",
          "-fstrict-aliasing",
       ],
+      posix_flags:  &["-D_LIBUNWIND_LINK_DL_LIB", "-D_LIBUNWIND_LINK_PTHREAD_LIB"],
    },
    Lib {
-      name:  "c++abi",
-      dir:   "libcxxabi/src",
-      glob:  "*.cpp",
-      skip:  &["cxa_noexception.cpp"],
-      extra: &[],
-      std:   "c++26",
-      so:    Some(&["-lunwind", "-lc"]),
-      flags: &[
+      name:         "c++abi",
+      dir:          "libcxxabi/src",
+      glob:         "*.cpp",
+      glob_windows: None,
+      skip:         &["cxa_noexception.cpp"],
+      skip_windows: &[],
+      extra:        &[],
+      std:          "c++26",
+      so:           Some(&["-lunwind", "-lc"]),
+      dll:          false,
+      flags:        &[
          "-D_LIBCPP_BUILDING_LIBRARY",
          "-D_LIBCXXABI_BUILDING_LIBRARY",
-         "-D_LIBCXXABI_LINK_PTHREAD_LIB",
          "-DLIBCXX_BUILDING_LIBCXXABI",
          "-fstrict-aliasing",
          "-fsized-deallocation",
          "-Ilibcxx/src",
       ],
+      posix_flags:  &["-D_LIBCXXABI_LINK_PTHREAD_LIB"],
    },
    Lib {
-      name:  "c++",
-      dir:   "libcxx/src",
-      glob:  "{*,filesystem/*,ryu/*,pstl/*}.cpp",
-      skip:  &[
+      name:         "c++",
+      dir:          "libcxx/src",
+      glob:         "{*,filesystem/*,ryu/*,pstl/*}.cpp",
+      glob_windows: Some("support/win32/*.cpp"),
+      skip:         &[
          "new.cpp",
          "filesystem/int128_builtins.cpp",
          "pstl/libdispatch.cpp",
       ],
-      extra: &[],
-      std:   "c++26",
-      so:    Some(&["-lc++abi", "-lunwind", "-lc"]),
-      flags: &[
+      skip_windows: &[],
+      extra:        &[],
+      std:          "c++26",
+      so:           Some(&["-lc++abi", "-lunwind", "-lc"]),
+      dll:          true,
+      flags:        &[
          "-D_LIBCPP_BUILDING_LIBRARY",
-         "-D_LIBCPP_LINK_PTHREAD_LIB",
          "-D_LIBCPP_LINK_RT_LIB",
          "-D_LIBCPP_REMOVE_TRANSITIVE_INCLUDES",
          "-DLIBCXX_BUILDING_LIBCXXABI",
@@ -114,26 +130,35 @@ const LIBS: [Lib; 4] = [
          "-Ilibcxx/src",
          "-Ilibc",
       ],
+      posix_flags:  &["-D_LIBCPP_LINK_PTHREAD_LIB"],
    },
    Lib {
-      name:  "c++experimental",
-      dir:   "libcxx/src/experimental",
-      glob:  "*.cpp",
-      skip:  &[],
-      extra: &[],
-      std:   "c++26",
-      so:    None,
-      flags: &[
+      name:         "c++experimental",
+      dir:          "libcxx/src/experimental",
+      glob:         "*.cpp",
+      glob_windows: None,
+      skip:         &[],
+      skip_windows: &[
+         "chrono_exception.cpp",
+         "time_zone.cpp",
+         "tzdb.cpp",
+         "tzdb_list.cpp",
+      ],
+      extra:        &[],
+      std:          "c++26",
+      so:           None,
+      dll:          false,
+      flags:        &[
          "-D_LIBCPP_BUILDING_LIBRARY",
          "-D_LIBCPP_LINK_RT_LIB",
          "-D_LIBCPP_REMOVE_TRANSITIVE_INCLUDES",
          "-DLIBCXX_BUILDING_LIBCXXABI",
-         "-D_LIBCPP_LINK_PTHREAD_LIB",
          "-D_LIBCPP_ENABLE_EXPERIMENTAL",
          "-fvisibility=hidden",
          "-faligned-allocation",
          "-fsized-deallocation",
       ],
+      posix_flags:  &["-D_LIBCPP_LINK_PTHREAD_LIB"],
    },
 ];
 
@@ -146,8 +171,9 @@ impl Runtimes {
    /// the hardening-dependent assertion semantic (2), as
    /// libcxx/CMakeLists.txt encodes `LIBCXX_HARDENING_MODE` and
    /// `LIBCXX_ASSERTION_SEMANTIC`.
-   fn config_site(libc: &str) -> String {
-      let musl = u8::from(libc == "musl");
+   fn config_site(stage: &Stage) -> String {
+      let musl = u8::from(stage.libc == "musl");
+      let tzdb = u8::from(stage.os != "windows");
       format!(
          "#ifndef _LIBCPP___CONFIG_SITE
 #define _LIBCPP___CONFIG_SITE
@@ -168,7 +194,7 @@ impl Runtimes {
 #define _LIBCPP_HAS_LOCALIZATION 1
 #define _LIBCPP_HAS_UNICODE 1
 #define _LIBCPP_HAS_WIDE_CHARACTERS 1
-#define _LIBCPP_HAS_TIME_ZONE_DATABASE 1
+#define _LIBCPP_HAS_TIME_ZONE_DATABASE {tzdb}
 #define _LIBCPP_INSTRUMENTED_WITH_ASAN 0
 #define _LIBCPP_PSTL_BACKEND_STD_THREAD
 #define _LIBCPP_HARDENING_MODE_DEFAULT 4
@@ -199,7 +225,7 @@ impl Runtimes {
       }
       write_file(
          Path::new(&format!("{v1}/__config_site")),
-         Self::config_site(&stage.libc).as_bytes(),
+         Self::config_site(stage).as_bytes(),
          None,
       )?;
       copy(
@@ -215,15 +241,20 @@ impl Runtimes {
       copy_tree(&src.join("libunwind/include"), Path::new(inc), "**/*.h")
    }
 
-   fn items(lib: &Lib, obj: &str) -> io::Result<Vec<Item>> {
-      let found = files(&format!("{}/{}", lib.dir, lib.glob))?;
+   fn items(lib: &Lib, obj: &str, posix: bool) -> io::Result<Vec<Item>> {
+      let mut found = files(&format!("{}/{}", lib.dir, lib.glob))?;
+      if !posix && let Some(glob) = lib.glob_windows {
+         found.extend(files(&format!("{}/{glob}", lib.dir))?);
+      }
       let sources = found
          .iter()
          .map(|path| path.to_string_lossy().into_owned())
          .filter(|path| {
             path
                .strip_prefix(&format!("{}/", lib.dir))
-               .is_none_or(|rel| !lib.skip.contains(&rel))
+               .is_none_or(|rel| {
+                  !lib.skip.contains(&rel) && (posix || !lib.skip_windows.contains(&rel))
+               })
          })
          .chain(lib.extra.iter().map(|extra| (*extra).to_owned()));
       Ok(sources
@@ -246,11 +277,12 @@ impl Runtimes {
    }
 
    fn flags(stage: &Stage, out: &str) -> io::Result<(Vec<String>, Vec<String>)> {
+      let profile = stage.profile()?;
       let mut common = stage.ccflags()?;
+      common.extend(profile.pic().iter().map(|flag| (*flag).to_owned()));
       common.extend(
          [
             "-O2",
-            "-fPIC",
             "-nostdinc++",
             "-fvisibility-inlines-hidden",
             "-ffunction-sections",
@@ -272,13 +304,115 @@ impl Runtimes {
             .map(str::to_owned),
       );
       let mut link = stage.ccflags()?;
-      link.extend(
-         ["-nostdlib++", "-shared", "-Wl,-z,defs"]
-            .into_iter()
-            .map(str::to_owned),
-      );
+      link.extend(["-nostdlib++", "-shared"].into_iter().map(str::to_owned));
       link.push(format!("-L{out}/lib"));
+      if profile.posix() {
+         link.push("-Wl,-z,defs".to_owned());
+      }
       Ok((common, link))
+   }
+
+   fn link_names(out: &str) -> io::Result<()> {
+      for lib in ["unwind", "c++abi", "c++"] {
+         symlink(format!("lib{lib}.so.1"), format!("{out}/lib/lib{lib}.so"))?;
+      }
+      write_file(
+         Path::new(&format!("{out}/lib/libgcc_s.so")),
+         b"INPUT(-lunwind)\n",
+         None,
+      )?;
+      symlink("libunwind.a", format!("{out}/lib/libgcc_s.a"))?;
+      write_file(
+         Path::new(&format!("{out}/lib/libatomic.so")),
+         b"/* compiler-rt builtins */\n",
+         None,
+      )
+   }
+
+   fn build_lib(
+      lib: &Lib,
+      stage: &Stage,
+      common: &[String],
+      link: &[String],
+      built: &BTreeMap<&str, Built>,
+   ) -> io::Result<Built> {
+      let out = stage.out();
+      let profile = stage.profile()?;
+      let coff = stage.binfmt == "coff";
+      let mut items = Self::items(lib, &format!("{}/obj", stage.build_top), profile.posix())?;
+      say(&format!("lib{}: {} files", lib.name, items.len()));
+      let mut flags = common.to_vec();
+      flags.extend(lib.flags.iter().map(|flag| (*flag).to_owned()));
+      if profile.posix() {
+         flags.extend(lib.posix_flags.iter().map(|flag| (*flag).to_owned()));
+      }
+      let mut static_flags = flags.clone();
+      if coff {
+         static_flags.extend([
+            "-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS".to_owned(),
+            "-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS".to_owned(),
+            "-D_LIBUNWIND_HIDE_SYMBOLS".to_owned(),
+         ]);
+      }
+      let objects = compile(&static_flags, &items)?;
+      let dll = if coff {
+         for item in &mut items {
+            item.obj = PathBuf::from(format!("{}.dll.o", item.obj.display()));
+         }
+         compile(&flags, &items)?
+      } else {
+         Vec::new()
+      };
+      let below: &[&str] = match lib.name {
+         "c++abi" => &["unwind"],
+         "c++" => &["unwind", "c++abi"],
+         _ => &[],
+      };
+      let members: Vec<PathBuf> = objects
+         .iter()
+         .chain(below.iter().flat_map(|layer| &built[layer].objects))
+         .cloned()
+         .collect();
+      archive(Path::new(&format!("{out}/lib/lib{}.a", lib.name)), &members)?;
+      if let Some(so_libs) = lib.so
+         && profile.posix()
+      {
+         let so = format!("lib{}.so.1", lib.name);
+         let mut args = link.to_vec();
+         args.extend([
+            format!("-Wl,-soname,{so}"),
+            "-o".to_owned(),
+            format!("{out}/lib/{so}.0"),
+         ]);
+         args.extend(
+            members
+               .iter()
+               .map(|path| path.to_string_lossy().into_owned()),
+         );
+         args.extend(so_libs.iter().map(|flag| (*flag).to_owned()));
+         run("clang", &strs(&args))?;
+         symlink(format!("{so}.0"), format!("{out}/lib/{so}"))?;
+      } else if coff && lib.dll {
+         create_dir_all(format!("{out}/bin"))?;
+         let mut args = link.to_vec();
+         args.extend([
+            "-o".to_owned(),
+            format!("{out}/bin/lib{}.dll", lib.name),
+            format!("-Wl,--out-implib,{out}/lib/lib{}.dll.a", lib.name),
+         ]);
+         args.extend(dll.iter().map(|path| path.to_string_lossy().into_owned()));
+         if lib.name == "c++" {
+            args.extend(
+               below
+                  .iter()
+                  .flat_map(|layer| &built[layer].dll)
+                  .map(|path| path.to_string_lossy().into_owned()),
+            );
+            args.push("-lunwind".to_owned());
+         }
+         run("clang", &strs(&args))?;
+      }
+      Ok(Built { objects, dll })
    }
 }
 
@@ -314,63 +448,19 @@ impl Recipe for Runtimes {
          "runtimes",
          "cmake",
       ])?;
-      let obj = format!("{}/obj", stage.build_top);
       Self::install_headers(stage, &src, &format!("{out}/include"))?;
       create_dir_all(format!("{out}/lib"))?;
       set_current_dir(&src)?;
       let (common, link) = Self::flags(stage, out)?;
 
-      let mut built: BTreeMap<&str, Vec<PathBuf>> = BTreeMap::new();
+      let mut built = BTreeMap::new();
       for lib in &LIBS {
-         let items = Self::items(lib, &obj)?;
-         say(&format!("lib{}: {} files", lib.name, items.len()));
-         let mut flags = common.clone();
-         flags.extend(lib.flags.iter().map(|flag| (*flag).to_owned()));
-         let objs = compile(&flags, &items)?;
-         let below: &[&str] = match lib.name {
-            "c++abi" => &["unwind"],
-            "c++" => &["unwind", "c++abi"],
-            _ => &[],
-         };
-         let carried: Vec<PathBuf> = below
-            .iter()
-            .flat_map(|layer| built.get(layer).cloned().unwrap_or_default())
-            .collect();
-         let mut members = objs.clone();
-         members.extend(carried.iter().cloned());
-         archive(Path::new(&format!("{out}/lib/lib{}.a", lib.name)), &members)?;
-         if let Some(so_libs) = lib.so {
-            let so = format!("lib{}.so.1", lib.name);
-            let soname = format!("-Wl,-soname,{so}");
-            let output = format!("{out}/lib/{so}.0");
-            let mut args: Vec<&str> = strs(&link);
-            args.push(&soname);
-            args.push("-o");
-            args.push(&output);
-            let object_texts: Vec<String> = members
-               .iter()
-               .map(|path| path.to_string_lossy().into_owned())
-               .collect();
-            args.extend(strs(&object_texts));
-            args.extend(so_libs.iter().copied());
-            run("clang", &args)?;
-            symlink(format!("{so}.0"), format!("{out}/lib/{so}"))?;
-         }
-         built.insert(lib.name, objs);
+         let compiled = Self::build_lib(lib, stage, &common, &link, &built)?;
+         built.insert(lib.name, compiled);
       }
-      for lib in ["unwind", "c++abi", "c++"] {
-         symlink(format!("lib{lib}.so.1"), format!("{out}/lib/lib{lib}.so"))?;
+      if stage.profile()?.posix() {
+         Self::link_names(out)?;
       }
-      write_file(
-         Path::new(&format!("{out}/lib/libgcc_s.so")),
-         b"INPUT(-lunwind)\n",
-         None,
-      )?;
-      symlink("libunwind.a", format!("{out}/lib/libgcc_s.a"))?;
-      write_file(
-         Path::new(&format!("{out}/lib/libatomic.so")),
-         b"/* compiler-rt builtins */\n",
-         None,
-      )
+      Ok(())
    }
 }

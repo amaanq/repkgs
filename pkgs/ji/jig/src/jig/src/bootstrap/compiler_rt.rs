@@ -104,12 +104,7 @@ impl CompilerRt {
    /// with lib<name>.a (ELF) or <name>.lib (lld-link), and for darwin only
    /// ever `lib/darwin/libclang_rt.osx.a`, fat in Xcode and one arch here.
    fn builtins_lib(stage: &Stage, out: &str) -> io::Result<String> {
-      Ok(match stage.binfmt.as_str() {
-         "elf" => format!("{out}/lib/{}/libclang_rt.builtins.a", stage.clang_target),
-         "coff" => format!("{out}/lib/{}/clang_rt.builtins.lib", stage.clang_target),
-         "macho" => format!("{out}/lib/darwin/libclang_rt.osx.a"),
-         other => return Err(io::Error::other(format!("no builtins layout for {other}"))),
-      })
+      Ok(format!("{out}/{}", stage.profile()?.runtime("builtins")))
    }
 
    /// ELF only, crtbegin/crtend (vcruntime and libSystem bring their own)
@@ -161,19 +156,7 @@ impl CompilerRt {
             .unwrap_or_default();
          !(name.contains("ROCm") || (!coff && name.starts_with("WindowsMMap")))
       });
-      let has: &[&str] = match stage.binfmt.as_str() {
-         "elf" | "macho" => {
-            &[
-               "-DCOMPILER_RT_HAS_ATOMICS=1",
-               "-DCOMPILER_RT_HAS_FCNTL_LCK=1",
-               "-DCOMPILER_RT_HAS_FLOCK=1",
-               "-DCOMPILER_RT_HAS_UNAME=1",
-               "-fPIC",
-            ]
-         },
-         "coff" => &["-DCOMPILER_RT_HAS_ATOMICS=1"],
-         other => return Err(io::Error::other(format!("no profile runtime for {other}"))),
-      };
+      let target_profile = stage.profile()?;
       let mut flags = stage.target();
       flags.extend(Self::libc_includes(stage)?);
       flags.extend([
@@ -183,12 +166,16 @@ impl CompilerRt {
          format!("-I{}/compiler-rt/include", src.display()),
          format!("-I{profile}"),
       ]);
-      flags.extend(has.iter().map(|flag| (*flag).to_owned()));
-      let lib = match stage.binfmt.as_str() {
-         "elf" => format!("{out}/lib/{}/libclang_rt.profile.a", stage.clang_target),
-         "coff" => format!("{out}/lib/{}/clang_rt.profile.lib", stage.clang_target),
-         _ => format!("{out}/lib/darwin/libclang_rt.profile_osx.a"),
-      };
+      flags.push("-DCOMPILER_RT_HAS_ATOMICS=1".to_owned());
+      flags.extend(target_profile.pic().iter().map(|flag| (*flag).to_owned()));
+      if target_profile.posix() {
+         flags.extend([
+            "-DCOMPILER_RT_HAS_FCNTL_LCK=1".to_owned(),
+            "-DCOMPILER_RT_HAS_FLOCK=1".to_owned(),
+            "-DCOMPILER_RT_HAS_UNAME=1".to_owned(),
+         ]);
+      }
+      let lib = format!("{out}/{}", target_profile.runtime("profile"));
       let items: Vec<Item> = kept
          .map(|source| {
             let name = source
@@ -221,11 +208,7 @@ impl Recipe for CompilerRt {
       let src = stage.unpack("llvm", &["compiler-rt", "third-party/siphash"])?;
       let builtins = format!("{}/compiler-rt/lib/builtins", src.display());
       let obj = format!("{}/obj", stage.build_top);
-      let pic: &[&str] = match stage.binfmt.as_str() {
-         "elf" | "macho" => &["-fPIC"],
-         "coff" => &[],
-         other => return Err(io::Error::other(format!("no builtins flags for {other}"))),
-      };
+      let pic = stage.profile()?.pic();
       let percpu: &[&str] = match stage.cpu.as_str() {
          "powerpc64le" => &[],
          "aarch64" => {

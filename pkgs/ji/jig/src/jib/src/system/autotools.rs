@@ -1,10 +1,15 @@
 use std::{
    env::var,
    fs::{
+      File,
       copy,
+      metadata,
       read,
    },
-   io,
+   io::{
+      self,
+      Write as _,
+   },
    path::{
       Path,
       PathBuf,
@@ -13,7 +18,10 @@ use std::{
 };
 
 use jig::{
-   files::write_file,
+   files::{
+      glob,
+      write_file,
+   },
    tree::{
       find,
       note,
@@ -134,7 +142,7 @@ impl Autotools {
       )?;
       let restored = probe::restore(&key, Path::new(&cache), socket)?;
       note("config.cache", if restored { "restored" } else { "cold" });
-      Self::gnulib_gettext_literal(Path::new(&ctx.src))?;
+      Self::backports(Path::new(&ctx.src))?;
       copy(tool("install")?, Self::install_tool(ctx))?;
       let mut args = vec![
          script.as_str(),
@@ -154,31 +162,83 @@ impl Autotools {
          ("CONFIG_SITE", &config_site),
       ];
       run(&var("CONFIG_SHELL").unwrap_or_default(), &args, &env)?;
-      probe::store(&key, Path::new(&cache), socket)
+      probe::store(&key, Path::new(&cache), socket)?;
+      if !platform.posix {
+         let workdir = if options.out_of_tree {
+            PathBuf::from(&ctx.build)
+         } else {
+            ctx.project_dir(&options.root)
+         };
+         Self::stub_gnulib_tests(&workdir, &platform.os)?;
+      }
+      Ok(())
    }
 
-   // gnulib's gettext.h without NLS is `((void) d, gettext (s))`, clang sees no
-   // string literal behind the comma operator and -Werror=format-security
-   // rejects every _("...")
-   fn gnulib_gettext_literal(src: &Path) -> io::Result<()> {
-      const FALLBACK: &[u8] = b"((void) (Domainname), gettext (Msgid))";
-      const DOMAIN: &[u8] = b"((void) (Category), dgettext (Domainname, Msgid))";
-      for entry in walk(src)? {
-         if entry.kind != 'f' || !entry.rel.ends_with("gettext.h") && entry.rel != "gettext.h" {
+   const BACKPORTS: &[(&str, &[u8], &[u8])] = &[
+      // gnulib's gettext.h without NLS is `((void) d, gettext (s))`, clang sees no
+      // string literal behind the comma operator and -Werror=format-security
+      // rejects every _("...")
+      (
+         "**/gettext.h",
+         b"((void) (Domainname), gettext (Msgid))",
+         b"gettext (Msgid)",
+      ),
+      (
+         "**/gettext.h",
+         b"((void) (Category), dgettext (Domainname, Msgid))",
+         b"dgettext (Domainname, Msgid)",
+      ),
+      (
+         "**/configure",
+         b"    -L* | -R* | -l*)\n       # Some compilers place",
+         b"    -L* | -R* | -l* | */libclang_rt.*.a)\n       # Some compilers place",
+      ),
+      (
+         "**/ltmain.sh",
+         b"\t    # Linking convenience modules into shared libraries is allowed,\n",
+         b"\t    case $deplib in */libgcc*.$libext | */libclang_rt*.$libext) deplibs=\"$deplib $deplibs\"; continue ;; esac\n\t    # Linking convenience modules into shared libraries is allowed,\n",
+      ),
+   ];
+
+   fn backports(src: &Path) -> io::Result<()> {
+      for &(files, old, new) in Self::BACKPORTS {
+         for path in glob(&format!("{}/{files}", src.display()))? {
+            if !path.is_file() {
+               continue;
+            }
+            let bytes = read(&path)?;
+            if find(&bytes, old).is_none() {
+               continue;
+            }
+            let mtime = metadata(&path)?.modified()?;
+            writable(&path)?;
+            let mut file = File::create(&path)?;
+            file.write_all(&replace_all(&bytes, old, new))?;
+            file.set_modified(mtime)?;
+         }
+      }
+      Ok(())
+   }
+
+   fn stub_gnulib_tests(build: &Path, os: &str) -> io::Result<()> {
+      const STUB: &[u8] =
+         b"all install check clean distclean:\n\t@:\n.PHONY: all install check clean distclean\n";
+      for path in glob(&format!(
+         "{}/{{gnulib-tests,tests}}/Makefile",
+         build.display()
+      ))? {
+         if !path.is_file() || find(&read(&path)?, b"test-nanosleep").is_none() {
             continue;
          }
-         let path = Path::new(&entry.path);
-         let bytes = read(path)?;
-         if find(&bytes, FALLBACK).is_none() {
-            continue;
-         }
-         let fixed = replace_all(
-            &replace_all(&bytes, FALLBACK, b"gettext (Msgid)"),
-            DOMAIN,
-            b"dgettext (Domainname, Msgid)",
-         );
-         writable(path)?;
-         write_file(path, &fixed, None)?;
+         writable(&path)?;
+         write_file(&path, STUB, None)?;
+         let dir = path
+            .strip_prefix(build)
+            .map_err(io::Error::other)?
+            .parent()
+            .map(|parent| parent.display().to_string())
+            .unwrap_or_default();
+         note("gnulib-tests", &format!("{dir} skipped on {os}"));
       }
       Ok(())
    }

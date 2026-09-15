@@ -18,7 +18,8 @@ export def --env properties []: nothing -> nothing {
     PySourcePath: $"($c.src)/", Py_OutDir: $"($c.build)/out", Py_IntDir: $"($c.build)/obj"
     IncludeSSL: "false", IncludeTkinter: "false", IncludeTests: "false", IncludeCTypes: "false", IncludeUwp: "false"
   }
-  $env.PKGS_CTX = ($c | upsert spec.vcxproj.properties ($props | merge $c.spec.vcxproj.properties))
+  $c | upsert spec.vcxproj.properties ($props | merge $c.spec.vcxproj.properties)
+    | to json | save -f ($env.NIX_BUILD_TOP | path join ctx.json)
 }
 
 # _freeze_module.vcxproj builds a host _freeze_module.exe and runs it over its <None> and

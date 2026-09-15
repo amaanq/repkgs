@@ -1,5 +1,5 @@
 # uptrack hook. builtins-<platform>.txt = the lib/builtins sources cmake would select per target,
-# derived from the pinned llvm-project. pkgs/ll/llvm/compiler-rt.nu compiles that list so stage0
+# derived from the pinned llvm-project. jig bootstrap compiler-rt compiles that list so stage0
 # needs no cmake.
 
 # list name -> {triple, cmake system name}
@@ -12,6 +12,7 @@ const TARGETS = {
   x86_64-windows-msvc: {triple: x86_64-pc-windows-msvc, system: Windows}
   x86_64-windows-gnu: {triple: x86_64-w64-mingw32, system: Windows}
   aarch64-windows-msvc: {triple: aarch64-pc-windows-msvc, system: Windows}
+  aarch64-windows-gnu: {triple: aarch64-w64-mingw32, system: Windows}
 }
 
 # compiler-rt's Apple path shells out to xcrun and PlistBuddy, so it cannot be configured here.

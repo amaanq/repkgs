@@ -1,11 +1,18 @@
 use std::{
    env::var,
-   fs::read_to_string,
+   fs::{
+      copy,
+      read_to_string,
+      rename,
+   },
    io,
    path::Path,
 };
 
-use jig::store::on_path;
+use jig::{
+   files::glob,
+   store::on_path,
+};
 use serde::Deserialize;
 
 use crate::{
@@ -35,6 +42,7 @@ struct Options {
    install_target:   Vec<String>,
    configure_script: String,
    configure_flags:  Vec<String>,
+   programs:         Vec<String>,
 }
 
 pub struct Make;
@@ -85,7 +93,9 @@ impl System for Make {
          "install" => {
             let mut flags = options.flags;
             flags.extend(options.install_flags);
-            install(ctx, &flags, &options.install_target)
+            with_programs(ctx, &options.programs, || {
+               install(ctx, &flags, &options.install_target)
+            })
          },
          _ => Err(unknown("make", verb)),
       }
@@ -101,6 +111,35 @@ pub fn shell() -> io::Result<[(&'static str, String); 2]> {
    };
    let text = shell.to_string_lossy().into_owned();
    Ok([("CONFIG_SHELL", text.clone()), ("SHELL", text)])
+}
+
+fn with_programs(
+   ctx: &Ctx,
+   programs: &[String],
+   install: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+   let exe = ctx.platform()?.ext.exe;
+   if exe.is_empty() {
+      return install();
+   }
+   for program in programs {
+      for path in glob(&format!("**/{program}{exe}"))? {
+         let plain = path
+            .to_string_lossy()
+            .strip_suffix(exe.as_str())
+            .ok_or_else(|| io::Error::other(format!("{} has no {exe} suffix", path.display())))?
+            .to_owned();
+         copy(&path, plain)?;
+      }
+   }
+   install()?;
+   for program in programs {
+      let plain = Path::new(&ctx.out).join("bin").join(program);
+      if plain.exists() {
+         rename(&plain, format!("{}{exe}", plain.display()))?;
+      }
+   }
+   Ok(())
 }
 
 pub fn build(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {

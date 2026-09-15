@@ -2,6 +2,7 @@
 { package, buildPkgs }:
 package {
   name = "jigd";
+  platforms.posix = true;
   version = "3.0.0";
   source = builtins.path {
     path = ../jig/src;
@@ -10,6 +11,9 @@ package {
   };
   uses = [ "cargo" ];
   cargo.tool = buildPkgs.rust-bootstrap;
-  cargo.flags = [ "-p" "jigd" ];
+  cargo.flags = [
+    "-p"
+    "jigd"
+  ];
   tests.version = false; # a daemon, no --version
 }

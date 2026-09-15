@@ -26,13 +26,21 @@ pub enum Mode {
       undo:      bool,
    },
    /// each store path's exports with defaults filled in, as JSON.
-   Exports { roots: Vec<String> },
+   Exports {
+      roots: Vec<String>,
+   },
    /// the dependency closure over propagate, as JSON.
-   Deps { roots: Vec<String> },
+   Deps {
+      roots: Vec<String>,
+   },
    /// write exports.json from the spec on stdin.
-   WriteExports { output: PathBuf },
+   WriteExports {
+      output: PathBuf,
+   },
    /// drop docs and junk, unpack man pages, print the inventory as JSON.
-   Prune { output: PathBuf },
+   Prune {
+      output: PathBuf,
+   },
    /// make .pc files, foo-config scripts and links relative to the store path,
    /// with --macho cmake's exported sonames too.
    Relativize {
@@ -42,7 +50,10 @@ pub enum Mode {
       macho:  bool,
    },
    /// move the DWARF of what jig linked into the debug output, by build-id.
-   SplitDebug { output: PathBuf, debug: PathBuf },
+   SplitDebug {
+      output: PathBuf,
+      debug:  PathBuf,
+   },
    /// everything before the first build phase, prints { env, cwd, ctx } as
    /// JSON and writes ctx.json under the build top.
    Prepare {
@@ -66,6 +77,9 @@ pub enum Mode {
    System {
       #[pound(subcommand)]
       operation: SystemOperation,
+   },
+   Msbuild {
+      file: PathBuf,
    },
    /// the build environment from the structured attrs, as JSON for load-env.
    Env {
