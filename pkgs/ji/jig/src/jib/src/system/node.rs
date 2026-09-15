@@ -248,7 +248,11 @@ fn setup(manager: Manager, ctx: &Ctx, attrs: &Attrs) -> io::Result<Env> {
       .collect();
    args.extend(strs(&options.flags));
    run(manager.name(), &args, &env_vars)?;
-   shebangs(Path::new("node_modules"), false)?;
+   let modules = Path::new("node_modules");
+   if modules.try_exists()? {
+      shebangs(modules, false)?;
+   }
+
    let mut path: Vec<String> = vec![format!("{}/node_modules/.bin", current_dir()?.display())];
    path.extend(
       var("PATH")
