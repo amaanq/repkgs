@@ -116,6 +116,16 @@ pub fn log_uncached(outcome: &str, args: &[String]) {
    }
 }
 
+impl RunResult {
+   #[must_use]
+   #[inline]
+   pub fn deterministic(&self) -> bool {
+      self.status < 128
+         && !String::from_utf8_lossy(&self.stderr).contains("unable to execute command")
+         && !String::from_utf8_lossy(&self.stderr).contains("PLEASE submit a bug report")
+   }
+}
+
 #[must_use]
 #[inline]
 pub fn status_code(status: ExitStatus) -> i32 {

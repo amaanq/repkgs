@@ -6,7 +6,9 @@ use std::{
    },
    ffi::OsStr,
    fs::{
+      canonicalize,
       read,
+      read_dir,
       read_to_string,
    },
    io::{
@@ -34,6 +36,7 @@ use jig::{
    store::{
       Store,
       field,
+      on_path,
    },
 };
 use tempfile::Builder;
@@ -50,6 +53,7 @@ use crate::{
       Miss,
       lookup,
       parse_depfile,
+      prefetch,
    },
 };
 
@@ -287,9 +291,77 @@ impl Invocation {
       }
    }
 
-   fn request_key(&self, store: &Store, compiler: &str) -> io::Result<String> {
+   #[expect(
+      clippy::filetype_is_file,
+      reason = "toolchain identities include regular library files only"
+   )]
+   fn toolchain_identities(
+      &self,
+      cache: &mut Client,
+      store: &mut Store,
+      compiler: &str,
+   ) -> io::Result<String> {
+      let mut tools = vec![on_path(compiler).to_string_lossy().into_owned()];
+      if self.links() {
+         tools.extend(
+            self
+               .args
+               .iter()
+               .filter_map(|arg| arg.strip_prefix("--ld-path="))
+               .map(|value| on_path(value).to_string_lossy().into_owned()),
+         );
+      }
+      let mut files = Vec::new();
+      for tool in &tools {
+         let real = canonicalize(tool)?;
+         files.push(real.to_string_lossy().into_owned());
+         let library = real
+            .parent()
+            .and_then(Path::parent)
+            .map(|root| root.join("lib"));
+         let Some(directory) = library else {
+            continue;
+         };
+         let entries = match read_dir(directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+         };
+         for directory_entry in entries {
+            let entry = directory_entry?;
+            let name = entry.file_name();
+            let text = name.to_string_lossy();
+            let shared = text.starts_with("libLLVM")
+               || text.starts_with("libclang-cpp")
+               || text.starts_with("liblld");
+            if shared && entry.file_type()?.is_file() {
+               files.push(entry.path().to_string_lossy().into_owned());
+            }
+         }
+      }
+      files.sort_unstable();
+      files.dedup();
+      prefetch(cache, store, &files)?;
+      let mut identities = String::new();
+      for file in &files {
+         identities.push_str(&store.input_id(file)?);
+         identities.push(',');
+      }
+      Ok(identities)
+   }
+
+   fn request_key(
+      &self,
+      store: &mut Store,
+      cache: &mut Client,
+      compiler: &str,
+   ) -> io::Result<String> {
       let mut hasher = Hasher::new();
       field(&mut hasher, store.tool_id(compiler)?);
+      field(
+         &mut hasher,
+         self.toolchain_identities(cache, store, compiler)?,
+      );
       field(&mut hasher, store.key(&current_dir()?.to_string_lossy()));
       field(&mut hasher, match self.action {
          Action::Link => "link",
@@ -346,7 +418,7 @@ pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut Client) -> io:
    invocation.args = driver.arguments(false, raw);
    invocation.key_injected(raw);
    let mut store = Store::new();
-   let request = invocation.request_key(&store, driver.compiler())?;
+   let request = invocation.request_key(&mut store, cache, driver.compiler())?;
    let key = match lookup(cache, &mut store, &request) {
       Ok(key) => key,
       Err(Miss::Failed(error)) => return Err(error),
@@ -380,10 +452,11 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       invocation.source.clone()
    };
    let connected = if invocation.cacheable {
-      match invocation
-         .request_key(&store, driver.compiler())
-         .and_then(|key| Client::connect(socket).map(|cache| (key, cache)))
-      {
+      match Client::connect(socket).and_then(|mut cache| {
+         invocation
+            .request_key(&mut store, &mut cache, driver.compiler())
+            .map(|key| (key, cache))
+      }) {
          Ok(connection) => Some(connection),
          Err(error) => {
             diagnostic(format_args!("jig compilation cache unavailable, {error}"));
@@ -481,6 +554,12 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
          "-MF".to_owned(),
          dependency_path.to_string_lossy().into_owned(),
       ]);
+   } else if invocation.action != Action::Link
+      && ![".S", ".s", ".sx"]
+         .iter()
+         .any(|suffix| invocation.source.ends_with(suffix))
+   {
+      arguments.extend(["-Xclang".to_owned(), "-sys-header-deps".to_owned()]);
    }
    if invocation.stdout {
       arguments.extend(["-o".to_owned(), output_path.to_string_lossy().into_owned()]);
@@ -514,16 +593,19 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
             return Ok(false);
          }
          let temporary = var("TMPDIR").unwrap_or_else(|_| "/tmp".to_owned());
-         inputs.extend(
-            parse_depfile(&link_text)
-               .into_iter()
-               .filter(|path| !Path::new(path).starts_with(&temporary)),
-         );
+         let prefix = format!("{}/", temporary.trim_end_matches('/'));
+         inputs.extend(parse_depfile(&link_text).into_iter().filter(|path| {
+            if !path.starts_with(&prefix) {
+               return true;
+            }
+            path[prefix.len()..].contains('/')
+         }));
       }
       if result.status != 0_i32
          && (invocation.links()
             || inputs.is_empty()
-            || String::from_utf8_lossy(&result.stderr).contains("file not found"))
+            || String::from_utf8_lossy(&result.stderr).contains("file not found")
+            || !result.deterministic())
       {
          return Ok(false);
       }

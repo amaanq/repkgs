@@ -295,6 +295,8 @@ fn request_key(store: &Store, compiler: &str, invocation: &Invocation) -> io::Re
    for argument in &invocation.key_args {
       field(&mut hasher, store.key(argument));
    }
+   field(&mut hasher, "source");
+   field(&mut hasher, invocation.source.as_bytes());
    field(&mut hasher, read(&invocation.source)?);
    for external in &invocation.externs {
       field(&mut hasher, store.input_id(external)?);

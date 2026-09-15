@@ -99,7 +99,7 @@ unchanged, and `JIG_CC` must name the compiler.
 | `JIG_LOG_ARGS`          | append the argument line of each uncached invocation                                |
 | `JIG_NIX_STORE_OFFLINE` | nonempty makes `nix-store` mode compute paths without a daemon                      |
 | `NIX_BUILD_TOP`         | the slot owner, `-` when unset                                                      |
-| `TMPDIR`                | link dependencies under it are not inputs                                           |
+| `TMPDIR`                | driver objects directly inside it are excluded from link inputs                    |
 | `GOCACHEPROG_DIR`       | where `gocacheprog` materialises outputs, default `$TMPDIR/gocacheprog`             |
 
 ### 2.3 jigd options
@@ -149,8 +149,8 @@ of the text.
 
 In content mode, when `$out` is a store path, its 32 character hash is replaced by 32 `e`
 characters in keys, in cached objects and in cached diagnostics, and restored on replay. The
-replacement is a byte substitution over the whole object, so it applies to binary objects as
-well as text.
+replacement requires the store directory immediately before the hash and a dash immediately
+after it. It applies to binary objects as well as text, leaving unrelated runs of `e` untouched.
 
 ### 3.5 Input identity
 
@@ -231,10 +231,14 @@ markers `@file`, `,@`, `-header`, `-Map`, `--print-map`, `--dependency-file`, `-
 `-fprofile`, `--coverage`, `-fmodules`, `-include-pch`, `-MJ`, `-serialize-diagnostics`,
 `-gsplit-dwarf`, `,-M`, `,-t`. Links are cacheable for ELF only.
 
-The manifest inputs are the depfile entries (jig adds `-MD -MF <tmp>` when the user asked for
-none), lld's `--dependency-file` entries outside `TMPDIR` for links, the source and the object
-inputs. The manifest environment is empty. A failing compile is stored only when it had inputs
-and did not fail with `file not found`. A failing link is never stored.
+The compiler, explicitly selected linker, and their sibling LLVM, clang-cpp and lld libraries
+also contribute their identities to the request key. Patching a tool at the same version must miss.
+
+The manifest inputs are the depfile entries, including system headers, lld's
+`--dependency-file` entries, the source and the object inputs. Driver objects directly inside
+`TMPDIR` are excluded, while inputs in its subdirectories remain. The manifest environment
+is empty. A failing compile is stored only when it had inputs, did not fail with `file not found`,
+and neither exited from a signal nor reported a crashed child. A failing link is never stored.
 
 | object       | content                                                                                       |
 | ------------ | --------------------------------------------------------------------------------------------- |
@@ -261,6 +265,7 @@ request = "rs/" + hash(
    field(tool_id(rustc))
    field(key(cwd))
    for each key_arg a: field(key(a))
+   field("source") field(exact source argument)
    field(source bytes)
    for each --extern path: field(input_id(path))
    for each libstd-*.rlib and libcore-*.rlib under <rustc root>/lib/rustlib/*/lib, sorted:
@@ -355,6 +360,9 @@ bytes per line. A client may pipeline requests. The server answers in order.
 A key is 1 to 4096 bytes with no whitespace and no NUL. The daemon stores frames as opaque
 bytes and never inspects them.
 
+On Linux, connections are accepted from the daemon's user, root, the `nixbld` group and
+Nix's automatically allocated build UIDs. Request lines are limited to 64 KiB.
+
 ### 6.1 Frame
 
 ```
@@ -367,9 +375,11 @@ bytes, a decompressed size that differs from the header, and trailing bytes.
 
 ### 6.2 Identities
 
-`IDS` is only asked for store paths that are not under `$out`. The daemon answers a path with the
-`C:` identity of a regular file, cached by device, inode, size, mtime and ctime, and an empty line
-for anything it cannot open. A client that gets an empty line hashes the file itself.
+`IDS` is only asked for store paths that are not under `$out`. The daemon restricts requests
+to `NIX_STORE_DIR`, defaulting to `/nix/store`, checks symlink targets and on Linux checks the
+opened descriptor too. It answers with the `C:` identity of a regular file, cached by device,
+inode, size, mtime and ctime, and an empty line for any rejected path or failed read. A client
+that gets an empty line hashes the file itself.
 
 ### 6.3 Slots
 
@@ -400,7 +410,11 @@ are never reused within a store, and a pack found in a later tier with an id alr
 deleted as a leftover of an interrupted move.
 
 The in-memory index maps each key to its newest location. Live bytes per pack are the bytes of
-records that are still current. Reads use `sendfile` from the pack.
+records that are still current. The highest pack ID wins across tiers. Hint entries extending
+past the pack's end are skipped. Reads use `sendfile` and hold the pack open through eviction.
+
+PUT bodies of at least 4 MiB are spooled into the hot tier before taking the store lock.
+Smaller bodies are buffered in memory. An incomplete transfer is never indexed.
 
 ### 7.2 Tiers and eviction
 
@@ -539,12 +553,13 @@ derivation's `result.json` instead.
 `identify` prints `{ "<path>": "<32 hex>" }` per argument, a blake3 over the sorted tree of
 relative path, kind and file content (or link target), or over the file when the path is one.
 The result is stored under `identity/v3/<path>` in jigd, so each store path is hashed once.
-`builder/probe-cache.nu` keys configure caches on these instead of raw store paths.
+Configure cache keys use these identities for sources, patches and recipes.
 
 `probe key <kind> <scripts…> [--extra <json>] [--no-out]` prints `probe/v3/<kind>/<hash>` over
-the scripts, the identities of roots, source, patches and builder tree, spec, platform,
-environment, `CONFIG_SITE` files and `extra`, store hashes masked. `restore` and `store` move a
-file through jigd with the roots as `{rootN}`, `restore-dir` and `store-dir` a tree,
+the scripts, full store roots, identities of source, patches and builder tree, spec, platform,
+environment, `CONFIG_SITE` files and `extra`. Store hashes remain in the key because configure
+results can depend on absolute paths. `restore` and `store` move unchanged file bytes through
+jigd, with failed uploads reported without failing the build. `restore-dir` and `store-dir` move a tree,
 `cmake-init` renders a `CMakeCache.txt`'s path-free `INTERNAL` entries as a `-C` script.
 
 `system setup|workdir|phase <name> [<verb>]` is every build system, package.nix calls them

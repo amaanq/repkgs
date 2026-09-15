@@ -111,13 +111,18 @@ impl Store {
       } else {
          (self.output_hash.as_slice(), OUTPUT_PLACEHOLDER)
       };
+      let prefix = format!("{STORE_DIR}/");
       let mut offset = 0;
       while let Some(position) = data[offset..]
          .windows(from.len())
          .position(|window| window == from)
       {
          let start = offset + position;
-         data[start..start + from.len()].copy_from_slice(to);
+         if data[..start].ends_with(prefix.as_bytes())
+            && data.get(start + from.len()) == Some(&b'-')
+         {
+            data[start..start + from.len()].copy_from_slice(to);
+         }
          offset = start + from.len();
       }
    }
