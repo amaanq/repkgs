@@ -143,11 +143,21 @@ pub enum ProbeOperation {
 
 #[derive(Parse)]
 pub enum SystemOperation {
+   SysEnv {
+      ecosystem: String,
+   },
    /// the environment for the phases, as JSON, after creating the working
    /// directory.
-   Setup { system: String },
+   Setup {
+      system: String,
+   },
    /// the working directory.
-   Workdir { system: String },
+   Workdir {
+      system: String,
+   },
    /// one phase, in the working directory.
-   Phase { system: String, verb: String },
+   Phase {
+      system: String,
+      verb:   String,
+   },
 }
