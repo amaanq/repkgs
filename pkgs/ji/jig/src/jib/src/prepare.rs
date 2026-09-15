@@ -145,13 +145,39 @@ fn resolve_platform(
 ) -> io::Result<Value> {
    let mut resolved = platform.clone();
    let cross = flag(platform, "cross");
-   let transparent = cross
-      && Command::new(text(platform, "probe"))
+   // qemu-user can map V8's code range above 2^48, where arm64 PAC stores
+   // its signature, so signed return addresses stop authenticating.
+   // Reserve 16 TiB to leave room for V8 while fitting a 47-bit host.
+   // binfmt-registered qemu reads QEMU_RESERVED_VA too.
+   let reserved_va = (cross && text(platform, "cpu") == "aarch64").then_some("0x100000000000");
+   if let Some(limit) = reserved_va {
+      env.insert(
+         "QEMU_RESERVED_VA".to_owned(),
+         Value::String(limit.to_owned()),
+      );
+   }
+   let transparent = if cross {
+      match Command::new(text(platform, "probe"))
          .arg("--version")
-         .stdout(Stdio::null())
-         .stderr(Stdio::null())
-         .status()
-         .is_ok_and(|status| status.success());
+         .envs(reserved_va.map(|limit| ("QEMU_RESERVED_VA", limit)))
+         .output()
+      {
+         Ok(output) => {
+            if !output.status.success() {
+               return Err(io::Error::other(format!(
+                  "{} execution probe failed with {}\n{}",
+                  text(platform, "name"),
+                  output.status,
+                  String::from_utf8_lossy(&output.stderr)
+               )));
+            }
+            true
+         },
+         Err(_) => false,
+      }
+   } else {
+      false
+   };
    if cross {
       note(
          "platform",
@@ -169,16 +195,6 @@ fn resolve_platform(
       "PKGS_EMULATOR".to_owned(),
       Value::String(words(&resolved, "emulator").join(" ")),
    );
-   // qemu-user otherwise hands out guest mappings above 2^48 (mmap hints from
-   // V8's code range land there), where a real arm64 process has no
-   // addresses and PAC keeps its signature, so signed return addresses stop
-   // authenticating. binfmt-registered qemu reads it too
-   if cross {
-      env.insert(
-         "QEMU_RESERVED_VA".to_owned(),
-         Value::String("0x1000000000000".to_owned()),
-      );
-   }
    Ok(resolved)
 }
 

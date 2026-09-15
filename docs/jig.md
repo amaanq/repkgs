@@ -543,6 +543,10 @@ and patches the source into `source/` or restores a tests derivation's tree, and
 `ctx` record to `$NIX_BUILD_TOP/ctx.json`. It prints `{ env, cwd, ctx }` on stdout, tool output
 goes to stderr.
 
+Aarch64 cross builds reserve 16 TiB of guest virtual address space through `QEMU_RESERVED_VA`.
+The binfmt probe uses the same reservation as the build. If the probe starts but exits
+unsuccessfully, prepare fails with its stderr so emulator startup errors remain visible.
+
 `finish` reads `ctx.json` and runs the finish sequence in the directory the last phase left.
 That is `spec.install` and `spec.links`, `--keep-tree`, the `bin` check, `prune`, the layout check,
 `shebangs --undo`, `split-debug`, `implant`, `launchers`, `reloc-fixup`, `exports.json`,
