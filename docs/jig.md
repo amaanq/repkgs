@@ -391,11 +391,14 @@ build holding the fewest slots when several are waiting. Ties go to the earliest
 client that disconnects while waiting is removed from the queue, and every slot a connection
 holds is released when it closes.
 
-`jsem <ghc> [args…]` is the same protocol for GHC. cabal builds under `semaphore: True` pass
-`-jsem <name>` to a ghc wrapper that execs jsem, and the first jsem of a build starts one
-broker per semaphore (an `flock` under `NIX_BUILD_TOP`) that keeps exactly one idle token in
-the named semaphore, orders a slot from jigd whenever ghc takes it, and closes a slot
-connection for every token ghc gives back. It exits once cabal unlinks the semaphore.
+`jsem <ghc> [args…]` puts ghc's own parallelism under the same admission. cabal builds under
+`semaphore: True` pass `-jsem v2-<name>` to a ghc wrapper that runs jsem, and the name is a
+semaphore-compat v2 socket under `$TMPDIR/semaphore-compat/` that cabal serves, one byte per
+command (`-` wait, `?` try, `+` release, answered `.` or `!`), one connection per token, a
+closed connection returning its tokens. jsem listens on `<name>-j<pid>`, hands ghc that name
+instead, and backs every token ghc waits for with whichever answers first, a token from cabal's
+socket or a `SLOT` from jigd, closing the other request. Releases and disconnects close the
+backing connection. Without jigd, or with a v1 name, jsem execs ghc untouched.
 
 ## 7. jigd storage
 
