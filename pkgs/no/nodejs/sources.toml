@@ -1,13 +1,13 @@
 [upstream]
-purl = "pkg:github/nodejs/node"
+purl  = "pkg:github/nodejs/node"
 allow = ">=24,<25"
 
 [[source]]
-key = "default"
-url = "https://nodejs.org/dist/v{version}/node-v{version}.tar.xz"
+key  = "default"
+url  = "https://nodejs.org/dist/v{version}/node-v{version}.tar.xz"
 hash = "sha256-vWwDbgnehE+oqrMZ7UUiTNHWD2EErajgWA0VY1gz9zI="
 
 [pin]
 version = "24.21.0"
-tag = "v24.21.0"
-date = "2026-09-08"
+tag     = "v24.21.0"
+date    = "2026-09-08"

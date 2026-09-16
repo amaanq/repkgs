@@ -2,11 +2,11 @@
 purl = "pkg:github/ruby/ruby"
 
 [[source]]
-key = "default"
-url = "https://cache.ruby-lang.org/pub/ruby/{major}.{minor}/ruby-{version}.tar.xz"
+key  = "default"
+url  = "https://cache.ruby-lang.org/pub/ruby/{major}.{minor}/ruby-{version}.tar.xz"
 hash = "sha256-2iG4H3UV+BZvqXtz73tDYjNgWRs1+UmB5bGf6ftHjTI="
 
 [pin]
 version = "4.0.7"
-date = "2026-09-15"
-tag = "v4.0.7"
+date    = "2026-09-15"
+tag     = "v4.0.7"

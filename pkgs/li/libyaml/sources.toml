@@ -2,11 +2,11 @@
 purl = "pkg:github/yaml/libyaml"
 
 [[source]]
-key = "default"
-url = "https://github.com/yaml/libyaml/releases/download/{version}/yaml-{version}.tar.gz"
+key  = "default"
+url  = "https://github.com/yaml/libyaml/releases/download/{version}/yaml-{version}.tar.gz"
 hash = "sha256-SSKKmCfhtQDULpW+u9OtvsQI2j6GC0cjK/ROTZLr9MU="
 
 [pin]
 version = "0.2.5"
-tag = "0.2.5"
-date = "2020-06-01"
+tag     = "0.2.5"
+date    = "2020-06-01"

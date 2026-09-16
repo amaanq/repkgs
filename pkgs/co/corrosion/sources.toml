@@ -2,10 +2,10 @@
 purl = "pkg:github/corrosion-rs/corrosion"
 
 [[source]]
-key = "default"
-url = "https://github.com/corrosion-rs/corrosion/archive/refs/tags/{tag}.tar.gz"
+key  = "default"
+url  = "https://github.com/corrosion-rs/corrosion/archive/refs/tags/{tag}.tar.gz"
 hash = "sha256-ppuDNObfKhneD9AlnPAvyCRHKW3BidXKglD1j/LE9CM="
 
 [pin]
 version = "0.6.1"
-tag = "v0.6.1"
+tag     = "v0.6.1"

@@ -2,8 +2,8 @@
 purl = "pkg:generic/zig?url=https://ziglang.org/download/index.json"
 
 [[source]]
-key = "default"
-url = "https://ziglang.org/download/{version}/zig-{version}.tar.xz"
+key  = "default"
+url  = "https://ziglang.org/download/{version}/zig-{version}.tar.xz"
 hash = "sha256-qtfORcQVu7RmaQyRI5QgRyayJumO0DmwWLM0EejtRx8="
 
 [pin]

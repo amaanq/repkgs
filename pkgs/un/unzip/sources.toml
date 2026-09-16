@@ -2,8 +2,8 @@
 frozen = "Info-ZIP, last release 2009"
 
 [[source]]
-key = "default"
-url = "https://downloads.sourceforge.net/infozip/unzip60.tar.gz"
+key  = "default"
+url  = "https://downloads.sourceforge.net/infozip/unzip60.tar.gz"
 hash = "sha256-qLgZcx1BdkPe8Y/hb6nqaVSvtt3KWbxkTNKVHyQAPGw="
 
 [pin]

@@ -2,11 +2,11 @@
 purl = "pkg:github/honojs/create-hono"
 
 [[source]]
-key = "default"
-url = "https://github.com/honojs/create-hono/archive/refs/tags/{tag}.tar.gz"
+key  = "default"
+url  = "https://github.com/honojs/create-hono/archive/refs/tags/{tag}.tar.gz"
 hash = "sha256-x5kY1lpzmiRxHIkRdQotYE4jDM5+bOqmuWAVacajz74="
 
 [pin]
 version = "0.19.5"
-tag = "v0.19.5"
-date = "2026-08-30"
+tag     = "v0.19.5"
+date    = "2026-08-30"

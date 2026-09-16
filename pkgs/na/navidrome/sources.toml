@@ -2,15 +2,15 @@
 purl = "pkg:github/navidrome/navidrome"
 
 [[source]]
-key = "default"
-url = "https://github.com/navidrome/navidrome/archive/refs/tags/{tag}.tar.gz"
+key  = "default"
+url  = "https://github.com/navidrome/navidrome/archive/refs/tags/{tag}.tar.gz"
 hash = "sha256-2GUAGuwVE3i49g/mGN3zd1J1y9jVhF0g4hKGceSQwD8="
 
 [pin]
 version = "0.64.0"
-date = "2026-09-12"
-tag = "v0.64.0"
-sys = ["sqlite", "taglib"]
+date    = "2026-09-12"
+tag     = "v0.64.0"
+sys     = [ "sqlite", "taglib" ]
 
 [locks]
 go = "."

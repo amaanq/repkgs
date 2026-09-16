@@ -2,10 +2,10 @@
 purl = "pkg:github/kkos/oniguruma"
 
 [[source]]
-key = "default"
-url = "https://github.com/kkos/oniguruma/releases/download/{tag}/onig-{version}.tar.gz"
+key  = "default"
+url  = "https://github.com/kkos/oniguruma/releases/download/{tag}/onig-{version}.tar.gz"
 hash = "sha256-9WZSK5IVhfsthGxpKmwvUVgAzY1w+KouugpWFClYs1Y="
 
 [pin]
 version = "6.9.10"
-tag = "v6.9.10"
+tag     = "v6.9.10"

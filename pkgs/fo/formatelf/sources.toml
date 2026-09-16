@@ -2,11 +2,11 @@
 purl = "pkg:github/Mic92/formatelf"
 
 [[source]]
-key = "default"
-url = "https://github.com/Mic92/formatelf/archive/refs/tags/{tag}.tar.gz"
+key  = "default"
+url  = "https://github.com/Mic92/formatelf/archive/refs/tags/{tag}.tar.gz"
 hash = "sha256-xGXYZmvFBTZiUxtBKKbyqPI8reliajVHOgKT+U9ru0Y="
 
 [pin]
 version = "0.2.1"
-tag = "v0.2.1"
-date = "2026-09-09"
+tag     = "v0.2.1"
+date    = "2026-09-09"

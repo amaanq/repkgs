@@ -2,8 +2,8 @@
 purl = "pkg:gnu/bison"
 
 [[source]]
-key = "default"
-url = "https://ftp.gnu.org/gnu/bison/bison-{version}.tar.xz"
+key  = "default"
+url  = "https://ftp.gnu.org/gnu/bison/bison-{version}.tar.xz"
 hash = "sha256-qdirDBXUSQaXx0yN71wdM1mdBepiSSoKa20GdpLbKHA="
 
 [pin]

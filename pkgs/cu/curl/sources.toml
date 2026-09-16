@@ -2,11 +2,11 @@
 purl = "pkg:github/curl/curl"
 
 [[source]]
-key = "default"
-url = "https://curl.se/download/curl-{version}.tar.xz"
+key  = "default"
+url  = "https://curl.se/download/curl-{version}.tar.xz"
 hash = "sha256-3GBq7T5iU08VargRfd86qmAnheWRRd7ijH55PCw+ghY="
 
 [pin]
 version = "8.22.0"
-tag = "curl-8_22_0"
-date = "2026-09-02"
+tag     = "curl-8_22_0"
+date    = "2026-09-02"

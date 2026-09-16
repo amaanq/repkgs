@@ -2,8 +2,8 @@
 purl = 'pkg:generic/go?url=https://go.dev/dl/&regex=go(\d[0-9.]*)\.src\.tar\.gz'
 
 [[source]]
-key = "default"
-url = "https://go.dev/dl/go{version}.src.tar.gz"
+key  = "default"
+url  = "https://go.dev/dl/go{version}.src.tar.gz"
 hash = "sha256-r3NLW/7vnou1yL39OYdcXXJhiuGU27HudDdZcDLEAtI="
 
 [pin]

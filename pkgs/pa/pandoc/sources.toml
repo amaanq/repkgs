@@ -5,10 +5,10 @@ purl = "pkg:hackage/pandoc-cli"
 hackage = "."
 
 [[source]]
-key = "default"
-url = "https://hackage.haskell.org/package/pandoc-cli-{version}/pandoc-cli-{version}.tar.gz"
+key  = "default"
+url  = "https://hackage.haskell.org/package/pandoc-cli-{version}/pandoc-cli-{version}.tar.gz"
 hash = "sha256-KaYuBXNhVoN0lVNdVD6ikVF7FRyKKJm7zJxdXkObY0c="
 
 [pin]
 version = "3.11"
-sys = ["zlib"]
+sys     = [ "zlib" ]

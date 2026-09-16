@@ -2,11 +2,11 @@
 purl = "pkg:github/ninja-build/ninja"
 
 [[source]]
-key = "default"
-url = "https://github.com/ninja-build/ninja/archive/refs/tags/{tag}.tar.gz"
+key  = "default"
+url  = "https://github.com/ninja-build/ninja/archive/refs/tags/{tag}.tar.gz"
 hash = "sha256-D9HsIjv8EJ1qAdXFAKy260K77cCvopgQ2Fx6uXpt6VI="
 
 [pin]
 version = "1.13.2"
-tag = "v1.13.2"
-date = "2025-11-20"
+tag     = "v1.13.2"
+date    = "2025-11-20"

@@ -2,12 +2,12 @@
 purl = "pkg:github/Shopify/ruby-lsp"
 
 [[source]]
-key = "default"
-url = "https://github.com/Shopify/ruby-lsp/archive/refs/tags/{tag}.tar.gz"
+key  = "default"
+url  = "https://github.com/Shopify/ruby-lsp/archive/refs/tags/{tag}.tar.gz"
 hash = "sha256-dZc06dujrnUAlfZrwFOBas9EnBMo1qtrYQwLhWctyHg="
 
 [pin]
 version = "0.26.11"
-tag = "v0.26.11"
-date = "2026-08-20"
-sys = ["libyaml"]
+tag     = "v0.26.11"
+date    = "2026-08-20"
+sys     = [ "libyaml" ]

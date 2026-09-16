@@ -2,8 +2,8 @@
 purl = "pkg:gnu/grep"
 
 [[source]]
-key = "default"
-url = "https://ftp.gnu.org/gnu/grep/grep-{version}.tar.xz"
+key  = "default"
+url  = "https://ftp.gnu.org/gnu/grep/grep-{version}.tar.xz"
 hash = "sha256-9CQnJn6JSDzD1GR+4FLyTGfmejOh+QEKNsBN1Etypqk="
 
 [pin]

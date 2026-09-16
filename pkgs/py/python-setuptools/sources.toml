@@ -2,8 +2,8 @@
 purl = "pkg:pypi/setuptools"
 
 [[source]]
-key = "default"
-url = "https://files.pythonhosted.org/packages/source/s/setuptools/setuptools-{version}.tar.gz"
+key  = "default"
+url  = "https://files.pythonhosted.org/packages/source/s/setuptools/setuptools-{version}.tar.gz"
 hash = "sha256-MFH4r3mt2cADhV/C0yAfbxn+HdiqB5JEFjt/zVZ8UrM="
 
 [pin]

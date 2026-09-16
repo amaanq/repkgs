@@ -2,10 +2,10 @@
 purl = "pkg:gnu/findutils"
 
 [[source]]
-key = "default"
-url = "https://ftp.gnu.org/gnu/findutils/findutils-{version}.tar.xz"
+key  = "default"
+url  = "https://ftp.gnu.org/gnu/findutils/findutils-{version}.tar.xz"
 hash = "sha256-rSuKyVSRN0gxukoMrkjXHo7UeCN356J/Hsz+NhdLhjk="
 
 [pin]
 version = "4.11.0"
-date = "2026-07-11"
+date    = "2026-07-11"

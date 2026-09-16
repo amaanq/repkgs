@@ -2,8 +2,8 @@
 purl = "pkg:github/pnggroup/libpng"
 
 [[source]]
-key = "default"
-url = "https://downloads.sourceforge.net/libpng/libpng-{version}.tar.xz"
+key  = "default"
+url  = "https://downloads.sourceforge.net/libpng/libpng-{version}.tar.xz"
 hash = "sha256-JSdzPsfRBjnk8DB/fkOCkaiUJ9/neQ2myIK5xnQuSsM="
 
 [pin]

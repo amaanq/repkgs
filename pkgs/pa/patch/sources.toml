@@ -2,8 +2,8 @@
 purl = "pkg:gnu/patch"
 
 [[source]]
-key = "default"
-url = "https://ftp.gnu.org/gnu/patch/patch-{version}.tar.xz"
+key  = "default"
+url  = "https://ftp.gnu.org/gnu/patch/patch-{version}.tar.xz"
 hash = "sha256-YfY8pjZJnu1PyHPeeo4SOC4b9A62W2SavOJgQbCuiGI="
 
 [pin]

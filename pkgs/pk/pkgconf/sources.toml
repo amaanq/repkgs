@@ -2,8 +2,8 @@
 purl = "pkg:github/pkgconf/pkgconf"
 
 [[source]]
-key = "default"
-url = "https://distfiles.ariadne.space/pkgconf/pkgconf-{version}.tar.xz"
+key  = "default"
+url  = "https://distfiles.ariadne.space/pkgconf/pkgconf-{version}.tar.xz"
 hash = "sha256-P2JEYZxxg1nNRbutaidHiSar1l0fScsoToA5pwIIzDI="
 
 [pin]
