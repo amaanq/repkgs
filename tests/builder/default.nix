@@ -54,11 +54,12 @@ mapAttrs (
       outputHashAlgo = "sha256";
       PATH = "${set.tools.nu}/bin:${seedPath}/bin";
       fixtures = dir;
+      SYS_LIBS = ../../builder/sys-libs.json;
       builder = "${set.tools.nu}/bin/nu";
       # nu separates include dirs with \x1e
       args = [
         "--no-config-file"
-        "--include-path=${../../builder}${builtins.fromJSON "\"\\u001e\""}${./lib}"
+        "--include-path=${../../builder}${builtins.fromJSON "\"\\u001e\""}${./lib}${builtins.fromJSON "\"\\u001e\""}${../../pkgs/up/uptrack/src}"
         "${dir}/test.nu"
       ];
     }

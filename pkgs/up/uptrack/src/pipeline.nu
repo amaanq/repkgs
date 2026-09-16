@@ -4,7 +4,7 @@
 use purl.nu *
 use version.nu *
 use datasource.nu
-use ../../../../builder/sys-libs.nu
+use sys-libs.nu
 
 const LIB = path self .
 const UNPACK = path self unpack.nu
@@ -125,7 +125,7 @@ export def expand [template: string, pin: record]: nothing -> string {
 
 # the hash nix/sources.nix expects: the NAR hash of the unpacked tree (unpack.nu, shared with the
 # fetcher), or the file's own for `unpack = false`. `sys`: the libraries of ours the tree's lock
-# files can link (builder/sys-libs.nu), for [pin]
+# files can link (sys-libs.nu), for [pin]
 export def prefetch [url: string, unpack: bool]: nothing -> record<hash: string, sys: list<string>> {
   let f = (^nix store prefetch-file --json $url | from json)
   if not $unpack { return {hash: $f.hash, sys: []} }

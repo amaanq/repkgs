@@ -1,4 +1,4 @@
-# builder/sys-libs.nu over the lock files next to this script, what uptrack writes into [pin] sys.
+# uptrack's sys-libs.nu over the lock files next to this script, what uptrack writes into [pin] sys.
 # The build-time side (check, env, go tags, gem flags) is jib's syslibs and runs in every
 # cargo, go, python and gems package build
 use sys-libs.nu

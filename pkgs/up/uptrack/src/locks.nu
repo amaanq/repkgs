@@ -6,7 +6,7 @@ use lock-go.nu
 use lock-hackage.nu
 use lock-luarocks.nu
 use pipeline.nu
-use ../../../../builder/sys-libs.nu
+use sys-libs.nu
 
 # entries of <dir>/<eco>.toml, {} when absent
 export def read [dir: path, eco: string]: nothing -> record {

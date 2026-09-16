@@ -1,5 +1,5 @@
 # cgo against sqlite via mattn/go-sqlite3: the modules tree propagates our sqlite and go.nu adds
-# the `libsqlite3` tag (builder/sys-libs.nu), nothing here names it
+# the `libsqlite3` tag (builder/sys-libs.json), nothing here names it
 {
   package,
   buildPkgs,

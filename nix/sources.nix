@@ -152,7 +152,7 @@ let
     in
     {
       inherit version tag fetch;
-      # our libraries the lock file links (builder/sys-libs.nu), written by uptrack
+      # our libraries the lock file links (pkgs/up/uptrack/src/sys-libs.nu), written by uptrack
       sys = pinned.sys or [ ];
       has = key: byKey ? ${key};
       default = fetch "default";

@@ -12,11 +12,11 @@
 #
 # Explicit on purpose: linking a system library is a decision. Packages that only ever vendor
 # (ring, aws-lc-sys, modernc.org/sqlite) or are plain OS bindings have no entry.
-# The tables are builder/sys-libs.json (nix/python.nix reads the python one too): per ecosystem,
-# locked name -> {pkg, env, …}. python entries may lack `pkg` and carry `tools` (build programs
-# by package name) and `configSettings` for the sdist build
-const TABLES_FILE = path self ./sys-libs.json
-export def tables []: nothing -> record { open $TABLES_FILE }
+const HERE = (path self .)
+
+# the table is the builder tree's (jib reads it there), $env.SYS_LIBS names it where this file
+# runs from a store copy (tests/builder)
+def tables []: nothing -> record { open ($env.SYS_LIBS? | default $"($HERE)/../../../../builder/sys-libs.json") }
 
 # --- lock side: uptrack writes [pin] sys, the build checks it --------------------------------------
 
@@ -33,7 +33,7 @@ def locked [ecosystem: string, f: path]: nothing -> list<string> {
 
 # our packages the locked `names` of one ecosystem can link, sorted
 export def wanted-for [ecosystem: string, names: list<string>]: nothing -> list<string> {
-  (tables) | get $ecosystem | transpose locked entry | where locked in $names | each { $in.entry.pkg? } | compact | uniq | sort
+  (tables) | get $ecosystem | transpose locked entry | where locked in $names | get entry.pkg | uniq | sort
 }
 
 # our packages the lock files in `dir` can link, sorted: what [pin] sys should say
