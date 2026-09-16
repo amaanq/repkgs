@@ -101,9 +101,10 @@ impl Element {
 
    fn elements(&self) -> impl Iterator<Item = &Self> {
       self.content.iter().filter_map(|content| {
-         match *content {
-            Content::Element(ref element) => Some(element),
-            Content::Text { .. } => None,
+         if let Content::Element(ref element) = *content {
+            Some(element)
+         } else {
+            None
          }
       })
    }
@@ -113,9 +114,10 @@ impl Element {
          .content
          .into_iter()
          .filter_map(|content| {
-            match content {
-               Content::Element(element) => Some(element),
-               Content::Text { .. } => None,
+            if let Content::Element(element) = content {
+               Some(element)
+            } else {
+               None
             }
          })
          .collect()
@@ -128,7 +130,9 @@ impl Element {
          .filter_map(|content| {
             match *content {
                Content::Text {
-                  content: ref text, ..
+                  tag: (),
+                  attributes: (),
+                  content: ref text,
                } => Some(text.as_str()),
                Content::Element(_) => None,
             }
