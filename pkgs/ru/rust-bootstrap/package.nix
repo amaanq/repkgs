@@ -22,7 +22,7 @@ package {
   phases = [
     {
       name = "install";
-      run = ''
+      run = /* nu */ ''
         for d in (["."] ++ ($env.components | split row " ")) {
           x sh $"($d)/install.sh" $"--prefix=($c.out)" --disable-ldconfig
         }
