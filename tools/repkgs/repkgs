@@ -14,7 +14,8 @@ def "main build" [
   ...attrs: string # package attributes (jq, jq.tests)
 ]: nothing -> nothing {
   if ($attrs | is-empty) { fail "repkgs build <attr>…, or nix-build -A ci for the whole set" }
-  ^nix-build (root) ...$XP --no-out-link --log-format bar-with-logs ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain) ...($attrs | each {|a| [-A $a] } | flatten)
+  ^rom --platform nix build ...($attrs | each {|attr| $"($attr)^out" }) -- --file (root) ...$XP --quiet --no-link --print-out-paths ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain)
+  exit $env.LAST_EXIT_CODE
 }
 
 # build <pkg>.tests (tests.separate packages), or the package itself when it tests in-build.
@@ -26,8 +27,8 @@ def "main test" [
   ...attrs: string
 ]: nothing -> nothing {
   if ($attrs | is-empty) {
-    ^nix-build $"(root)/tests/builder" ...$XP --no-out-link --log-format bar-with-logs ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain)
-    return
+    ^rom --platform nix build .^out -- --file $"(root)/tests/builder" ...$XP --quiet --no-link --print-out-paths ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain)
+    exit $env.LAST_EXIT_CODE
   }
   let targets = ($attrs | each {|a| if (eval $"(pkg-expr $a $for $seed $rust_toolchain) ? tests") { $"($a).tests" } else { $a } })
   main build --for=$for --seed=$seed --rust-toolchain=$rust_toolchain ...$targets

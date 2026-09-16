@@ -38,10 +38,32 @@
         "type": "github"
       }
     },
+    "rom": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1789518882,
+        "narHash": "sha256-3k4SvOQ4XQLLi59IB9BlDagscYMa75VAAdzThYZ3L8c=",
+        "owner": "manic-systems",
+        "repo": "rom",
+        "rev": "5ef5d062bf5d0914173985fc99b5a8164786d70b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "manic-systems",
+        "ref": "refactor",
+        "repo": "rom",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "fenix": "fenix",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "rom": "rom"
       }
     },
     "rust-analyzer-src": {

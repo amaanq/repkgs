@@ -2,13 +2,22 @@
 # default.nix and takes no inputs; nixpkgs is what treefmt and the seed build already use.
 {
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+  inputs.rom = {
+    url = "github:manic-systems/rom/refactor";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
   inputs.fenix = {
     url = "github:nix-community/fenix/078bcba335292f75f59987c29a0ea5a3edc5ec06";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
-    { nixpkgs, fenix, ... }:
+    {
+      nixpkgs,
+      fenix,
+      rom,
+      ...
+    }:
     let
       # aarch64-linux once its seed nar is uploaded (pkgs/se/seed/upload.nu)
       systems = [ "x86_64-linux" ];
@@ -43,7 +52,10 @@
       checks = each (system: import ./nix/checks.nix { inherit system nixpkgs; });
       formatter = each (system: import ./treefmt.nix { pkgs = nixpkgs.legacyPackages.${system}; });
       devShells = each (system: {
-        default = import ./shell.nix { pkgs = nixpkgs.legacyPackages.${system}; };
+        default = import ./shell.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+          rom = rom.packages.${system}.default;
+        };
         rust =
           let
             pkgs = nixpkgs.legacyPackages.${system};

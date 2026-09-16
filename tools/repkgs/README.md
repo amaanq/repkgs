@@ -4,6 +4,11 @@ The command line for working on the package set. With direnv it is on PATH; othe
 `tools/repkgs/repkgs`. Every subcommand has `--help`, and `--for <platform>` where a platform
 makes sense (`aarch64-linux`, `aarch64-macos`, `x86_64-windows-msvc`, …).
 
+`build` and `test` run Nix through ROM, showing the dependency graph and each package's
+current phase. Store paths stay on stdout, and a failed build keeps Nix's exit status.
+The development shell supplies ROM from the `manic-systems/rom` Git repository's `refactor`
+branch, pinned in `flake.lock`. Outside the shell, `rom` must be on PATH.
+
 ## Everyday
 
 ```console

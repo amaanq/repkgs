@@ -2,6 +2,15 @@
 # package set. Plain nixpkgs (nix/nixpkgs.nix).
 {
   pkgs ? import (import ./nix/nixpkgs.nix) { },
+  rom ?
+    let
+      locked = (builtins.fromJSON (builtins.readFile ./flake.lock)).nodes.rom.locked;
+      source = fetchTarball {
+        url = "https://github.com/${locked.owner}/${locked.repo}/archive/${locked.rev}.tar.gz";
+        sha256 = locked.narHash;
+      };
+    in
+    pkgs.callPackage (source + "/nix/package.nix") { },
 }:
 let
   hasWild =
@@ -10,6 +19,7 @@ let
 in
 pkgs.mkShell {
   packages = [
+    rom
     (import ./treefmt.nix { inherit pkgs; })
     pkgs.libarchive # bsdtar, uptrack's prefetch unpacks like nix/sources.nix does
     pkgs.taplo # uptrack writes sources.toml the way treefmt formats it
