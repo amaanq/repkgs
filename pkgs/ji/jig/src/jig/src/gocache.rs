@@ -96,6 +96,10 @@ enum ResponseBody {
       #[serde(rename = "DiskPath")]
       path: PathBuf,
    },
+   Torn {
+      #[serde(rename = "Err")]
+      err: String,
+   },
    Closed(BTreeMap<String, String>),
 }
 
@@ -232,30 +236,35 @@ pub fn run(socket: &Path) -> io::Result<()> {
                   break;
                }
             }
-            if bytes.len() != size {
-               return Err(io::Error::other("Go cache body length differs"));
+            // a killed go build leaves a torn stream, storing it would poison
+            // the action for every later build
+            if bytes.len() == size {
+               let path = directory.join(&output_hex);
+               write_file(&path, &bytes, None)?;
+               if let Some(client) = cache.as_mut()
+                  && let Err(error) = client
+                     .put(&format!("go/o/{output_hex}"), &bytes)
+                     .and_then(|()| client.put(&format!("go/a/{action_hex}"), &output_bytes))
+               {
+                  diagnostic(format_args!("jig Go cache upload failed, {error}"));
+                  cache = None;
+               }
+               log(
+                  "go",
+                  if cache.is_some() {
+                     "compiled"
+                  } else {
+                     "compiled-unstored"
+                  },
+                  &action_hex,
+                  started,
+               );
+               ResponseBody::Stored { path }
+            } else {
+               ResponseBody::Torn {
+                  err: format!("body: got {} of {size} bytes", bytes.len()),
+               }
             }
-            let path = directory.join(&output_hex);
-            write_file(&path, &bytes, None)?;
-            if let Some(client) = cache.as_mut()
-               && let Err(error) = client
-                  .put(&format!("go/o/{output_hex}"), &bytes)
-                  .and_then(|()| client.put(&format!("go/a/{action_hex}"), &output_bytes))
-            {
-               diagnostic(format_args!("jig Go cache upload failed, {error}"));
-               cache = None;
-            }
-            log(
-               "go",
-               if cache.is_some() {
-                  "compiled"
-               } else {
-                  "compiled-unstored"
-               },
-               &action_hex,
-               started,
-            );
-            ResponseBody::Stored { path }
          },
       };
       reply(&mut output, &Response {
