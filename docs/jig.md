@@ -396,7 +396,6 @@ holds is released when it closes.
 broker per semaphore (an `flock` under `NIX_BUILD_TOP`) that keeps exactly one idle token in
 the named semaphore, orders a slot from jigd whenever ghc takes it, and closes a slot
 connection for every token ghc gives back. It exits once cabal unlinks the semaphore.
-`pkgs/ji/jig/src/jsem/broker.qnt` is the quint model of that loop.
 
 ## 7. jigd storage
 

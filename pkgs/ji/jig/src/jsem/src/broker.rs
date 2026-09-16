@@ -1,7 +1,7 @@
 //! A token in the semaphore is a daemon slot this build holds idle. The
 //! broker keeps one such spare, orders another slot when it was taken and
 //! returns slots when ghc gives tokens back. Tokens are anonymous, so one
-//! broker per semaphore (../broker.qnt).
+//! broker per semaphore.
 
 use std::{
    io::{
