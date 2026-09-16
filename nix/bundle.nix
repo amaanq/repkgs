@@ -1,10 +1,6 @@
-# bundle drv: a package's output as one self-contained tree (builder/bundle.nu), for
-# `repkgs bootstrap`. Nix supplies the closure and checks that no store reference is left.
-{
-  nu,
-  tools,
-  tree,
-}:
+# bundle drv: a package's output as one self-contained tree (jib bundle), for
+# tools/upload-bootstrap.nu. Nix supplies the closure and checks that no store reference is left.
+{ jib }:
 drv:
 derivation {
   name = "${drv.name}-bundle";
@@ -13,17 +9,9 @@ derivation {
   __contentAddressed = true;
   outputHashMode = "recursive";
   outputHashAlgo = "sha256";
-  builder = "${nu}/bin/nu";
-  args = [
-    "--no-config-file"
-    "--include-path=${tree}"
-    (builtins.path {
-      path = tree + "/bundle.nu";
-      name = "bundle.nu";
-    })
-  ];
+  builder = "${jib}/bin/jib";
+  args = [ "bundle" ];
   package = drv;
   exportReferencesGraph.closure = [ drv ];
   outputChecks.out.allowedReferences = [ ];
-  PATH = builtins.concatStringsSep ":" (map (t: "${t}/bin") tools);
 }

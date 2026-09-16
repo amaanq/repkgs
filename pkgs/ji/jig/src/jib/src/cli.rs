@@ -109,6 +109,18 @@ pub enum Mode {
       ldso:   bool,
       deps:   Vec<String>,
    },
+   /// bin/<name> as a launch record for a program with fixed arguments, --env
+   /// a JSON object of variables set for it.
+   Launcher {
+      name:    String,
+      program: String,
+      args:    Vec<String>,
+      #[pound(long)]
+      env:     Option<String>,
+   },
+   /// the package on the structured attrs as one self-contained tree, for
+   /// the bundle derivation.
+   Bundle,
 }
 
 #[derive(Parse)]

@@ -10,8 +10,8 @@ export def benches [tmp: path]: nothing -> table<name: string, note: string, run
   [
     {name: "prepare/fix-env-shebangs", note: "3000 files, 120 env scripts", run: {||
       ^cp -rp $src $"($src).run"; fix-env-shebangs $"($src).run"; rm -rf $"($src).run" }}
-    {name: "prepare/dep-closure", note: "8 roots, 60 store paths via propagate", run: {|| dep-closure ($deps | first 8) | length }}
-    {name: "core/exports-of", note: "one dependency, defaults from the tree", run: {|| exports-of ($deps | last) }}
+    {name: "prepare/dep-closure", note: "8 roots, 60 store paths via propagate", run: {|| ^jib deps ...($deps | first 8) | from json | length }}
+    {name: "core/exports-of", note: "one dependency, defaults from the tree", run: {|| ^jib exports ($deps | last) | from json | first }}
     {name: "finish/elf-scan", note: "380 files under bin+lib, is-elf each", run: {||
       files $"($out)/{bin,lib,libexec}/**/*" | where { is-elf $in } | length }}
     {name: "finish/cache-summary", note: "20k-line jig.log tallied by kind", run: {||

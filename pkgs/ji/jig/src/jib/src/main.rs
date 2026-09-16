@@ -1,5 +1,6 @@
 mod attrs;
 mod build;
+mod bundle;
 mod cli;
 mod debug;
 mod dev;
@@ -14,6 +15,7 @@ mod site;
 mod system;
 
 use std::{
+   collections::BTreeMap,
    env::args_os,
    io::{
       self,
@@ -35,6 +37,10 @@ use jig::{
 use pound::Parse as _;
 
 use crate::{
+   attrs::{
+      Ctx,
+      build_top,
+   },
    cli::{
       Mode,
       ProbeOperation,
@@ -116,6 +122,21 @@ fn run(mode: Mode, socket: &Path) -> Result<i32> {
          ldso,
          deps,
       } => launchers::run(&output, &launch, &interp, ldso, &deps)?,
+      Mode::Launcher {
+         name,
+         program,
+         args,
+         env,
+      } => {
+         let vars = env
+            .as_deref()
+            .map(serde_json::from_str::<BTreeMap<String, String>>)
+            .transpose()?
+            .unwrap_or_default();
+         let ctx = Ctx::load(&build_top()?)?;
+         launchers::write(&ctx, &name, &program, &args, &vars)?;
+      },
+      Mode::Bundle => bundle::run()?,
    }
    Ok(0)
 }

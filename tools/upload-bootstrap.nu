@@ -19,7 +19,7 @@ def main [
     let built = ($cpus | split row "," | each {|cpu|
       print -e $"building ($pkg) ($version) for ($cpu)"
       # .bundle: the output with its foreign libraries copied in and no store references
-      # (builder/bundle.nu), what a `prebuilt = true` package unpacks
+      # (jib bundle), what a `prebuilt = true` package unpacks
       let out = (if $store_path != null { $store_path } else { ^nix-build -E $"with import ($root)/nix/set.nix { platform = \"($cpu)-linux\"; }; bundle pkgs.($pkg)" --no-out-link | str trim })
       let file = $"($env.TMPDIR? | default /tmp)/($pkg)-($version)-($cpu)-linux.nar.xz"
       ^nix-store --dump $out | ^xz -T0 -9e | save -f --raw $file

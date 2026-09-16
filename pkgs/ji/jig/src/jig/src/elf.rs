@@ -179,30 +179,103 @@ fn file_offset(segments: &[Segment], address: u64) -> Option<usize> {
       })
 }
 
-#[inline]
-pub fn runpath(image: &Image, segments: &[Segment]) -> io::Result<Option<String>> {
-   let Some(dynamic) = segments.iter().find(|segment| segment.kind == 2) else {
+struct Dynamic {
+   strings: Option<usize>,
+   entries: Vec<(u64, usize)>,
+}
+
+/// A NUL-terminated string in the file, at `offset`, with `capacity` bytes
+/// reserved for it including the terminator.
+pub struct Text {
+   pub offset:   usize,
+   pub capacity: usize,
+   pub value:    String,
+}
+
+fn dynamic(image: &Image, segments: &[Segment]) -> io::Result<Option<Dynamic>> {
+   let Some(segment) = segments.iter().find(|segment| segment.kind == 2) else {
       return Ok(None);
    };
-   let mut strings = None;
-   let mut rpath = None;
-   let mut runpath = None;
-   for offset in (dynamic.offset..dynamic.offset + dynamic.size).step_by(16) {
+   let mut table = Dynamic {
+      strings: None,
+      entries: Vec::new(),
+   };
+   for offset in (segment.offset..segment.offset + segment.size).step_by(16) {
       match image.quad(offset)? {
          0 => break,
-         5 => strings = file_offset(segments, image.quad(offset + 8)?),
-         15 => rpath = Some(image.size(offset + 8)?),
-         29 => runpath = Some(image.size(offset + 8)?),
-         _ => {},
+         5 => table.strings = file_offset(segments, image.quad(offset + 8)?),
+         tag => table.entries.push((tag, image.size(offset + 8)?)),
       }
    }
-   let (Some(table), Some(entry)) = (strings, runpath.or(rpath)) else {
+   Ok(Some(table))
+}
+
+fn table_text(image: &Image, table: &Dynamic, entry: usize) -> io::Result<Option<Text>> {
+   let Some(strings) = table.strings else {
       return Ok(None);
    };
-   let start = table
+   let offset = strings
       .checked_add(entry)
-      .ok_or_else(|| io::Error::other("ELF runpath offset overflows"))?;
-   image.string(start).map(Some)
+      .ok_or_else(|| io::Error::other("ELF dynamic string offset overflows"))?;
+   let value = image.string(offset)?;
+   Ok(Some(Text {
+      offset,
+      capacity: value.len() + 1,
+      value,
+   }))
+}
+
+#[inline]
+pub fn runpath_text(image: &Image, segments: &[Segment]) -> io::Result<Option<Text>> {
+   let Some(table) = dynamic(image, segments)? else {
+      return Ok(None);
+   };
+   let by_tag = |wanted: u64| {
+      table
+         .entries
+         .iter()
+         .find(|&&(tag, _)| tag == wanted)
+         .map(|&(_, value)| value)
+   };
+   let Some(entry) = by_tag(29).or_else(|| by_tag(15)) else {
+      return Ok(None);
+   };
+   table_text(image, &table, entry)
+}
+
+#[inline]
+pub fn runpath(image: &Image, segments: &[Segment]) -> io::Result<Option<String>> {
+   Ok(runpath_text(image, segments)?.map(|text| text.value))
+}
+
+#[inline]
+pub fn needed(image: &Image, segments: &[Segment]) -> io::Result<Vec<Text>> {
+   let Some(table) = dynamic(image, segments)? else {
+      return Ok(Vec::new());
+   };
+   table
+      .entries
+      .iter()
+      .filter(|&&(tag, _)| tag == 1)
+      .filter_map(|&(_, entry)| table_text(image, &table, entry).transpose())
+      .collect()
+}
+
+/// `PT_INTERP`, or the one reloc-fixup disabled to `PT_NULL` for the entry
+/// stub, which still holds the path.
+#[inline]
+pub fn interpreter(image: &Image, segments: &[Segment]) -> io::Result<Option<Text>> {
+   segments
+      .iter()
+      .find(|segment| segment.kind == 3 || (segment.kind == 0 && segment.size > 1))
+      .map(|segment| {
+         Ok(Text {
+            offset:   segment.offset,
+            capacity: segment.size,
+            value:    image.string(segment.offset)?,
+         })
+      })
+      .transpose()
 }
 
 #[must_use]

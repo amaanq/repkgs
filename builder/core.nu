@@ -4,19 +4,12 @@
 
 export use glob.nu *
 export use log.nu *
-export use exports.nu *
-use names.nu
 
 # what build-system and inline phases get to see: {spec out deps njobs src build platform testsRun}
 export def ctx []: nothing -> record<spec: record, out: string, dest: string, deps: list<record<name: string, root: string>>, roots: list<string>, njobs: int, src: string, build: string, platform: record, testsRun: bool, cache: bool> { open $"($env.NIX_BUILD_TOP)/ctx.json" }
 
 # Nix merges build-system defaults before jib writes the context.
 export def options [bs: string]: nothing -> record { (ctx).spec | get $bs }
-
-# the directory a build system works in: the source, or `<bs>.root` below it for monorepos
-export def project-dir [bs: string]: nothing -> string {
-  [(ctx).src (options $bs).root] | path join
-}
 
 # store path of the dependency called `name` (its exports name), or an error saying why it is needed
 export def dep-root [name: string, why: string]: nothing -> string {
@@ -27,7 +20,7 @@ export def dep-root [name: string, why: string]: nothing -> string {
 
 # store path of the build dependency called `name`, for tools that are not a bin/ on PATH
 export def tool-root [name: string]: nothing -> string {
-  let r = ((attrs).buildDependencies | where { (exports-of $in).name == $name })
+  let r = ((attrs).buildDependencies | where { (^jib exports $in | from json | first | get name) == $name })
   if ($r | is-empty) { error make {msg: $"buildPkgs.($name) must be in buildDependencies"} }
   $r.0
 }
@@ -39,9 +32,6 @@ export def install-bins [dir: string, names: list<string>]: nothing -> nothing {
   mkdir $"($c.out)/bin"
   for b in $names { cp $"($dir)/($b)" $"($c.out)/bin/($b)" }
 }
-
-# `tests.parallel = false` -> 1, else njobs
-export def test-jobs []: nothing -> string { let c = (ctx); if ($c.spec.tests?.parallel? | default true) { $c.njobs } else { 1 } | into string }
 
 # run an external, echoing the command line first (the build log is the `set -x` of this tree)
 export def --wrapped x [cmd: string, ...args: string]: nothing -> nothing {
@@ -56,10 +46,19 @@ export def tool [name: string]: nothing -> path {
   $hits | first | get path
 }
 
-# file names for this build's platform (names.nu)
-export def shlib [name: string, version?: string]: nothing -> string { names shlib (ctx).platform $name $version }
-export def linklib [name: string]: nothing -> string { names linklib (ctx).platform $name }
-export def shlibdir []: nothing -> string { names shlibdir (ctx).platform }
+# file names for this build's platform, from nix/platforms.nix `ext` ({exe shared static import}
+# plus binfmt). `shlib z` -> libz.so | libz.dylib | libz.dll, `shlib z 1` -> libz.so.1 | libz.1.dylib | libz-1.dll
+export def shlib [name: string, version?: string]: nothing -> string {
+  let p = (ctx).platform
+  let v = (if $version == null { "" } else if $p.binfmt == "coff" { $"-($version)" } else { $".($version)" })
+  if $p.binfmt == "elf" { $"lib($name)($p.ext.shared)($v)" } else { $"lib($name)($v)($p.ext.shared)" }
+}
+
+# what `-l<name>` resolves to: the shared library, or its import library where the platform has those
+export def linklib [name: string]: nothing -> string {
+  let p = (ctx).platform
+  $"lib($name)($p.ext.import? | default $p.ext.shared)"
+}
 
 # the derivation's structured attrs (nix/package.nix `common`)
 export def attrs []: nothing -> record { open $env.NIX_ATTRS_JSON_FILE }
@@ -79,24 +78,10 @@ export def tools-by-name []: string -> string { $in | str replace -ar '/nix/stor
 export def is-elf [f: path]: nothing -> bool { (open --raw $f | first 4) == 0x[7f 45 4c 46] }
 export def is-macho [f: path]: nothing -> bool { let m = (open --raw $f | first 4); $m == 0x[cf fa ed fe] or $m == 0x[ca fe ba be] }
 
-# store paths -> {root}/{store} templates launch expands
-export def storerel [p: string, out: string]: nothing -> string {
-  $p | str replace -a $out "{root}" | str replace -a $env.NIX_STORE "{store}"
-}
-
-# bin/<name> as a launch record (builder/launchers.nu, pkgs/la/launch): `program` with `args`
-# before the user's, `env` name -> value set for it. For build systems whose entry points are not
-# files with a #! line (deno modules); paths are made package-relative here
+# bin/<name> as a launch record (pkgs/la/launch): `program` with `args` before the user's, `vars`
+# name -> value set for it. For entry points that are not files with a #! line (escripts)
 export def write-launcher [name: string, program: string, args: list<string>, vars: record = {}]: nothing -> nothing {
-  let c = (ctx)
-  let rel = {|p| storerel $p $c.out }
-  mkdir $"($c.out)/bin"
-  {
-    program: (do $rel $program), args: ($args | each { do $rel $in })
-    env: ($vars | items {|k, v| {$k: {set: (do $rel $v)}} } | into record)
-  } | to json -r | save -f $"($c.out)/bin/.($name)($c.platform.ext.exe).launch"
-  if $c.platform.binfmt == "coff" { cp $c.platform.launch $"($c.out)/bin/($name).exe" } else { ^ln -sf $c.platform.launch $"($c.out)/bin/($name)" }
-  note launcher $"bin/($name) -> ($program)"
+  ^jib launcher $name $program ...$args --env ($vars | to json -r)
 }
 
 # no /usr/bin/env in the sandbox: point such scripts at the build PATH's env (build tree only;

@@ -306,9 +306,5 @@ in
     toolchain
     tools
     ;
-  bundle = import ./bundle.nix {
-    inherit (tools) nu;
-    tools = [ buildPkgs.formatelf ] ++ baseTools.bootstrap;
-    tree = ../builder;
-  };
+  bundle = import ./bundle.nix { inherit (tools) jib; };
 }
