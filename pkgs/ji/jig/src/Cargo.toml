@@ -1,6 +1,6 @@
 [workspace]
 default-members = [ "jig" ]
-members         = [ "jib", "jig", "jigd", "wire" ]
+members         = [ "jib", "jig", "jigd", "uptrack", "wire" ]
 resolver        = "3"
 
 [workspace.package]

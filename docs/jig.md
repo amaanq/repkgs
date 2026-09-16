@@ -710,4 +710,4 @@ each entry `{ to, link | unpack | write | copy+append }`, with bsdtar and chmod 
 `winsdk` submits `jig winsdk-assemble` instead, which unpacks the .vsix and .msi payloads with
 7zz and writes the sysroot's `etc/cc` facts. `jig unpack` is nix/sources.nix's fixed-output
 builder, it downloads the first of `urls` that answers (rustls, built-in roots, proxies from the
-environment) and unpacks it into `out` the way uptrack's unpack.nu does, so their hashes agree.
+environment) and unpacks it into `out` the way uptrack's prefetch does through the same jig unpack, so their hashes agree.

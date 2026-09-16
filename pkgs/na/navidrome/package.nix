@@ -1,5 +1,5 @@
 # mixed: go server embedding a vite-built UI from ui/; cgo against taglib, which the modules tree
-# propagates (builder/sys-libs.nu)
+# propagates (builder/sys-libs.json)
 {
   package,
   sources,

@@ -119,7 +119,7 @@ is an error, not the old tarball. Archives are unpacked once into the store.
 - **Hashes a lock file lacks** (Go, Hackage, LuaRocks) live in one sorted `locks/<eco>.toml`,
   `merge=union`, filled by `uptrack lock`. A package's vendor derivation mentions only its subset.
 - **Native libraries behind locked deps** are decided when the package is pinned: uptrack reads
-  the lock files in the source it just hashed, looks the names up in `builder/sys-libs.nu`
+  the lock files in the source it just hashed, looks the names up in `builder/sys-libs.json`
   (openssl-sys -> openssl, mattn/go-sqlite3 -> sqlite) and writes `sys = [..]` into `[pin]`.
   package.nix adds those the set has on the platform as ordinary dependencies, so eval, `info`,
   `supported` and overrides see them, and ripgrep's package.nix still never lists pcre2. The

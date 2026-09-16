@@ -575,7 +575,7 @@ let
       tests = if separate then [ ] else testDeps;
       base = if args.bootstrapTools or false then baseTools.bootstrap else baseTools.full;
     };
-    # [pin] sys: libraries the lock files can link (pkgs/up/uptrack/src/sys-libs.nu). Those the set lacks
+    # [pin] sys: libraries the lock files can link (builder/sys-libs.json). Those the set lacks
     # here are left to the locked package (vendored copy or feature off)
     dependencies =
       (args.dependencies or [ ])

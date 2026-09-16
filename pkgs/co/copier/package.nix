@@ -1,6 +1,6 @@
 # a Python application from uv.lock: wheels where the lock has compatible ones, pyyaml from sdist
 # against our libyaml (sys-libs), pydantic-core from sdist to exercise Rust sdists (crates
-# vendored by fetch/pypi-vendor.nu, maturin + our rustc)
+# vendored by jig fetch pypi-vendor, maturin + our rustc)
 {
   package,
   sources,

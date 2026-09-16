@@ -21,6 +21,7 @@ pkgs.mkShell {
   packages = [
     rom
     (import ./treefmt.nix { inherit pkgs; })
+    (import ./nix/uptrack.nix { inherit pkgs; })
     pkgs.libarchive # bsdtar, uptrack's prefetch unpacks like nix/sources.nix does
     pkgs.taplo # uptrack writes sources.toml the way treefmt formats it
   ]

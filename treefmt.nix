@@ -19,7 +19,7 @@ let
   nu-typecheck = pkgs.writeShellScript "nu-typecheck" ''
     status=0
     for f in "$@"; do
-      out=$(${pkgs.nushell}/bin/nu --no-config-file --include-path "$PWD/builder:$PWD/tests/builder/lib:$PWD/pkgs/up/uptrack/src" "--experimental-options=[cell-path-types]" --ide-check 50 "$f" | ${pkgs.jq}/bin/jq -r 'select(.type == "diagnostic" and .severity == "Error") | "\(.span.start): \(.message)"')
+      out=$(${pkgs.nushell}/bin/nu --no-config-file --include-path "$PWD/builder:$PWD/tests/builder/lib" "--experimental-options=[cell-path-types]" --ide-check 50 "$f" | ${pkgs.jq}/bin/jq -r 'select(.type == "diagnostic" and .severity == "Error") | "\(.span.start): \(.message)"')
       if [ -n "$out" ]; then printf '%s:\n%s\n' "$f" "$out" >&2; status=1; fi
     done
     exit $status
@@ -47,8 +47,8 @@ let
   nuFiles = [
     "*.nu"
     "tools/repkgs"
-    "pkgs/up/uptrack/src/uptrack"
   ];
+  uptrack = import ./nix/uptrack.nix { inherit pkgs; };
 in
 pkgs.treefmt.withConfig {
   settings = {
@@ -121,11 +121,8 @@ pkgs.treefmt.withConfig {
       };
       # one entry per line, sorted, so additions merge textually (.gitattributes merge=union)
       locks = {
-        command = "${pkgs.nushell}/bin/nu";
-        options = [
-          "--no-config-file"
-          "pkgs/up/uptrack/src/locks.nu"
-        ];
+        command = "${uptrack}/bin/uptrack";
+        options = [ "normalize" ];
         includes = [ "locks/*.toml" ];
       };
       # nu has no stable formatter, this only checks (parse + types with the nu that runs builds).

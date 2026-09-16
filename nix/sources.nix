@@ -1,4 +1,4 @@
-# Reads a sources.toml (docs/uptrack.md). URL templates expand like pkgs/up/uptrack/src/pipeline.nu `expand`.
+# Reads a sources.toml (docs/uptrack.md). URL templates expand like uptrack `expand`.
 # `unpacker`: store path with bin/bsdtar (the seed), `jig`: the jig that downloads and unpacks.
 # Only the seed's own sources.toml (a .nar) is read without them.
 {
@@ -129,7 +129,7 @@ let
           isNar = builtins.match ".*\\.nar(\\.[a-z0-9]+)?" url != null;
         in
         # `hash` is the NAR hash of what lands in the store: for archives the unpacked tree (single
-        # top-level directory stripped, u+w; uptrack's unpack.nu so its hashes agree), fetched and
+        # top-level directory stripped, u+w; jig's unpack, shared with uptrack so the hashes agree), fetched and
         # unpacked by one fixed-output derivation running `jig unpack` (rustls with built-in roots)
         # and the seed's bsdtar, so builds copy a directory instead of decompressing every time.
         # `unpack = false` and .nar urls (the seed itself) go through builtin:fetchurl.
@@ -152,7 +152,7 @@ let
     in
     {
       inherit version tag fetch;
-      # our libraries the lock file links (pkgs/up/uptrack/src/sys-libs.nu), written by uptrack
+      # our libraries the lock file links (builder/sys-libs.json), written by uptrack
       sys = pinned.sys or [ ];
       has = key: byKey ? ${key};
       default = fetch "default";

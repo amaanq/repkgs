@@ -60,7 +60,7 @@ per effort:
 Not planned: Swift (own LLVM fork), Dart/Flutter, Julia, Nim, Crystal, D. Yarn berry stays out:
 its checksum is over a zip yarn repacks, not the registry tarball.
 
-**Native dependencies for JS locks.** sys-libs.nu covers cargo, go, python, gems. node-gyp
+**Native dependencies for JS locks.** sys-libs.json covers cargo, go, python, gems. node-gyp
 addons (`sharp` → libvips, `better-sqlite3`, `canvas` → cairo/pango) need the same table for
 npm/pnpm/bun, and `uptrack check` should warn when a lock names a library the set lacks.
 

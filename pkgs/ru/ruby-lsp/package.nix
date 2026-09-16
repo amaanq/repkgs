@@ -1,5 +1,5 @@
 # a bundler application with native-extension gems (prism, rbs, json; psych gets our libyaml via
-# sys-libs.nu): Gemfile.lock carries CHECKSUMS
+# sys-libs.json): Gemfile.lock carries CHECKSUMS
 {
   package,
   pkgs,

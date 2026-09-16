@@ -48,7 +48,7 @@ hash = "sha256-…"                  # tool; NAR hash of the unpacked tree (--st
 [pin]                              # tool
 version = "10.5.0"
 date = "2025-05-18"                # release date: libyear, `every`
-sys = ["jemalloc"]                 # our libraries the lock files in the source can link (builder/sys-libs.nu). nix/package.nix adds those the set has as dependencies
+sys = ["jemalloc"]                 # our libraries the lock files in the source can link (builder/sys-libs.json). nix/package.nix adds those the set has as dependencies
 # file = "25.0.4.1_1"              # anything else a resolve hook returned. Every key here is a {key} in urls
 
 [watch]                            # optional; default is the purl's datasource
@@ -124,8 +124,9 @@ export def files   [entry: record]: nothing -> record              # → {relati
 export def verify  [entry: record]: nothing -> record              # → {verified log? ...} instead of nix-build
 ```
 
-uptrack runs the hook in a fresh `nu` with `uptrack/src` on the module path (`use datasource.nu`,
-`use http.nu`, `use version.nu` work), passes records as arguments and reads JSON from stdout;
+uptrack runs the hook in a fresh `nu` with its own directory on PATH, so `^uptrack versions <purl>`
+and `^uptrack get <url> --max-age 1day` serve it, hands the record over as JSON in
+`$env.UPTRACK_ARG` and reads JSON from stdout;
 stderr is shown. Hooks never write files themselves and only run after the watch fired, so the
 skim stays cheap. Anything else exported is an error. `uptrack list` shows which stages a
 package overrides. Examples: `pkgs/ll/llvm/update.nu` exports `files` to regenerate the per-cpu
@@ -158,6 +159,7 @@ uptrack lock [names] [--prune]           fill locks/<eco>.toml for packages with
 uptrack init <dir> <purl> <url-template> new sources.toml, pinned to upstream's newest
 ```
 
-About 700 lines of nu in `pkgs/up/uptrack/src/`: purl, version comparison, datasources
-(github, gitlab, pypi, crates, npm, hackage, gnu, generic listing), cached http, the pipeline,
-locks (go, hackage, luarocks), CLI. Not built: advisory/libyear reports, grouped updates.
+The `uptrack` crate in `pkgs/ji/jig/src/`: purl, version comparison, datasources (github,
+gitlab, pypi, crates, npm, hackage, gnu, generic listing, visualstudio, applesdk), cached http,
+the pipeline, locks (go, hackage, luarocks), CLI. It shares jig's unpack and the lock side of
+sys-libs.json with the builder. Not built: advisory/libyear reports, grouped updates.

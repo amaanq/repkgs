@@ -106,7 +106,7 @@ def "main new" [
 ]: nothing -> nothing {
   let dir = $"(root)/pkgs/($name | str substring 0..<2)/($name)"
   if ($dir | path exists) { fail $"($dir) exists" }
-  try { ^$"(root)/pkgs/up/uptrack/src/uptrack" init $dir $purl $url } catch {
+  try { with-env { UPTRACK_ROOT: (root) } { ^uptrack init $dir $purl $url } } catch {
     rm -rf $dir
     fail $"uptrack init failed for ($purl), nothing written"
   }
@@ -116,9 +116,10 @@ def "main new" [
   print -e $"($dir): edit package.nix, then repkgs build ($name)"
 }
 
-# versions and lock tables: uptrack check | apply | lock | verify | rehash | list
+# versions and lock tables: uptrack check | apply | lock | verify | rehash | list. The
+# development shell supplies uptrack (nix/uptrack.nix), outside it `uptrack` must be on PATH
 def --wrapped "main update" [...args: string]: nothing -> nothing {
-  ^$"(root)/pkgs/up/uptrack/src/uptrack" ...$args
+  with-env { UPTRACK_ROOT: (root) } { ^uptrack ...$args }
 }
 
 # rebuild and compare against the store (nix-build --check)
