@@ -121,6 +121,29 @@ pub enum Mode {
    /// the package on the structured attrs as one self-contained tree, for
    /// the bundle derivation.
    Bundle,
+   /// the lock side of sys-libs.json, what [pin] sys should say.
+   Syslibs {
+      #[pound(subcommand)]
+      operation: SyslibsOperation,
+   },
+}
+
+#[derive(Parse)]
+pub enum SyslibsOperation {
+   /// our packages the lock files under `dir` can link, as JSON. --tables
+   /// names sys-libs.json outside a package build.
+   Wanted {
+      dir:    PathBuf,
+      #[pound(long)]
+      tables: Option<PathBuf>,
+   },
+   /// the same for one ecosystem's locked names.
+   WantedFor {
+      ecosystem: String,
+      names:     Vec<String>,
+      #[pound(long)]
+      tables:    Option<PathBuf>,
+   },
 }
 
 #[derive(Parse)]

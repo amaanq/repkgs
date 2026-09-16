@@ -1,45 +1,26 @@
 use std::{
    collections::BTreeMap,
-   fs::read_to_string,
    io,
    path::Path,
 };
 
-use serde::Deserialize;
+use jig::syslibs::{
+   self,
+   Tables,
+   load,
+};
 
 use crate::{
    attrs::Attrs,
    exports::Exports,
 };
 
-#[derive(Deserialize)]
-struct Entry {
-   pkg:   String,
-   #[serde(default)]
-   env:   BTreeMap<String, String>,
-   #[serde(default)]
-   tags:  Vec<String>,
-   #[serde(default)]
-   flags: Vec<String>,
-}
-
-type Tables = BTreeMap<String, BTreeMap<String, Entry>>;
-
-const LOCKS: [(&str, &str); 4] = [
-   ("cargo", "Cargo.lock"),
-   ("go", "go.sum"),
-   ("python", "uv.lock"),
-   ("gems", "Gemfile.lock"),
-];
-
-fn tables(attrs: &Attrs) -> io::Result<Tables> {
+pub fn tables(attrs: &Attrs) -> io::Result<Tables> {
    let tree = attrs
       .probe_inputs
       .first()
       .ok_or_else(|| io::Error::other("the builder tree is not among probeInputs"))?;
-   Ok(serde_json::from_str(&read_to_string(
-      Path::new(tree).join("sys-libs.json"),
-   )?)?)
+   load(&Path::new(tree).join("sys-libs.json"))
 }
 
 pub struct Active {
@@ -86,72 +67,14 @@ pub fn active(attrs: &Attrs, ecosystem: &str, deps: &[Exports]) -> io::Result<Ac
    Ok(found)
 }
 
-fn locked(ecosystem: &str, text: &str) -> Vec<String> {
-   match ecosystem {
-      "cargo" | "python" => {
-         text
-            .lines()
-            .filter_map(|line| line.strip_prefix("name = \""))
-            .filter_map(|rest| rest.strip_suffix('"'))
-            .map(str::to_owned)
-            .collect()
-      },
-      "go" => {
-         text
-            .lines()
-            .filter_map(|line| line.split(' ').next())
-            .filter(|path| !path.is_empty())
-            .map(str::to_owned)
-            .collect()
-      },
-      "gems" => {
-         text
-            .lines()
-            .filter_map(|line| line.strip_prefix("    "))
-            .filter(|line| !line.starts_with(' '))
-            .filter_map(|line| line.split_once(" ("))
-            .map(|(name, _)| name.to_owned())
-            .collect()
-      },
-      _ => Vec::new(),
-   }
-}
-
-// our packages the locked names of one ecosystem can link, sorted
 pub fn wanted_for(attrs: &Attrs, ecosystem: &str, names: &[String]) -> io::Result<Vec<String>> {
-   let tables = tables(attrs)?;
-   let mut found = Vec::new();
-   if let Some(table) = tables.get(ecosystem) {
-      for (name, entry) in table {
-         if names.contains(name) && !found.contains(&entry.pkg) {
-            found.push(entry.pkg.clone());
-         }
-      }
-   }
-   found.sort();
-   Ok(found)
+   Ok(syslibs::wanted_for(&tables(attrs)?, ecosystem, names))
 }
 
 // our packages the lock files in `dir` can link, sorted, what [pin] sys should
 // say
 pub fn wanted(attrs: &Attrs, dir: &Path) -> io::Result<Vec<String>> {
-   let tables = tables(attrs)?;
-   let mut found = Vec::new();
-   for (ecosystem, file) in LOCKS {
-      let Ok(text) = read_to_string(dir.join(file)) else {
-         continue;
-      };
-      let names = locked(ecosystem, &text);
-      if let Some(table) = tables.get(ecosystem) {
-         for (name, entry) in table {
-            if names.contains(name) && !found.contains(&entry.pkg) {
-               found.push(entry.pkg.clone());
-            }
-         }
-      }
-   }
-   found.sort();
-   Ok(found)
+   syslibs::wanted(&tables(attrs)?, dir)
 }
 
 // the lock can link libraries [pin] sys does not name, the pin is stale. None

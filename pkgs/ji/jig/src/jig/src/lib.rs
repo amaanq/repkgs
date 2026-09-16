@@ -7,4 +7,6 @@ pub mod image;
 pub mod macho;
 pub mod process;
 pub mod store;
+pub mod syslibs;
 pub mod tree;
+pub mod unpack;

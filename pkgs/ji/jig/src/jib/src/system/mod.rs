@@ -15,5 +15,5 @@ pub mod msbuild;
 mod node;
 mod pyapp;
 mod python;
-mod syslibs;
+pub mod syslibs;
 mod vcxproj;

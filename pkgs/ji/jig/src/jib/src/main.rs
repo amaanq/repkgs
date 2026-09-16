@@ -32,22 +32,31 @@ use jig::{
       socket,
       text_arguments,
    },
+   syslibs::{
+      Tables,
+      load,
+      wanted,
+      wanted_for,
+   },
    tree,
 };
 use pound::Parse as _;
 
 use crate::{
    attrs::{
+      Attrs,
       Ctx,
       build_top,
    },
    cli::{
       Mode,
       ProbeOperation,
+      SyslibsOperation,
    },
    system::{
       dispatch,
       msbuild,
+      syslibs,
    },
 };
 
@@ -86,6 +95,25 @@ fn probe_mode(operation: ProbeOperation, socket: &Path) -> Result<i32> {
       },
    }
    Ok(0)
+}
+
+fn lock_tables(path: Option<&Path>) -> io::Result<Tables> {
+   path.map_or_else(|| syslibs::tables(&Attrs::load()?), load)
+}
+
+fn syslibs_mode(operation: SyslibsOperation) -> io::Result<()> {
+   let found = match operation {
+      SyslibsOperation::Wanted { dir, tables } => wanted(&lock_tables(tables.as_deref())?, &dir)?,
+      SyslibsOperation::WantedFor {
+         ecosystem,
+         names,
+         tables,
+      } => wanted_for(&lock_tables(tables.as_deref())?, &ecosystem, &names),
+   };
+   let mut stdout = io::stdout().lock();
+   serde_json::to_writer(&mut stdout, &found)?;
+   writeln!(stdout)?;
+   Ok(())
 }
 
 fn run(mode: Mode, socket: &Path) -> Result<i32> {
@@ -137,6 +165,7 @@ fn run(mode: Mode, socket: &Path) -> Result<i32> {
          launchers::write(&ctx, &name, &program, &args, &vars)?;
       },
       Mode::Bundle => bundle::run()?,
+      Mode::Syslibs { operation } => syslibs_mode(operation)?,
    }
    Ok(0)
 }
