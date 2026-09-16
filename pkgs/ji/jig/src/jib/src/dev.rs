@@ -52,13 +52,7 @@ fn save(top: &str, previous: &[String]) -> io::Result<()> {
    unset.dedup();
    let state = Environment {
       env: vars()
-         .filter(|entry| {
-            !entry.0.starts_with("NU_")
-               && !matches!(
-                  entry.0.as_str(),
-                  "PWD" | "OLDPWD" | "CURRENT_FILE" | "FILE_PWD" | "PROCESS_PATH"
-               )
-         })
+         .filter(|entry| !build::nu_internal(&entry.0))
          .collect(),
       cwd: current_dir()?.to_string_lossy().into_owned(),
       unset,

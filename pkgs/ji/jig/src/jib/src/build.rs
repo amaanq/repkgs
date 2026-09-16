@@ -47,6 +47,15 @@ $env | transpose k v | each {|r|
 } | where v != null and k !~ '^(NU_|PWD$|OLDPWD$|CURRENT_FILE$|FILE_PWD$|PROCESS_PATH$)' | transpose -rd | to json | save -f $"($env.NIX_BUILD_TOP)/phase-env.json"
 "#;
 
+/// nu's own bookkeeping, not part of the build environment a phase hands on.
+pub fn nu_internal(name: &str) -> bool {
+   name.starts_with("NU_")
+      || matches!(
+         name,
+         "PWD" | "OLDPWD" | "CURRENT_FILE" | "FILE_PWD" | "PROCESS_PATH"
+      )
+}
+
 fn apply(env: &BTreeMap<String, Value>) {
    for (name, value) in env {
       match *value {
@@ -94,13 +103,7 @@ fn nu_phase(attrs: &Attrs, index: usize, name: &str, body: &str, top: &str) -> i
    let current: BTreeMap<String, String> = vars().collect();
    let mut removed = Env::default();
    for key in current.keys() {
-      if !handed.contains_key(key)
-         && !key.starts_with("NU_")
-         && !matches!(
-            key.as_str(),
-            "PWD" | "OLDPWD" | "CURRENT_FILE" | "FILE_PWD" | "PROCESS_PATH"
-         )
-      {
+      if !handed.contains_key(key) && !nu_internal(key) {
          removed.unset(key);
       }
    }
