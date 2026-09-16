@@ -143,11 +143,11 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
 
 pub fn setup(attrs: &Attrs, source: Source<'_>, socket: &Path) -> io::Result<Ctx> {
    note("phase", "prepare");
-   let bins: Vec<String> = attrs
+   let bins = attrs
       .build_dependencies
       .iter()
       .map(|dep| format!("{dep}/bin"))
-      .collect();
+      .collect::<Vec<String>>();
    export("PATH", &bins.join(":"));
    let prepared = prepare(source)?;
    apply(&prepared.env);
