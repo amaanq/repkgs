@@ -20,7 +20,7 @@
 }:
 let
   elf = platform.binfmt == "elf";
-  hardening = import ./hardening.nix;
+  schema = builtins.fromJSON (builtins.readFile ./schema.json);
   inherit (lib)
     join
     lines
@@ -126,11 +126,6 @@ let
       dlaudit = if elf then "${dlaudit}/lib/dlaudit.so" else "";
       relocStub = "${toolchain}/lib/reloc_stub.bin";
     };
-    # nix/hardening.nix as data for jib env: the flag table and what is on for this platform
-    hardening = {
-      inherit (hardening) flags cxx link;
-      enabled = hardening.forPlatform platform;
-    };
   };
   phaseRe = "([a-z][a-z0-9]*)\\.([a-zA-Z][a-zA-Z-]*)";
 in
@@ -223,7 +218,7 @@ let
       "ldflags"
       "hardening"
     ];
-    "cc.hardening" = attrNames hardening.flags;
+    "cc.hardening" = schema.hardening;
     completions = attrNames completionDirs;
   };
   subKeys =
@@ -249,6 +244,18 @@ let
     ++ (if args ? tests then subKeys "tests" args.tests else [ ])
     ++ (if args ? cc then subKeys "cc" args.cc else [ ])
     ++ (if args ? completions then subKeys "completions" args.completions else [ ]);
+  badHardening =
+    let
+      choice = args.cc.hardening or null;
+    in
+    if choice == null || builtins.isBool choice then
+      [ ]
+    else if isAttrs choice then
+      map (key: "cc.hardening.${key} must be a boolean") (
+        filter (key: !(builtins.isBool choice.${key})) (attrNames choice)
+      )
+    else
+      [ "cc.hardening must be a boolean or an attribute set of booleans" ];
   badOptions = concatMap (
     system:
     let
@@ -374,6 +381,8 @@ let
       fail "unknown fields ${toString (unknownFields ++ map (k: "platforms.${k}") unknownPlatformKeys)}"
     else if badOptions != [ ] then
       fail (join "; " badOptions)
+    else if badHardening != [ ] then
+      fail (join ", " badHardening)
     else if wrongPlatform != [ ] then
       fail (join "; " wrongPlatform)
     else

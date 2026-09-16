@@ -1,0 +1,19 @@
+{
+  "hardening": [
+    "format",
+    "fortify",
+    "noplt",
+    "stackclashprotection",
+    "stackprotector",
+    "strictflexarrays",
+    "strictoverflow",
+    "trivialautovarinit",
+    "zerocallusedregs",
+    "libcxxhardening",
+    "relro",
+    "bindnow",
+    "relr",
+    "noexecstack",
+    "asneeded"
+  ]
+}

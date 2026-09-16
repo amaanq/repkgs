@@ -7,6 +7,10 @@ use pound::Parse;
 #[derive(Parse)]
 #[pound(name = "jib")]
 pub enum Mode {
+   Schema {
+      #[pound(long)]
+      check: Option<PathBuf>,
+   },
    /// the whole package build from the structured attrs, the derivation's
    /// builder.
    Build {

@@ -602,12 +602,18 @@ what the `cc` on the new PATH lists in its package's `etc/roots`, and `PKGS_PREF
 the build top to `/build` and each store path to `/deps/<name>` or `/tools/<name>`). `PKGS_CC`
 (§ 2.2) keyed by the resolved root of that `cc`, with `-isystem` over the closure's include
 dirs, `-O2`, `-g` or `-g0` after `spec.debug`, frame pointers, the hardening flags
-`attrs.hardening.enabled` turns on minus what `spec.cc.hardening` turns off (`false` turns all
-off), the package's own `cc.cflags`, and the same for `cxxflags` and `ldflags` with `-L` over
-the closure's lib dirs, plus the cargo release profile's debug and strip settings. Then every
-build dependency's `exports.env`, then `spec.env`. With `--cache`, when `rustc` is on the new
-PATH, `RUSTC` absolute, `RUSTC_WRAPPER` pointing at `rustcwrap` and `CARGO_INCREMENTAL=0`, and
-`GOCACHEPROG` when `go` is.
+selected by jib's hardening table, then `platform.hardening` and `spec.cc.hardening` in that
+order (`false` turns all off), the package's own `cc.cflags`, and the same for `cxxflags` and
+`ldflags` with `-L` over the closure's lib dirs, plus the cargo release profile's debug and
+strip settings. Then every build dependency's `exports.env`, then `spec.env`. With `--cache`,
+when `rustc` is on the new PATH, `RUSTC` absolute, `RUSTC_WRAPPER` pointing at `rustcwrap` and
+`CARGO_INCREMENTAL=0`, and `GOCACHEPROG` when `go` is.
+
+`jib schema` emits the hardening vocabulary from the Rust enum. Nix reads the committed
+`nix/schema.json` to reject unknown recipe keys during evaluation. After changing the vocabulary,
+regenerate it with `jib schema | save --force nix/schema.json` in Nushell. CI runs
+`jib schema --check nix/schema.json` to catch drift. Boolean settings and per-flag boolean maps
+are accepted, other values fail instead of silently disabling flags.
 
 `shebangs` rewrites the first line of every executable regular file under 1 MiB that starts
 with `#!/usr/bin/env` to `#!<env on PATH>`, writing in place and restoring the file's mtime.

@@ -37,6 +37,10 @@ lib.mergeAttrsList (map forPlatform platforms)
 // prefixed "tests-" separateTests
 // prefixed "builder-" (import ../tests/builder { inherit system; })
 // {
+  schema = pkgs.runCommand "jib-schema-check" { } ''
+    ${(setFor system).jib}/bin/jib schema --check ${./schema.json}
+    touch $out
+  '';
   treefmt =
     pkgs.runCommand "treefmt-check"
       {

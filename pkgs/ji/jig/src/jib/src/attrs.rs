@@ -26,7 +26,14 @@ use serde_json::{
    Value,
 };
 
-use crate::exports::Exports;
+use crate::{
+   exports::Exports,
+   hardening::{
+      BinaryFormat,
+      Choice,
+      Hardening,
+   },
+};
 
 #[derive(Deserialize)]
 pub struct Attrs {
@@ -35,7 +42,6 @@ pub struct Attrs {
    pub dependencies:       Vec<String>,
    #[serde(rename = "CONFIG_SITE")]
    pub config_site:        String,
-   pub hardening:          Hardening,
    pub spec:               Value,
    #[serde(default)]
    pub src:                String,
@@ -87,14 +93,6 @@ pub struct Outputs {
    pub debug: Option<String>,
    #[serde(default)]
    pub tree:  Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct Hardening {
-   pub flags:   BTreeMap<String, Vec<String>>,
-   pub cxx:     Vec<String>,
-   pub link:    Vec<String>,
-   pub enabled: BTreeMap<String, bool>,
 }
 
 impl Attrs {
@@ -162,6 +160,9 @@ pub enum Def {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Platform {
+   pub binfmt:       BinaryFormat,
+   #[serde(default)]
+   pub hardening:    BTreeMap<Hardening, bool>,
    #[serde(default)]
    pub cross:        bool,
    #[serde(default)]
@@ -252,7 +253,7 @@ const fn enabled() -> bool {
 #[derive(Deserialize, Default)]
 pub struct Cc {
    #[serde(default)]
-   pub hardening: Option<Value>,
+   pub hardening: Option<Choice>,
    #[serde(default)]
    pub cflags:    Vec<String>,
    #[serde(default)]

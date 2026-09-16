@@ -17,14 +17,17 @@ use std::{
    },
 };
 
-use serde::Serialize;
+use serde::{
+   Deserialize as _,
+   Serialize,
+};
 use serde_json::Value;
 
 use crate::{
    attrs::{
       Attrs,
       Cc,
-      Hardening,
+      Platform,
       Spec,
       build_top,
    },
@@ -32,6 +35,10 @@ use crate::{
       Exports,
       closure,
       exports_of,
+   },
+   hardening::{
+      Line,
+      flags as hardening_flags,
    },
 };
 
@@ -72,7 +79,8 @@ pub fn compute(
    sandbox_dirs(&mut env, &top, &bins, out)?;
    reproducible(&mut env, attrs);
    toolchain(&mut env, attrs, spec, deps, &top, &bins)?;
-   package_cc(&mut env, spec, &attrs.hardening, deps, &bins)?;
+   let platform = Platform::deserialize(&attrs.platform)?;
+   package_cc(&mut env, spec, &platform, deps, &bins)?;
    for root in &attrs.build_dependencies {
       for (name, value) in exports_of(Path::new(root))?.env {
          env.insert(name, Value::String(value));
@@ -225,7 +233,7 @@ fn toolchain(
 fn package_cc(
    env: &mut BTreeMap<String, Value>,
    spec: &Spec,
-   hardening: &Hardening,
+   platform: &Platform,
    deps: &[Exports],
    bins: &[PathBuf],
 ) -> io::Result<()> {
@@ -233,40 +241,7 @@ fn package_cc(
    // because a Makefile that sets CFLAGS must not lose them
    let cc = spec.cc.as_ref();
    let choice = cc.and_then(|found| found.hardening.as_ref());
-   let enabled = if choice.is_some_and(|value| *value == Value::Bool(false)) {
-      BTreeMap::<&str, bool>::new()
-   } else {
-      let mut merged = hardening
-         .enabled
-         .iter()
-         .map(|(name, &on)| (name.as_str(), on))
-         .collect::<BTreeMap<&str, bool>>();
-      if let Some(chosen) = choice.and_then(Value::as_object) {
-         for (name, on) in chosen {
-            merged.insert(name, on.as_bool().unwrap_or(false));
-         }
-      }
-      merged
-   };
-   let harden = |names: &[&str]| -> Vec<String> {
-      names
-         .iter()
-         .copied()
-         .filter(|&name| enabled.get(name).copied().unwrap_or(false))
-         .filter_map(|name| hardening.flags.get(name))
-         .flatten()
-         .cloned()
-         .collect()
-   };
-   let compile: Vec<&str> = hardening
-      .flags
-      .keys()
-      .map(String::as_str)
-      .filter(|name| !hardening.cxx.iter().any(|cxx| cxx == name))
-      .filter(|name| !hardening.link.iter().any(|link| link == name))
-      .collect();
-   let cxx: Vec<&str> = hardening.cxx.iter().map(String::as_str).collect();
-   let link: Vec<&str> = hardening.link.iter().map(String::as_str).collect();
+   let harden = |line| hardening_flags(platform.binfmt, &platform.hardening, choice, line);
    let (debug_flag, cargo_debug) = if spec.debug {
       ("-g", "full")
    } else {
@@ -286,15 +261,15 @@ fn package_cc(
       ]
       .map(str::to_owned),
    );
-   cflags.extend(harden(&compile));
+   cflags.extend(harden(Line::Compile));
    cflags.extend(given(|found| &found.cflags));
-   let mut cxxflags = harden(&cxx);
+   let mut cxxflags = harden(Line::Cxx);
    cxxflags.extend(given(|found| &found.cxxflags));
    let mut ldflags: Vec<String> = dirs(deps, |dep| &dep.lib_dirs)
       .into_iter()
       .map(|dir| format!("-L{dir}"))
       .collect();
-   ldflags.extend(harden(&link));
+   ldflags.extend(harden(Line::Link));
    ldflags.extend(given(|found| &found.ldflags));
    let cc_path = find_tool(bins, "cc").ok_or_else(|| io::Error::other("cc not on PATH"))?;
    let root = canonicalize(&cc_path)?

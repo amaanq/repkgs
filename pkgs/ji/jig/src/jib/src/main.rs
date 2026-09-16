@@ -7,6 +7,7 @@ mod dev;
 mod env;
 mod exports;
 mod finish;
+mod hardening;
 mod implant;
 mod launchers;
 mod prepare;
@@ -166,6 +167,7 @@ fn run(mode: Mode, socket: &Path) -> Result<i32> {
       },
       Mode::Bundle => bundle::run()?,
       Mode::Syslibs { operation } => syslibs_mode(operation)?,
+      Mode::Schema { check } => hardening::schema(check.as_deref())?,
    }
    Ok(0)
 }
