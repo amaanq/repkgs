@@ -1,0 +1,42 @@
+--- a/src/make_parser.rs
++++ b/src/make_parser.rs
+@@ -1,4 +1,4 @@
+-use std::collections::HashMap;
++use std::collections::BTreeMap;
+ use std::iter;
+ 
+ use quote::quote;
+@@ -139,13 +139,13 @@
+ 
+ fn collect_aliases(
+     imp: &mut ItemImpl,
+-) -> Result<HashMap<Ident, Vec<AliasSrc>>> {
++) -> Result<BTreeMap<Ident, Vec<AliasSrc>>> {
+     let functions = imp.items.iter_mut().flat_map(|item| match item {
+         ImplItem::Method(m) => Some(m),
+         _ => None,
+     });
+ 
+-    let mut alias_map = HashMap::new();
++    let mut alias_map = BTreeMap::new();
+     for function in functions {
+         let fn_name = function.sig.ident.clone();
+         let mut alias_attrs = function
+@@ -204,7 +204,7 @@
+ 
+ fn parse_fn<'a>(
+     function: &'a mut ImplItemMethod,
+-    alias_map: &mut HashMap<Ident, Vec<AliasSrc>>,
++    alias_map: &mut BTreeMap<Ident, Vec<AliasSrc>>,
+ ) -> Result<ParsedFn<'a>> {
+     if function.sig.inputs.len() != 1 {
+         return Err(Error::new(
+@@ -355,7 +355,7 @@
+         })
+         .collect();
+ 
+-    let fn_map: HashMap<Ident, ParsedFn> = imp
++    let fn_map: BTreeMap<Ident, ParsedFn> = imp
+         .items
+         .iter_mut()
+         .flat_map(|item| match item {

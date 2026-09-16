@@ -10,6 +10,7 @@
   platform ? system,
   seed ? null,
   rustToolchain ? null,
+  buildTools ? { },
   # one tree or a list of them: { zlib.autotools.flags.append = [ … ]; } (nix/overrides.nix)
   overrides ? { },
   # out-of-tree packages: name -> directory with package.nix (+ sources.toml), called like
@@ -24,6 +25,7 @@
     platform
     seed
     rustToolchain
+    buildTools
     overrides
     packages
     features

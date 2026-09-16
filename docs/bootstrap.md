@@ -125,6 +125,39 @@ is a separate dependency for packages that use Nu phases.
 Once assembled, the seed can be stored and reused for ordinary package builds. Rebuilding
 the seed and checking its inputs remains separate from rebuilding an application.
 
+## Self-hosted build tools
+
+`nix/self-host.nix` builds jig, jib and Nushell through the package set using an existing seed
+and Rust toolchain. `stage1` uses the bootstrap builders. `stage2` rebuilds the three tools
+with stage1, and `pkgs` uses stage2 for package builds. Each stage is a separate package set,
+so Nushell's build can use an earlier interpreter without depending on itself.
+
+Run these commands in Nushell from the repository root. Each result link protects the
+completed outputs from garbage collection. Rerunning a command reuses completed derivations.
+
+```nu
+use tools/repkgs/nix.nu [cache-args]
+let bootstrap_args = [--argstr seed (realpath result-bootstrap-seed) --argstr rustToolchain (realpath result-bootstrap-rust) --cores 30 --max-jobs 1]
+nix-build nix/self-host.nix -A stage1 ...$bootstrap_args ...(cache-args) -o result-self-host-stage1
+nix-build nix/self-host.nix -A stage2 ...$bootstrap_args ...(cache-args) -o result-self-host-stage2
+nix-build nix/self-host.nix -A pkgs.ripgrep -A pkgs.jq ...$bootstrap_args ...(cache-args) -o result-self-host-packages
+```
+
+The provided Rust toolchain supplies Cargo and rustc throughout. This does not rebuild the
+mrustc chain. Nushell's system-library dependencies can still require a package-set LLVM build.
+Its parser macro patch preserves the deterministic map ordering used by the seed recipe.
+
+`buildTools = { jig = ...; jib = ...; nu = ...; }` selects tools explicitly when importing
+`default.nix` or `nix/set.nix`. Values can be derivations or existing store paths, and omitted
+tools keep their bootstrap defaults. The same argument is accepted by `tests/builder` and
+`tools/repkgs/dev.nix`.
+
+The staged jig handles source unpacking and dependency producers, jib runs package builds,
+and Nushell runs Nu phases. The compiler wrappers and bootstrap recipes still use the seed's
+static jig. Replacing that binary requires a static build suitable for copying into each
+toolchain. These stages do not remove the initial seed or establish output reproducibility
+without a comparison.
+
 ## Building the Rust chain
 
 The pinned nixpkgs provides mrustc 0.12 and a Rust 1.90 bootstrap using LLVM 20. Build and

@@ -5,6 +5,7 @@
   platform ? system,
   seed ? null,
   rustToolchain ? null,
+  buildTools ? { },
   overrides ? { },
   packages ? { },
   features ? { },
@@ -14,6 +15,20 @@ let
   overrideTree = ov.merge overrides;
   feat = import ./features.nix;
   bootstrap = import ../bootstrap { inherit seed system; };
+  toolOverrides = builtins.mapAttrs (
+    _: tool: if builtins.isString tool || builtins.isPath tool then builtins.storePath tool else tool
+  ) buildTools;
+  tools = {
+    inherit (bootstrap) jig jib nu;
+  }
+  // toolOverrides;
+  unknownTools = builtins.attrNames (
+    removeAttrs buildTools [
+      "jig"
+      "jib"
+      "nu"
+    ]
+  );
 
   platforms = import ./platforms.nix;
   target = platforms.byName.${platform} or (throw "no platform ${platform}");
@@ -65,6 +80,7 @@ let
         inherit
           seed
           rustToolchain
+          buildTools
           system
           overrides
           packages
@@ -125,7 +141,7 @@ let
     inherit lib;
     # `prebuilt = true` patches upstream ELFs with it (builder/implant.nu)
     relocTools = [ buildPkgs.formatelf ];
-    inherit (bootstrap) jib nu;
+    inherit (tools) jib nu;
     inherit
       toolchain
       launch
@@ -140,7 +156,7 @@ let
   };
 
   fetch = import ./fetch.nix {
-    inherit (bootstrap.stage0) jig;
+    jig = toolOverrides.jig or bootstrap.stage0.jig;
     sevenzip = buildPkgs."7zip";
     seed = bootstrap.seed;
     inherit system;
@@ -172,7 +188,7 @@ let
   };
   readSources = import ./sources.nix {
     unpacker = bootstrap.seed;
-    inherit (bootstrap) jig;
+    inherit (tools) jig;
     inherit system;
   };
   callPackage =
@@ -273,7 +289,9 @@ in
 {
   # attrNames alone would not force the platform: `list --for typo` showed this machine's set
   pkgs = builtins.seq stage (
-    if rustToolchain != null && plat.cross then
+    if unknownTools != [ ] then
+      throw "unknown build tools ${toString unknownTools}"
+    else if rustToolchain != null && plat.cross then
       throw "rustToolchain currently supports native builds only, omit it for ${platform}"
     else if rustToolchain != null && missingRust != [ ] then
       throw "rustToolchain ${toString rustPath} is missing ${toString missingRust}"
@@ -282,9 +300,14 @@ in
     else
       self
   );
-  inherit bootstrap buildSystems toolchain;
+  inherit
+    bootstrap
+    buildSystems
+    toolchain
+    tools
+    ;
   bundle = import ./bundle.nix {
-    nu = bootstrap.nu;
+    inherit (tools) nu;
     tools = [ buildPkgs.formatelf ] ++ baseTools.bootstrap;
     tree = ../builder;
   };

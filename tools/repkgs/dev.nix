@@ -4,6 +4,7 @@
   platform ? system,
   seed ? null,
   rustToolchain ? null,
+  buildTools ? { },
 }:
 let
   set = import ../../nix/set.nix {
@@ -12,6 +13,7 @@ let
       platform
       seed
       rustToolchain
+      buildTools
       ;
   };
   package = set.pkgs.${attr} or (throw "no package ${attr}");
@@ -27,6 +29,6 @@ derivation (
       "export"
     ];
     devOutputs = package.outputs;
-    devNu = set.bootstrap.nu;
+    devNu = set.tools.nu;
   }
 )

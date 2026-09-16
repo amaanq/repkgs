@@ -7,6 +7,7 @@
   platform ? system,
   seed ? null,
   rustToolchain ? null,
+  buildTools ? { },
 }:
 let
   inherit (builtins)
@@ -31,6 +32,7 @@ let
       platform
       seed
       rustToolchain
+      buildTools
       ;
     packages = listToAttrs (
       map (n: {
@@ -50,9 +52,9 @@ mapAttrs (
       __contentAddressed = true;
       outputHashMode = "recursive";
       outputHashAlgo = "sha256";
-      PATH = "${set.bootstrap.nu}/bin:${seedPath}/bin";
+      PATH = "${set.tools.nu}/bin:${seedPath}/bin";
       fixtures = dir;
-      builder = "${set.bootstrap.nu}/bin/nu";
+      builder = "${set.tools.nu}/bin/nu";
       # nu separates include dirs with \x1e
       args = [
         "--no-config-file"
