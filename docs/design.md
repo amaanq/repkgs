@@ -5,7 +5,8 @@ the updater in `uptrack.md`, the exact jig and jigd contract in `jig.md`.
 
 Names used below: **jig** is the compiler driver (`cc`, `c++`, `rustc` on the build `PATH`) and
 ELF post-processor, **jigd** the per-machine daemon behind it (compile cache, build slots),
-**launch** the one binary behind every installed script, **uptrack** the updater.
+**launch** the one binary behind every installed script, **uptrack** the updater, **jsem** the
+GHC `-jsem` broker over jigd's slots.
 
 ## Goals
 

@@ -1,5 +1,5 @@
-// src/broker.cc: tick = Broker::Tick, finish = ~Broker, acquire/release = ghc.
-// single (src/main.cc) is safe, current and bounded (a broker per ghc) over-admit:
+// src/broker.rs: tick = Broker::tick, finish = Drop for Broker, acquire/release = ghc.
+// single (src/main.rs) is safe, current and bounded (a broker per ghc) over-admit:
 //   quint verify broker.qnt --main single --invariant safe --inductive-invariant inv
 //   quint run broker.qnt --main current --invariant safe
 module broker {

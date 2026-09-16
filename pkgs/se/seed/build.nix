@@ -170,7 +170,7 @@ let
       allowedReferences = [ ];
     };
   jig = rustCrate "jig" (
-    path: builtins.match ".*/jib/src/.+" path != null && baseNameOf path != "main.rs"
+    path: builtins.match ".*/(jib|jsem|uptrack)/src/.+" path != null && baseNameOf path != "main.rs"
   );
   jib = rustCrate "jib" (_path: false);
   nu =

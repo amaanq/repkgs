@@ -391,6 +391,13 @@ build holding the fewest slots when several are waiting. Ties go to the earliest
 client that disconnects while waiting is removed from the queue, and every slot a connection
 holds is released when it closes.
 
+`jsem <ghc> [args…]` is the same protocol for GHC. cabal builds under `semaphore: True` pass
+`-jsem <name>` to a ghc wrapper that execs jsem, and the first jsem of a build starts one
+broker per semaphore (an `flock` under `NIX_BUILD_TOP`) that keeps exactly one idle token in
+the named semaphore, orders a slot from jigd whenever ghc takes it, and closes a slot
+connection for every token ghc gives back. It exits once cabal unlinks the semaphore.
+`pkgs/ji/jig/src/jsem/broker.qnt` is the quint model of that loop.
+
 ## 7. jigd storage
 
 ### 7.1 Packs
