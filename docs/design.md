@@ -8,6 +8,13 @@ ELF post-processor, **jigd** the per-machine daemon behind it (compile cache, bu
 **launch** the one binary behind every installed script, **uptrack** the updater, **jsem** the
 proxy that backs GHC's `-jsem` tokens with jigd's slots.
 
+## Upstream
+
+The last upstream base is Mic92/repkgs commit
+`5d574c2d75c1b24419319dddd8f2753d58a4588e`, jj change `ouyumvxn`, dated
+2026-09-20, which added the tre package. Nothing after that commit is rebased onto
+this stack. Later upstream changes may be borrowed by hand per package.
+
 ## Goals
 
 1. **Cheap evaluation.** ≤ 0.2 ms and 10 KB per package (nixpkgs: 2.6 ms, 135 KB). Measured
