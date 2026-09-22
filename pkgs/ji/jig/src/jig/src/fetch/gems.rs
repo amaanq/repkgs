@@ -121,6 +121,6 @@ impl Producer for Gems {
          .collect();
       layout.push(Entry::write(lock, "Gemfile.lock".to_owned()));
       let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "gems", &layout, &inputs, None, Map::new())
+      collect(store, "gems", &layout, &inputs, None, Map::new(), &[])
    }
 }

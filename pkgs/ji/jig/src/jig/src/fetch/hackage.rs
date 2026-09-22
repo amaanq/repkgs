@@ -75,6 +75,7 @@ impl Producer for Hackage {
          .map(|(to, made)| Entry::link(made.out.clone(), to.clone()))
          .collect();
       let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "hackage-set", &layout, &inputs, None, Map::new())
+      collect(store, "hackage-set", &layout, &inputs, None, Map::new(), &[
+      ])
    }
 }

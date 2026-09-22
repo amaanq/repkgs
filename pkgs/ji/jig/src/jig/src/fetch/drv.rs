@@ -207,6 +207,7 @@ pub fn collect(
    inputs: &[String],
    script: Option<&str>,
    attrs: Map<String, Value>,
+   srcs: &[String],
 ) -> io::Result<()> {
    let seed = attr("seed")?;
    let jig = attr("jig")?;
@@ -221,7 +222,8 @@ pub fn collect(
    json.insert("seed".to_owned(), Value::String(seed.clone()));
    json.insert("layout".to_owned(), to_value(layout)?);
    json.extend(attrs);
-   let sources = BTreeSet::from([seed, jig.clone()]);
+   let mut sources = BTreeSet::from([seed, jig.clone()]);
+   sources.extend(srcs.iter().cloned());
    let derivation = Derivation {
       outputs: BTreeMap::from([("out".to_owned(), Output {
          algorithm: "r:sha256".to_owned(),
@@ -255,6 +257,7 @@ pub fn stage<Attrs>(
    kind: &str,
    attrs: &Attrs,
    inputs: &[String],
+   srcs: &[String],
 ) -> io::Result<()>
 where
    Attrs: Serialize,
@@ -268,7 +271,8 @@ where
       &serde_json::to_vec(attrs)?,
    )?;
    let drv_name = format!("{name}.drv");
-   let sources = BTreeSet::from([seed.clone(), jig.clone(), attrs_file.clone()]);
+   let mut sources = BTreeSet::from([seed.clone(), jig.clone(), attrs_file.clone()]);
+   sources.extend(srcs.iter().cloned());
    let env = [
       ("name", drv_name.clone()),
       ("system", system.clone()),

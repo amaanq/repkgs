@@ -5,8 +5,8 @@
 # the hash the lock already carries, plus a derivation assembling them (`jig assemble`, bsdtar
 # from the seed), and submits that .drv as its output. The caller gets `builtins.outputOf` it: Nix downloads, caches
 # and verifies per file, nothing is hashed by us, no lock file is copied into this repo. Needs
-# `dynamic-derivations ca-derivations` on the daemon. Dependencies without a hash in the lock
-# (git, path) are rejected by the producer.
+# `dynamic-derivations ca-derivations` on the daemon. Python source trees are explicit store
+# inputs from nix/python.nix. Registry artifacts require hashes from the lock.
 #
 {
   jig,

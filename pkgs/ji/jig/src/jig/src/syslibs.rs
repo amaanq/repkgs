@@ -15,13 +15,15 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct Entry {
-   pub pkg:   String,
+   pub pkg:             Option<String>,
    #[serde(default)]
-   pub env:   BTreeMap<String, String>,
+   pub env:             BTreeMap<String, String>,
    #[serde(default)]
-   pub tags:  Vec<String>,
+   pub tags:            Vec<String>,
    #[serde(default)]
-   pub flags: Vec<String>,
+   pub flags:           Vec<String>,
+   #[serde(default, rename = "configSettings")]
+   pub config_settings: BTreeMap<String, String>,
 }
 
 pub type Tables = BTreeMap<String, BTreeMap<String, Entry>>;
@@ -79,8 +81,11 @@ pub fn wanted_for(tables: &Tables, ecosystem: &str, names: &[String]) -> Vec<Str
    let mut found = Vec::new();
    if let Some(table) = tables.get(ecosystem) {
       for (name, entry) in table {
-         if names.contains(name) && !found.contains(&entry.pkg) {
-            found.push(entry.pkg.clone());
+         if let Some(ref package) = entry.pkg
+            && names.contains(name)
+            && !found.contains(package)
+         {
+            found.push(package.clone());
          }
       }
    }

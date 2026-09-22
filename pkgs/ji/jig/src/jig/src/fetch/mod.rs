@@ -14,6 +14,7 @@ mod npm;
 mod pep508;
 mod pnpm;
 mod pypi;
+mod pypi_vendor;
 mod registry;
 pub mod unpack;
 mod winsdk;

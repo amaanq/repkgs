@@ -85,6 +85,14 @@ impl Producer for Luarocks {
          format!("manifest-{}", major_minor.join(".")),
       ));
       let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "luarocks-set", &layout, &inputs, None, Map::new())
+      collect(
+         store,
+         "luarocks-set",
+         &layout,
+         &inputs,
+         None,
+         Map::new(),
+         &[],
+      )
    }
 }

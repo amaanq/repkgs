@@ -144,9 +144,8 @@ impl Python {
       let dist = format!("{}/dist", ctx.build);
       match options.backend.as_str() {
          "maturin" => {
-            let version = Self::python("import sys; print(\"%d.%d\" % sys.version_info[:2])")?;
             let jobs = format!("-j{}", ctx.njobs);
-            let interpreter = format!("python{version}");
+            let interpreter = maturin_interpreter()?;
             run(
                "maturin",
                &[
@@ -359,4 +358,9 @@ pub fn tool_site_packages() -> io::Result<Vec<String>> {
    }
    let closure_roots: Vec<String> = closure(&roots)?.into_iter().map(|dep| dep.root).collect();
    Python::site_packages(&closure_roots)
+}
+
+pub fn maturin_interpreter() -> io::Result<String> {
+   let version = Python::python("import sys; print(\"%d.%d\" % sys.version_info[:2])")?;
+   Ok(format!("python{version}"))
 }

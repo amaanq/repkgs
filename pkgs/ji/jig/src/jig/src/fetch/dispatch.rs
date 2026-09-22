@@ -16,6 +16,7 @@ use crate::{
       npm::Npm,
       pnpm::Pnpm,
       pypi::Pypi,
+      pypi_vendor::PypiVendor,
       winsdk::Winsdk,
       yarn::Yarn,
    },
@@ -31,8 +32,21 @@ pub trait Producer: Sync {
 }
 
 const PRODUCERS: &[&dyn Producer] = &[
-   &Cargo, &Npm, &Pnpm, &Yarn, &Bun, &Deno, &DenoFiles, &Pypi, &Gems, &Hex, &Go, &Hackage,
-   &Luarocks, &Winsdk,
+   &Cargo,
+   &Npm,
+   &Pnpm,
+   &Yarn,
+   &Bun,
+   &Deno,
+   &DenoFiles,
+   &Pypi,
+   &PypiVendor,
+   &Gems,
+   &Hex,
+   &Go,
+   &Hackage,
+   &Luarocks,
+   &Winsdk,
 ];
 
 pub fn mode(name: &str) -> io::Result<()> {

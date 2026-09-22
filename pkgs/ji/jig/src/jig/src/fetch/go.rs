@@ -143,6 +143,6 @@ impl Producer for Go {
          )?);
       }
       let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "go-modules", &layout, &inputs, None, Map::new())
+      collect(store, "go-modules", &layout, &inputs, None, Map::new(), &[])
    }
 }

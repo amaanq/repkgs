@@ -192,6 +192,6 @@ impl Producer for Hex {
          .map(|(row, made)| Entry::link(made.out.clone(), format!("packages/hexpm/{}", row.file)))
          .collect();
       let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "hex-deps", &layout, &inputs, None, Map::new())
+      collect(store, "hex-deps", &layout, &inputs, None, Map::new(), &[])
    }
 }

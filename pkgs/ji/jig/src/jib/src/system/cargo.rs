@@ -64,7 +64,26 @@ impl System for Cargo {
    }
 
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      let mut env: Env = Self::environment(ctx, attrs)?.into();
+      let options: Options = ctx.options("cargo")?;
+      let vendor = match options.deps.as_deref() {
+         Some(deps) if !options.crate_patches.is_empty() => {
+            Some(Self::patched_vendor(ctx, deps, &options.crate_patches)?)
+         },
+         Some(deps) => Some(deps.to_owned()),
+         None => None,
+      };
+      syslibs::check(
+         attrs,
+         &ctx.project_dir(&options.root),
+         ctx.spec()?.sys.as_deref(),
+      )?;
+      let mut env: Env = Self::configure(
+         ctx,
+         attrs,
+         vendor.as_deref(),
+         &format!("{}/cargo-home", ctx.build),
+      )?
+      .into();
       env.unset("RUSTFLAGS");
       Ok(env)
    }
@@ -120,13 +139,16 @@ impl Cargo {
    /// --target without `ALLOW_CROSS`. bindgen asks a clang executable for
    /// its include dirs, ours and not a bare one on PATH. rustflags go in the
    /// config because RUSTFLAGS from the environment would replace them.
-   fn environment(ctx: &Ctx, attrs: &Attrs) -> io::Result<BTreeMap<String, String>> {
-      let options: Options = ctx.options("cargo")?;
-      let home = format!("{}/cargo-home", ctx.build);
-      create_dir_all(&home)?;
+   pub fn configure(
+      ctx: &Ctx,
+      attrs: &Attrs,
+      vendor: Option<&str>,
+      home: &str,
+   ) -> io::Result<BTreeMap<String, String>> {
+      create_dir_all(home)?;
       let rustc = tool("rustc")?;
       let mut env = BTreeMap::from([
-         ("CARGO_HOME".to_owned(), home.clone()),
+         ("CARGO_HOME".to_owned(), home.to_owned()),
          (
             "CARGO_TARGET_DIR".to_owned(),
             format!("{}/target", ctx.build),
@@ -142,8 +164,6 @@ impl Cargo {
       let platform = ctx.platform()?;
       let target = platform.rust_triple;
       env.insert("CARGO_BUILD_TARGET".to_owned(), target.clone());
-      let spec = ctx.spec()?;
-      syslibs::check(attrs, &ctx.project_dir(&options.root), spec.sys.as_deref())?;
       let sys = syslibs::active(attrs, "cargo", &ctx.deps)?.env;
       env.insert("PKG_CONFIG_ALLOW_CROSS".to_owned(), "1".to_owned());
       if !sys.is_empty() {
@@ -159,7 +179,7 @@ impl Cargo {
          format!("--remap-path-prefix={}=/src", ctx.src),
          format!("--remap-path-prefix={home}=/cargo"),
       ];
-      if let Some(deps) = options.deps.as_deref() {
+      if let Some(deps) = vendor {
          rustflags.push(format!("--remap-path-prefix={deps}=/vendor"));
       }
       rustflags.push("-Cforce-frame-pointers=yes".to_owned());
@@ -169,20 +189,13 @@ impl Cargo {
             Self::cross_sysroot(ctx, attrs, &rustc, &target)?
          ));
       }
-      let vendor = match options.deps.as_deref() {
-         Some(deps) if !options.crate_patches.is_empty() => {
-            Some(Self::patched_vendor(ctx, deps, &options.crate_patches)?)
-         },
-         Some(deps) => Some(deps.to_owned()),
-         None => None,
-      };
       let mut config = String::new();
       if let Some(directory) = vendor {
          writeln!(
             config,
             "[source.crates-io]\nreplace-with = \"vendored\"\n\n[source.vendored]\ndirectory = \
              {}\n",
-            Self::quoted(&directory)
+            Self::quoted(directory)
          )
          .map_err(io::Error::other)?;
       }
@@ -221,6 +234,11 @@ impl Cargo {
    // <toolchain>-std.
    fn cross_sysroot(ctx: &Ctx, attrs: &Attrs, rustc: &Path, target: &str) -> io::Result<String> {
       let sysroot = format!("{}/rust-sysroot", ctx.build);
+
+      if Path::new(&sysroot).is_dir() {
+         return Ok(sysroot);
+      }
+
       let toolchain = rustc
          .parent()
          .and_then(Path::parent)

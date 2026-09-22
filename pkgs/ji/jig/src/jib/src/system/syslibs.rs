@@ -42,7 +42,10 @@ pub fn active(attrs: &Attrs, ecosystem: &str, deps: &[Exports]) -> io::Result<Ac
       flags: BTreeMap::new(),
    };
    for (locked, entry) in table {
-      let Some(dep) = deps.iter().find(|dep| dep.name == entry.pkg) else {
+      let Some(dep) = deps
+         .iter()
+         .find(|dep| entry.pkg.as_ref() == Some(&dep.name))
+      else {
          continue;
       };
       for (name, value) in &entry.env {

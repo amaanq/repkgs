@@ -14,7 +14,10 @@ use std::{
       symlink_metadata,
    },
    io,
-   os::unix::fs::PermissionsExt,
+   os::unix::fs::{
+      PermissionsExt,
+      symlink,
+   },
    path::Path,
    process::Command,
 };
@@ -36,13 +39,17 @@ use crate::{
    implant,
    prepare::succeed,
    system::{
+      cargo::Cargo,
       command::{
          Env,
          run,
          unknown,
       },
       dispatch::System,
-      python::tool_site_packages,
+      python::{
+         maturin_interpreter,
+         tool_site_packages,
+      },
       syslibs,
    },
 };
@@ -50,16 +57,44 @@ use crate::{
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Options {
-   root:  String,
-   deps:  String,
-   check: Vec<String>,
+   root:      String,
+   deps:      String,
+   check:     Vec<String>,
+   mode:      Mode,
+   overrides: BTreeMap<String, Override>,
+}
+
+#[derive(Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum Mode {
+   Project,
+   Env,
+   Dev,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct Override {
+   patches:         Vec<String>,
+   env:             BTreeMap<String, String>,
+   run:             String,
+   config_settings: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Kind {
+   Wheel,
+   Sdist,
+   Tree,
 }
 
 #[derive(Deserialize)]
 struct Planned {
    name: String,
    file: String,
-   kind: String,
+   kind: Kind,
+   path: String,
 }
 
 fn site_packages(ctx: &Ctx) -> io::Result<String> {
@@ -112,7 +147,7 @@ impl System for Pyapp {
             }
             Ok(())
          },
-         "install" => install(ctx),
+         "install" => install(ctx, &options),
          _ => Err(unknown("pyapp", verb)),
       }
    }
@@ -127,17 +162,40 @@ fn build(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<()> {
       serde_json::from_str(&read_to_string(format!("{}/plan.json", options.deps))?)?;
    let built = format!("{}/wheels", ctx.build);
    create_dir_all(&built)?;
-   for sdist in plan.iter().filter(|entry| entry.kind == "sdist") {
+   for sdist in plan
+      .iter()
+      .filter(|entry| matches!(entry.kind, Kind::Sdist))
+   {
       build_sdist(
          ctx,
+         attrs,
+         options,
          &format!("{}/dist/{}", options.deps, sdist.file),
          &sdist.name,
          &built,
       )?;
    }
+   for tree in plan.iter().filter(|entry| matches!(entry.kind, Kind::Tree)) {
+      let source = if tree.file.is_empty() {
+         format!("{}/{}", ctx.src, tree.path)
+      } else {
+         format!("{}/{}", options.deps, tree.file)
+      };
+      note("tree", &tree.name);
+      let dir = format!("{}/sdist/{}", ctx.build, tree.name);
+
+      if Path::new(&dir).exists() {
+         remove_dir_all(&dir)?;
+      }
+
+      create_dir_all(format!("{}/sdist", ctx.build))?;
+      run("cp", &["-rH", "--no-preserve=mode", &source, &dir], &[])?;
+      build_wheel(ctx, attrs, options, &dir, &tree.name, &built)?;
+   }
+
    let mut wheels: Vec<String> = plan
       .iter()
-      .filter(|entry| entry.kind == "wheel")
+      .filter(|entry| matches!(entry.kind, Kind::Wheel))
       .map(|entry| format!("{}/dist/{}", options.deps, entry.file))
       .collect();
    wheels.extend(
@@ -146,15 +204,20 @@ fn build(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<()> {
          .map(|path| path.to_string_lossy().into_owned()),
    );
    for wheel in &wheels {
-      install_wheel(ctx, wheel, false)?;
+      install_wheel(ctx, wheel, options.mode != Mode::Project)?;
    }
-   let project = format!("{}/project", ctx.build);
-   run("python3", &wheel_args(&project), &[])?;
-   let own = glob(&format!("{project}/*.whl"))?
-      .into_iter()
-      .next()
-      .ok_or_else(|| io::Error::other("python -m build produced no wheel"))?;
-   install_wheel(ctx, &own.to_string_lossy(), true)?;
+   if options.mode == Mode::Project {
+      let project = format!("{}/project", ctx.build);
+      run("python3", &wheel_args(&project), &[])?;
+      let own = glob(&format!("{project}/*.whl"))?
+         .into_iter()
+         .next()
+         .ok_or_else(|| io::Error::other("python -m build produced no wheel"))?;
+      install_wheel(ctx, &own.to_string_lossy(), true)?;
+   } else {
+      env_python(ctx, &options.mode)?;
+   }
+
    let platform = ctx.platform()?;
    implant::run(
       Path::new(&ctx.out),
@@ -177,7 +240,14 @@ const fn wheel_args(outdir: &str) -> [&str; 8] {
    ]
 }
 
-fn build_sdist(ctx: &Ctx, tarball: &str, name: &str, outdir: &str) -> io::Result<()> {
+fn build_sdist(
+   ctx: &Ctx,
+   attrs: &Attrs,
+   options: &Options,
+   tarball: &str,
+   name: &str,
+   outdir: &str,
+) -> io::Result<()> {
    note("sdist", name);
    let dir = format!("{}/sdist/{name}", ctx.build);
    create_dir_all(&dir)?;
@@ -186,11 +256,94 @@ fn build_sdist(ctx: &Ctx, tarball: &str, name: &str, outdir: &str) -> io::Result
       &["-xf", tarball, "-C", &dir, "--strip-components", "1"],
       &[],
    )?;
+   build_wheel(ctx, attrs, options, &dir, name, outdir)
+}
+
+fn build_wheel(
+   ctx: &Ctx,
+   attrs: &Attrs,
+   options: &Options,
+   dir: &str,
+   name: &str,
+   outdir: &str,
+) -> io::Result<()> {
    let back = current_dir()?;
-   set_current_dir(&dir)?;
-   let built = run("python3", &wheel_args(outdir), &[]);
+   set_current_dir(dir)?;
+   let built = (|| {
+      let default_override = Override::default();
+      let overrides = options.overrides.get(name).unwrap_or(&default_override);
+
+      for patch in &overrides.patches {
+         run("patch", &["-p1", "-i", patch], &[])?;
+      }
+
+      if !overrides.run.is_empty() {
+         run("nu", &["-c", &overrides.run], &[])?;
+      }
+
+      let vendor = format!("{}/vendor/{name}", options.deps);
+      let mut command = Command::new("python3");
+      command.args(&wheel_args(outdir)[..7]);
+
+      if Path::new(&vendor).exists() {
+         let home = format!("{}/cargo-home/{name}", ctx.build);
+         command.envs(Cargo::configure(ctx, attrs, Some(&vendor), &home)?);
+         command.env_remove("RUSTFLAGS");
+         command.env(
+            "MATURIN_PEP517_ARGS",
+            format!("--interpreter {} --auditwheel skip", maturin_interpreter()?),
+         );
+      }
+
+      let tables = syslibs::tables(attrs)?;
+      let mut settings = tables
+         .get("python")
+         .and_then(|table| table.get(name))
+         .map(|entry| entry.config_settings.clone())
+         .unwrap_or_default();
+      settings.extend(
+         overrides
+            .config_settings
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone())),
+      );
+      command.args(
+         settings
+            .iter()
+            .map(|(key, value)| format!("-C{key}={value}")),
+      );
+      succeed(command.arg(".").envs(&overrides.env), "python3 -m build")
+   })();
    set_current_dir(back)?;
    built
+}
+
+fn env_python(ctx: &Ctx, mode: &Mode) -> io::Result<()> {
+   let python = ctx
+      .deps
+      .iter()
+      .find(|dep| dep.name.starts_with("cpython"))
+      .ok_or_else(|| io::Error::other("pkgs.cpython must be in dependencies"))?;
+   let dev = if *mode == Mode::Dev {
+      "${REPKGS_PROJECT:+$REPKGS_PROJECT:$REPKGS_PROJECT/src:}"
+   } else {
+      ""
+   };
+   let bin = format!("{}/bin", ctx.out);
+   create_dir_all(&bin)?;
+   let wrapper = format!("{bin}/python3");
+   let text = format!(
+      r#"#!/bin/sh
+here=$(cd "$(dirname "$0")" && pwd -P)
+export PYTHONPATH="{dev}$here/../lib/{}/site-packages${{PYTHONPATH:+:$PYTHONPATH}}"
+exec {}/bin/python3 "$@"
+"#,
+      ctx.spec()?.name,
+      python.root
+   );
+   write_file(Path::new(&wrapper), text.as_bytes(), None)?;
+   set_permissions(&wrapper, PermissionsExt::from_mode(0o755))?;
+   symlink("python3", format!("{bin}/python"))
 }
 
 /// installer only knows prefix layouts, so the wheel is staged and moved.
@@ -234,16 +387,22 @@ fn install_wheel(ctx: &Ctx, wheel: &str, scripts: bool) -> io::Result<()> {
 /// installer wrote the entry points with a `#!python3` placeholder, so they get
 /// our interpreter and the application's site-packages first on sys.path,
 /// relative to the script itself.
-fn install(ctx: &Ctx) -> io::Result<()> {
+fn install(ctx: &Ctx, options: &Options) -> io::Result<()> {
    let python = ctx
       .deps
       .iter()
       .find(|dep| dep.name.starts_with("cpython"))
       .map(|dep| dep.root.clone())
       .ok_or_else(|| io::Error::other("pkgs.cpython must be in dependencies"))?;
+   let dev = if options.mode == Mode::Dev {
+      "; p = os.environ.get('REPKGS_PROJECT'); sys.path[0:0] = [p, os.path.join(p, 'src')] if p \
+       else []"
+   } else {
+      ""
+   };
    let prelude = format!(
       "import os, sys; sys.path.insert(0, \
-       os.path.join(os.path.dirname(os.path.realpath(__file__)), '../lib/{}/site-packages'))",
+       os.path.join(os.path.dirname(os.path.realpath(__file__)), '../lib/{}/site-packages')){dev}",
       ctx.spec()?.name
    );
    for script in glob(&format!("{}/bin/*", ctx.out))? {

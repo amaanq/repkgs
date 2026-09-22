@@ -2,6 +2,7 @@ use std::{
    collections::BTreeMap,
    env::var,
    fs::{
+      copy,
       create_dir_all,
       read_dir,
       read_to_string,
@@ -183,9 +184,9 @@ fn unpack_msi(attrs: &Attrs, work: &Path, out: &str, payload: &Payload) -> io::R
    Ok(())
 }
 
-/// etc/cc/, the libc facts bootstrap/stage.rs `cc_facts` documents. clang's msvc
-/// driver derives include and lib paths for the arch from the two roots, for
-/// lld-link too. The STL is part of the CRT.
+/// etc/cc/, the libc facts bootstrap/stage.rs `cc_facts` documents. clang's
+/// msvc driver derives include and lib paths for the arch from the two roots,
+/// for lld-link too. The STL is part of the CRT.
 fn write_facts(out: &str, version: &str) -> io::Result<()> {
    create_dir_all(format!("{out}/etc/cc"))?;
    let include_dirs = format!(
@@ -221,10 +222,11 @@ fn write_facts(out: &str, version: &str) -> io::Result<()> {
 
 /// the CRT .vsix are zips with Contents/VC/Tools/MSVC/<v>/{include,lib}, the
 /// SDK .msi install below "Windows Kits/10/{Include,Lib}/<v>/" out of
-/// cabinets whose members are named by File-table id. Result: crt/{include,lib}
-/// and sdk/{include,lib}/<v>/, plus a clang VFS overlay that makes the header
-/// dirs case-insensitive (SDK headers include each other in spellings that
-/// match no file) and lowercase symlinks for lld-link, which has no VFS.
+/// cabinets whose members are named by File-table id. Result:
+/// crt/{include,lib,redist} and sdk/{include,lib}/<v>/, plus a clang VFS
+/// overlay that makes the header dirs case-insensitive (SDK headers include
+/// each other in spellings that match no file) and lowercase symlinks for
+/// lld-link, which has no VFS.
 pub fn run_mode() -> io::Result<()> {
    let attrs: Attrs = serde_json::from_str(&read_to_string(
       var("NIX_ATTRS_JSON_FILE")
@@ -255,7 +257,7 @@ pub fn run_mode() -> io::Result<()> {
          &payload.out,
          "-C",
          &work_text,
-         "Contents/VC/Tools/MSVC",
+         "Contents/VC",
       ])?;
    }
    let vc = first_entry(&work.join("Contents/VC/Tools/MSVC"))?;
@@ -266,6 +268,24 @@ pub fn run_mode() -> io::Result<()> {
       &format!("{vc_text}/lib"),
       &format!("{out}/crt/"),
    ])?;
+
+   let redist = PathBuf::from(format!("{out}/crt/redist"));
+   create_dir_all(&redist)?;
+
+   let dlls = files(&format!(
+      "{work_text}/Contents/VC/Redist/MSVC/*/*/Microsoft.VC*.{{CRT,OpenMP}}/*.dll"
+   ))?;
+
+   if dlls.is_empty() {
+      return Err(io::Error::other("windows-sdk has no redistributable DLLs"));
+   }
+
+   for dll in dlls {
+      let name = dll
+         .file_name()
+         .ok_or_else(|| io::Error::other(format!("{} has no file name", dll.display())))?;
+      copy(&dll, redist.join(name))?;
+   }
 
    // 7zz finds an msi's cabinets next to it by the names in its Media table
    for payload in attrs

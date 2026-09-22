@@ -255,6 +255,7 @@ impl Producer for Deno {
          "deno-files",
          &Staged { npm, jsr, https },
          &inputs,
+         &[],
       )
    }
 }
@@ -510,6 +511,6 @@ impl Producer for DenoFiles {
          .chain(fetched.jsr.iter().map(|package| package.drv.clone()))
          .chain(fetched.https.iter().map(|module| module.drv.clone()))
          .collect();
-      collect(store, "deno-deps", &layout, &inputs, None, Map::new())
+      collect(store, "deno-deps", &layout, &inputs, None, Map::new(), &[])
    }
 }

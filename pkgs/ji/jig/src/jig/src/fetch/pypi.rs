@@ -5,14 +5,15 @@ use std::{
    },
    fs::read_to_string,
    io,
+   path::Path,
    ptr::eq,
 };
 
+use jig::syslibs::load;
 use serde::{
    Deserialize,
    Serialize,
 };
-use serde_json::Map;
 
 use crate::{
    fetch::{
@@ -22,12 +23,17 @@ use crate::{
          Hash,
          Row,
          attr,
-         collect,
          fetchurls,
          json_file,
          say,
+         stage,
       },
       pep508::evaluate,
+      pypi_vendor::{
+         Sdist,
+         Stage,
+         Tree,
+      },
       registry::{
          basename,
          url_path,
@@ -55,6 +61,8 @@ struct Package {
    dependencies:          Vec<Edge>,
    #[serde(default, rename = "optional-dependencies")]
    optional_dependencies: BTreeMap<String, Vec<Edge>>,
+   #[serde(default, rename = "dev-dependencies")]
+   dev_dependencies:      BTreeMap<String, Vec<Edge>>,
    #[serde(default, rename = "resolution-markers")]
    resolution_markers:    Vec<String>,
    #[serde(default)]
@@ -77,15 +85,17 @@ struct Artefact {
    hash: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 struct Pyproject {
+   #[serde(default)]
    project: Project,
    #[serde(default)]
    tool:    Tool,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 struct Project {
+   #[serde(default)]
    name: String,
 }
 
@@ -101,9 +111,12 @@ struct Uv {
    no_binary_package: Vec<String>,
 }
 
-#[derive(Deserialize)]
-struct SysLibs {
-   python: BTreeMap<String, serde_json::Value>,
+#[derive(Serialize)]
+#[serde(rename_all = "lowercase")]
+enum Kind {
+   Wheel,
+   Sdist,
+   Tree,
 }
 
 #[derive(Serialize)]
@@ -111,7 +124,82 @@ struct Planned<'package> {
    name:    &'package str,
    version: &'package str,
    file:    String,
-   kind:    &'static str,
+   kind:    Kind,
+   path:    String,
+}
+
+impl<'package> Planned<'package> {
+   fn select(
+      package: &'package Package,
+      platform: &Platform,
+      force_sdist: bool,
+      prefer_sdist: bool,
+      git: &BTreeMap<&str, &str>,
+   ) -> io::Result<(Self, Option<Row>)> {
+      let name = package.name.as_str();
+      let local = package
+         .source
+         .get("editable")
+         .or_else(|| package.source.get("directory"))
+         .or_else(|| package.source.get("virtual"));
+
+      if let Some(path) = local {
+         return Ok((
+            Self {
+               name,
+               version: package.version.as_deref().unwrap_or_default(),
+               kind: Kind::Tree,
+               file: String::new(),
+               path: path.clone(),
+            },
+            None,
+         ));
+      }
+
+      if package.source.contains_key("git") {
+         let path = git.get(name).ok_or_else(|| {
+            io::Error::other(format!(
+               "pythonDeps: {name} is a git source nix/python.nix did not fetch"
+            ))
+         })?;
+         return Ok((
+            Self {
+               name,
+               version: package.version.as_deref().unwrap_or_default(),
+               kind: Kind::Tree,
+               file: format!("dist/{name}"),
+               path: (*path).to_owned(),
+            },
+            None,
+         ));
+      }
+
+      let (artefact, kind) = platform.choose(package, force_sdist, prefer_sdist)?;
+      let url = artefact
+         .url
+         .clone()
+         .ok_or_else(|| io::Error::other(format!("pythonDeps: {name} artefact has no url")))?;
+      let hash = artefact
+         .hash
+         .as_deref()
+         .and_then(|hash| hash.strip_prefix("sha256:"))
+         .ok_or_else(|| io::Error::other(format!("pythonDeps: {name} artefact has no sha256")))?
+         .to_owned();
+      let file = percent_decode(basename(url_path(&url)));
+      let planned = Self {
+         name,
+         version: package.version.as_deref().unwrap_or_default(),
+         file: file.clone(),
+         kind,
+         path: String::new(),
+      };
+      let row = Row {
+         file,
+         url,
+         hash: Hash::Sha256(hash),
+      };
+      Ok((planned, Some(row)))
+   }
 }
 
 fn normalize(name: &str) -> String {
@@ -154,7 +242,7 @@ struct Platform {
    cpu:        String,
    python:     String,
    cpython:    String,
-   marker_env: BTreeMap<&'static str, String>,
+   marker_env: BTreeMap<String, String>,
 }
 
 impl Platform {
@@ -164,7 +252,7 @@ impl Platform {
       let mut parts = python.split('.');
       let major = parts.next().unwrap_or_default();
       let minor = parts.next().unwrap_or_default();
-      let marker_env = BTreeMap::from([
+      let mut marker_env: BTreeMap<String, String> = [
          ("python_full_version", python.clone()),
          ("python_version", format!("{major}.{minor}")),
          ("sys_platform", "linux".to_owned()),
@@ -177,7 +265,13 @@ impl Platform {
          ("platform_release", String::new()),
          ("platform_version", String::new()),
          ("extra", String::new()),
-      ]);
+      ]
+      .into_iter()
+      .map(|(key, value)| (key.to_owned(), value))
+      .collect();
+      marker_env.extend(serde_json::from_str::<BTreeMap<String, String>>(&attr(
+         "environ",
+      )?)?);
       Ok(Self {
          cpython: format!("cp{major}{minor}"),
          cpu,
@@ -253,13 +347,17 @@ impl Platform {
       &self,
       package: &'package Package,
       force_sdist: bool,
-   ) -> io::Result<(&'package Artefact, &'static str)> {
+      prefer_sdist: bool,
+   ) -> io::Result<(&'package Artefact, Kind)> {
       if !package.source.contains_key("registry") {
          return Err(io::Error::other(format!(
             "pythonDeps: {} comes from {}, not a registry; uv.lock records no hash for that",
             package.name,
             package.source.keys().cloned().collect::<Vec<_>>().join(" ")
          )));
+      }
+      if prefer_sdist && let Some(ref sdist) = package.sdist {
+         return Ok((sdist, Kind::Sdist));
       }
       let best = package
          .wheels
@@ -273,9 +371,9 @@ impl Platform {
          .filter(|ranked| ranked.0 < NO_MATCH)
          .min_by_key(|ranked| ranked.0);
       if let Some((rank, wheel)) = best
-         && (!force_sdist || rank == 0)
+         && (!force_sdist || rank == 0 || package.sdist.is_none())
       {
-         return Ok((wheel, "wheel"));
+         return Ok((wheel, Kind::Wheel));
       }
       package.sdist.as_ref().map_or_else(
          || {
@@ -287,7 +385,7 @@ impl Platform {
                self.cpu
             )))
          },
-         |sdist| Ok((sdist, "sdist")),
+         |sdist| Ok((sdist, Kind::Sdist)),
       )
    }
 }
@@ -295,7 +393,7 @@ impl Platform {
 struct Closure<'lock> {
    packages: BTreeMap<&'lock str, Vec<&'lock Package>>,
    holds:    BTreeMap<&'lock str, bool>,
-   env:      &'lock BTreeMap<&'static str, String>,
+   env:      &'lock BTreeMap<String, String>,
 }
 
 struct Visit<'lock> {
@@ -306,7 +404,7 @@ struct Visit<'lock> {
 impl<'lock> Closure<'lock> {
    fn marker_holds(
       holds: &mut BTreeMap<&'lock str, bool>,
-      env: &BTreeMap<&str, String>,
+      env: &BTreeMap<String, String>,
       marker: &'lock str,
    ) -> io::Result<bool> {
       if let Some(known) = holds.get(marker) {
@@ -317,13 +415,22 @@ impl<'lock> Closure<'lock> {
       Ok(value)
    }
 
-   fn edges(&mut self, package: &'lock Package, extras: &[String]) -> io::Result<Vec<&'lock Edge>> {
+   fn edges(
+      &mut self,
+      package: &'lock Package,
+      extras: &[String],
+      groups: &[String],
+   ) -> io::Result<Vec<&'lock Edge>> {
       let optional = extras
          .iter()
          .filter_map(|extra| package.optional_dependencies.get(extra))
          .flatten();
+      let grouped = groups
+         .iter()
+         .filter_map(|group| package.dev_dependencies.get(group))
+         .flatten();
       let mut kept = Vec::new();
-      for edge in package.dependencies.iter().chain(optional) {
+      for edge in package.dependencies.iter().chain(grouped).chain(optional) {
          let Some(marker) = edge.marker.as_deref() else {
             kept.push(edge);
             continue;
@@ -383,10 +490,11 @@ impl<'lock> Closure<'lock> {
       &mut self,
       project: &'lock Package,
       extras: &[String],
+      groups: &[String],
    ) -> io::Result<Vec<&'lock Package>> {
       let mut visited: BTreeMap<&str, Visit<'lock>> = BTreeMap::new();
       let mut order = Vec::new();
-      let mut queue: VecDeque<&Edge> = self.edges(project, extras)?.into();
+      let mut queue: VecDeque<&Edge> = self.edges(project, extras, groups)?.into();
       while let Some(edge) = queue.pop_front() {
          let wanted = &edge.extra;
          let target = self.resolve(edge)?;
@@ -416,7 +524,7 @@ impl<'lock> Closure<'lock> {
                seen.extras.push(extra.as_str());
             }
          }
-         queue.extend(self.edges(target, wanted)?);
+         queue.extend(self.edges(target, wanted, &[])?);
       }
       Ok(order.into_iter().map(|name| visited[name].entry).collect())
    }
@@ -433,30 +541,61 @@ impl Producer for Pypi {
    }
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
-      let root = format!("{}/{}", attr("source")?, attr("root")?);
+      let source = attr("source")?;
+      let root = format!("{source}/{}", attr("root")?);
       let lock: Lock =
          toml::from_str(&read_to_string(format!("{root}/uv.lock"))?).map_err(io::Error::other)?;
-      let pyproject: Pyproject = toml::from_str(&read_to_string(format!("{root}/pyproject.toml"))?)
-         .map_err(io::Error::other)?;
+      let project_file = format!("{root}/pyproject.toml");
+      let pyproject: Pyproject = if Path::new(&project_file).exists() {
+         toml::from_str(&read_to_string(project_file)?).map_err(io::Error::other)?
+      } else {
+         Pyproject::default()
+      };
+
       if lock.version < 1 {
          return Err(io::Error::other(
             "pythonDeps: uv.lock has no `version`, too old",
          ));
       }
-      let platform = Platform::load()?;
-      let extras: Vec<String> = attr("extras")?
-         .split(',')
-         .filter(|extra| !extra.is_empty())
-         .map(str::to_owned)
-         .collect();
-      let sys_libs: SysLibs = serde_json::from_str(&read_to_string(attr("sysLibs")?)?)?;
-      let mut force_sdist = pyproject.tool.uv.no_binary_package.clone();
-      force_sdist.extend(sys_libs.python.keys().cloned());
 
+      let platform = Platform::load()?;
+      let csv = |value: String| {
+         value
+            .split(',')
+            .filter(|part| !part.is_empty())
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+      };
+      let extras = csv(attr("extras")?);
+      let groups = csv(attr("groups")?);
+      let prefer_sdist = attr("prefer")? == "sdist";
+      let sys_libs = load(Path::new(&attr("sysLibs")?))?;
+      let mut force_sdist = pyproject.tool.uv.no_binary_package;
+      force_sdist.extend(
+         sys_libs
+            .get("python")
+            .into_iter()
+            .flat_map(|table| table.iter())
+            .filter(|&(_name, entry)| entry.pkg.is_some())
+            .map(|(name, _entry)| name.clone()),
+      );
+      force_sdist.extend(csv(attr("sdist")?));
+      let git_sources = attr("git")?;
+      let git: BTreeMap<&str, &str> = git_sources
+         .lines()
+         .filter(|line| !line.is_empty())
+         .map(|line| {
+            line
+               .split_once('=')
+               .ok_or_else(|| io::Error::other("pythonDeps: git input must be name=path"))
+         })
+         .collect::<io::Result<_>>()?;
       let mut packages: BTreeMap<&str, Vec<&Package>> = BTreeMap::new();
+
       for package in &lock.package {
          packages.entry(&package.name).or_default().push(package);
       }
+
       let project_name = normalize(&pyproject.project.name);
       let project = lock
          .package
@@ -474,54 +613,119 @@ impl Producer for Pypi {
          holds: BTreeMap::new(),
          env: &platform.marker_env,
       };
-      let selected = closure.runtime(project, &extras)?;
-
+      let selected = closure.runtime(project, &extras, &groups)?;
       let mut rows = Vec::with_capacity(selected.len());
       let mut plan = Vec::with_capacity(selected.len());
+      let mut trees = Vec::new();
+
       for package in selected {
-         let name = package.name.as_str();
-         let (artefact, kind) = platform.choose(package, force_sdist.contains(&package.name))?;
-         let url = artefact
-            .url
-            .clone()
-            .ok_or_else(|| io::Error::other(format!("pythonDeps: {name} artefact has no url")))?;
-         let hash = artefact
-            .hash
-            .as_deref()
-            .and_then(|hash| hash.strip_prefix("sha256:"))
-            .ok_or_else(|| io::Error::other(format!("pythonDeps: {name} artefact has no sha256")))?
-            .to_owned();
-         let file = percent_decode(basename(url_path(&url)));
-         plan.push(Planned {
-            name,
-            version: package.version.as_deref().unwrap_or_default(),
-            file: file.clone(),
-            kind,
-         });
-         rows.push(Row {
-            file,
-            url,
-            hash: Hash::Sha256(hash),
-         });
+         let (planned, row) = Planned::select(
+            package,
+            &platform,
+            force_sdist.contains(&package.name),
+            prefer_sdist,
+            &git,
+         )?;
+
+         if let Some(fetch) = row {
+            rows.push(fetch);
+            plan.push(planned);
+         } else {
+            trees.push(planned);
+         }
       }
-      let fetched = fetchurls(store, &rows)?;
-      let from_sdist: Vec<&str> = plan
+
+      Self::submit(store, &source, plan, trees, &rows)
+   }
+}
+
+impl Pypi {
+   fn submit<'package>(
+      store: &mut Store,
+      source: &str,
+      mut plan: Vec<Planned<'package>>,
+      trees: Vec<Planned<'package>>,
+      rows: &[Row],
+   ) -> io::Result<()> {
+      let fetched = fetchurls(store, rows)?;
+      let mut layout = Vec::with_capacity(plan.len() + trees.len() + 1);
+      let mut sdists = Vec::new();
+      let mut inputs = Vec::new();
+      let mut drvs = Vec::with_capacity(fetched.len());
+
+      for (planned, made) in plan.iter().zip(fetched) {
+         layout.push(Entry::link(
+            made.out.clone(),
+            format!("dist/{}", planned.file),
+         ));
+
+         if matches!(planned.kind, Kind::Sdist) {
+            sdists.push(Sdist {
+               name: planned.name.to_owned(),
+               out:  made.out,
+            });
+            inputs.push(made.drv.clone());
+         }
+
+         drvs.push(made.drv);
+      }
+
+      let srcs: Vec<String> = trees
          .iter()
-         .filter(|planned| planned.kind == "sdist")
-         .map(|planned| planned.name)
+         .filter(|tree| !tree.file.is_empty())
+         .map(|tree| tree.path.clone())
          .collect();
+      let stage_trees = trees
+         .iter()
+         .map(|tree| {
+            Tree {
+               name: tree.name.to_owned(),
+               dir:  if tree.file.is_empty() {
+                  format!("{source}/{}", tree.path)
+               } else {
+                  tree.path.clone()
+               },
+            }
+         })
+         .collect();
+
+      for tree in &trees {
+         if !tree.file.is_empty() {
+            layout.push(Entry::link(tree.path.clone(), tree.file.clone()));
+         }
+      }
+
       say(&format!(
-         "pythonDeps: {} packages, {} from sdist",
+         "pythonDeps: {} packages, {} from sdist, {} from trees",
          plan.len(),
-         from_sdist.join(" ")
+         sdists
+            .iter()
+            .map(|sdist| sdist.name.as_str())
+            .collect::<Vec<_>>()
+            .join(" "),
+         trees
+            .iter()
+            .map(|tree| tree.name)
+            .collect::<Vec<_>>()
+            .join(" ")
       ));
-      let mut layout: Vec<Entry> = plan
-         .iter()
-         .zip(&fetched)
-         .map(|(planned, made)| Entry::link(made.out.clone(), format!("dist/{}", planned.file)))
-         .collect();
+      plan.extend(trees);
       layout.push(json_file("plan.json", &plan)?);
-      let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "python-deps", &layout, &inputs, None, Map::new())
+      let mut stage_sources = srcs.clone();
+      stage_sources.push(source.to_owned());
+      stage(
+         store,
+         "python-deps",
+         "pypi-vendor",
+         &Stage {
+            layout,
+            drvs,
+            srcs,
+            sdists,
+            trees: stage_trees,
+         },
+         &inputs,
+         &stage_sources,
+      )
    }
 }

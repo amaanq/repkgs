@@ -578,6 +578,7 @@ let
       ++ (
         if
           any (p: p.kind == "nu") plan.phases
+          || any (override: (override.run or "") != "") (builtins.attrValues (args.pyapp.overrides or { }))
         then
           [ nu ]
         else

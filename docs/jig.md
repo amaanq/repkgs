@@ -720,8 +720,8 @@ words `SYSROOT` and `LLD` standing for the final paths, which `compiler-rt` and 
 (`root` below it), builds one `builtin:fetchurl` row per artefact from the hash the lock
 carries, adds them through the daemon, and submits a collecting derivation as its own output.
 The kinds are `cargo`, `npm`, `pnpm`, `yarn`, `bun`, `deno` (then `deno-files`, a second
-stage over the fetched jsr manifests), `pypi` (uv.lock, markers evaluated by the PEP 508 subset
-in `fetch/pep508.rs`, sdists forced by `sysLibs`), `gems`, `hex`, `go`, `hackage`, `luarocks`
+stage over the fetched jsr manifests), `pypi` (uv.lock, followed by `pypi-vendor` for Rust
+dependencies in sdists and source trees), `gems`, `hex`, `go`, `hackage`, `luarocks`
 and `winsdk`, each a `Producer` in `jig/src/fetch/`. The collecting derivation is
 content-addressed and runs `jig assemble`, which reads its `layout` from the structured attrs,
 each entry `{ to, link | unpack | write | copy+append }`, with bsdtar and chmod from `seed`.
@@ -729,3 +729,7 @@ each entry `{ to, link | unpack | write | copy+append }`, with bsdtar and chmod 
 7zz and writes the sysroot's `etc/cc` facts. `jig unpack` is nix/sources.nix's fixed-output
 builder, it downloads the first of `urls` that answers (rustls, built-in roots, proxies from the
 environment) and unpacks it into `out` the way uptrack's prefetch does through the same jig unpack, so their hashes agree.
+
+Python fetching accepts dependency groups, extras, marker overrides, sdist preferences and
+source trees. The vendor stage carries explicit references to those trees and places each
+package's Cargo dependencies under `vendor/<name>/`.

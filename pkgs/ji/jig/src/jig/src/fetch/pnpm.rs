@@ -219,6 +219,6 @@ impl Producer for Pnpm {
          .map(|(row, made)| Entry::link(made.out.clone(), format!("registry/{}", row.file)))
          .collect();
       let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "pnpm-deps", &layout, &inputs, None, Map::new())
+      collect(store, "pnpm-deps", &layout, &inputs, None, Map::new(), &[])
    }
 }

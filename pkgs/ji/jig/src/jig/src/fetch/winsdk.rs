@@ -116,6 +116,7 @@ fn select_crt(packages: &[Package], crt_arch: &str) -> io::Result<(String, Vec<P
       "Headers".to_owned(),
       format!("{crt_arch}.Desktop"),
       format!("{crt_arch}.Store"),
+      format!("Redist.{}", crt_arch.to_uppercase()),
    ] {
       let vsix = package(packages, &format!("Microsoft.VC.{crt}.CRT.{kind}.base"))?
          .payloads
@@ -243,6 +244,7 @@ impl Producer for Winsdk {
          &inputs,
          Some("winsdk-assemble"),
          attrs,
+         &[],
       )
    }
 }

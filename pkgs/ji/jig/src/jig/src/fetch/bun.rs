@@ -157,6 +157,6 @@ impl Producer for Bun {
          .collect();
       layout.push(json_file("index.json", &index)?);
       let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "bun-deps", &layout, &inputs, None, Map::new())
+      collect(store, "bun-deps", &layout, &inputs, None, Map::new(), &[])
    }
 }

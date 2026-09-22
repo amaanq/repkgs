@@ -153,6 +153,6 @@ impl Producer for Yarn {
          .map(|(row, made)| Entry::link(made.out.clone(), row.file.clone()))
          .collect();
       let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "yarn-deps", &layout, &inputs, None, Map::new())
+      collect(store, "yarn-deps", &layout, &inputs, None, Map::new(), &[])
    }
 }

@@ -160,7 +160,7 @@ fn compare(lhs: &str, op: &str, rhs: &str) -> bool {
 
 struct Parser<'marker> {
    tokens: Vec<Token<'marker>>,
-   vars:   &'marker BTreeMap<&'marker str, String>,
+   vars:   &'marker BTreeMap<String, String>,
    at:     usize,
 }
 
@@ -247,7 +247,7 @@ impl<'marker> Parser<'marker> {
 }
 
 /// true when `marker` holds for `vars`.
-pub fn evaluate(marker: &str, vars: &BTreeMap<&str, String>) -> io::Result<bool> {
+pub fn evaluate(marker: &str, vars: &BTreeMap<String, String>) -> io::Result<bool> {
    let mut parser = Parser {
       tokens: tokenize(marker)?,
       vars,
