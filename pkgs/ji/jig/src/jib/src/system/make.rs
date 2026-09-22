@@ -6,20 +6,23 @@ use std::{
       rename,
    },
    io,
-   path::Path,
+   path::{
+      Path,
+      PathBuf,
+   },
 };
 
 use jig::{
    files::glob,
    store::on_path,
 };
-use serde::Deserialize;
 
 use crate::{
    attrs::{
       Attrs,
       Ctx,
    },
+   schema::Field,
    system::{
       command::{
          Env,
@@ -32,17 +35,27 @@ use crate::{
    },
 };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   flags:            Vec<String>,
-   install_flags:    Vec<String>,
-   build_target:     Vec<String>,
-   test_target:      Vec<String>,
-   install_target:   Vec<String>,
-   configure_script: String,
-   configure_flags:  Vec<String>,
-   programs:         Vec<String>,
+options! {
+   Options ("make") {
+      root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "arguments for every make invocation (build, test, install)",
+      install_flags ("installFlags"): Vec<String> = Vec::new()
+         => "arguments for `make install` only",
+      build_target ("buildTarget"): Vec<String> = Vec::new()
+         => "make goals for build (empty means the makefile's default goal)",
+      test_target ("testTarget"): Vec<String> = vec!["check".to_owned()]
+         => "make goals for test",
+      install_target ("installTarget"): Vec<String> = vec!["install".to_owned()]
+         => "make goals for install",
+      configure_script ("configureScript"): String = "configure".to_owned()
+         => "hand-written configure script relative to the project, run with --prefix when it exists",
+      configure_flags ("configureFlags"): Vec<String> = Vec::new()
+         => "extra arguments for make.configureScript",
+      programs ("programs"): Vec<String> = Vec::new()
+         => "programs the Makefile installs without the platform executable suffix",
+   }
 }
 
 pub struct Make;
@@ -59,6 +72,15 @@ fn sh_shebang(script: &str) -> io::Result<bool> {
 impl System for Make {
    fn name(&self) -> &'static str {
       "make"
+   }
+
+   fn options(&self) -> Option<Vec<Field>> {
+      Some(Options::schema())
+   }
+
+   fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
+      let options: Options = ctx.options("make")?;
+      Ok(ctx.project_dir(&options.root))
    }
 
    fn setup(&self, _ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {

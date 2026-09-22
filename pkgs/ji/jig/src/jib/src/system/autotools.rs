@@ -30,10 +30,7 @@ use jig::{
       writable,
    },
 };
-use serde::{
-   Deserialize,
-   Serialize,
-};
+use serde::Serialize;
 
 use crate::{
    attrs::{
@@ -41,6 +38,7 @@ use crate::{
       Ctx,
    },
    probe,
+   schema::Field,
    site::site,
    system::{
       command::{
@@ -57,18 +55,27 @@ use crate::{
    },
 };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   root:             String,
-   flags:            Vec<String>,
-   make_flags:       Vec<String>,
-   install_flags:    Vec<String>,
-   build_target:     Vec<String>,
-   test_target:      Vec<String>,
-   install_target:   Vec<String>,
-   configure_script: String,
-   out_of_tree:      bool,
+options! {
+   Options ("autotools") {
+      root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "extra arguments for configure",
+      make_flags ("makeFlags"): Vec<String> = Vec::new()
+         => "arguments for every make invocation (build, test, install)",
+      install_flags ("installFlags"): Vec<String> = Vec::new()
+         => "arguments for `make install` only",
+      build_target ("buildTarget"): Vec<String> = Vec::new()
+         => "make goals for build (empty means the makefile's default goal)",
+      test_target ("testTarget"): Vec<String> = vec!["check".to_owned()]
+         => "make goals for test",
+      install_target ("installTarget"): Vec<String> = vec!["install".to_owned()]
+         => "make goals for install",
+      configure_script ("configureScript"): String = "configure".to_owned()
+         => "configure script relative to the project",
+      out_of_tree ("outOfTree"): bool = true
+         => "configure from a separate build directory",
+   }
 }
 
 #[derive(Serialize)]
@@ -83,6 +90,10 @@ pub struct Autotools;
 impl System for Autotools {
    fn name(&self) -> &'static str {
       "autotools"
+   }
+
+   fn options(&self) -> Option<Vec<Field>> {
+      Some(Options::schema())
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {

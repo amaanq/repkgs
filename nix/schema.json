@@ -15,5 +15,220 @@
     "relr",
     "noexecstack",
     "asneeded"
-  ]
+  ],
+  "systems": {
+    "autotools": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "autotools"
+      },
+      {
+        "name": "flags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "extra arguments for configure",
+        "system": "autotools"
+      },
+      {
+        "name": "makeFlags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "arguments for every make invocation (build, test, install)",
+        "system": "autotools"
+      },
+      {
+        "name": "installFlags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "arguments for `make install` only",
+        "system": "autotools"
+      },
+      {
+        "name": "buildTarget",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "make goals for build (empty means the makefile's default goal)",
+        "system": "autotools"
+      },
+      {
+        "name": "testTarget",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [
+          "check"
+        ],
+        "doc": "make goals for test",
+        "system": "autotools"
+      },
+      {
+        "name": "installTarget",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [
+          "install"
+        ],
+        "doc": "make goals for install",
+        "system": "autotools"
+      },
+      {
+        "name": "configureScript",
+        "type": {
+          "kind": "string"
+        },
+        "default": "configure",
+        "doc": "configure script relative to the project",
+        "system": "autotools"
+      },
+      {
+        "name": "outOfTree",
+        "type": {
+          "kind": "boolean"
+        },
+        "default": true,
+        "doc": "configure from a separate build directory",
+        "system": "autotools"
+      }
+    ],
+    "make": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "make"
+      },
+      {
+        "name": "flags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "arguments for every make invocation (build, test, install)",
+        "system": "make"
+      },
+      {
+        "name": "installFlags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "arguments for `make install` only",
+        "system": "make"
+      },
+      {
+        "name": "buildTarget",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "make goals for build (empty means the makefile's default goal)",
+        "system": "make"
+      },
+      {
+        "name": "testTarget",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [
+          "check"
+        ],
+        "doc": "make goals for test",
+        "system": "make"
+      },
+      {
+        "name": "installTarget",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [
+          "install"
+        ],
+        "doc": "make goals for install",
+        "system": "make"
+      },
+      {
+        "name": "configureScript",
+        "type": {
+          "kind": "string"
+        },
+        "default": "configure",
+        "doc": "hand-written configure script relative to the project, run with --prefix when it exists",
+        "system": "make"
+      },
+      {
+        "name": "configureFlags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "extra arguments for make.configureScript",
+        "system": "make"
+      },
+      {
+        "name": "programs",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "programs the Makefile installs without the platform executable suffix",
+        "system": "make"
+      }
+    ]
+  }
 }

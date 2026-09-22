@@ -21,7 +21,7 @@
 }:
 let
   elf = platform.binfmt == "elf";
-  schema = builtins.fromJSON (builtins.readFile ./schema.json);
+  schema = import ./schema.nix;
   inherit (lib)
     join
     lines
@@ -260,22 +260,29 @@ let
       [ "cc.hardening must be a boolean or an attribute set of booleans" ];
   badOptions = concatMap (
     system:
-    let
-      declared = buildSystems.${system}.options;
-    in
-    concatMap (
-      key:
+    if schema.options ? ${system} then
+      schema.validate {
+        inherit system;
+        value = args.${system} or { };
+        recursive = false;
+      }
+    else
       let
-        got = builtins.typeOf args.${system}.${key};
-        want = declared.${key}.type;
+        declared = buildSystems.${system}.options;
       in
-      if !(declared ? ${key}) then
-        [ "unknown option ${system}.${key} (have: ${toString (attrNames declared)})" ]
-      else if !(elem got want) then
-        [ "option ${system}.${key} is a ${got}, expected ${join " or " want}" ]
-      else
-        [ ]
-    ) (attrNames (args.${system} or { }))
+      concatMap (
+        key:
+        let
+          got = builtins.typeOf args.${system}.${key};
+          want = declared.${key}.type;
+        in
+        if !(declared ? ${key}) then
+          [ "unknown option ${system}.${key} (have: ${toString (attrNames declared)})" ]
+        else if !(elem got want) then
+          [ "option ${system}.${key} is a ${got}, expected ${join " or " want}" ]
+        else
+          [ ]
+      ) (attrNames (args.${system} or { }))
   ) (filter (system: buildSystems ? ${system}) uses);
   # a library among the build tools or a tool among the libraries: natively both platforms
   # coincide and nothing would notice, so it is checked here
@@ -550,7 +557,25 @@ let
     // listToAttrs (
       map (u: {
         name = u;
-        value = buildSystems.${u}.defaults src // (args.${u} or { });
+        value =
+          let
+            normalized = buildSystems.${u}.defaults src // (args.${u} or { });
+          in
+          if !(schema.options ? ${u}) then
+            normalized
+          else
+            builtins.mapAttrs (
+              option: value:
+              let
+                errors = schema.validate {
+                  system = u;
+                  value = {
+                    ${option} = value;
+                  };
+                };
+              in
+              if errors == [ ] then value else fail (join "; " errors)
+            ) normalized;
       }) uses
     )
     // {

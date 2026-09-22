@@ -1,3 +1,6 @@
+#[macro_use]
+mod schema;
+
 mod attrs;
 mod build;
 mod bundle;
@@ -167,7 +170,7 @@ fn run(mode: Mode, socket: &Path) -> Result<i32> {
       },
       Mode::Bundle => bundle::run()?,
       Mode::Syslibs { operation } => syslibs_mode(operation)?,
-      Mode::Schema { check } => hardening::schema(check.as_deref())?,
+      Mode::Schema { check } => schema::run(check.as_deref())?,
    }
    Ok(0)
 }

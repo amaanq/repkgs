@@ -1,12 +1,6 @@
 use std::{
    collections::BTreeMap,
    fmt,
-   fs::read_to_string,
-   io::{
-      self,
-      Write as _,
-   },
-   path::Path,
 };
 
 use serde::{
@@ -97,7 +91,7 @@ impl<'de> Deserialize<'de> for Choice {
 }
 
 impl Hardening {
-   const ALL: [Self; 15] = [
+   pub const ALL: [Self; 15] = [
       Self::Format,
       Self::Fortify,
       Self::Noplt,
@@ -188,33 +182,4 @@ pub fn flags(
       .flat_map(Hardening::flags)
       .map(|flag| (*flag).to_owned())
       .collect()
-}
-
-#[derive(Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Schema {
-   hardening: Vec<Hardening>,
-}
-
-pub fn schema(check: Option<&Path>) -> io::Result<()> {
-   let current = Schema {
-      hardening: Hardening::ALL.to_vec(),
-   };
-
-   if let Some(path) = check {
-      let recorded: Schema = serde_json::from_str(&read_to_string(path)?)?;
-
-      if recorded != current {
-         return Err(io::Error::other(format!(
-            "{} is stale, regenerate it with jib schema",
-            path.display()
-         )));
-      }
-
-      return Ok(());
-   }
-
-   let mut stdout = io::stdout().lock();
-   serde_json::to_writer_pretty(&mut stdout, &current)?;
-   writeln!(stdout)
 }

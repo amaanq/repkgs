@@ -18,6 +18,7 @@
   lib,
 }:
 let
+  schema = import ./schema.nix;
   opt = type: default: doc: {
     type = if builtins.isList type then type else [ type ];
     inherit default doc;
@@ -43,12 +44,6 @@ let
       ++ (if nullable then [ "null" ] else [ ])
     ) null "the locked dependencies, fetched (${fetcher}), by default from the package's own lock file";
   flags = tool: strs [ ] "extra arguments for ${tool}";
-  makeTargets = {
-    installFlags = strs [ ] "arguments for `make install` only";
-    buildTarget = strs [ ] "make goals for build (empty: the makefile's default goal)";
-    testTarget = strs [ "check" ] "make goals for test";
-    installTarget = strs [ "install" ] "make goals for install";
-  };
   # bin scripts say #!/usr/bin/env node, prebuilt .node addons (rollup, esbuild) link libgcc_s.so.1
   nodeDeps = [
     pkgs.nodejs
@@ -117,12 +112,7 @@ builtins.mapAttrs
         "install"
       ];
       tools = [ sh ];
-      options = makeTargets // {
-        flags = strs [ ] "arguments for every make invocation (build, test, install)";
-        programs = strs [ ] "programs the Makefile installs without the platform executable suffix";
-        configureScript = str "configure" "hand-written configure script relative to the project, run with --prefix when it exists";
-        configureFlags = flags "make.configureScript";
-      };
+      options = schema.options.make;
     };
     autotools = {
       unsupported =
@@ -138,12 +128,7 @@ builtins.mapAttrs
       ];
       # make and bash come with baseTools (or the seed's for bootstrapTools packages)
       tools = [ sh ];
-      options = makeTargets // {
-        flags = flags "configure";
-        makeFlags = strs [ ] "arguments for every make invocation (build, test, install)";
-        configureScript = str "configure" "configure script relative to the project";
-        outOfTree = bool true "configure from a separate build directory";
-      };
+      options = schema.options.autotools;
     };
     cmake = {
       phases = [

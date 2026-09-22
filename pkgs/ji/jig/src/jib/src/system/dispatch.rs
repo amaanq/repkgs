@@ -1,4 +1,5 @@
 use std::{
+   collections::BTreeMap,
    env::set_current_dir,
    fs::create_dir_all,
    io::{
@@ -20,6 +21,7 @@ use crate::{
       build_top,
    },
    cli::SystemOperation,
+   schema::Field,
    system::{
       autotools::Autotools,
       beam::{
@@ -54,6 +56,10 @@ use crate::{
 pub trait System: Sync {
    fn name(&self) -> &'static str;
 
+   fn options(&self) -> Option<Vec<Field>> {
+      None
+   }
+
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
       let options: Root = ctx.options(self.name())?;
       Ok(ctx.project_dir(&options.root))
@@ -75,6 +81,17 @@ const SYSTEMS: &[&dyn System] = &[
    &Make, &Autotools, &Cmake, &Meson, &Cargo, &Python, &Cabal, &Go, &Npm, &Pnpm, &Yarn, &Bun,
    &Rebar3, &Mix, &Luarocks, &Deno, &Pyapp, &Bundler, &Vcxproj,
 ];
+
+pub fn schemas() -> BTreeMap<String, Vec<Field>> {
+   SYSTEMS
+      .iter()
+      .filter_map(|system| {
+         system
+            .options()
+            .map(|fields| (system.name().to_owned(), fields))
+      })
+      .collect()
+}
 
 fn system(name: &str) -> io::Result<&'static dyn System> {
    SYSTEMS
