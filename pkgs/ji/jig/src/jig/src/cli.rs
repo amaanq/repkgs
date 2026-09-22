@@ -22,7 +22,13 @@ pub enum Mode {
       alias = "clang",
       alias = "cc-build",
       alias = "gcc-build",
-      alias = "clang-build"
+      alias = "clang-build",
+      alias = "fortran",
+      alias = "gfortran",
+      alias = "flang",
+      alias = "fortran-build",
+      alias = "gfortran-build",
+      alias = "flang-build"
    )]
    Cc,
    /// the C++ compiler.
@@ -83,6 +89,9 @@ impl Mode {
    pub fn from_arguments(name: &str, args: &[OsString]) -> Result<Self> {
       match name {
          "cc" | "gcc" | "clang" | "cc-build" | "gcc-build" | "clang-build" => return Ok(Self::Cc),
+         fortran if fortran.contains("fortran") || fortran.contains("flang") => {
+            return Ok(Self::Cc);
+         },
          "c++" | "g++" | "clang++" | "c++-build" | "g++-build" | "clang++-build" => {
             return Ok(Self::Cxx);
          },

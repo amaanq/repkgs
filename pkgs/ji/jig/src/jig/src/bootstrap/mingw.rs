@@ -11,6 +11,7 @@ use crate::bootstrap::{
    dispatch::Recipe,
    stage::{
       Stage,
+      TargetProfile,
       cc_facts,
       cores,
       run,
@@ -117,6 +118,19 @@ impl Recipe for Mingw {
       for lib in ["ssp", "ssp_nonshared"] {
          run("llvm-ar", &["rcs", &format!("{out}/lib/lib{lib}.a")])?;
       }
+      let TargetProfile::Mingw(machine) = stage.profile()? else {
+         return Err(io::Error::other("combase requires a mingw target"));
+      };
+
+      run("llvm-dlltool", &[
+         "-m",
+         machine.dlltool(),
+         "-d",
+         &format!("{}/mingw-w64-crt/libarm32/combase.def", src.display()),
+         "-l",
+         &format!("{out}/lib/libcombase.a"),
+      ])?;
+
       let ldflags = format!("-L{out}/lib");
       Self::configure_make(
          stage,

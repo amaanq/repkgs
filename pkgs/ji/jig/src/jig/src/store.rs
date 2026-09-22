@@ -230,6 +230,7 @@ pub fn is_store_path(path: &str) -> bool {
       .is_some_and(|tail| tail.starts_with('/'))
 }
 
+#[must_use]
 #[inline]
 pub fn mask_hashes(text: &str) -> String {
    let prefix = format!("{STORE_DIR}/");
@@ -240,7 +241,9 @@ pub fn mask_hashes(text: &str) -> String {
       output.push_str(&remaining[..start]);
       let tail = &remaining[start..];
       if tail.as_bytes().get(32) == Some(&b'-')
-         && tail.as_bytes()[..32].iter().all(u8::is_ascii_alphanumeric)
+         && tail.as_bytes()[..32]
+            .iter()
+            .all(|byte| b"0123456789abcdfghijklmnpqrsvwxyz".contains(byte))
       {
          output.push('*');
          remaining = &tail[32..];

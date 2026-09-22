@@ -14,6 +14,7 @@ use std::{
 };
 
 use jig::files::write_file;
+use serde::Serialize;
 
 use crate::bootstrap::{
    dispatch::Recipe,
@@ -31,7 +32,27 @@ use crate::bootstrap::{
 
 struct Driver {
    flags:    Vec<String>,
-   cxxflags: String,
+   cxxflags: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct Config<'stage> {
+   cc:         String,
+   binfmt:     &'stage str,
+   flags:      Vec<String>,
+   cxxflags:   Vec<String>,
+   #[serde(rename = "prefix-map")]
+   prefix_map: Vec<String>,
+   #[serde(flatten, skip_serializing_if = "Option::is_none")]
+   policy:     Option<ElfPolicy<'stage>>,
+}
+
+#[derive(Serialize)]
+struct ElfPolicy<'stage> {
+   libc:     &'stage str,
+   interp:   &'stage str,
+   crt:      String,
+   runtimes: String,
 }
 
 const STUB_LD: &str = "SECTIONS {
@@ -44,14 +65,14 @@ const STUB_LD: &str = "SECTIONS {
 pub struct Cc;
 
 impl Cc {
-   // absolute seed paths, cc must work with an empty PATH, and clang on PATH
-   // is the cache shim
-   fn seed_bin(stage: &Stage, name: &str) -> String {
-      format!("{}/bin/{name}", stage.seed)
+   // absolute compiler paths, cc must work with an empty PATH, and clang on
+   // PATH is the cache shim
+   fn llvm_bin(stage: &Stage, name: &str) -> String {
+      format!("{}/bin/{name}", stage.llvm)
    }
 
    fn lld(stage: &Stage) -> io::Result<String> {
-      Ok(Self::seed_bin(stage, stage.profile()?.lld()))
+      Ok(Self::llvm_bin(stage, stage.profile()?.lld()))
    }
 
    fn linker_tools(stage: &Stage, out: &str, sysroot: &str) -> io::Result<()> {
@@ -59,7 +80,7 @@ impl Cc {
       // flavour out elsewhere
       let profile = stage.profile()?;
       let ldargs = if let Some(flavor) = profile.ld_flavor() {
-         Some(format!("{} -flavor {flavor}", Self::seed_bin(stage, "lld")))
+         Some(format!("{} -flavor {flavor}", Self::llvm_bin(stage, "lld")))
       } else if let TargetProfile::Mingw(machine) = profile {
          Some(format!("{} -m {}", Self::lld(stage)?, machine.emulation()))
       } else {
@@ -78,12 +99,12 @@ impl Cc {
       if let TargetProfile::Mingw(machine) = profile {
          let windres = format!(
             "#!/bin/sh\nexec {} --target={} --preprocessor-arg=--sysroot={sysroot} \"$@\"\n",
-            Self::seed_bin(stage, "llvm-windres"),
+            Self::llvm_bin(stage, "llvm-windres"),
             machine.bfd(),
          );
          let dlltool = format!(
             "#!/bin/sh\nexec {} -m {} \"$@\"\n",
-            Self::seed_bin(stage, "llvm-dlltool"),
+            Self::llvm_bin(stage, "llvm-dlltool"),
             machine.dlltool(),
          );
          for (name, script) in [("windres", windres), ("dlltool", dlltool)] {
@@ -110,22 +131,22 @@ impl Cc {
          flags.push(format!("--ld-path={lld}"));
          return Ok(Driver {
             flags,
-            cxxflags: "-stdlib=libc++".to_owned(),
+            cxxflags: vec!["-stdlib=libc++".to_owned()],
          });
       };
       let fill = |word: &str| -> String { word.replace("SYSROOT", sysroot).replace("LLD", &lld) };
       let mut flags = stage.target();
       flags.extend(facts.iter().map(|word| fill(word)));
       let cxx_facts = cc_fact(sysroot, "cxxflags")?.unwrap_or_default();
-      let cxxflags = cxx_facts
-         .iter()
-         .map(|word| fill(word))
-         .collect::<Vec<String>>()
-         .join(" ");
+      let cxxflags = cxx_facts.iter().map(|word| fill(word)).collect();
       Ok(Driver { flags, cxxflags })
    }
 
-   fn elf_policy(stage: &Stage, out: &str, sysroot: &str) -> io::Result<Vec<(String, String)>> {
+   fn elf_policy<'stage>(
+      stage: &'stage Stage,
+      out: &str,
+      sysroot: &'stage str,
+   ) -> io::Result<ElfPolicy<'stage>> {
       let crt_interp = wanted(stage.crt_interp.as_deref(), "crt_interp")?;
       // compile from cwd, the STT_FILE symbol would otherwise record a store
       // path
@@ -183,12 +204,12 @@ impl Cc {
          &reloc_bin,
       ])?;
 
-      Ok(vec![
-         ("libc".to_owned(), sysroot.to_owned()),
-         ("interp".to_owned(), stage.interp.clone()),
-         ("crt".to_owned(), crt_out),
-         ("runtimes".to_owned(), format!("{sysroot}/lib")),
-      ])
+      Ok(ElfPolicy {
+         libc:     sysroot,
+         interp:   &stage.interp,
+         crt:      crt_out,
+         runtimes: format!("{sysroot}/lib"),
+      })
    }
 
    fn smoke_test(stage: &Stage, out: &str) -> io::Result<()> {
@@ -232,7 +253,7 @@ impl Recipe for Cc {
       copy(format!("{prebuilt}/bin/jig"), format!("{out}/bin/jig"))?;
 
       // jig under every name a build system may call. No clang alias, that name
-      // keeps meaning the raw seed compiler, which bootstrap recipes
+      // keeps meaning the raw compiler, which bootstrap recipes
       // drive themselves
       for name in [
          "cc",
@@ -259,7 +280,7 @@ impl Recipe for Cc {
       }
 
       // etc/roots, store dirs a depfile can name such as sysroot members and
-      // seed resource headers, passed to the compile cache as
+      // compiler resource headers, passed to the compile cache as
       // JIG_STORE_ROOTS
       let roots_file = format!("{sysroot}/roots");
       let members = if Path::new(&roots_file).exists() {
@@ -267,7 +288,7 @@ impl Recipe for Cc {
       } else {
          String::new()
       };
-      let roots_text = format!("{sysroot} {} {members}\n", stage.seed);
+      let roots_text = format!("{sysroot} {} {members}\n", stage.llvm);
       write_file(
          Path::new(&format!("{out}/etc/roots")),
          roots_text.as_bytes(),
@@ -286,36 +307,28 @@ impl Recipe for Cc {
       )?;
 
       let policy = if stage.binfmt == "elf" {
-         Self::elf_policy(stage, out, sysroot)?
+         Some(Self::elf_policy(stage, out, sysroot)?)
       } else {
-         Vec::new()
+         None
       };
 
       // -B, cc -print-prog-name=ld for libtool's with_gnu_ld probe answers
       // bin/ld, the target's lld flavour, not the ELF ld.lld beside the
-      // seed clang
+      // raw clang
       let mut flags = vec![format!("-B{out}/bin"), format!("-isystem{out}/include")];
       flags.extend(driver.flags);
 
-      let mut conf: Vec<(&str, String)> = vec![
-         ("cc", Self::seed_bin(stage, "clang")),
-         ("binfmt", stage.binfmt.clone()),
-         ("flags", flags.join(" ")),
-         ("cxxflags", driver.cxxflags),
-         ("prefix-map", format!("{sysroot}=/sysroot:{out}=/cc")),
-      ];
-      for entry in &policy {
-         conf.push((entry.0.as_str(), entry.1.clone()));
-      }
-      let lines: Vec<String> = conf
-         .into_iter()
-         .map(|entry| format!("{} = {}", entry.0, entry.1))
-         .collect();
-      let mut conf_text = lines.join("\n");
-      conf_text.push('\n');
+      let conf = Config {
+         cc: Self::llvm_bin(stage, "clang"),
+         binfmt: &stage.binfmt,
+         flags,
+         cxxflags: driver.cxxflags,
+         prefix_map: vec![format!("{sysroot}=/sysroot"), format!("{out}=/cc")],
+         policy,
+      };
       write_file(
-         Path::new(&format!("{out}/etc/jig.conf")),
-         conf_text.as_bytes(),
+         Path::new(&format!("{out}/etc/jig.json")),
+         &serde_json::to_vec_pretty(&conf)?,
          None,
       )?;
 

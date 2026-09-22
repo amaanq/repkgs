@@ -38,7 +38,10 @@ use wire::client::Client;
 
 use crate::{
    cc::cached_header,
-   driver::Driver,
+   driver::{
+      Driver,
+      Language,
+   },
    manifest::parse_depfile,
 };
 
@@ -60,8 +63,8 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
       return Ok(1);
    }
    let driver = Driver::load()?;
-   let expanded = driver.arguments(false, raw);
-   if !is_store_path(driver.compiler())
+   let expanded = driver.arguments(Language::Cc, raw);
+   if !is_store_path(driver.compiler(Language::Cc))
       || !supported_arguments(&expanded)
       || [
          "CCC_OVERRIDE_OPTIONS",
@@ -84,7 +87,7 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
    }
    let dependency_file = NamedTempFile::new_in(".")?;
    let slot = Slot::acquire(&mut cache)?;
-   let output = Command::new(driver.compiler())
+   let output = Command::new(driver.compiler(Language::Cc))
       .args(expanded.iter().filter(|arg| *arg != "-c"))
       .args(["-E", "-MD", "-MF"])
       .arg(dependency_file.path())
@@ -111,7 +114,7 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
    };
    let mut hasher = Hasher::new();
    field(&mut hasher, context);
-   field(&mut hasher, driver.compiler());
+   field(&mut hasher, driver.compiler(Language::Cc));
    field(&mut hasher, warnings);
    for arg in &expanded {
       field(&mut hasher, arg);

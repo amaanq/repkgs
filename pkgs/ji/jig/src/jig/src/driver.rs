@@ -22,8 +22,10 @@ use jig::{
 };
 use serde::Deserialize;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum BinaryFormat {
+   #[default]
    Elf,
    MachO,
    Coff,
@@ -44,9 +46,6 @@ impl BinaryFormat {
             ) {
                return None;
             }
-            if arg.starts_with("-l") && !arg.contains('/') {
-               return Some(arg.to_ascii_lowercase());
-            }
             if (arg.starts_with("-std=c") || arg.starts_with("-std=gnu"))
                && ["++98", "++03", "++0x", "++11"]
                   .iter()
@@ -60,6 +59,13 @@ impl BinaryFormat {
    }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Language {
+   Cc,
+   Cxx,
+   Fortran,
+}
+
 #[derive(Default, Deserialize)]
 pub struct PackageFlags {
    #[serde(default)]
@@ -70,23 +76,56 @@ pub struct PackageFlags {
    ldflags:  Vec<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(default)]
 pub struct Driver {
+   #[serde(rename = "cc")]
    compiler:    String,
+   fc:          String,
+   #[serde(rename = "binfmt")]
    format:      BinaryFormat,
+   #[serde(skip)]
    configured:  bool,
    libc:        String,
+   #[serde(rename = "interp")]
    interpreter: String,
    crt:         String,
    runtimes:    String,
    flags:       Vec<String>,
    cxxflags:    Vec<String>,
+   fflags:      Vec<String>,
+   #[serde(rename = "prefix-map")]
    prefix_map:  Vec<String>,
+   #[serde(skip)]
    package:     PackageFlags,
 }
 
+impl Default for Driver {
+   fn default() -> Self {
+      Self {
+         compiler:    String::new(),
+         fc:          String::new(),
+         format:      BinaryFormat::Elf,
+         configured:  false,
+         libc:        String::new(),
+         interpreter: "ld-linux-x86-64.so.2".to_owned(),
+         crt:         String::new(),
+         runtimes:    String::new(),
+         flags:       Vec::new(),
+         cxxflags:    Vec::new(),
+         fflags:      Vec::new(),
+         prefix_map:  Vec::new(),
+         package:     PackageFlags::default(),
+      }
+   }
+}
+
 impl Driver {
-   pub fn compiler(&self) -> &str {
-      &self.compiler
+   pub fn compiler(&self, language: Language) -> &str {
+      match language {
+         Language::Cc | Language::Cxx => &self.compiler,
+         Language::Fortran => &self.fc,
+      }
    }
    pub const fn format(&self) -> BinaryFormat {
       self.format
@@ -97,64 +136,24 @@ impl Driver {
          .parent()
          .and_then(Path::parent)
          .ok_or_else(|| io::Error::other("jig has no installation root"))?;
-      let mut driver = Self {
-         compiler:    String::new(),
-         format:      BinaryFormat::Elf,
-         configured:  false,
-         libc:        String::new(),
-         interpreter: "ld-linux-x86-64.so.2".to_owned(),
-         crt:         String::new(),
-         runtimes:    String::new(),
-         flags:       Vec::new(),
-         cxxflags:    Vec::new(),
-         prefix_map:  Vec::new(),
-         package:     PackageFlags::default(),
-      };
-      match read_to_string(root.join("etc/jig.conf")) {
+      let mut driver = Self::default();
+
+      match read_to_string(root.join("etc/jig.json")) {
          Ok(config_text) => {
+            driver = serde_json::from_str(&config_text)
+               .map_err(|error| io::Error::other(format!("invalid jig.json, {error}")))?;
             driver.configured = true;
-            for line in config_text
-               .lines()
-               .map(str::trim)
-               .filter(|line| !line.is_empty() && !line.starts_with('#'))
-            {
-               let (key, value) = line
-                  .split_once('=')
-                  .ok_or_else(|| io::Error::other("invalid jig.conf entry"))?;
-               let setting = value.trim();
-               match key.trim() {
-                  "cc" => setting.clone_into(&mut driver.compiler),
-                  "binfmt" => {
-                     driver.format = match setting {
-                        "elf" => BinaryFormat::Elf,
-                        "macho" => BinaryFormat::MachO,
-                        "coff" => BinaryFormat::Coff,
-                        _ => return Err(io::Error::other("unknown jig binary format")),
-                     }
-                  },
-                  "libc" => setting.clone_into(&mut driver.libc),
-                  "interp" => setting.clone_into(&mut driver.interpreter),
-                  "crt" => setting.clone_into(&mut driver.crt),
-                  "runtimes" => setting.clone_into(&mut driver.runtimes),
-                  "flags" => driver.flags = setting.split_whitespace().map(str::to_owned).collect(),
-                  "cxxflags" => {
-                     driver.cxxflags = setting.split_whitespace().map(str::to_owned).collect();
-                  },
-                  "prefix-map" => {
-                     driver.prefix_map = setting
-                        .split(':')
-                        .filter(|part| !part.is_empty())
-                        .map(str::to_owned)
-                        .collect();
-                  },
-                  _ => {
-                     return Err(io::Error::other(format!(
-                        "unknown jig.conf key {}",
-                        key.trim()
-                     )));
-                  },
+
+            for flag in &mut driver.fflags {
+               if let Some(position) = flag.find("@/")
+                  && (position == 0
+                     || (position == 2 && flag.starts_with('-'))
+                     || flag.as_bytes().get(position - 1) == Some(&b'='))
+               {
+                  flag.replace_range(position..=position, &root.to_string_lossy());
                }
             }
+
             if let Ok(packages_text) = var("PKGS_CC") {
                let mut packages =
                   serde_json::from_str::<HashMap<String, PackageFlags>>(&packages_text)?;
@@ -170,7 +169,7 @@ impl Driver {
          Err(error) => return Err(error),
       }
       if driver.compiler.is_empty() {
-         return Err(io::Error::other("jig needs etc/jig.conf or JIG_CC"));
+         return Err(io::Error::other("jig needs etc/jig.json or JIG_CC"));
       }
       Ok(driver)
    }
@@ -183,10 +182,12 @@ impl Driver {
       clippy::too_many_lines,
       reason = "compiler mode rewrite tracks arguments and runpath in one pass"
    )]
-   pub fn arguments(&self, cxx: bool, raw: &[String]) -> Vec<String> {
+   pub fn arguments(&self, language: Language, raw: &[String]) -> Vec<String> {
       if !self.configured {
          return raw.to_vec();
       }
+      let cxx = language == Language::Cxx;
+      let fortran = language == Language::Fortran;
       let mut user = Vec::new();
       let mut runpath = Runpath::default();
       let mut linking = true;
@@ -228,28 +229,37 @@ impl Driver {
          }
          user.push(kept);
       }
-      let mut output = vec!["--start-no-unused-arguments".to_owned()];
-      output.extend_from_slice(&self.flags);
-      output.extend(
-         self
-            .package
-            .cflags
-            .iter()
-            .filter(|flag| !fortify(flag) || (!sets_fortify && optimizes))
-            .cloned(),
-      );
+      let mut output = vec![if fortran {
+         "-Qunused-arguments".to_owned()
+      } else {
+         "--start-no-unused-arguments".to_owned()
+      }];
+      output.extend_from_slice(if fortran { &self.fflags } else { &self.flags });
+
+      if !fortran {
+         output.extend(
+            self
+               .package
+               .cflags
+               .iter()
+               .filter(|flag| !fortify(flag) || (!sets_fortify && optimizes))
+               .cloned(),
+         );
+      }
       if cxx {
          output.push("--driver-mode=g++".to_owned());
          output.extend_from_slice(&self.cxxflags);
          output.extend_from_slice(&self.package.cxxflags);
       }
-      for mapping in self.prefix_map.iter().map(String::as_str).chain(
-         var("PKGS_PREFIX_MAP")
-            .unwrap_or_default()
-            .split(':')
-            .filter(|part| !part.is_empty()),
-      ) {
-         output.push(format!("-ffile-prefix-map={mapping}"));
+      if !fortran {
+         for mapping in self.prefix_map.iter().map(String::as_str).chain(
+            var("PKGS_PREFIX_MAP")
+               .unwrap_or_default()
+               .split(':')
+               .filter(|part| !part.is_empty()),
+         ) {
+            output.push(format!("-ffile-prefix-map={mapping}"));
+         }
       }
       if self.format == BinaryFormat::Elf && linking && have_input {
          output.extend([
@@ -257,7 +267,14 @@ impl Driver {
             r#"-Wl,--package-metadata={"type":"repkgs"}"#.to_owned(),
          ]);
       }
-      output.push("--end-no-unused-arguments".to_owned());
+      if !fortran {
+         output.push("--end-no-unused-arguments".to_owned());
+      }
+
+      if linking && have_input && self.format == BinaryFormat::Coff {
+         self.lower_libraries(&mut user);
+      }
+
       output.extend_from_slice(&user);
       if linking && have_input {
          output.extend_from_slice(&self.package.ldflags);
@@ -362,6 +379,44 @@ impl Driver {
          ]);
       }
       output
+   }
+
+   fn lower_libraries(&self, user: &mut [String]) {
+      let mut directories = Vec::new();
+
+      for args in [&*user, self.package.ldflags.as_slice()] {
+         for (position, arg) in args.iter().enumerate() {
+            if let Some(tail) = arg.strip_prefix("-L") {
+               let directory = if tail.is_empty() {
+                  args.get(position + 1).map(String::as_str)
+               } else {
+                  Some(tail)
+               };
+
+               if let Some(path) = directory {
+                  directories.push(Path::new(path).to_path_buf());
+               }
+            }
+         }
+      }
+
+      for arg in user {
+         let Some(name) = arg.strip_prefix("-l") else {
+            continue;
+         };
+
+         if arg.contains('/')
+            || directories.iter().any(|directory| {
+               directory.join(format!("lib{name}.dll.a")).exists()
+                  || directory.join(format!("lib{name}.a")).exists()
+                  || directory.join(name).exists()
+            })
+         {
+            continue;
+         }
+
+         arg.make_ascii_lowercase();
+      }
    }
 }
 

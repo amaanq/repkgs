@@ -257,7 +257,9 @@ impl Recipe for CompilerRt {
       let objs = compile(&common, &items)?;
       archive(Path::new(&lib), &objs)?;
 
-      let resource = capture("clang", &["--print-resource-dir"])?;
+      let resource = capture(&format!("{}/bin/clang", stage.llvm), &[
+         "--print-resource-dir",
+      ])?;
       copy_tree(
          &Path::new(resource.trim()).join("include"),
          Path::new(&format!("{out}/include")),

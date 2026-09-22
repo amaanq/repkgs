@@ -149,7 +149,15 @@ pub struct Stage {
    pub interp:        String,
    pub karch:         String,
    pub flags:         String,
-   pub seed:          String,
+   pub llvm:          String,
+   #[serde(default)]
+   pub sdk:           Option<String>,
+   #[serde(default)]
+   pub zstd:          Option<String>,
+   #[serde(default)]
+   pub zlib:          Option<String>,
+   #[serde(default)]
+   pub targets:       Option<String>,
    #[serde(default)]
    pub src:           Option<String>,
    #[serde(default)]

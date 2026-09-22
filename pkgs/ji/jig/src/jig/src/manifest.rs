@@ -1,4 +1,5 @@
 use std::{
+   collections::HashSet,
    env::var,
    fmt::{
       Display,
@@ -7,12 +8,14 @@ use std::{
    },
    io,
    mem::take,
+   path::Path,
 };
 
 use blake3::Hasher;
 use jig::store::{
    Store,
    field,
+   is_store_path,
 };
 use serde::{
    Deserialize,
@@ -36,6 +39,7 @@ struct Environment {
 pub struct Manifest {
    inputs:      Vec<Input>,
    environment: Vec<Environment>,
+   absent:      Vec<String>,
 }
 
 impl Manifest {
@@ -44,6 +48,7 @@ impl Manifest {
       store: &mut Store,
       paths: &[String],
       variables: &[String],
+      absent_paths: &[String],
    ) -> io::Result<Self> {
       prefetch(cache, store, paths)?;
       let inputs = paths
@@ -64,9 +69,18 @@ impl Manifest {
             }
          })
          .collect();
+      let mut seen = HashSet::new();
+      let absent = absent_paths
+         .iter()
+         .filter(|path| !path.is_empty() && !is_store_path(path) && !Path::new(path).exists())
+         .map(|path| store.key(path))
+         .filter(|path| seen.insert(path.clone()))
+         .collect();
+
       Ok(Self {
          inputs,
          environment,
+         absent,
       })
    }
 
@@ -86,6 +100,7 @@ pub enum Miss {
    NewKey,
    InputsChanged(String),
    EnvironmentChanged(String),
+   Appeared(String),
    ObjectGone,
    Failed(io::Error),
 }
@@ -96,6 +111,7 @@ impl Display for Miss {
          Self::NewKey => f.write_str("new-key"),
          Self::InputsChanged(ref path) => write!(f, "inputs-changed:{path}"),
          Self::EnvironmentChanged(ref name) => write!(f, "env-changed:{name}"),
+         Self::Appeared(ref path) => write!(f, "appeared:{path}"),
          Self::ObjectGone => f.write_str("object-gone"),
          Self::Failed(_) => f.write_str("replay-failed"),
       }
@@ -131,6 +147,15 @@ pub fn lookup(cache: &mut Client, store: &mut Store, request: &str) -> Result<St
          Err(error) => return Err(Miss::Failed(error)),
       }
    }
+   for absent in &manifest.absent {
+      if store
+         .resolve(absent)
+         .is_some_and(|path| Path::new(&path).exists())
+      {
+         return Err(Miss::Appeared(absent.clone()));
+      }
+   }
+
    if let Some(entry) = manifest
       .environment
       .iter()

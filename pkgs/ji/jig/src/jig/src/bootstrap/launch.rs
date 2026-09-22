@@ -24,7 +24,7 @@ impl Recipe for Launch {
       "launch"
    }
 
-   /// static-pie so it has no interpreter or RUNPATH of its own to relocate.
+   /// static linkage leaves no interpreter or RUNPATH of its own to relocate.
    fn run(&self, stage: &Stage) -> io::Result<()> {
       let source = wanted(stage.launch.as_deref(), "launch")?;
       let json_hpp = wanted(stage.json_hpp.as_deref(), "json_hpp")?;
@@ -33,7 +33,14 @@ impl Recipe for Launch {
       create_dir_all(&json)?;
       create_dir_all(&bin)?;
       copy(json_hpp, format!("{json}/json.hpp"))?;
-      let exe = format!("{bin}/launch");
+      let windows = stage.os == "windows";
+      let linkage = if windows || stage.cpu == "powerpc64le" {
+         "-static"
+      } else {
+         "-static-pie"
+      };
+      let suffix = if windows { ".exe" } else { "" };
+      let exe = format!("{bin}/launch{suffix}");
       run("c++", &[
          "-std=c++23",
          "-O2",
@@ -42,7 +49,7 @@ impl Recipe for Launch {
          "-Werror",
          "-fno-exceptions",
          "-fno-rtti",
-         "-static-pie",
+         linkage,
          "-isystem",
          &json,
          "-o",

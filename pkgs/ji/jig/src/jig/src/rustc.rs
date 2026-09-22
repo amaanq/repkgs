@@ -5,6 +5,7 @@ use std::{
    },
    ffi::OsStr,
    fs::{
+      canonicalize,
       metadata,
       read,
       read_dir,
@@ -14,6 +15,7 @@ use std::{
       self,
       Write as _,
    },
+   iter::once,
    os::unix::fs::PermissionsExt as _,
    path::{
       Path,
@@ -65,6 +67,7 @@ struct Invocation {
    name:      String,
    suffix:    String,
    externs:   Vec<String>,
+   sysroot:   Option<PathBuf>,
    cacheable: bool,
    query:     bool,
 }
@@ -82,6 +85,7 @@ impl Invocation {
          name:      String::new(),
          suffix:    String::new(),
          externs:   Vec::new(),
+         sysroot:   None,
          cacheable: true,
          query:     false,
       };
@@ -135,6 +139,9 @@ impl Invocation {
                }
                match flag {
                   "--out-dir" => invocation.out_dir = PathBuf::from(setting),
+                  "--sysroot" => {
+                     invocation.sysroot = (!setting.is_empty()).then(|| PathBuf::from(setting));
+                  },
                   "--crate-name" => setting.clone_into(&mut invocation.name),
                   "--extern" => {
                      if let Some((_, path)) = setting.split_once('=') {
@@ -270,6 +277,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
       arguments,
       Slot::acquire(client).ok().flatten(),
       true,
+      &[],
    )?;
    io::stderr().lock().write_all(&result.stderr)?;
    if result.status != 0_i32 {
@@ -301,24 +309,37 @@ fn request_key(store: &Store, compiler: &str, invocation: &Invocation) -> io::Re
    for external in &invocation.externs {
       field(&mut hasher, store.input_id(external)?);
    }
-   let path = on_path(compiler);
+   let path = canonicalize(on_path(compiler))?;
    let root = path
       .parent()
       .and_then(Path::parent)
       .ok_or_else(|| io::Error::other("rustc has no installation root"))?;
    let mut libraries = Vec::new();
-   for target in read_dir(root.join("lib/rustlib"))? {
-      let directory = target?.path().join("lib");
-      if !directory.is_dir() {
-         continue;
-      }
-      for library in read_dir(directory)? {
-         let entry = library?;
-         let name = entry.file_name();
-         let text = name.to_string_lossy();
-         if (text.starts_with("libstd-") || text.starts_with("libcore-")) && text.ends_with(".rlib")
-         {
-            libraries.push(entry.path());
+
+   for library_root in once(root).chain(invocation.sysroot.as_deref()) {
+      let targets = match read_dir(library_root.join("lib/rustlib")) {
+         Ok(entries) => entries,
+         Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+         Err(error) => return Err(error),
+      };
+
+      for target in targets {
+         let directory = target?.path().join("lib");
+
+         if !directory.is_dir() {
+            continue;
+         }
+
+         for library in read_dir(directory)? {
+            let entry = library?;
+            let name = entry.file_name();
+            let text = name.to_string_lossy();
+
+            if (text.starts_with("libstd-") || text.starts_with("libcore-"))
+               && text.ends_with(".rlib")
+            {
+               libraries.push(canonicalize(entry.path())?);
+            }
          }
       }
    }
@@ -370,7 +391,7 @@ fn store_result(
             .to_owned()
       })
       .collect::<Vec<String>>();
-   let manifest = Manifest::build(cache, store, &inputs, &variables)?;
+   let manifest = Manifest::build(cache, store, &inputs, &variables, &[])?;
    let key = manifest.result_key(request)?;
    let mut outputs = vec![dep_path];
    for line in text.lines().filter(|line| !line.starts_with('#')) {

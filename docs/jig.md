@@ -64,24 +64,26 @@ store parent is `/nix` for `/nix/store`. `tools/repkgs/repkgs cache start` maps 
 
 ## 2. Configuration
 
-### 2.1 `etc/jig.conf`
+### 2.1 `etc/jig.json`
 
 jig resolves `/proc/self/exe`, takes its grandparent as the installation root and reads
-`<root>/etc/jig.conf`. Lines are `key = value`, blank lines and `#` comments allowed, unknown
-keys are an error. Without the file jig is unconfigured and passes arguments through
-unchanged, and `JIG_CC` must name the compiler.
+`<root>/etc/jig.json`. Flags and prefix maps are JSON arrays, so spaces inside an argument
+stay intact. Without the file jig passes arguments through unchanged and `JIG_CC` must name
+the compiler. Fortran invocations require a configured `fc`.
 
 | key          | meaning                                                                            |
 | ------------ | ---------------------------------------------------------------------------------- |
 | `cc`         | the real compiler, always clang                                                    |
+| `fc`         | the Fortran compiler, flang                                                       |
 | `binfmt`     | `elf`, `macho` or `coff`, default `elf`                                            |
 | `libc`       | libc store path, `<libc>/lib` closes every RUNPATH and holds the interpreter       |
 | `interp`     | interpreter file name under `<libc>/lib`, default `ld-linux-x86-64.so.2`           |
 | `crt`        | `crt_interp` object, present when executables get the relocatable interpreter stub |
 | `runtimes`   | directory added to RUNPATH when the link pulls a C++ or unwind runtime             |
-| `flags`      | space separated, first on every command line                                       |
-| `cxxflags`   | space separated, after `flags` for C++                                             |
-| `prefix-map` | colon separated `from=to` pairs, each becomes `-ffile-prefix-map=`                 |
+| `flags`      | argument array, first on C and C++ command lines                                  |
+| `cxxflags`   | argument array, after `flags` for C++                                             |
+| `fflags`     | Fortran arguments, with `@/` paths resolved against the installation root         |
+| `prefix-map` | array of `from=to` pairs, each becomes `-ffile-prefix-map=` for C and C++          |
 
 ### 2.2 Environment read by jig
 
@@ -205,7 +207,7 @@ Manifests are stored at `m/<request>`. Result objects live under `<letter>/<resu
 The invocation is parsed after response file expansion. Flags that end up in `key_args` are
 every argument except `-o <x>`, `-o<x>`, `-MF <x>`, `-MT <x>`, `-MQ <x>`, `-MD`, `-MMD`,
 `-MP`, `-Wp,-MD,<x>`, `-Wp,-MMD,<x>` and the source file. Arguments jig injects from
-`jig.conf` and `PKGS_CC` that the user did not pass are appended to `key_args`.
+`jig.json` and `PKGS_CC` that the user did not pass are appended to `key_args`.
 
 ```
 request = "cc/" + hash(
@@ -444,7 +446,7 @@ exits.
 Given the user's arguments, jig builds the compiler command line in this order.
 
 1. `--start-no-unused-arguments`
-2. `flags` from `jig.conf`
+2. `flags` from `jig.json`
 3. `PKGS_CC.cflags` for this toolchain root, minus any `_FORTIFY_SOURCE` define when the user
    set one or compiles with `-O0`
 4. for C++, `--driver-mode=g++`, `cxxflags`, `PKGS_CC.cxxflags`
@@ -706,7 +708,8 @@ text), sets `out`, `JIG_LOG` to `<build top>/jig.log` and `JIG_STORE_ROOTS` to e
 names a store path plus the sysroot's `roots` file, runs the recipe, prints `== cache:
 <kind>=<count>…` from the log, and clears group and other write bits on `$out`. The recipes are
 `jig`, `launch`, `dlaudit`, `linux-headers`, `sysroot`, `apple-sdk`, `musl`, `glibc`,
-`mingw-w64`, `compiler-rt`, `runtimes` and `cc`, each a `Recipe` in `jig/src/bootstrap/`. A libc recipe
+`mingw-w64`, `vcruntime`, `compiler-rt`, `runtimes`, `cc`, `cmake` and `llvm`, each a `Recipe`
+in `jig/src/bootstrap/`. A libc recipe
 writes `etc/cc/include-dirs`, and an SDK adds `etc/cc/flags` and `etc/cc/cxxflags` with the
 words `SYSROOT` and `LLD` standing for the final paths, which `compiler-rt` and `cc` read.
 

@@ -1,5 +1,6 @@
 mod apple_sdk;
 mod cc;
+mod cmake;
 mod compiler_rt;
 pub mod dispatch;
 mod dlaudit;
@@ -7,8 +8,10 @@ mod glibc;
 mod jig;
 mod launch;
 mod linux;
+mod llvm;
 mod mingw;
 mod musl;
 mod runtimes;
 pub mod stage;
 mod sysroot;
+mod vcruntime;

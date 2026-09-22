@@ -2,6 +2,7 @@ use std::{
    fs::{
       OpenOptions,
       create_dir_all,
+      read,
       read_dir,
       read_to_string,
       remove_file,
@@ -29,6 +30,8 @@ use crate::bootstrap::{
       capture,
       cc_facts,
       cores,
+      files,
+      run,
       run_in,
       run_in_env,
       run_with,
@@ -40,7 +43,47 @@ use crate::bootstrap::{
 
 pub struct Glibc;
 
+const PREFIX: &str = "/build/glibc";
+
 impl Glibc {
+   fn patched_source(stage: &Stage) -> io::Result<PathBuf> {
+      let src = stage.unpack("glibc", &[])?;
+
+      for patch in &stage.patches {
+         run_in(&src, "patch", &["-p1", "-i", patch])?;
+      }
+
+      if stage.cpu == "loongarch64" {
+         let grep_output = Command::new("grep")
+            .args([
+               "-rl",
+               r#""=f" (\(x_cond\|fn_cond\|cls\))"#,
+               "sysdeps/loongarch",
+            ])
+            .current_dir(&src)
+            .output()?;
+
+         for line in String::from_utf8_lossy(&grep_output.stdout).lines() {
+            if !line.is_empty() {
+               remove_file(src.join(line))?;
+            }
+         }
+      }
+
+      for barrier in [
+         "sysdeps/loongarch/fpu/math-barriers.h",
+         "sysdeps/powerpc/fpu/math-barriers.h",
+      ] {
+         match remove_file(src.join(barrier)) {
+            Ok(()) => {},
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {},
+            Err(error) => return Err(error),
+         }
+      }
+
+      Ok(src)
+   }
+
    fn cpu_flags(cpu: &str) -> &'static [&'static str] {
       match cpu {
          "x86_64" => {
@@ -53,7 +96,8 @@ impl Glibc {
          // ldbl-opt's -mlong-double-128 probe is written as a nested function, a GCC extension
          "powerpc64le" => {
             &[
-               "--with-long-double-format=ieee",
+               "--with-cpu=power9",
+               "--enable-fortify-source=no",
                "libc_cv_no_gnu_attr_ok=yes",
                "libc_cv_mlong_double_128=yes",
             ]
@@ -88,7 +132,6 @@ impl Glibc {
    fn configure(
       build: &Path,
       src: &Path,
-      out: &str,
       stage: &Stage,
       linux_headers: &str,
       rt: &str,
@@ -122,15 +165,16 @@ impl Glibc {
          ("STRIP", "llvm-strip"),
       ];
       let configure_script = src.join("configure").to_string_lossy().into_owned();
-      let prefix_arg = format!("--prefix={out}");
+      let prefix_arg = format!("--prefix={PREFIX}");
       let host_arg = format!("--host={}", stage.clang_target);
       let build_arg = format!("--build={}", stage.build_triple);
       let headers_arg = format!("--with-headers={linux_headers}/include");
-      let slibdir_arg = format!("libc_cv_slibdir={out}/lib");
-      let rtlddir_arg = format!("libc_cv_rtlddir={out}/lib");
+      let slibdir_arg = format!("libc_cv_slibdir={PREFIX}/lib");
+      let rtlddir_arg = format!("libc_cv_rtlddir={PREFIX}/lib");
       let mut args = vec![
          configure_script.as_str(),
          &prefix_arg,
+         "--sysconfdir=/etc",
          &host_arg,
          &build_arg,
          &headers_arg,
@@ -148,6 +192,34 @@ impl Glibc {
          Self::print_configure_log(build);
          return Err(err);
       }
+      Ok(())
+   }
+
+   fn install_tree(dest: &Path, out: &str) -> io::Result<()> {
+      create_dir_all(out)?;
+
+      for entry in read_dir(dest.join(PREFIX.trim_start_matches('/')))? {
+         let child = entry?;
+         run("mv", &[&child.path().to_string_lossy(), out])?;
+      }
+
+      for script in files(&format!("{out}/bin/{{ldd,sotruss,xtrace,tzselect}}"))? {
+         let text = read_to_string(&script)?.replace(PREFIX, "${0%/*}/..");
+         write_file(&script, text.as_bytes(), None)?;
+      }
+
+      for library in files(&format!("{out}/lib/lib{{c,m}}.{{so,a}}"))? {
+         let bytes = read(&library)?;
+         if !bytes.starts_with(b"/* GNU ld script") {
+            continue;
+         }
+
+         let text = String::from_utf8(bytes)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?
+            .replace(&format!("{PREFIX}/lib/"), "");
+         write_file(&library, text.as_bytes(), None)?;
+      }
+
       Ok(())
    }
 
@@ -206,25 +278,7 @@ impl Recipe for Glibc {
 
    fn run(&self, stage: &Stage) -> io::Result<()> {
       let out = stage.out();
-      let src = stage.unpack("glibc", &[])?;
-      for patch in &stage.patches {
-         run_in(&src, "patch", &["-p1", "-i", patch])?;
-      }
-      if stage.cpu == "loongarch64" {
-         let grep_output = Command::new("grep")
-            .args([
-               "-rl",
-               r#""=f" (\(x_cond\|fn_cond\|cls\))"#,
-               "sysdeps/loongarch",
-            ])
-            .current_dir(&src)
-            .output()?;
-         for line in String::from_utf8_lossy(&grep_output.stdout).lines() {
-            if !line.is_empty() {
-               remove_file(src.join(line))?;
-            }
-         }
-      }
+      let src = Self::patched_source(stage)?;
       let build = PathBuf::from(&stage.build_top).join("build");
       create_dir_all(&build)?;
       write_file(&build.join("configparms"), b"with-clang = yes\n", None)?;
@@ -232,14 +286,16 @@ impl Recipe for Glibc {
       let rt = if let Some(compiler_rt) = stage.compiler_rt.as_deref() {
          compiler_rt.to_owned()
       } else {
-         capture("clang", &["--print-resource-dir"])?
-            .trim()
-            .to_owned()
+         capture(&format!("{}/bin/clang", stage.llvm), &[
+            "--print-resource-dir",
+         ])?
+         .trim()
+         .to_owned()
       };
       let linux_headers = wanted(stage.linux_headers.as_deref(), "linuxHeaders")?;
       let sysincludes = format!("-nostdinc -isystem {rt}/include -isystem {linux_headers}/include");
       let sh = tool("sh")?.to_string_lossy().into_owned();
-      Self::configure(&build, &src, out, stage, linux_headers, &rt, &sh)?;
+      Self::configure(&build, &src, stage, linux_headers, &rt, &sh)?;
 
       // Makeconfig's lazy $(shell $(CC) -print-file-name=libgcc_s.so.1) expands
       // ~600 times per build. There is no libgcc_s here with compiler-rt,
@@ -247,24 +303,28 @@ impl Recipe for Glibc {
       let cores_str = cores().to_string();
       let shell_arg = format!("SHELL={sh}");
       let sysincludes_arg = format!("sysincludes={sysincludes}");
-      let make_base: [&str; 5] = [
+      let make_base: [&str; 6] = [
          "-j",
          &cores_str,
          &shell_arg,
          &sysincludes_arg,
          "gnulib-extralibdir=",
+         "zonedir=/usr/share/zoneinfo",
       ];
       let log_path = PathBuf::from(&stage.build_top).join("make.log");
-      cc_facts(out, &[("include-dirs", &["include"])])?;
+      let dest = PathBuf::from(&stage.build_top).join("dest");
+      let dest_arg = format!("DESTDIR={}", dest.display());
 
       if stage.headers_only() {
          let mut headers_args = Vec::from(make_base);
-         headers_args.push("install-headers");
+         headers_args.extend(["install-headers", &dest_arg]);
          Self::make_logged(&build, &headers_args, &log_path)?;
+         Self::install_tree(&dest, out)?;
          let stubs = format!("{out}/include/gnu/stubs.h");
          if !Path::new(&stubs).exists() {
             write_file(Path::new(&stubs), b"", None)?;
          }
+         cc_facts(out, &[("include-dirs", &["include"])])?;
          return Ok(());
       }
 
@@ -273,8 +333,9 @@ impl Recipe for Glibc {
       // several sub-makes include the same sysd-rules and each moves the
       // same files. Nothing is compiled here anyway.
       let mut install_args = Vec::from(make_base);
-      install_args.extend(["install", "-j1"]);
+      install_args.extend(["install", "-j1", &dest_arg]);
       Self::make_logged(&build, &install_args, &log_path)?;
+      Self::install_tree(&dest, out)?;
 
       // C.UTF-8 so LC_ALL=C.UTF-8 works everywhere without a locales package,
       // charmap data only, ~360 K.
@@ -304,6 +365,7 @@ impl Recipe for Glibc {
       }
 
       let lib_count = read_dir(format!("{out}/lib"))?.count();
+      cc_facts(out, &[("include-dirs", &["include"])])?;
       say(&format!("glibc {}: {lib_count} files in lib/", stage.cpu));
       Ok(())
    }

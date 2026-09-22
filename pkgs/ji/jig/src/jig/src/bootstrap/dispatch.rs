@@ -21,12 +21,14 @@ use serde_json::Value;
 use crate::bootstrap::{
    apple_sdk::AppleSdk,
    cc::Cc,
+   cmake::Cmake,
    compiler_rt::CompilerRt,
    dlaudit::Dlaudit,
    glibc::Glibc,
    jig::Jig,
    launch::Launch,
    linux::Linux,
+   llvm::Llvm,
    mingw::Mingw,
    musl::Musl,
    runtimes::Runtimes,
@@ -35,6 +37,7 @@ use crate::bootstrap::{
       run,
    },
    sysroot::Sysroot,
+   vcruntime::Vcruntime,
 };
 
 pub trait Recipe: Sync {
@@ -55,6 +58,9 @@ const RECIPES: &[&dyn Recipe] = &[
    &CompilerRt,
    &Runtimes,
    &Cc,
+   &Cmake,
+   &Llvm,
+   &Vcruntime,
 ];
 
 fn recipe(name: &str) -> io::Result<&'static dyn Recipe> {

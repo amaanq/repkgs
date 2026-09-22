@@ -126,7 +126,7 @@ let
   mkStage =
     {
       platform,
-      clang ? seedPath, # whose bin/clang compiles, and what cc.nu points jig.json at
+      clang ? seedPath, # whose bin/clang compiles, and what the compiler driver uses
       tools ? [ ],
       suffix ? "-${platform.name}",
     }:

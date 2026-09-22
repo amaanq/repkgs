@@ -148,7 +148,7 @@ where
    let slot = client
       .as_mut()
       .and_then(|connected| Slot::acquire(connected).ok().flatten());
-   run(program, args, slot, capture)
+   run(program, args, slot, capture, &[])
 }
 
 #[inline]
@@ -157,6 +157,7 @@ pub fn run<Argument>(
    args: &[Argument],
    slot: Option<Slot<'_>>,
    capture: bool,
+   environment: &[(&str, &OsStr)],
 ) -> io::Result<RunResult>
 where
    Argument: AsRef<OsStr>,
@@ -164,6 +165,7 @@ where
    let mut command = Command::new(program);
    command
       .args(args)
+      .envs(environment.iter().copied())
       .stdin(Stdio::inherit())
       .stdout(Stdio::inherit());
    if slot.is_some() {

@@ -46,6 +46,7 @@ use crate::{
    driver::{
       BinaryFormat,
       Driver,
+      Language,
       expand_response_files,
    },
    manifest::{
@@ -415,10 +416,10 @@ pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut Client) -> io:
    if invocation.action != Action::Compile || !invocation.cacheable {
       return Ok(false);
    }
-   invocation.args = driver.arguments(false, raw);
+   invocation.args = driver.arguments(Language::Cc, raw);
    invocation.key_injected(raw);
    let mut store = Store::new();
-   let request = invocation.request_key(&mut store, cache, driver.compiler())?;
+   let request = invocation.request_key(&mut store, cache, driver.compiler(Language::Cc))?;
    let key = match lookup(cache, &mut store, &request) {
       Ok(key) => key,
       Err(Miss::Failed(error)) => return Err(error),
@@ -439,11 +440,27 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    let started = Instant::now();
    let user = expand_response_files(raw)?;
    let driver = Driver::load()?;
+   let language = if mode.contains("++") {
+      Language::Cxx
+   } else if mode.contains("fortran") || mode.contains("flang") {
+      Language::Fortran
+   } else {
+      Language::Cc
+   };
+   let compiler = driver.compiler(language);
+
+   if compiler.is_empty() {
+      return Err(io::Error::other(format!(
+         "{mode} called but etc/jig.json names no fc"
+      )));
+   }
+
    let mut invocation = Invocation::parse(user.clone());
-   if invocation.links() && driver.format() != BinaryFormat::Elf {
+   if (invocation.links() && driver.format() != BinaryFormat::Elf) || language == Language::Fortran
+   {
       invocation.cacheable = false;
    }
-   invocation.args = driver.arguments(mode.contains("++"), &invocation.args);
+   invocation.args = driver.arguments(language, &invocation.args);
    invocation.key_injected(&user);
    let mut store = Store::new();
    let subject = if invocation.source.is_empty() {
@@ -454,7 +471,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    let connected = if invocation.cacheable {
       match Client::connect(socket).and_then(|mut cache| {
          invocation
-            .request_key(&mut store, &mut cache, driver.compiler())
+            .request_key(&mut store, &mut cache, compiler)
             .map(|key| (key, cache))
       }) {
          Ok(connection) => Some(connection),
@@ -468,12 +485,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    };
    let Some((request, mut cache)) = connected else {
       let slot_socket = (!invocation.query).then_some(socket);
-      let result = run_slotted(
-         OsStr::new(driver.compiler()),
-         &invocation.args,
-         slot_socket,
-         false,
-      )?;
+      let result = run_slotted(OsStr::new(compiler), &invocation.args, slot_socket, false)?;
       let outcome = if invocation.query {
          "query"
       } else if !invocation.cacheable {
@@ -533,6 +545,10 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       .prefix(".jig-")
       .suffix(".link.d")
       .tempfile_in(parent)?;
+   let absent_log = Builder::new()
+      .prefix(".jig-")
+      .suffix(".absent")
+      .tempfile_in(parent)?;
    let output_capture = if invocation.stdout {
       Some(Builder::new().prefix(".jig-").suffix(".i").tempfile()?)
    } else {
@@ -548,13 +564,19 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       .as_deref()
       .unwrap_or_else(|| dependency.path());
    let mut arguments = invocation.args.clone();
-   if invocation.depfile.is_none() && invocation.action != Action::Link {
+   let own_depfile = invocation.depfile.is_none() && invocation.action != Action::Link;
+   let plain_assembly = Path::new(&invocation.source)
+      .extension()
+      .is_some_and(|extension| extension == "s");
+
+   if own_depfile && !plain_assembly {
       arguments.extend([
          "-MD".to_owned(),
          "-MF".to_owned(),
          dependency_path.to_string_lossy().into_owned(),
       ]);
-   } else if invocation.action != Action::Link
+   } else if !own_depfile
+      && invocation.action != Action::Link
       && ![".S", ".s", ".sx"]
          .iter()
          .any(|suffix| invocation.source.ends_with(suffix))
@@ -571,10 +593,11 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       ));
    }
    let result = run(
-      OsStr::new(driver.compiler()),
+      OsStr::new(compiler),
       &arguments,
       Slot::acquire(&mut cache).ok().flatten(),
       true,
+      &[("JIG_ABSENT_LOG", absent_log.path().as_os_str())],
    )?;
    io::stderr().lock().write_all(&result.stderr)?;
    if invocation.stdout {
@@ -583,6 +606,8 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    let stored = (|| -> io::Result<bool> {
       let dependencies = if invocation.action == Action::Link {
          String::new()
+      } else if own_depfile && plain_assembly {
+         format!("o: {}", invocation.source)
       } else {
          read_to_string(dependency_path)?
       };
@@ -615,7 +640,9 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       inputs.extend_from_slice(&invocation.inputs);
       inputs.sort_unstable();
       inputs.dedup();
-      let manifest = Manifest::build(&mut cache, &mut store, &inputs, &[])?;
+      let absent_text = read_to_string(absent_log.path())?;
+      let absent = absent_text.lines().map(str::to_owned).collect::<Vec<_>>();
+      let manifest = Manifest::build(&mut cache, &mut store, &inputs, &[], &absent)?;
       let key = manifest.result_key(&request)?;
       if result.status == 0_i32 {
          let mut object = read(output_path)?;
