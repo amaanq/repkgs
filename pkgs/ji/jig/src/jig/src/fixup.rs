@@ -38,6 +38,7 @@ use crate::{
 pub struct Context {
    pub prefix:      PathBuf,
    pub dest:        PathBuf,
+   pub sdk:         Option<PathBuf>,
    pub directories: BTreeSet<PathBuf>,
 }
 
@@ -93,17 +94,24 @@ struct SearchDirectory {
    reason = "single-pass directory walk and file handling, splitting would duplicate policy"
 )]
 #[inline]
-pub fn run(prefix: &Path, dest: Option<&str>, denied_paths: &[String]) -> io::Result<()> {
+pub fn run(
+   prefix: &Path,
+   dest: Option<&Path>,
+   sdk: Option<&Path>,
+   denied_paths: &[String],
+) -> io::Result<()> {
    if let Some(path) = dest
-      && !is_store_path(path)
+      && !is_store_path(&path.to_string_lossy())
    {
       return Err(io::Error::other(format!(
-         "invalid --dest store path {path}"
+         "invalid --dest store path {}",
+         path.display()
       )));
    }
    let mut context = Context {
       prefix:      normalize(prefix),
-      dest:        normalize(dest.map_or(prefix, Path::new)),
+      dest:        normalize(dest.unwrap_or(prefix)),
+      sdk:         sdk.map(normalize),
       directories: BTreeSet::new(),
    };
    let mut denied = Vec::new();
@@ -163,20 +171,28 @@ pub fn run(prefix: &Path, dest: Option<&str>, denied_paths: &[String]) -> io::Re
       }
       let result = (|| -> io::Result<()> {
          let bytes = read(&path)?;
-         for hash in &denied {
-            let Some(position) = bytes.windows(hash.len()).position(|window| window == hash) else {
-               continue;
-            };
-            let shown = &bytes[position..(position + 100).min(bytes.len())];
-            let end = shown
-               .iter()
-               .position(|byte| *byte < 0x20 || *byte == 0x7F)
-               .unwrap_or(shown.len());
-            return Err(io::Error::other(format!(
-               "refers to build platform {}",
-               String::from_utf8_lossy(&shown[..end])
-            )));
+         let driver_config = path
+            .strip_prefix(&context.prefix)
+            .is_ok_and(|relative| matches!(relative.to_str(), Some("etc/jig.json" | "etc/roots")));
+
+         if !driver_config {
+            for hash in &denied {
+               let Some(position) = bytes.windows(hash.len()).position(|window| window == hash)
+               else {
+                  continue;
+               };
+               let shown = &bytes[position..(position + 100).min(bytes.len())];
+               let end = shown
+                  .iter()
+                  .position(|byte| *byte < 0x20 || *byte == 0x7F)
+                  .unwrap_or(shown.len());
+               return Err(io::Error::other(format!(
+                  "refers to build platform {}",
+                  String::from_utf8_lossy(&shown[..end])
+               )));
+            }
          }
+
          let mut image = Image { bytes };
          if is_elf(&image) {
             fix_elf(&context, &path, &mut image)

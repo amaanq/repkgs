@@ -23,7 +23,7 @@ pub enum Mode {
       #[pound(subcommand)]
       operation: DevOperation,
    },
-   /// point #!/usr/bin/env scripts at the build's env, or back with --undo.
+   /// resolve shebang interpreters from PATH, or restore originals with --undo.
    Shebangs {
       directory: PathBuf,
       #[pound(long)]
@@ -45,13 +45,11 @@ pub enum Mode {
    Prune {
       output: PathBuf,
    },
-   /// make .pc files, foo-config scripts and links relative to the store path,
-   /// with --macho cmake's exported sonames too.
+   /// make .pc and .cmake files, foo-config scripts and links relative to the
+   /// store path.
    Relativize {
       prefix: String,
       dest:   String,
-      #[pound(long)]
-      macho:  bool,
    },
    /// move the DWARF of what jig linked into the debug output, by build-id.
    SplitDebug {

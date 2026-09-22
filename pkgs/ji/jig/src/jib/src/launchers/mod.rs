@@ -1,9 +1,12 @@
+pub mod pe;
+
 use std::{
    collections::BTreeMap,
    env::var,
    fs::{
       File,
       canonicalize,
+      copy,
       create_dir_all,
       metadata,
       read,
@@ -50,6 +53,7 @@ use crate::{
       exports_of,
       lib_dirs,
    },
+   hardening::BinaryFormat,
 };
 
 #[derive(Clone, Serialize)]
@@ -108,6 +112,8 @@ pub fn write(
    };
    let bin = Path::new(&ctx.out).join("bin");
    create_dir_all(&bin)?;
+   let platform = ctx.platform()?;
+   let executable = format!("{name}{}", platform.ext.exe);
    let env: BTreeMap<String, Variable> = vars
       .iter()
       .map(|(key, value)| (key.clone(), Variable::Set(rel(value))))
@@ -120,12 +126,17 @@ pub fn write(
    };
    let mut text = serde_json::to_string(&record)?;
    text.push('\n');
-   File::create(bin.join(format!(".{name}.launch")))?.write_all(text.as_bytes())?;
-   let link = bin.join(name);
+   File::create(bin.join(format!(".{executable}.launch")))?.write_all(text.as_bytes())?;
+   let link = bin.join(&executable);
    if symlink_metadata(&link).is_ok() {
       remove_file(&link)?;
    }
-   symlink(&ctx.platform()?.launch, &link)?;
+   if platform.binfmt == BinaryFormat::Coff {
+      copy(&platform.launch, &link)?;
+   } else {
+      symlink(&platform.launch, &link)?;
+   }
+
    note("launcher", &format!("bin/{name} -> {program}"));
    Ok(())
 }
@@ -154,7 +165,8 @@ pub fn run(
       binaries_env: BTreeMap::new(),
       out,
    };
-   (context.scripts_env, context.binaries_env) = runtime_env(&context)?;
+   (context.scripts_env, context.binaries_env) =
+      runtime_env(context.deps, &context.out, &context.store)?;
    let mut names: Vec<String> = read_dir(&context.bin)?
       .map(|entry| entry.map(|found| found.file_name().to_string_lossy().into_owned()))
       .collect::<io::Result<_>>()?;
@@ -191,15 +203,17 @@ pub fn run(
 
 type Env = BTreeMap<String, Variable>;
 
-fn runtime_env(context: &Context<'_>) -> io::Result<(Env, Env)> {
+fn runtime_env(deps: &[String], out: &str, nix_store: &str) -> io::Result<(Env, Env)> {
    let mut binaries = BTreeMap::new();
    let mut path = Vec::new();
-   for dep in context.deps {
+   let relative = |value: &str| value.replace(out, "{root}").replace(nix_store, "{store}");
+
+   for dep in deps {
       if Path::new(dep).join("bin").exists() {
-         path.push(context.storerel(&format!("{dep}/bin")));
+         path.push(relative(&format!("{dep}/bin")));
       }
       for (name, value) in exports_of(Path::new(dep))?.env {
-         binaries.insert(name, Variable::Default(context.storerel(&value)));
+         binaries.insert(name, Variable::Default(relative(&value)));
       }
    }
    let mut scripts = BTreeMap::new();

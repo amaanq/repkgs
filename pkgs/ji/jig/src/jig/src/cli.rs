@@ -61,7 +61,9 @@ pub enum Mode {
    RelocFixup {
       directory: PathBuf,
       #[pound(long)]
-      dest:      Option<String>,
+      dest:      Option<PathBuf>,
+      #[pound(long)]
+      sdk:       Option<PathBuf>,
       #[pound(long)]
       deny:      Vec<String>,
    },

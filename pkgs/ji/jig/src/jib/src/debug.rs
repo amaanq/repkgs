@@ -2,8 +2,10 @@ use std::{
    collections::BTreeMap,
    fs::{
       DirBuilder,
+      create_dir_all,
       metadata,
       read,
+      remove_dir_all,
    },
    io,
    os::unix::fs::DirBuilderExt as _,
@@ -30,6 +32,8 @@ use jig::{
       writable,
    },
 };
+
+use crate::prepare::succeed;
 
 const PACKAGE_NOTE: u32 = 0xCAFE_1A7E;
 const BUILD_ID_NOTE: u32 = 3;
@@ -59,7 +63,7 @@ pub fn run(output: &Path, debug: &Path) -> io::Result<()> {
    let elfs = inspect(&candidates)?;
    let stripped = elfs
       .iter()
-      .filter(|elf| elf.ours && !elf.dwarf && !elf.split && elf.text_size != 0)
+      .filter(|elf| elf.ours && !elf.dwarf && !elf.split && elf.text_size >= 0x100)
       .map(|elf| elf.rel.as_str())
       .take(3)
       .collect::<Vec<&str>>();
@@ -108,16 +112,115 @@ pub fn run(output: &Path, debug: &Path) -> io::Result<()> {
    }
    let grouped = groups.into_iter().collect::<Vec<(&str, Vec<&str>)>>();
    parallel(&grouped, |group| split(debug, group.0, &group.1))?;
+   report(debug, grouped.len())
+}
+
+pub fn macho(output: &Path, debug: &Path) -> io::Result<()> {
+   let files: Vec<Entry> = walk(output)?
+      .into_iter()
+      .filter(|entry| entry.kind == 'f')
+      .collect();
+   strip_archives(&files, &["a", "o"])?;
+
+   let candidates: Vec<&Entry> = files
+      .iter()
+      .filter(|entry| entry.size > SMALL_ELF && !has_extension(&entry.rel, &["a", "o", "rlib"]))
+      .collect();
+   let inspected = parallel(&candidates, |entry| {
+      Ok(macho_uuid(entry)?.map(|uuid| (entry.path.as_str(), uuid)))
+   })?;
+   let mut groups = BTreeMap::<String, Vec<&str>>::new();
+
+   for (path, uuid) in inspected.into_iter().flatten() {
+      writable(Path::new(path))?;
+      groups.entry(uuid).or_default().push(path);
+   }
+
+   if groups.is_empty() {
+      return Ok(());
+   }
+
+   let grouped: Vec<(String, Vec<&str>)> = groups.into_iter().collect();
+   create_dir_all(debug.join("lib/debug"))?;
+
+   parallel(&grouped, |group| {
+      let uuid = &group.0;
+      let paths = &group.1;
+      let Some(first) = paths.first() else {
+         return Ok(());
+      };
+
+      let bundle = debug.join("lib/debug").join(format!("{uuid}.dSYM"));
+      succeed(
+         Command::new("dsymutil").arg(first).arg("-o").arg(&bundle),
+         "dsymutil",
+      )?;
+
+      match remove_dir_all(bundle.join("Contents/Resources/Relocations")) {
+         Ok(()) => {},
+         Err(error) if error.kind() == io::ErrorKind::NotFound => {},
+         Err(error) => return Err(error),
+      }
+
+      for path in paths {
+         succeed(Command::new("llvm-strip").arg("-S").arg(path), "llvm-strip")?;
+      }
+
+      Ok(())
+   })?;
+
+   report(debug, grouped.len())
+}
+
+fn macho_uuid(entry: &Entry) -> io::Result<Option<String>> {
+   let bytes = read(&entry.path)?;
+
+   if !bytes.starts_with(&[0xCF, 0xFA, 0xED, 0xFE]) && !bytes.starts_with(&[0xCA, 0xFE, 0xBA, 0xBE])
+   {
+      return Ok(None);
+   }
+
+   let symbols = Command::new("llvm-nm")
+      .arg("-ap")
+      .arg(&entry.path)
+      .output()?;
+
+   if !String::from_utf8_lossy(&symbols.stdout).contains(" OSO ") {
+      return Ok(None);
+   }
+
+   let headers = Command::new("llvm-objdump")
+      .args(["--macho", "--private-headers"])
+      .arg(&entry.path)
+      .output()?;
+
+   if !headers.status.success() {
+      return Err(io::Error::other(format!(
+         "llvm-objdump failed for {}",
+         entry.path
+      )));
+   }
+
+   Ok(String::from_utf8_lossy(&headers.stdout)
+      .lines()
+      .filter_map(|line| line.trim().strip_prefix("uuid "))
+      .find(|uuid| {
+         !uuid.is_empty()
+            && uuid
+               .bytes()
+               .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+      })
+      .map(str::to_owned))
+}
+
+fn report(debug: &Path, count: usize) -> io::Result<()> {
    let size = walk(debug)?
       .iter()
       .filter(|entry| entry.kind != 'l')
       .map(|entry| entry.size)
       .sum::<u64>()
       + metadata(debug)?.len();
-   note(
-      "debug",
-      &format!("{} files, {}", grouped.len(), human(size)),
-   );
+   note("debug", &format!("{count} files, {}", human(size)));
    Ok(())
 }
 

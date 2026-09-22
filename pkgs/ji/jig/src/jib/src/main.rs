@@ -126,11 +126,7 @@ fn run(mode: Mode, socket: &Path) -> Result<i32> {
       Mode::Deps { roots } => exports::print(&roots, true)?,
       Mode::WriteExports { output } => exports::write(&output)?,
       Mode::Prune { output } => tree::print_pruned(&output)?,
-      Mode::Relativize {
-         prefix,
-         dest,
-         macho,
-      } => tree::relativize(&prefix, &dest, macho)?,
+      Mode::Relativize { prefix, dest } => tree::relativize(&prefix, &dest)?,
       Mode::SplitDebug { output, debug } => debug::run(&output, &debug)?,
       Mode::Prepare { from_tree } => prepare::run(from_tree.as_deref())?,
       Mode::Finish { keep_tree, tests } => finish::mode(keep_tree, tests)?,

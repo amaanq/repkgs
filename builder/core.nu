@@ -88,6 +88,6 @@ export def write-launcher [name: string, program: string, args: list<string>, va
 # finish turns installed copies back with --undo and bin/ scripts get launchers). mtimes are kept
 # in the build tree: a generator script newer than its shipped output makes make regenerate it
 # (coreutils' cu-progs.m4 -> aclocal, ruby's prism templates -> baseruby)
-export def fix-env-shebangs [dir: path, --undo]: nothing -> nothing {
+export def fix-shebangs [dir: path, --undo]: nothing -> nothing {
   ^jib shebangs $dir ...(if $undo { [--undo] } else { [] })
 }

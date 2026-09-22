@@ -95,8 +95,9 @@ fn run(mode: Mode, name: &str, args: &[OsString], socket: &Path) -> Result<i32> 
       Mode::RelocFixup {
          directory,
          dest,
+         sdk,
          deny,
-      } => fixup::run(&directory, dest.as_deref(), &deny)?,
+      } => fixup::run(&directory, dest.as_deref(), sdk.as_deref(), &deny)?,
       Mode::NixStore { operation } => nix_store::run(&operation)?,
       Mode::Identify { roots } => identify::run(&roots, socket)?,
       Mode::Bootstrap { recipe } => bootstrap::dispatch::mode(&recipe)?,

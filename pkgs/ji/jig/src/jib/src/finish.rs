@@ -2,7 +2,9 @@ use std::{
    env::{
       set_current_dir,
       var,
+      vars_os,
    },
+   ffi::OsString,
    fs::{
       File,
       create_dir_all,
@@ -26,13 +28,15 @@ use std::{
 use jig::{
    files::glob,
    fixup,
-   store::normalize,
+   store::{
+      STORE_DIR,
+      normalize,
+   },
    tree::{
       note,
       prune,
       relativize,
       shebangs,
-      sonames,
       walk,
    },
 };
@@ -54,10 +58,14 @@ use crate::{
    debug,
    exports::{
       Request,
+      exports_of,
       write_request,
    },
    implant,
-   launchers,
+   launchers::{
+      self,
+      pe,
+   },
    prepare::succeed,
 };
 
@@ -78,7 +86,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
          .tree
          .as_deref()
          .ok_or_else(|| io::Error::other("no tree output to keep"))?;
-      save_tree(tree, &top, ctx.njobs)?;
+      save_tree(tree, &top)?;
    }
    if !out.exists() {
       return Err(io::Error::other("nothing was installed into $out"));
@@ -114,8 +122,18 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
       Command::new("chmod").arg("-R").arg("u+w").arg(&ctx.out),
       "chmod",
    )?;
-   relativize(&ctx.out, &ctx.dest, false)?;
-   succeed(Command::new("mv").arg(&ctx.out).arg(&ctx.dest), "mv")?;
+   relativize(&ctx.out, &ctx.dest)?;
+
+   if platform.os == "windows" {
+      succeed(
+         Command::new("cp").arg("-rL").arg(&ctx.out).arg(&ctx.dest),
+         "cp",
+      )?;
+      remove_dir_all(&ctx.out)?;
+   } else {
+      succeed(Command::new("mv").arg(&ctx.out).arg(&ctx.dest), "mv")?;
+   }
+
    version_check(&spec, &ctx, &top, &request.ext.exe)?;
    cache_summary()
 }
@@ -182,21 +200,15 @@ fn install_map(spec: &Spec, out: &Path, exe: &str) -> io::Result<()> {
    Ok(())
 }
 
-fn save_tree(tree: &str, top: &str, njobs: usize) -> io::Result<()> {
+fn save_tree(tree: &str, top: &str) -> io::Result<()> {
    create_dir_all(tree)?;
-   let archive = format!("{tree}/tree.tar.zst");
-   echo(&format!(
-      "bsdtar -c --zstd --options zstd:threads={njobs} -f {archive} source build"
-   ));
+   echo(&format!("cp -a source build {tree}"));
+
    succeed(
-      Command::new("bsdtar")
-         .args(["-c", "--zstd", "--options"])
-         .arg(format!("zstd:threads={njobs}"))
-         .arg("-f")
-         .arg(&archive)
-         .args(["source", "build"])
+      Command::new("cp")
+         .args(["-a", "source", "build", tree])
          .current_dir(top),
-      "bsdtar",
+      "cp",
    )
 }
 
@@ -251,8 +263,20 @@ fn relocate(attrs: &Attrs, spec: &Spec, ctx: &Ctx, debug: &str) -> io::Result<()
             &attrs.dependencies,
          )?;
       },
-      "macho" => sonames(&walk(out)?, &ctx.out)?,
-      "coff" => debug::strip_archives(&walk(out)?, &["lib", "obj", "a"])?,
+      "macho" => {
+         if spec.debug {
+            debug::macho(out, Path::new(debug))?;
+         }
+      },
+      "coff" => {
+         debug::strip_archives(&walk(out)?, &["lib", "obj", "a"])?;
+         pe::run(
+            out,
+            Path::new(text(platform, "launch")),
+            Path::new(text(platform, "sysroot")),
+            &attrs.dependencies,
+         )?;
+      },
       format => return Err(io::Error::other(format!("unknown binary format {format}"))),
    }
    let denied: Vec<String> = if flag(platform, "cross") {
@@ -266,14 +290,20 @@ fn relocate(attrs: &Attrs, spec: &Spec, ctx: &Ctx, debug: &str) -> io::Result<()
       Vec::new()
    };
    if !ldso {
-      let shown: Vec<String> = denied.iter().map(|path| format!("--deny {path}")).collect();
+      let sdk = (text(platform, "binfmt") == "macho").then(|| Path::new(text(platform, "sysroot")));
+      let mut shown: Vec<String> = denied.iter().map(|path| format!("--deny {path}")).collect();
+
+      if let Some(path) = sdk {
+         shown.push(format!("--sdk {}", path.display()));
+      }
+
       echo(&format!(
          "reloc-fixup {} --dest {} {}",
          ctx.out,
          ctx.dest,
          shown.join(" ")
       ));
-      fixup::run(out, Some(&ctx.dest), &denied)?;
+      fixup::run(out, Some(Path::new(&ctx.dest)), sdk, &denied)?;
    }
    Ok(())
 }
@@ -299,9 +329,16 @@ fn version_check(spec: &Spec, ctx: &Ctx, top: &str, exe: &str) -> io::Result<()>
    } else {
       spec.tests.version.clone()
    };
-   if line == Value::Bool(false) || (flag(platform, "cross") && !ctx.tests_run) {
+   let emulator = words(platform, "emulator");
+
+   if line == Value::Bool(false)
+      || (flag(platform, "cross")
+         && !ctx.tests_run
+         && (text(platform, "os") != "windows" || emulator.is_empty()))
+   {
       return Ok(());
    }
+
    let given: Vec<String> = line.as_str().map_or_else(
       || vec!["--version".to_owned()],
       |command| command.split(' ').map(str::to_owned).collect(),
@@ -324,7 +361,7 @@ fn version_check(spec: &Spec, ctx: &Ctx, top: &str, exe: &str) -> io::Result<()>
       })
       .map_or(spec.version.as_str(), |at| &spec.version[..at]);
    let audit = format!("{top}/dlaudit.txt");
-   let mut prefix = words(platform, "emulator");
+   let mut prefix = emulator;
    // via qemu's -E when emulated. The audit libc needs surplus static TLS
    // (librustc_driver), taken from every thread's stack, 64K, tokio workers
    // have 2M
@@ -352,45 +389,70 @@ fn version_check(spec: &Spec, ctx: &Ctx, top: &str, exe: &str) -> io::Result<()>
       allowed: &spec.tests.dlopen,
    };
    probe.run(dest)?;
-   let root = PathBuf::from(format!("{top}/relocated"));
-   create_dir_all(&root)?;
-   let launch_root = Path::new(text(platform, "launch"))
-      .parent()
-      .and_then(Path::parent)
-      .map(|package| package.to_string_lossy().into_owned())
-      .unwrap_or_default();
-   let mut linked: Vec<&str> = Vec::new();
-   for store_root in ctx
-      .roots
-      .iter()
-      .map(String::as_str)
-      .chain([launch_root.as_str()])
-   {
-      if store_root.is_empty() || linked.contains(&store_root) {
-         continue;
-      }
-      linked.push(store_root);
-      let name = Path::new(store_root)
-         .file_name()
-         .ok_or_else(|| io::Error::other("store root has no name"))?;
-      symlink(store_root, root.join(name))?;
-   }
-   succeed(Command::new("cp").arg("-r").arg(dest).arg(&root), "cp")?;
-   let copy = root.join(
-      dest
-         .file_name()
-         .ok_or_else(|| io::Error::other("output has no name"))?,
-   );
-   probe.run(&copy)?;
-   remove_dir_all(&root)?;
+   probe.relocated(ctx)?;
    note("version", &format!("{} -> {want}", command.join(" ")));
    Ok(())
 }
 
 impl Probe<'_> {
-   // empty environment but for HOME, which any real session has (rebar3 crashes
-   // without). bzip2 --version goes on to compress stdin, stdout can be
-   // binary
+   fn relocated(&self, ctx: &Ctx) -> io::Result<()> {
+      let dest = Path::new(&ctx.dest);
+      let root = PathBuf::from(format!("{}/relocated", self.top));
+      create_dir_all(&root)?;
+      let launch_root = Path::new(text(&ctx.platform, "launch"))
+         .parent()
+         .and_then(Path::parent)
+         .map(|package| package.to_string_lossy().into_owned())
+         .unwrap_or_default();
+      let store = PathBuf::from(var("NIX_STORE").unwrap_or_else(|_| STORE_DIR.to_owned()));
+      let dll_roots: Vec<String> = exports_of(dest)?
+         .dll_dirs
+         .iter()
+         .filter_map(|directory| {
+            Path::new(directory)
+               .strip_prefix(&store)
+               .ok()?
+               .components()
+               .next()
+               .map(|name| store.join(name).to_string_lossy().into_owned())
+         })
+         .collect();
+
+      let mut linked: Vec<&str> = Vec::new();
+      for store_root in ctx
+         .roots
+         .iter()
+         .map(String::as_str)
+         .chain([launch_root.as_str()])
+         .chain(dll_roots.iter().map(String::as_str))
+      {
+         if store_root.is_empty() || linked.contains(&store_root) {
+            continue;
+         }
+         linked.push(store_root);
+         let name = Path::new(store_root)
+            .file_name()
+            .ok_or_else(|| io::Error::other("store root has no name"))?;
+         let sibling = root.join(name);
+
+         if symlink_metadata(&sibling).is_ok() {
+            remove_file(&sibling)?;
+         }
+
+         symlink(store_root, sibling)?;
+      }
+      succeed(Command::new("cp").arg("-r").arg(dest).arg(&root), "cp")?;
+      let copy = root.join(
+         dest
+            .file_name()
+            .ok_or_else(|| io::Error::other("output has no name"))?,
+      );
+      self.run(&copy)?;
+      remove_dir_all(&root)?;
+      Ok(())
+   }
+   // HOME is needed by rebar3, WINE and QEMU_ settings by emulators.
+   // bzip2 --version goes on to compress stdin, stdout can be binary
    fn run(&self, root: &Path) -> io::Result<()> {
       match remove_file(&self.audit) {
          Ok(()) => {},
@@ -398,9 +460,24 @@ impl Probe<'_> {
          Err(error) => return Err(error),
       }
       let shown = self.command.join(" ");
+      let emulator_env: Vec<OsString> = vars_os()
+         .filter(|entry| {
+            entry
+               .0
+               .to_str()
+               .is_some_and(|text| text.starts_with("WINE") || text.starts_with("QEMU_"))
+         })
+         .map(|(mut name, value)| {
+            name.push("=");
+            name.push(value);
+            name
+         })
+         .collect();
+
       let output = Command::new("env")
          .arg("-i")
          .arg(format!("HOME={}", self.top))
+         .args(emulator_env)
          .args(&self.prefix)
          .arg(root.join(format!("bin/{}{}", self.command[0], self.exe)))
          .args(&self.command[1..])

@@ -102,8 +102,11 @@ pub fn prepare(source: Source<'_>) -> io::Result<Prepared> {
          "the development source directory is missing",
       ));
    }
-   create_dir_all(&src)?;
-   create_dir_all(&build)?;
+   if !matches!(source, Source::Archive(_)) {
+      create_dir_all(&src)?;
+      create_dir_all(&build)?;
+   }
+
    match source {
       Source::Unpack => unpack(&attrs, &src)?,
       Source::Archive(tree) => restore(tree, &top)?,
@@ -166,6 +169,23 @@ fn resolve_platform(
          Value::String(limit.to_owned()),
       );
    }
+   if text(platform, "os") == "windows" {
+      env.extend([
+         (
+            "WINEPREFIX".to_owned(),
+            Value::String(format!("{top}/wine")),
+         ),
+         (
+            "WINEDEBUG".to_owned(),
+            Value::String("-all,err+module".to_owned()),
+         ),
+         (
+            "WINEDLLOVERRIDES".to_owned(),
+            Value::String("mscoree,mshtml=".to_owned()),
+         ),
+      ]);
+   }
+
    let transparent = if cross {
       match Command::new(text(platform, "probe"))
          .arg("--version")
@@ -278,13 +298,23 @@ fn unpack(attrs: &Attrs, src: &str) -> io::Result<()> {
 
 fn restore(tree: &Path, top: &str) -> io::Result<()> {
    note("restore", &tree.to_string_lossy());
+
+   for directory in ["source", "build"] {
+      succeed(
+         Command::new("cp")
+            .arg("-a")
+            .arg(tree.join(directory))
+            .arg(top),
+         "cp",
+      )?;
+   }
+
    succeed(
-      Command::new("bsdtar")
-         .arg("-xf")
-         .arg(tree.join("tree.tar.zst"))
-         .arg("-C")
-         .arg(top),
-      "bsdtar",
+      Command::new("chmod")
+         .args(["-R", "u+w"])
+         .arg(Path::new(top).join("source"))
+         .arg(Path::new(top).join("build")),
+      "chmod",
    )
 }
 

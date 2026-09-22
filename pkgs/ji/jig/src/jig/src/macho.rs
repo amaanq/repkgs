@@ -3,7 +3,10 @@ use std::{
       self,
       Write as _,
    },
-   path::Path,
+   path::{
+      Path,
+      PathBuf,
+   },
 };
 
 use sha2::{
@@ -18,7 +21,10 @@ use crate::{
       write_back,
    },
    image::Image,
-   store::is_store_path,
+   store::{
+      is_store_path,
+      normalize,
+   },
 };
 
 const MAGIC: u32 = 0xFEED_FACF;
@@ -179,27 +185,79 @@ fn loader_relative(from: &Path, target: &Path) -> String {
    }
 }
 
-fn new_spelling(context: &Context, here: &Path, command: &Command) -> io::Result<Option<String>> {
-   let path = command.path()?;
-   if path.starts_with('@') || path.starts_with("/usr/lib/") || path.starts_with("/System/") {
-      return Ok(None);
+fn system_path(path: &str) -> bool {
+   path.starts_with("/usr/lib/") || path.starts_with("/System/")
+}
+
+fn resolve(context: &Context, here: &Path, path: &str) -> io::Result<Option<PathBuf>> {
+   if system_path(path) {
+      let known = match context.sdk {
+         Some(ref sdk) => {
+            let stem = path.strip_suffix(".dylib").unwrap_or(path);
+            sdk.join(format!("{}.tbd", &stem[1..])).try_exists()?
+         },
+         None => true,
+      };
+
+      return Ok(known.then(|| PathBuf::from(path)));
    }
-   let target = context.final_path(Path::new(&path));
-   if is_store_path(&target.to_string_lossy()) {
-      if command.kind == ID_DYLIB {
-         let name = target
-            .file_name()
-            .ok_or_else(|| io::Error::other("dylib id has no file name"))?;
-         return Ok(Some(format!("@rpath/{}", name.to_string_lossy())));
+
+   let target = if let Some(name) = path.strip_prefix("@rpath/") {
+      let mut found = None;
+
+      for directory in &context.directories {
+         let candidate = directory.join(name);
+
+         if candidate.try_exists()? {
+            found = Some(context.final_path(&candidate));
+            break;
+         }
       }
-      return Ok(Some(loader_relative(here, &target)));
+
+      found
+   } else if let Some(relative) = path.strip_prefix("@loader_path/") {
+      Some(normalize(&here.join(relative)))
+   } else {
+      let absolute = context.final_path(Path::new(path));
+      is_store_path(&absolute.to_string_lossy()).then_some(absolute)
+   };
+
+   if let Some(ref resolved) = target {
+      let disk = context.on_disk(resolved);
+
+      if disk != *resolved && !disk.try_exists()? {
+         return Ok(None);
+      }
    }
-   if command.kind != RPATH && command.kind != ID_DYLIB {
-      return Err(io::Error::other(format!(
-         "links {path} by a path outside the store"
-      )));
+
+   Ok(target)
+}
+
+fn new_spelling(context: &Context, file: &Path, command: &Command) -> io::Result<Option<String>> {
+   if command.kind == ID_DYLIB {
+      return Ok(Some(file.to_string_lossy().into_owned()));
    }
-   Ok(None)
+
+   let path = command.path()?;
+   let here = file
+      .parent()
+      .ok_or_else(|| io::Error::other("Mach-O file has no parent directory"))?;
+
+   if command.kind == RPATH {
+      let target = context.final_path(Path::new(&path));
+      return Ok(is_store_path(&target.to_string_lossy()).then(|| loader_relative(here, &target)));
+   }
+
+   let target = resolve(context, here, &path)?.ok_or_else(|| {
+      io::Error::other(format!(
+         "links {path}, which neither the package, a dependency nor the SDK has"
+      ))
+   })?;
+   Ok(Some(if system_path(&path) {
+      path
+   } else {
+      loader_relative(here, &target)
+   }))
 }
 
 #[inline]
@@ -207,18 +265,14 @@ pub fn fix(context: &Context, path: &Path, image: &mut Image) -> io::Result<()> 
    if image.long(0).ok() != Some(MAGIC) {
       return Ok(());
    }
-   let here = context
-      .final_path(path)
-      .parent()
-      .ok_or_else(|| io::Error::other("Mach-O file has no parent directory"))?
-      .to_path_buf();
+   let file = context.final_path(path);
    let (mut commands, room) = read_commands(image)?;
    let mut changed = Vec::new();
    for command in &mut commands {
       if command.path_offset == 0 {
          continue;
       }
-      if let Some(text) = new_spelling(context, &here, command)?
+      if let Some(text) = new_spelling(context, &file, command)?
          && text != command.path()?
       {
          command.set_path(&text)?;

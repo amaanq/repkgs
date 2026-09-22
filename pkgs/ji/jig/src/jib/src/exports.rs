@@ -1,5 +1,6 @@
 use std::{
    collections::BTreeMap,
+   env::var,
    fs::{
       DirEntry,
       read_dir,
@@ -16,7 +17,10 @@ use std::{
    },
 };
 
-use jig::files::write_file;
+use jig::{
+   files::write_file,
+   store::STORE_DIR,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -30,17 +34,29 @@ use crate::attrs::Extensions;
 
 const CPUS: [&str; 5] = ["x86_64", "aarch64", "riscv64", "loongarch64", "powerpc64le"];
 
-#[derive(Default, Deserialize)]
+#[derive(Default, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 struct Stored {
+   #[serde(skip_serializing_if = "Option::is_none")]
    name:           Option<String>,
+   #[serde(skip_serializing_if = "Option::is_none")]
    include_dirs:   Option<Vec<String>>,
+   #[serde(skip_serializing_if = "Option::is_none")]
    lib_dirs:       Option<Vec<String>>,
+   #[serde(skip_serializing_if = "Option::is_none")]
    libs:           Option<Vec<String>>,
+   #[serde(skip_serializing_if = "Option::is_none")]
    pkgconfig_dirs: Option<Vec<String>>,
+   #[serde(skip_serializing_if = "Option::is_none")]
    aclocal_dirs:   Option<Vec<String>>,
+   #[serde(skip_serializing_if = "Option::is_none")]
    env:            Option<BTreeMap<String, String>>,
+   #[serde(skip_serializing_if = "Option::is_none")]
    propagate:      Option<Vec<String>>,
+   #[serde(skip_serializing_if = "Option::is_none")]
+   dll_dirs:       Option<Vec<String>>,
+   #[serde(flatten)]
+   extra:          BTreeMap<String, Value>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -54,6 +70,8 @@ pub struct Exports {
    pub aclocal_dirs:   Vec<String>,
    pub env:            BTreeMap<String, String>,
    pub propagate:      Vec<String>,
+   #[serde(default, skip_serializing_if = "Vec::is_empty")]
+   pub dll_dirs:       Vec<String>,
    pub root:           String,
 }
 
@@ -122,13 +140,32 @@ fn linkable_libraries(root: &Path, extensions: &Extensions) -> io::Result<Vec<St
    Ok(names.into_iter().map(|(_, stem)| stem).collect())
 }
 
+fn read_stored(root: &Path) -> io::Result<Stored> {
+   match read_to_string(root.join("exports.json")) {
+      Ok(text) => serde_json::from_str(&text).map_err(io::Error::other),
+      Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Stored::default()),
+      Err(error) => Err(error),
+   }
+}
+
+pub fn record_dll_dirs(root: &Path, directories: Vec<String>) -> io::Result<()> {
+   let mut exports = read_stored(root)?;
+   exports.dll_dirs = Some(directories);
+   let mut rendered = serde_json::to_vec_pretty(&exports)?;
+   rendered.push(b'\n');
+   write_file(&root.join("exports.json"), &rendered, None)
+}
+
 pub fn exports_of(root: &Path) -> io::Result<Exports> {
-   let stored = match read_to_string(root.join("exports.json")) {
-      Ok(text) => serde_json::from_str::<Stored>(&text)?,
-      Err(error) if error.kind() == io::ErrorKind::NotFound => Stored::default(),
-      Err(error) => return Err(error),
-   };
+   let stored = read_stored(root)?;
    let root_text = root.to_string_lossy().into_owned();
+   let nix_store = root.parent().unwrap_or(root).to_string_lossy();
+   let expand = |text: String| {
+      text
+         .replace("{root}", &root_text)
+         .replace("{store}", &nix_store)
+   };
+
    Ok(Exports {
       name:           stored.name.unwrap_or_else(|| package_name(root)),
       include_dirs:   stored
@@ -146,9 +183,15 @@ pub fn exports_of(root: &Path) -> io::Result<Exports> {
          .env
          .unwrap_or_default()
          .into_iter()
-         .map(|(name, value)| (name, value.replace("{root}", &root_text)))
+         .map(|(name, value)| (name, expand(value)))
          .collect(),
       propagate:      stored.propagate.unwrap_or_default(),
+      dll_dirs:       stored
+         .dll_dirs
+         .unwrap_or_default()
+         .into_iter()
+         .map(expand)
+         .collect(),
       root:           root_text,
    })
 }
@@ -276,6 +319,25 @@ pub fn write_request(root: &Path, request: &Request) -> io::Result<()> {
       "propagate".to_owned(),
       Value::Array(propagate.into_iter().map(Value::String).collect()),
    );
+
+   if let Some(directories) = exports.remove("dllDirs") {
+      let absolute: Vec<String> = serde_json::from_value(directories)?;
+
+      if !absolute.is_empty() {
+         let root_text = root.to_string_lossy();
+         let nix_store = var("NIX_STORE").unwrap_or_else(|_| STORE_DIR.to_owned());
+         let relative: Vec<String> = absolute
+            .iter()
+            .map(|directory| {
+               directory
+                  .replace(root_text.as_ref(), "{root}")
+                  .replace(&nix_store, "{store}")
+            })
+            .collect();
+         exports.insert("dllDirs".to_owned(), serde_json::to_value(relative)?);
+      }
+   }
+
    let mut rendered = serde_json::to_vec_pretty(&Value::Object(exports))?;
    rendered.push(b'\n');
    write_file(&root.join("exports.json"), &rendered, None)

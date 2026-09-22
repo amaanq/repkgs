@@ -3,6 +3,7 @@ use std::{
    fs::{
       DirEntry,
       File,
+      create_dir_all,
       metadata,
       read,
       read_dir,
@@ -32,6 +33,10 @@ use std::{
 };
 
 use serde::Serialize;
+use sha2::{
+   Digest as _,
+   Sha256,
+};
 
 use crate::{
    elf::relative_from,
@@ -146,16 +151,15 @@ pub fn writable(path: &Path) -> io::Result<()> {
 
 #[inline]
 pub fn shebangs(directory: &Path, undo: bool) -> io::Result<()> {
-   let env = on_path("env");
-   if !env.is_absolute() {
-      return Err(io::Error::other("env not on PATH"));
+   let ledger = PathBuf::from(
+      var("NIX_BUILD_TOP").map_err(|_unset| io::Error::other("NIX_BUILD_TOP is not set"))?,
+   )
+   .join("shebangs");
+
+   if undo && !ledger.exists() {
+      return Ok(());
    }
-   let ours = format!("#!{}", env.display());
-   let (from, to): (&[&[u8]], &[u8]) = if undo {
-      (&[ours.as_bytes()], b"#!/usr/bin/env")
-   } else {
-      (&[b"#!/usr/bin/env", b"#! /usr/bin/env"], ours.as_bytes())
-   };
+
    let candidates: Vec<PathBuf> = walk(directory)?
       .into_iter()
       .filter(|entry| entry.kind == 'f' && entry.size < SMALL_FILE)
@@ -164,7 +168,12 @@ pub fn shebangs(directory: &Path, undo: bool) -> io::Result<()> {
          undo || metadata(path).is_ok_and(|meta| meta.permissions().mode() & 0o100 != 0)
       })
       .collect();
-   parallel(&candidates, |path| fix(path, from, to, undo))?;
+
+   if !undo {
+      create_dir_all(&ledger)?;
+   }
+
+   parallel(&candidates, |path| fix(path, &ledger, undo))?;
    Ok(())
 }
 
@@ -211,14 +220,54 @@ where
    })
 }
 
-/// `ruby -x` stubs carry the real #! after a /bin/sh preamble, so every
-/// line start counts, both ways.
-fn fix(path: &Path, from: &[&[u8]], to: &[u8], undo: bool) -> io::Result<()> {
+/// `ruby -x` stubs carry the real #! after a /bin/sh preamble, so env
+/// shebangs also match after the first line.
+fn fix(path: &Path, ledger: &Path, undo: bool) -> io::Result<()> {
+   const HEX: &[u8; 16] = b"0123456789abcdef";
+
    let bytes = read(path)?;
-   let fixed = replace_line_starts(&bytes, from, to);
+   let record = |contents: &[u8]| {
+      let hash: String = Sha256::digest(contents)
+         .iter()
+         .flat_map(|byte| {
+            [
+               char::from(HEX[usize::from(byte >> 4_u8)]),
+               char::from(HEX[usize::from(byte & 15)]),
+            ]
+         })
+         .collect();
+      ledger.join(hash)
+   };
+
+   let fixed = if undo {
+      let original = record(&bytes);
+
+      match read(original) {
+         Ok(contents) => contents,
+         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+         Err(error) => return Err(error),
+      }
+   } else {
+      let mut rewritten = Vec::with_capacity(bytes.len());
+
+      for (index, line) in bytes.split_inclusive(|byte| *byte == b'\n').enumerate() {
+         match rewrite_shebang(line, index == 0) {
+            Some(fixed_line) => rewritten.extend(fixed_line),
+            None => rewritten.extend_from_slice(line),
+         }
+      }
+
+      rewritten
+   };
+
    if fixed == bytes {
       return Ok(());
    }
+
+   if !undo {
+      write_file(&record(&fixed), &bytes, None)?;
+   }
+
    let meta = metadata(path)?;
    writable(path)?;
    let mut file = File::create(path)?;
@@ -243,26 +292,53 @@ pub fn replace_all(text: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
    output
 }
 
-fn replace_line_starts(text: &[u8], from: &[&[u8]], to: &[u8]) -> Vec<u8> {
-   let mut output = Vec::with_capacity(text.len());
-   let mut at_line_start = true;
-   let mut rest = text;
-   while !rest.is_empty() {
-      if at_line_start && let Some(matched) = from.iter().find(|needle| rest.starts_with(needle)) {
-         output.extend_from_slice(to);
-         rest = &rest[matched.len()..];
-         at_line_start = false;
-         continue;
+fn rewrite_shebang(line: &[u8], first: bool) -> Option<Vec<u8>> {
+   let text = str::from_utf8(line).ok()?.strip_prefix("#!")?;
+   let interpreter = text.strip_prefix(' ').unwrap_or(text);
+   let (program, args) = if let Some(env) = interpreter.strip_prefix("/usr/bin/env ") {
+      let end = env.find(char::is_whitespace).unwrap_or(env.len());
+      (&env[..end], &env[end..])
+   } else {
+      if !first {
+         return None;
       }
-      let end = rest
+
+      let absolute = ["/bin/", "/usr/bin/", "/usr/local/bin/"]
          .iter()
-         .position(|byte| *byte == b'\n')
-         .map_or(rest.len(), |nl| nl + 1);
-      output.extend_from_slice(&rest[..end]);
-      at_line_start = rest[end - 1] == b'\n';
-      rest = &rest[end..];
+         .find_map(|prefix| interpreter.strip_prefix(prefix))?;
+
+      if ["sh", "env"].iter().any(|excluded| {
+         absolute.strip_prefix(excluded).is_some_and(|tail| {
+            !tail
+               .bytes()
+               .next()
+               .is_some_and(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+         })
+      }) || !absolute
+         .bytes()
+         .next()
+         .is_some_and(|byte| byte.is_ascii_lowercase())
+      {
+         return None;
+      }
+
+      let end = absolute
+         .find(|ch: char| !ch.is_ascii_lowercase() && !ch.is_ascii_digit() && ch != '.')
+         .unwrap_or(absolute.len());
+      (&absolute[..end], &absolute[end..])
+   };
+
+   if program.is_empty() {
+      return None;
    }
-   output
+
+   let found = on_path(program);
+
+   if !found.is_absolute() || !found.is_file() {
+      return None;
+   }
+
+   Some(format!("#!{}{args}", found.display()).into_bytes())
 }
 
 #[must_use]
@@ -285,7 +361,23 @@ pub fn prune(root: &Path) -> io::Result<Vec<Entry>> {
          Err(error) => return Err(error),
       }
    }
-   let mut inventory = walk(root)?;
+   let (bundles, mut inventory): (Vec<Entry>, Vec<Entry>) = walk(root)?
+      .into_iter()
+      .partition(|entry| entry.kind == 'd' && extension_is(&entry.rel, "dSYM"));
+
+   for bundle in &bundles {
+      match remove_dir_all(&bundle.path) {
+         Ok(()) => {},
+         Err(error) if error.kind() == io::ErrorKind::NotFound => {},
+         Err(error) => return Err(error),
+      }
+   }
+
+   inventory.retain(|entry| {
+      !bundles
+         .iter()
+         .any(|bundle| Path::new(&entry.rel).starts_with(&bundle.rel))
+   });
    let mut junk = Vec::new();
    let mut compressed = Vec::new();
    for entry in inventory.iter().filter(|entry| entry.kind == 'f') {
@@ -345,20 +437,28 @@ pub fn print_pruned(root: &Path) -> io::Result<()> {
 }
 
 #[inline]
-pub fn relativize(prefix: &str, dest: &str, macho: bool) -> io::Result<()> {
+pub fn relativize(prefix: &str, dest: &str) -> io::Result<()> {
    let root = Path::new(prefix);
    let inventory = walk(root)?;
-   if macho {
-      sonames(&inventory, prefix)?;
-   }
-   for entry in inventory
-      .iter()
-      .filter(|entry| entry.kind == 'f' && extension_is(&entry.rel, "pc"))
-   {
+   let mut man_pages = 0_usize;
+
+   for entry in inventory.iter().filter(|entry| entry.kind == 'f') {
+      let variable = if extension_is(&entry.rel, "pc") {
+         Some("pcfiledir")
+      } else if extension_is(&entry.rel, "cmake") {
+         Some("CMAKE_CURRENT_LIST_DIR")
+      } else if entry.rel.starts_with("share/man/") {
+         None
+      } else {
+         continue;
+      };
+
       let bytes = read(&entry.path)?;
+
       if find(&bytes, prefix.as_bytes()).is_none() {
          continue;
       }
+
       let up = Path::new(&entry.rel)
          .parent()
          .map(|parent| {
@@ -369,63 +469,25 @@ pub fn relativize(prefix: &str, dest: &str, macho: bool) -> io::Result<()> {
                .join("/")
          })
          .unwrap_or_default();
-      let fixed = replace_all(
-         &bytes,
-         prefix.as_bytes(),
-         format!("${{pcfiledir}}/{up}").as_bytes(),
-      );
+      let relative = variable.map_or_else(|| "/usr".to_owned(), |name| format!("${{{name}}}/{up}"));
+      let fixed = replace_all(&bytes, prefix.as_bytes(), relative.as_bytes());
       write_file(Path::new(&entry.path), &fixed, None)?;
+
+      if variable.is_none() {
+         man_pages += 1;
+      }
    }
+
+   if man_pages != 0 {
+      note(
+         "man",
+         &format!("{man_pages} pages named the prefix, now /usr"),
+      );
+   }
+
    scripts(root, prefix)?;
    links(root, prefix, dest)?;
    leaks(&inventory, prefix)
-}
-
-/// reloc-fixup made every `LC_ID_DYLIB` `@rpath/<name>`, cmake's exported
-/// targets still record the `install_name` the project chose (taglib sets
-/// `INSTALL_NAME_DIR` to its libdir).
-#[inline]
-pub fn sonames(inventory: &[Entry], prefix: &str) -> io::Result<()> {
-   for entry in inventory
-      .iter()
-      .filter(|entry| entry.kind == 'f' && extension_is(&entry.rel, "cmake"))
-   {
-      let text = String::from_utf8_lossy(&read(&entry.path)?).into_owned();
-      if !text.contains("IMPORTED_SONAME_") {
-         continue;
-      }
-      let fixed: Vec<String> = text
-         .lines()
-         .map(|line| soname_line(line, prefix).unwrap_or_else(|| line.to_owned()))
-         .collect();
-      let mut joined = fixed.join("\n");
-      if text.ends_with('\n') {
-         joined.push('\n');
-      }
-      if joined != text {
-         writable(Path::new(&entry.path))?;
-         write_file(Path::new(&entry.path), joined.as_bytes(), None)?;
-      }
-   }
-   Ok(())
-}
-
-fn soname_line(line: &str, prefix: &str) -> Option<String> {
-   let start = line.find("IMPORTED_SONAME_")?;
-   let rest = &line[start..];
-   let space = rest.find(' ')?;
-   let key = &rest[..space];
-   let path = rest[space..]
-      .strip_prefix(" \"")?
-      .strip_prefix(prefix)?
-      .strip_prefix('/')?;
-   let end = path.find('"')?;
-   let name = path[..end].rsplit('/').next()?;
-   Some(format!(
-      "{}{key} \"@rpath/{name}\"{}",
-      &line[..start],
-      &path[end + 1..]
-   ))
 }
 
 fn scripts(root: &Path, prefix: &str) -> io::Result<()> {
