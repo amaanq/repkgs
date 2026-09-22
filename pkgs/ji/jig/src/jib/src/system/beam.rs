@@ -27,7 +27,7 @@ use crate::{
       Attrs,
       Ctx,
    },
-   launchers,
+   launchers::entries::write,
    probe,
    system::{
       command::{
@@ -135,7 +135,7 @@ fn install_escript(ctx: &Ctx, file: &str) -> io::Result<()> {
    let placed = format!("{dir}/{name}");
    copy(file, &placed)?;
    let erlang = dep_root(ctx, "erlang", "escripts run under the target erlang")?;
-   launchers::write(
+   write(
       ctx,
       &name,
       &format!("{erlang}/bin/escript"),

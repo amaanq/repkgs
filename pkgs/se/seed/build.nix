@@ -156,6 +156,7 @@ let
             || builtins.elem (baseNameOf path) [
               "Cargo.toml"
               "Cargo.lock"
+              "README.md"
             ]
           );
       };

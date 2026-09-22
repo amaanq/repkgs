@@ -28,6 +28,7 @@ use jig::{
    process::{
       Slot,
       diagnostic,
+      expand_response_files,
       log,
       log_uncached,
       run,
@@ -47,7 +48,6 @@ use crate::{
       BinaryFormat,
       Driver,
       Language,
-      expand_response_files,
    },
    manifest::{
       Manifest,

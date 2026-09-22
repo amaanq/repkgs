@@ -9,11 +9,15 @@ use std::{
       OsString,
    },
    fmt::Arguments,
-   fs::OpenOptions,
+   fs::{
+      OpenOptions,
+      read_to_string,
+   },
    io::{
       self,
       Write as _,
    },
+   mem::take,
    os::unix::process::ExitStatusExt as _,
    path::{
       Path,
@@ -260,4 +264,55 @@ where
          ExitCode::FAILURE
       },
    }
+}
+
+#[inline]
+pub fn expand_response_files(args: &[String]) -> io::Result<Vec<String>> {
+   let mut output = Vec::new();
+   for arg in args {
+      let Some(path) = arg.strip_prefix('@') else {
+         output.push(arg.to_owned());
+         continue;
+      };
+      let text = match read_to_string(path) {
+         Ok(text) => text,
+         Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            output.push(arg.to_owned());
+            continue;
+         },
+         Err(error) => return Err(error),
+      };
+      let mut word = String::new();
+      let mut quoted = None;
+      let mut started = false;
+      let mut characters = text.chars();
+      while let Some(character) = characters.next() {
+         if character == '\\' {
+            word.push(characters.next().unwrap_or('\\'));
+            started = true;
+         } else if quoted == Some(character) {
+            quoted = None;
+         } else if quoted.is_none() && matches!(character, '\'' | '"') {
+            quoted = Some(character);
+            started = true;
+         } else if quoted.is_none() && character.is_whitespace() {
+            if started {
+               output.push(take(&mut word));
+            }
+            started = false;
+         } else {
+            word.push(character);
+            started = true;
+         }
+      }
+      if quoted.is_some() {
+         return Err(io::Error::other(
+            "unterminated quote in compiler response file",
+         ));
+      }
+      if started {
+         output.push(word);
+      }
+   }
+   Ok(output)
 }

@@ -13,6 +13,7 @@ package {
       || builtins.elem (builtins.baseNameOf path) [
         "Cargo.toml"
         "Cargo.lock"
+        "README.md"
       ];
   };
   uses = [ "cargo" ];

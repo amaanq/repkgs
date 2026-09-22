@@ -1,8 +1,9 @@
 //! `jsem <ghc> [args…]` runs ghc. When cabal handed it a `-jsem v2-<name>`
-//! semaphore and jigd is up, ghc gets a proxy semaphore instead, so every
-//! extra capability it takes is a cabal token or a jigd slot.
+//! semaphore, ghc gets a private POSIX semaphore instead. Extra capabilities
+//! consume Cabal tokens and jigd slots until the child releases them or exits.
 
 mod proxy;
+mod sem;
 
 use std::{
    env::{
@@ -13,16 +14,20 @@ use std::{
       OsStr,
       OsString,
    },
-   os::unix::{
-      net::UnixStream,
-      process::CommandExt as _,
+   io::{
+      self,
+      Write as _,
    },
+   os::unix::process::CommandExt as _,
    path::PathBuf,
    process::{
       Command,
       ExitCode,
-      id,
+      Stdio,
    },
+   str::from_utf8,
+   thread::sleep,
+   time::Duration,
 };
 
 use eyre::{
@@ -31,12 +36,25 @@ use eyre::{
 };
 use jig::process::{
    diagnostic,
+   expand_response_files,
    run_main,
    socket,
    status_code,
+   text_arguments,
+};
+use rustix::{
+   io::Errno,
+   process::{
+      Pid,
+      Signal,
+      kill_process_group,
+   },
 };
 
-use crate::proxy::Proxy;
+use crate::{
+   proxy::Proxy,
+   sem::Sem,
+};
 
 fn main() -> ExitCode {
    run_main("jsem", run)
@@ -47,27 +65,73 @@ fn run() -> Result<i32> {
    let [ref program, ref rest @ ..] = *args.as_slice() else {
       bail!("usage: jsem <ghc> [args...]");
    };
-   let Some(handed) = Semaphore::find(rest).filter(|_found| UnixStream::connect(socket()).is_ok())
-   else {
+   if rest.iter().any(|arg| arg == "--info") {
+      return info(program, rest);
+   }
+
+   let expanded = expand_response_files(&text_arguments(rest)?)?;
+   let Some(handed) = semaphore_name(&expanded) else {
       return Ok(exec(program, rest));
    };
    let directory = var_os("TMPDIR")
       .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from)
       .join("semaphore-compat");
-   let proxied = format!("{}-j{}", handed.name, id());
    let build = var_os("NIX_BUILD_TOP")
       .map_or_else(|| "-".to_owned(), |top| top.to_string_lossy().into_owned());
-   let proxy = Proxy::bind(
-      directory.join(&proxied),
-      directory.join(&handed.name),
-      socket(),
-      build,
-   )?;
-   let mut rewritten = rest.to_vec();
-   rewritten[handed.index] = OsString::from(format!("{}v2-{proxied}", handed.prefix));
-   let status = Command::new(program).args(&rewritten).status()?;
-   drop(proxy);
-   Ok(status_code(status))
+   let semaphore = Sem::new()?;
+   let mut proxy = Proxy::new(&semaphore, directory.join(handed), socket(), build)?;
+   let mut command = Command::new(program);
+
+   command
+      .args(rest)
+      .args(["-RTS", "-jsem"])
+      .arg(semaphore.name())
+      .env("JIG_SLOT", "1")
+      .process_group(0);
+
+   diagnostic(format_args!("jsem: {command:?}"));
+   let mut child = command.spawn()?;
+   let result = (|| -> Result<i32> {
+      loop {
+         if let Some(status) = child.try_wait()? {
+            return Ok(status_code(status));
+         }
+         proxy.tick()?;
+         sleep(Duration::from_millis(10));
+      }
+   })();
+
+   if child.try_wait()?.is_none() {
+      if let Err(error) = kill_process_group(Pid::from_child(&child), Signal::KILL)
+         && error != Errno::SRCH
+      {
+         return Err(error.into());
+      }
+
+      child.wait()?;
+   }
+
+   result
+}
+
+fn info(program: &OsStr, args: &[OsString]) -> Result<i32> {
+   let output = Command::new(program)
+      .args(args)
+      .stderr(Stdio::inherit())
+      .output()?;
+
+   if !output.status.success() {
+      io::stdout().write_all(&output.stdout)?;
+      return Ok(status_code(output.status));
+   }
+
+   let text = from_utf8(&output.stdout)?;
+   let Some(properties) = text.trim_start().strip_prefix('[') else {
+      bail!("ghc --info did not return a property list");
+   };
+
+   write!(io::stdout(), "[(\"Semaphore version\",\"2\"),{properties}")?;
+   Ok(0)
 }
 
 fn exec(program: &OsStr, args: &[OsString]) -> i32 {
@@ -76,34 +140,16 @@ fn exec(program: &OsStr, args: &[OsString]) -> i32 {
    127
 }
 
-/// Where cabal's `-jsem v2-<name>` sits in ghc's arguments, either as one
-/// argument or as the one after the flag.
-struct Semaphore {
-   index:  usize,
-   prefix: String,
-   name:   String,
-}
-
-impl Semaphore {
-   fn find(args: &[OsString]) -> Option<Self> {
-      let (index, rest) = args.iter().enumerate().find_map(|(index, arg)| {
-         let rest = arg.to_str()?.strip_prefix("-jsem")?;
-         Some((index, rest))
-      })?;
-      let (position, prefix, identifier) = if rest.trim_start().is_empty() {
-         (index + 1, String::new(), args.get(index + 1)?.to_str()?)
-      } else {
-         (
-            index,
-            format!("-jsem{}", &rest[..rest.len() - rest.trim_start().len()]),
-            rest.trim_start(),
-         )
-      };
-      let name = identifier.strip_prefix("v2-")?;
-      Some(Self {
-         index: position,
-         prefix,
-         name: name.to_owned(),
-      })
-   }
+/// Cabal writes `-jsem v2-<name>` as one response-file argument.
+fn semaphore_name(args: &[String]) -> Option<&str> {
+   let (index, rest) = args.iter().enumerate().find_map(|(index, arg)| {
+      let rest = arg.strip_prefix("-jsem")?;
+      Some((index, rest))
+   })?;
+   let identifier = if rest.trim_start().is_empty() {
+      args.get(index + 1)?.as_str()
+   } else {
+      rest.trim_start()
+   };
+   identifier.strip_prefix("v2-")
 }

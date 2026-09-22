@@ -13,7 +13,7 @@ use crate::{
       Attrs,
       Ctx,
    },
-   launchers,
+   launchers::entries::write,
    prepare::succeed,
    system::{
       command::{
@@ -124,7 +124,7 @@ impl Deno {
          args.extend(options.permissions.iter().cloned());
          args.extend(options.flags.iter().cloned());
          args.push(format!("{app}/{module}"));
-         launchers::write(
+         write(
             ctx,
             name,
             &format!("{deno}/bin/deno"),

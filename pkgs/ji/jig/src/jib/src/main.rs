@@ -54,6 +54,10 @@ use crate::{
       ProbeOperation,
       SyslibsOperation,
    },
+   launchers::entries::{
+      run as launch_outputs,
+      write as write_launcher,
+   },
    system::{
       dispatch,
       msbuild,
@@ -146,7 +150,7 @@ fn run(mode: Mode, socket: &Path) -> Result<i32> {
          interp,
          ldso,
          deps,
-      } => launchers::run(&output, &launch, &interp, ldso, &deps)?,
+      } => launch_outputs(&output, &launch, &interp, ldso, &deps)?,
       Mode::Launcher {
          name,
          program,
@@ -159,7 +163,7 @@ fn run(mode: Mode, socket: &Path) -> Result<i32> {
             .transpose()?
             .unwrap_or_default();
          let ctx = Ctx::load(&build_top()?)?;
-         launchers::write(&ctx, &name, &program, &args, &vars)?;
+         write_launcher(&ctx, &name, &program, &args, &vars)?;
       },
       Mode::Bundle => bundle::run()?,
       Mode::Syslibs { operation } => syslibs_mode(operation)?,

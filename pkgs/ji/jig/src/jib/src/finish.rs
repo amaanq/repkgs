@@ -63,7 +63,7 @@ use crate::{
    },
    implant,
    launchers::{
-      self,
+      entries::run as launch,
       pe,
    },
    prepare::succeed,
@@ -255,7 +255,7 @@ fn relocate(attrs: &Attrs, spec: &Spec, ctx: &Ctx, debug: &str) -> io::Result<()
                &attrs.dependencies,
             )?;
          }
-         launchers::run(
+         launch(
             out,
             Path::new(text(platform, "launch")),
             interp,

@@ -29,7 +29,7 @@ use crate::{
       exports_of,
       record_dll_dirs,
    },
-   launchers::{
+   launchers::entries::{
       Record,
       Variable,
       runtime_env,

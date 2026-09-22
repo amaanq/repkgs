@@ -7,7 +7,7 @@ hackage = "hadrian"
 [[source]]
 key  = "default"
 url  = "https://downloads.haskell.org/~ghc/{version}/ghc-{version}-src.tar.xz"
-hash = "sha256-TurHYPNvfMVp2KjySG0wd0cbUMu/ve+QUZCTgftsK+4="
+hash = "sha256-ujDRF/tuls/7YxD52xy5ldZKGCJXCoP0nrCYg+vragg="
 
 [pin]
-version = "9.12.4"
+version = "9.14.1"

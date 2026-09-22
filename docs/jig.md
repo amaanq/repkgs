@@ -393,14 +393,18 @@ build holding the fewest slots when several are waiting. Ties go to the earliest
 client that disconnects while waiting is removed from the queue, and every slot a connection
 holds is released when it closes.
 
-`jsem <ghc> [args…]` puts ghc's own parallelism under the same admission. cabal builds under
-`semaphore: True` pass `-jsem v2-<name>` to a ghc wrapper that runs jsem, and the name is a
-semaphore-compat v2 socket under `$TMPDIR/semaphore-compat/` that cabal serves, one byte per
-command (`-` wait, `?` try, `+` release, answered `.` or `!`), one connection per token, a
-closed connection returning its tokens. jsem listens on `<name>-j<pid>`, hands ghc that name
-instead, and backs every token ghc waits for with whichever answers first, a token from cabal's
-socket or a `SLOT` from jigd, closing the other request. Releases and disconnects close the
-backing connection. Without jigd, or with a v1 name, jsem execs ghc untouched.
+`jsem <ghc> [args…]` bridges Cabal 3.18's socket tokens to GHC 9.14's POSIX semaphore.
+Its `--info` reports semaphore protocol 2 so Cabal enables `-jsem v2-<name>`. The wrapper
+gives GHC a private named semaphore and acquires a jigd slot before starting it. Cabal already
+owns GHC's implicit first token. Each extra capability needs both a Cabal token and a jigd slot,
+and the bridge posts to the semaphore only after both grants arrive.
+The bridge keeps one backed token idle because POSIX semaphores cannot report waiting clients.
+
+Returned tokens close both backing connections. Child exit refunds every grant and unlinks
+the semaphore. A bridge error kills the child process group and reaps GHC before refunding
+grants. The child inherits `JIG_SLOT=1` so its cc and ld processes use their parent capability's
+slot. If jigd is unavailable the bridge fails before starting GHC.
+Invocations without a v2 semaphore run GHC directly.
 
 ## 7. jigd storage
 

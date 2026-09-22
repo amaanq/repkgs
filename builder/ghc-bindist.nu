@@ -2,7 +2,13 @@
 use core.nu *
 use implant.nu
 
-export const TOOLCHAIN = [CC=cc CXX=c++ LD=ld AR=ar RANLIB=ranlib STRIP=llvm-strip NM=llvm-nm OBJDUMP=llvm-objdump LLC=llc OPT=opt LLVMAS=clang]
+export def toolchain []: nothing -> list<string> {
+  let target = (ctx).platform.clangTarget
+  let flags = (0..2 | each {|stage|
+    [CC CXX GCC_LINKER] | each {|kind| $"CONF_($kind)_OPTS_STAGE($stage)=--target=($target)" }
+  } | flatten)
+  [CC=cc CXX=c++ LD=ld AR=ar RANLIB=ranlib STRIP=llvm-strip NM=llvm-nm OBJDUMP=llvm-objdump LLC=llc OPT=opt LLVMAS=clang] ++ $flags
+}
 
 # [pattern replacement] pairs applied to each file in place. Literal unless --regex: the
 # replacements carry sh `$top`/`${1}` that regex mode would read as capture groups
@@ -18,9 +24,9 @@ def rewrite [files: list<path>, pairs: list<list<string>>, --regex (-r)]: nothin
 # the package db leaves gmp, libffi, curses (and Debian's rts libnuma) to an ambient search
 # path: name our lib dirs, then recache
 def close-db [c: record, db: path]: nothing -> nothing {
-  for l in [[conf dep]; [ghc-bignum gmp] [rts libffi] [rts numactl] [terminfo ncurses]] {
+  for l in [[conf dep]; [ghc-bignum gmp] [ghc-internal gmp] [rts libffi] [rts numactl] [terminfo ncurses]] {
     let root = ($c.deps | where name == $l.dep | get 0?.root)
-    if $root != null { rewrite -r (files $"($db)/($l.conf)-*.conf") [['(?m)^((dynamic-)?library-dirs:)' $"${1} ($root)/lib"]] }
+    if $root != null { rewrite -r (files $"($db)/($l.conf)-*.conf") [['(?m)^((dynamic-)?library-dirs(-static)?:)' $"${1} ($root)/lib"]] }
   }
   x $"($c.out)/bin/ghc-pkg" recache
 }
@@ -28,7 +34,7 @@ def close-db [c: record, db: path]: nothing -> nothing {
 # from the unpacked bindist in $env.PWD
 export def install []: nothing -> nothing {
   let c = (ctx)
-  x sh ./configure $"--prefix=($c.out)" ...$TOOLCHAIN
+  x sh ./configure $"--prefix=($c.out)" ...(toolchain)
   x make install
   # bin/ wrappers spell out $out: derive it from the script's location (sh builtins, PATH may be empty)
   rewrite (files --no-symlink $"($c.out)/bin/*") [['#!/bin/sh' "#!/bin/sh\ntop=$(cd \"${0%/*}/..\" && pwd)"] [$c.out '$top']]
