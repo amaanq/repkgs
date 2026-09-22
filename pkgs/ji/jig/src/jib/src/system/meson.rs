@@ -22,7 +22,6 @@ use jig::{
    files::write_file,
    tree::note,
 };
-use serde::Deserialize;
 
 use crate::{
    attrs::{
@@ -32,6 +31,7 @@ use crate::{
       Platform,
       Profile,
    },
+   schema::Field,
    system::{
       command::{
          run,
@@ -42,13 +42,17 @@ use crate::{
    },
 };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   root:       String,
-   defs:       BTreeMap<String, Def>,
-   flags:      Vec<String>,
-   skip_tests: Vec<String>,
+options! {
+   Options ("meson") {
+      root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      defs ("defs"): BTreeMap<String, Def> = BTreeMap::new()
+         => "-D options, merged over prefix/libdir/buildtype defaults",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "extra arguments for meson setup",
+      skip_tests ("skipTests"): Vec<String> = Vec::new()
+         => "substrings of `meson test --list` names",
+   }
 }
 
 enum Literal {
@@ -83,6 +87,10 @@ pub struct Meson;
 impl System for Meson {
    fn name(&self) -> &'static str {
       "meson"
+   }
+
+   fn options(&self) -> Option<Vec<Field>> {
+      Some(Options::schema())
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {

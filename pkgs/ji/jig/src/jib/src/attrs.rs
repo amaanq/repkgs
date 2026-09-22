@@ -310,11 +310,16 @@ impl Ctx {
    where
       Options: DeserializeOwned,
    {
-      let found = self
+      let mut found = self
          .spec
          .get(system)
          .cloned()
          .ok_or_else(|| io::Error::other(format!("spec has no {system} options")))?;
+
+      if let Some(options) = found.as_object_mut() {
+         options.remove("tool");
+      }
+
       Ok(serde_json::from_value(found)?)
    }
 

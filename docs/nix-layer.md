@@ -1,8 +1,8 @@
 # Nix layer
 
-The first implementation slices cover Autotools and Make with literal defaults and
-validation for booleans, strings and lists. The broader contracts and symbolic defaults
-below remain proposed work for later slices.
+The implemented slices cover Autotools, Make, CMake and Meson with literal defaults,
+lists and definition maps. Nix still binds and validates their tool packages. The broader
+contracts and symbolic defaults below remain proposed work for later slices.
 
 ## Ownership
 

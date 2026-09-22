@@ -261,8 +261,7 @@ let
   badOptions = concatMap (
     system:
     if schema.options ? ${system} then
-      schema.validate {
-        inherit system;
+      buildSystems.${system}.validate {
         value = args.${system} or { };
         recursive = false;
       }
@@ -567,8 +566,7 @@ let
             builtins.mapAttrs (
               option: value:
               let
-                errors = schema.validate {
-                  system = u;
+                errors = buildSystems.${u}.validate {
                   value = {
                     ${option} = value;
                   };

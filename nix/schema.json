@@ -122,6 +122,79 @@
         "system": "autotools"
       }
     ],
+    "cmake": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "cmake"
+      },
+      {
+        "name": "defs",
+        "type": {
+          "kind": "map",
+          "value": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "boolean"
+              },
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "integer"
+              },
+              {
+                "kind": "path"
+              },
+              {
+                "kind": "package"
+              }
+            ]
+          }
+        },
+        "default": {},
+        "doc": "-D cache entries. true/false render ON/OFF, packages their store path",
+        "system": "cmake"
+      },
+      {
+        "name": "generator",
+        "type": {
+          "kind": "string"
+        },
+        "default": "Ninja",
+        "doc": "cmake -G",
+        "system": "cmake"
+      },
+      {
+        "name": "flags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "extra arguments for cmake at configure time",
+        "system": "cmake"
+      },
+      {
+        "name": "skipTests",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "ctest -E regexes",
+        "system": "cmake"
+      }
+    ],
     "make": [
       {
         "name": "root",
@@ -228,6 +301,70 @@
         "default": [],
         "doc": "programs the Makefile installs without the platform executable suffix",
         "system": "make"
+      }
+    ],
+    "meson": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "meson"
+      },
+      {
+        "name": "defs",
+        "type": {
+          "kind": "map",
+          "value": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "boolean"
+              },
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "integer"
+              },
+              {
+                "kind": "path"
+              },
+              {
+                "kind": "package"
+              }
+            ]
+          }
+        },
+        "default": {},
+        "doc": "-D options, merged over prefix/libdir/buildtype defaults",
+        "system": "meson"
+      },
+      {
+        "name": "flags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "extra arguments for meson setup",
+        "system": "meson"
+      },
+      {
+        "name": "skipTests",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "substrings of `meson test --list` names",
+        "system": "meson"
       }
     ]
   }

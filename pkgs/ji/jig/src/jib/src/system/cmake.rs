@@ -14,10 +14,7 @@ use jig::{
       walk,
    },
 };
-use serde::{
-   Deserialize,
-   Serialize,
-};
+use serde::Serialize;
 
 use crate::{
    attrs::{
@@ -27,6 +24,7 @@ use crate::{
       Profile,
    },
    probe,
+   schema::Field,
    system::{
       command::{
          run,
@@ -37,14 +35,19 @@ use crate::{
    },
 };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   root:       String,
-   defs:       BTreeMap<String, Def>,
-   generator:  String,
-   flags:      Vec<String>,
-   skip_tests: Vec<String>,
+options! {
+   Options ("cmake") {
+      root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      defs ("defs"): BTreeMap<String, Def> = BTreeMap::new()
+         => "-D cache entries. true/false render ON/OFF, packages their store path",
+      generator ("generator"): String = "Ninja".to_owned()
+         => "cmake -G",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "extra arguments for cmake at configure time",
+      skip_tests ("skipTests"): Vec<String> = Vec::new()
+         => "ctest -E regexes",
+   }
 }
 
 #[derive(Serialize)]
@@ -59,6 +62,10 @@ pub struct Cmake;
 impl System for Cmake {
    fn name(&self) -> &'static str {
       "cmake"
+   }
+
+   fn options(&self) -> Option<Vec<Field>> {
+      Some(Options::schema())
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {

@@ -14,6 +14,7 @@ use serde::{
 };
 
 use crate::{
+   attrs::Def,
    hardening::Hardening,
    system::dispatch::schemas,
 };
@@ -24,7 +25,12 @@ use crate::{
 pub enum Type {
    Boolean,
    String,
+   Integer,
+   Path,
+   Package,
    List { element: Box<Self> },
+   Map { value: Box<Self> },
+   Union { variants: Vec<Self> },
 }
 
 #[derive(Deserialize, Eq, PartialEq, Serialize)]
@@ -33,7 +39,9 @@ pub enum Type {
 pub enum Literal {
    Boolean(bool),
    String(String),
+   Integer(i64),
    List(Vec<Self>),
+   Map(BTreeMap<String, Self>),
 }
 
 impl From<bool> for Literal {
@@ -51,6 +59,27 @@ impl From<String> for Literal {
 impl<Item: Into<Self>> From<Vec<Item>> for Literal {
    fn from(value: Vec<Item>) -> Self {
       Self::List(value.into_iter().map(Into::into).collect())
+   }
+}
+
+impl<Item: Into<Self>> From<BTreeMap<String, Item>> for Literal {
+   fn from(value: BTreeMap<String, Item>) -> Self {
+      Self::Map(
+         value
+            .into_iter()
+            .map(|(name, item)| (name, item.into()))
+            .collect(),
+      )
+   }
+}
+
+impl From<Def> for Literal {
+   fn from(value: Def) -> Self {
+      match value {
+         Def::Flag(flag) => Self::Boolean(flag),
+         Def::Text(text) => Self::String(text),
+         Def::Number(number) => Self::Integer(number),
+      }
    }
 }
 
@@ -74,6 +103,28 @@ impl<Item: OptionType> OptionType for Vec<Item> {
    fn kind() -> Type {
       Type::List {
          element: Box::new(Item::kind()),
+      }
+   }
+}
+
+impl<Item: OptionType> OptionType for BTreeMap<String, Item> {
+   fn kind() -> Type {
+      Type::Map {
+         value: Box::new(Item::kind()),
+      }
+   }
+}
+
+impl OptionType for Def {
+   fn kind() -> Type {
+      Type::Union {
+         variants: vec![
+            Type::Boolean,
+            Type::String,
+            Type::Integer,
+            Type::Path,
+            Type::Package,
+         ],
       }
    }
 }

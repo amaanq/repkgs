@@ -67,6 +67,15 @@ builtins.mapAttrs
     in
     {
       inherit options;
+      validate =
+        args:
+        schema.validate (
+          {
+            system = name;
+            extra = if bs ? tool then { tool.kind = "package"; } else { };
+          }
+          // args
+        );
       phases = map (v: "${name}.${v}") (
         bs.phases or [
           "build"
@@ -142,12 +151,7 @@ builtins.mapAttrs
         buildPkgs.ninja
         sh
       ];
-      options = {
-        defs = attrs { } "-D cache entries. true/false render ON/OFF, packages their store path";
-        generator = str "Ninja" "cmake -G";
-        flags = flags "cmake at configure time";
-        skipTests = strs [ ] "ctest -E regexes";
-      };
+      options = schema.options.cmake;
     };
     vcxproj = {
       unsupported =
@@ -177,11 +181,7 @@ builtins.mapAttrs
         buildPkgs.ninja
         sh
       ];
-      options = {
-        defs = attrs { } "-D options, merged over prefix/libdir/buildtype defaults";
-        flags = flags "meson setup";
-        skipTests = strs [ ] "substrings of `meson test --list` names";
-      };
+      options = schema.options.meson;
     };
     python = {
       phases = [
