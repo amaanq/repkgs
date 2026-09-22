@@ -4,6 +4,7 @@ use std::{
    io,
 };
 
+use jig::hackage::PackageId;
 use serde::Deserialize;
 use serde_json::Map;
 
@@ -27,15 +28,14 @@ const HACKAGE: &str = "https://hackage.haskell.org/package";
 
 #[derive(Deserialize)]
 struct Locks {
-   hackage: BTreeMap<String, Locked>,
+   hackage: BTreeMap<PackageId, Locked>,
 }
 
 #[derive(Deserialize)]
 struct Locked {
-   version: String,
-   rev:     String,
-   src:     String,
-   cabal:   String,
+   rev:   String,
+   src:   String,
+   cabal: String,
 }
 
 /// locks/hackage.toml -> one file+noindex repository for all cabal packages,
@@ -52,8 +52,7 @@ impl Producer for Hackage {
          toml::from_str(&read_to_string(attr("locks")?)?).map_err(io::Error::other)?;
       let mut rows = Vec::with_capacity(locks.hackage.len() * 2);
       let mut targets = Vec::with_capacity(locks.hackage.len() * 2);
-      for (name, entry) in &locks.hackage {
-         let id = format!("{name}-{}", entry.version);
+      for (id, entry) in &locks.hackage {
          targets.push(format!("{id}.tar.gz"));
          rows.push(Row {
             file: format!("{id}.tar.gz"),

@@ -22,7 +22,10 @@ use std::{
    },
 };
 
-use jig::syslibs::wanted_for;
+use jig::{
+   hackage::PackageId,
+   syslibs::wanted_for,
+};
 
 use crate::{
    go,
@@ -190,7 +193,14 @@ pub fn add(package: &Package) -> io::Result<Vec<Used>> {
       // no lock file in the source for prefetch to read: sys comes from the
       // solved names
       if eco == "hackage" {
-         pipeline::set_sys(package, &wanted_for(&pipeline::tables()?, "hackage", &keys))?;
+         let names = keys
+            .iter()
+            .map(|key| key.parse::<PackageId>().map(|id| id.name().to_owned()))
+            .collect::<io::Result<Vec<_>>>()?;
+         pipeline::set_sys(
+            package,
+            &wanted_for(&pipeline::tables()?, "hackage", &names),
+         )?;
       }
       used.push(Used {
          eco: eco.clone(),

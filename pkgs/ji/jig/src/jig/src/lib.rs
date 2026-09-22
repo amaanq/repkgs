@@ -2,6 +2,7 @@ pub mod directory;
 pub mod elf;
 pub mod files;
 pub mod fixup;
+pub mod hackage;
 pub mod identify;
 pub mod image;
 pub mod macho;

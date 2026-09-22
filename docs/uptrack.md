@@ -100,8 +100,11 @@ JSON is the interface for CI, reviewers and LLMs. `apply` consumes it unchanged 
 the ecosystem's own lock cannot give Nix in a tree-wide table, `$UPTRACK_LOCKS/<eco>.toml`
 (default `<root>/locks/`; another tree points `fetch.goModules { locks = ./its/go.toml; }` at its
 own). Today that is `go`: go.sum's `h1:` is a dirhash, so `[go]` maps `module@version` to the
-proxy's `.mod`/`.zip` sha256. `hackage` and `luarocks` are version sets: no upstream lock file at
-all, so the table holds version and sha256 per package, solved by cabal resp. luarocks. The table is one sorted line per entry and `merge=union` in
+proxy's `.mod`/`.zip` sha256. Hackage and LuaRocks have no upstream lock file, so Cabal and
+LuaRocks solve their dependency sets. Hackage keys each entry by `name-version`, retaining
+several releases when packages need different versions. Its fields hold the tarball hash,
+Cabal revision and revision hash. LuaRocks keeps a version and hash per package.
+The table is one sorted line per entry and `merge=union` in
 .gitattributes, so parallel additions merge textually; `treefmt` re-normalises. Cargo and npm
 locks carry file hashes already and need nothing. `uptrack lock [pkg…]` runs the stage alone.
 Entries already matching `[pin]` are no-ops, so runs resume.
