@@ -210,16 +210,7 @@ builtins.mapAttrs
       tool = buildPkgs.rust;
       tools = spec: lib.on platform.cross [ pkgs."${spec.cargo.tool.pname}-std" ];
       lock.deps = fetch.cargoVendor;
-      options = {
-        features = strs [ ] "--features";
-        noDefaultFeatures = bool false "--no-default-features";
-        flags = flags "cargo build and cargo test";
-        skipTests = strs [ ] "cargo test --skip filters (substring of the test path)";
-        deps = deps true "fetch.cargoVendor";
-        cratePatches =
-          attrs { }
-            "crate name -> patches applied to its vendored copy (-p1 inside the crate)";
-      };
+      options = schema.options.cargo;
     };
     cabal = {
       unsupported = if platform.cross then "ghc-bootstrap only targets the build machine" else null;
@@ -259,18 +250,7 @@ builtins.mapAttrs
     go = {
       tool = buildPkgs.go;
       lock.deps = fetch.goModules;
-      options = {
-        tags = strs [ ] "-tags";
-        ldflags = strs [ ] "-ldflags words (-X main.version=…)";
-        packages = strs [ "./..." ] "packages to build";
-        testPackages = opt [ "list" "null" ] null "packages to test (null: `packages`)";
-        skipTests = strs [ ] "go test -skip regexes";
-        deps = deps true "fetch.goModules" // {
-          doc = "GOPROXY tree (fetch.goModules, by default from go.sum), or null to build from the source's vendor/";
-        };
-        cgo = bool true "CGO_ENABLED and external linking";
-        flags = flags "go build and go test";
-      };
+      options = schema.options.go;
     };
     pnpm = {
       tool = buildPkgs.pnpm;

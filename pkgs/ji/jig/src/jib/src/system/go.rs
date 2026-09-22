@@ -8,12 +8,14 @@ use std::{
    path::Path,
 };
 
-use serde::Deserialize;
-
 use crate::{
    attrs::{
       Attrs,
       Ctx,
+   },
+   schema::{
+      Field,
+      PackagePath,
    },
    system::{
       command::{
@@ -28,20 +30,27 @@ use crate::{
    },
 };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   root:          String,
-   tags:          Vec<String>,
-   ldflags:       Vec<String>,
-   packages:      Vec<String>,
-   #[serde(default)]
-   test_packages: Option<Vec<String>>,
-   skip_tests:    Vec<String>,
-   #[serde(default)]
-   deps:          Option<String>,
-   cgo:           bool,
-   flags:         Vec<String>,
+options! {
+   Options ("go") {
+      root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      tags ("tags"): Vec<String> = Vec::new()
+         => "-tags",
+      ldflags ("ldflags"): Vec<String> = Vec::new()
+         => "-ldflags words (-X main.version=\u{2026})",
+      packages ("packages"): Vec<String> = vec!["./...".to_owned()]
+         => "packages to build",
+      test_packages ("testPackages"): Option<Vec<String>> = None
+         => "packages to test (null uses `packages`)",
+      skip_tests ("skipTests"): Vec<String> = Vec::new()
+         => "go test -skip regexes",
+      deps ("deps"): Option<PackagePath> = None
+         => "GOPROXY tree (fetch.goModules, by default from go.sum), or null to build from the source's vendor/",
+      cgo ("cgo"): bool = true
+         => "CGO_ENABLED and external linking",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "extra arguments for go build and go test",
+   }
 }
 
 pub struct Go;
@@ -51,11 +60,15 @@ impl System for Go {
       "go"
    }
 
+   fn options(&self) -> Option<Vec<Field>> {
+      Some(Options::schema())
+   }
+
    /// compile, asm and link take a host-wide jigd slot like cc and rustc do.
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
       let options: Options = ctx.options("go")?;
       let platform = ctx.platform()?;
-      let (mode, proxy) = options.deps.as_ref().map_or_else(
+      let (mode, proxy) = options.deps.as_deref().map_or_else(
          || ("vendor", "off".to_owned()),
          |deps| ("mod", format!("file://{deps}")),
       );

@@ -11,7 +11,10 @@ use std::{
    },
    io,
    os::unix::fs::symlink,
-   path::Path,
+   path::{
+      Path,
+      PathBuf,
+   },
    process::Command,
 };
 
@@ -20,7 +23,6 @@ use jig::{
    store::on_path,
    tree::note,
 };
-use serde::Deserialize;
 
 use crate::{
    attrs::{
@@ -29,6 +31,10 @@ use crate::{
    },
    exports::exports_of,
    prepare::succeed,
+   schema::{
+      Field,
+      PackagePath,
+   },
    system::{
       command::{
          Env,
@@ -42,18 +48,23 @@ use crate::{
    },
 };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   root:                String,
-   features:            Vec<String>,
-   no_default_features: bool,
-   flags:               Vec<String>,
-   skip_tests:          Vec<String>,
-   #[serde(default)]
-   deps:                Option<String>,
-   #[serde(default)]
-   crate_patches:       BTreeMap<String, Vec<String>>,
+options! {
+   Options ("cargo") {
+      root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      features ("features"): Vec<String> = Vec::new()
+         => "--features",
+      no_default_features ("noDefaultFeatures"): bool = false
+         => "--no-default-features",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "extra arguments for cargo build and cargo test",
+      skip_tests ("skipTests"): Vec<String> = Vec::new()
+         => "cargo test --skip filters (substring of the test path)",
+      deps ("deps"): Option<PackagePath> = None
+         => "the locked dependencies, fetched (fetch.cargoVendor), by default from the package's own lock file",
+      crate_patches ("cratePatches"): BTreeMap<String, Vec<PathBuf>> = BTreeMap::new()
+         => "crate name -> patches applied to its vendored copy (-p1 inside the crate)",
+   }
 }
 
 pub struct Cargo;
@@ -61,6 +72,10 @@ pub struct Cargo;
 impl System for Cargo {
    fn name(&self) -> &'static str {
       "cargo"
+   }
+
+   fn options(&self) -> Option<Vec<Field>> {
+      Some(Options::schema())
    }
 
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
@@ -274,7 +289,7 @@ impl Cargo {
    fn patched_vendor(
       ctx: &Ctx,
       deps: &str,
-      patches: &BTreeMap<String, Vec<String>>,
+      patches: &BTreeMap<String, Vec<PathBuf>>,
    ) -> io::Result<String> {
       let dir = format!("{}/vendor", ctx.build);
       create_dir_all(&dir)?;
@@ -310,7 +325,7 @@ impl Cargo {
                "chmod",
             )?;
             for file in files {
-               note("patch", &format!("{name}: {file}"));
+               note("patch", &format!("{name}: {}", file.display()));
                succeed(
                   Command::new("patch")
                      .arg("-d")

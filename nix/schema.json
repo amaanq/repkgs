@@ -122,6 +122,113 @@
         "system": "autotools"
       }
     ],
+    "cargo": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "cargo"
+      },
+      {
+        "name": "features",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "--features",
+        "system": "cargo"
+      },
+      {
+        "name": "noDefaultFeatures",
+        "type": {
+          "kind": "boolean"
+        },
+        "default": false,
+        "doc": "--no-default-features",
+        "system": "cargo"
+      },
+      {
+        "name": "flags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "extra arguments for cargo build and cargo test",
+        "system": "cargo"
+      },
+      {
+        "name": "skipTests",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "cargo test --skip filters (substring of the test path)",
+        "system": "cargo"
+      },
+      {
+        "name": "deps",
+        "type": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "package"
+                },
+                {
+                  "kind": "string"
+                }
+              ]
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        },
+        "default": null,
+        "doc": "the locked dependencies, fetched (fetch.cargoVendor), by default from the package's own lock file",
+        "system": "cargo"
+      },
+      {
+        "name": "cratePatches",
+        "type": {
+          "kind": "map",
+          "value": {
+            "kind": "list",
+            "element": {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "string"
+                },
+                {
+                  "kind": "path"
+                },
+                {
+                  "kind": "package"
+                }
+              ]
+            }
+          }
+        },
+        "default": {},
+        "doc": "crate name -> patches applied to its vendored copy (-p1 inside the crate)",
+        "system": "cargo"
+      }
+    ],
     "cmake": [
       {
         "name": "root",
@@ -193,6 +300,133 @@
         "default": [],
         "doc": "ctest -E regexes",
         "system": "cmake"
+      }
+    ],
+    "go": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "go"
+      },
+      {
+        "name": "tags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "-tags",
+        "system": "go"
+      },
+      {
+        "name": "ldflags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "-ldflags words (-X main.version=…)",
+        "system": "go"
+      },
+      {
+        "name": "packages",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [
+          "./..."
+        ],
+        "doc": "packages to build",
+        "system": "go"
+      },
+      {
+        "name": "testPackages",
+        "type": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "list",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        },
+        "default": null,
+        "doc": "packages to test (null uses `packages`)",
+        "system": "go"
+      },
+      {
+        "name": "skipTests",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "go test -skip regexes",
+        "system": "go"
+      },
+      {
+        "name": "deps",
+        "type": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "package"
+                },
+                {
+                  "kind": "string"
+                }
+              ]
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        },
+        "default": null,
+        "doc": "GOPROXY tree (fetch.goModules, by default from go.sum), or null to build from the source's vendor/",
+        "system": "go"
+      },
+      {
+        "name": "cgo",
+        "type": {
+          "kind": "boolean"
+        },
+        "default": true,
+        "doc": "CGO_ENABLED and external linking",
+        "system": "go"
+      },
+      {
+        "name": "flags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "extra arguments for go build and go test",
+        "system": "go"
       }
     ],
     "make": [

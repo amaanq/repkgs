@@ -5,7 +5,11 @@ use std::{
       self,
       Write as _,
    },
-   path::Path,
+   ops::Deref,
+   path::{
+      Path,
+      PathBuf,
+   },
 };
 
 use serde::{
@@ -28,6 +32,7 @@ pub enum Type {
    Integer,
    Path,
    Package,
+   Null,
    List { element: Box<Self> },
    Map { value: Box<Self> },
    Union { variants: Vec<Self> },
@@ -42,6 +47,7 @@ pub enum Literal {
    Integer(i64),
    List(Vec<Self>),
    Map(BTreeMap<String, Self>),
+   Null,
 }
 
 impl From<bool> for Literal {
@@ -53,6 +59,36 @@ impl From<bool> for Literal {
 impl From<String> for Literal {
    fn from(value: String) -> Self {
       Self::String(value)
+   }
+}
+
+impl From<PathBuf> for Literal {
+   fn from(value: PathBuf) -> Self {
+      Self::String(value.to_string_lossy().into_owned())
+   }
+}
+
+impl<Item: Into<Self>> From<Option<Item>> for Literal {
+   fn from(value: Option<Item>) -> Self {
+      value.map_or(Self::Null, Into::into)
+   }
+}
+
+#[derive(Deserialize)]
+#[serde(transparent)]
+pub struct PackagePath(String);
+
+impl Deref for PackagePath {
+   type Target = str;
+
+   fn deref(&self) -> &Self::Target {
+      &self.0
+   }
+}
+
+impl From<PackagePath> for Literal {
+   fn from(value: PackagePath) -> Self {
+      Self::String(value.0)
    }
 }
 
@@ -96,6 +132,30 @@ impl OptionType for bool {
 impl OptionType for String {
    fn kind() -> Type {
       Type::String
+   }
+}
+
+impl OptionType for PackagePath {
+   fn kind() -> Type {
+      Type::Union {
+         variants: vec![Type::Package, Type::String],
+      }
+   }
+}
+
+impl OptionType for PathBuf {
+   fn kind() -> Type {
+      Type::Union {
+         variants: vec![Type::String, Type::Path, Type::Package],
+      }
+   }
+}
+
+impl<Item: OptionType> OptionType for Option<Item> {
+   fn kind() -> Type {
+      Type::Union {
+         variants: vec![Item::kind(), Type::Null],
+      }
    }
 }
 

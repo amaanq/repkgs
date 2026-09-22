@@ -21,6 +21,7 @@ let
           integer = "int";
           path = "path";
           package = "set";
+          null = "null";
           list = "list";
           map = "set";
         }
@@ -50,6 +51,10 @@ let
     in
     if !(matches descriptor value) then
       [ "option ${path} is a ${actual}, expected ${expected}" ]
+    else if recursive && descriptor.kind == "union" then
+      checkValue true path (builtins.head (
+        builtins.filter (variant: matches variant value) descriptor.variants
+      )) value
     else if recursive && descriptor.kind == "list" then
       builtins.concatLists (
         builtins.genList (

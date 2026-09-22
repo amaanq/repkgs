@@ -1,8 +1,8 @@
 # Nix layer
 
-The implemented slices cover Autotools, Make, CMake and Meson with literal defaults,
-lists and definition maps. Nix still binds and validates their tool packages. The broader
-contracts and symbolic defaults below remain proposed work for later slices.
+The implemented slices cover Autotools, Make, CMake, Meson, Cargo and Go with literal
+defaults, nullable options, lists and maps. Nix still binds their tool packages and lock
+fetchers. The broader contracts and symbolic defaults below remain proposed work.
 
 ## Ownership
 
