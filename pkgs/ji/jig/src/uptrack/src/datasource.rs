@@ -304,22 +304,26 @@ fn listing(url: &str, name: &str, pattern: Option<&str>) -> io::Result<Vec<Candi
    let dated = Regex::new(r"(\d{4}-\d{2}-\d{2})").map_err(io::Error::other)?;
    let page = fetch(url, name, Duration::from_secs(6 * HOUR))?.body;
    let mut found: Vec<Candidate> = Vec::new();
+
    for line in page.lines() {
-      let Some(hit) = matcher.captures(line) else {
-         continue;
-      };
-      let Some(release) = hit.get(1).map(|group| group.as_str()) else {
-         continue;
-      };
-      if found.iter().any(|seen| version_of(seen) == release) {
-         continue;
-      }
       let day = dated
          .captures(line)
          .and_then(|stamp| stamp.get(1))
          .map(|group| group.as_str());
-      found.push(candidate(json!({ "version": release, "date": day })));
+
+      for hit in matcher.captures_iter(line) {
+         let Some(release) = hit.get(1).map(|group| group.as_str()) else {
+            continue;
+         };
+
+         if found.iter().any(|seen| version_of(seen) == release) {
+            continue;
+         }
+
+         found.push(candidate(json!({ "version": release, "date": day })));
+      }
    }
+
    Ok(found)
 }
 

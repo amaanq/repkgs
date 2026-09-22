@@ -26,7 +26,10 @@ use std::{
       Write as _,
    },
    path::PathBuf,
-   process::ExitCode,
+   process::{
+      Command,
+      ExitCode,
+   },
    time::Duration,
 };
 
@@ -73,6 +76,8 @@ enum Mode {
       plan:       Option<PathBuf>,
       #[pound(long)]
       prerelease: bool,
+      #[pound(long)]
+      commit:     bool,
    },
    /// build packages at their current pin (after a manual edit, or to
    /// re-check).
@@ -286,7 +291,59 @@ fn apply_entry(entry: &Entry) -> io::Result<()> {
    Ok(())
 }
 
-fn apply(names: &[String], plan: Option<&PathBuf>, prerelease: bool) -> io::Result<()> {
+fn commit_update(entry: &Entry) -> io::Result<()> {
+   let directory = root().canonicalize()?;
+   let package = entry.package.dir.canonicalize()?;
+   let path = package.strip_prefix(&directory).map_err(io::Error::other)?;
+
+   let date = entry
+      .pin
+      .as_ref()
+      .and_then(|pin| pin.get("date"))
+      .and_then(Value::as_str)
+      .map(|day| format!("released {day}"));
+
+   let body = entry
+      .sources
+      .iter()
+      .map(|source| source.url.as_str())
+      .chain(date.as_deref())
+      .collect::<Vec<_>>()
+      .join("\n");
+
+   let message = format!(
+      "{}: {} -> {}\n\n{body}\n",
+      entry.package.name,
+      entry.from.as_deref().unwrap_or_default(),
+      entry.to.as_deref().unwrap_or_default()
+   );
+
+   let mut command = Command::new("jj");
+   command
+      .current_dir(&directory)
+      .args(["commit", "--quiet", "-m", &message, "--"])
+      .arg(path);
+
+   if directory.join("locks").exists() {
+      command.arg("locks");
+   }
+
+   if !command.status()?.success() {
+      return Err(io::Error::other(format!(
+         "jj commit failed for {}",
+         entry.package.name
+      )));
+   }
+
+   Ok(())
+}
+
+fn apply(
+   names: &[String],
+   plan: Option<&PathBuf>,
+   prerelease: bool,
+   commit: bool,
+) -> io::Result<()> {
    let entries: Vec<Entry> = match plan {
       Some(file) => serde_json::from_str(&read_to_string(file)?)?,
       None => planned(names, prerelease)?,
@@ -294,6 +351,11 @@ fn apply(names: &[String], plan: Option<&PathBuf>, prerelease: bool) -> io::Resu
    let mut rows = Vec::new();
    for entry in entries.iter().filter(|entry| entry.to.is_some()) {
       apply_entry(entry)?;
+
+      if commit {
+         commit_update(entry)?;
+      }
+
       rows.push(vec![
          entry.package.name.clone(),
          entry.from.clone().unwrap_or_default(),
@@ -429,7 +491,8 @@ fn run(mode: Mode) -> io::Result<i32> {
          names,
          plan,
          prerelease,
-      } => apply(&names, plan.as_ref(), prerelease)?,
+         commit,
+      } => apply(&names, plan.as_ref(), prerelease, commit)?,
       Mode::Verify { names } => verify(&names)?,
       Mode::Rehash { names } => rehash(&names)?,
       Mode::Lock { names, prune } => lock(&names, prune)?,
