@@ -6,6 +6,7 @@
   platform,
   toolchain,
   jib,
+  seed,
   nu,
   launch,
   dlaudit,
@@ -78,6 +79,7 @@ let
 
   # the part of every derivation that is the same across the set: built once
   setCommon = {
+    inherit seed;
     inherit (platform) system;
     __structuredAttrs = true;
     # content-addressed: rebuilds that change no bytes do not propagate
@@ -454,6 +456,7 @@ let
   # `<pkg>.tests` restores it and runs only the test phases: a test failure fails that derivation,
   # not the package, and a retry does not rebuild
   separate = args.tests.separate or false;
+  testsRun = args.tests.run or true;
   # tools only the suite runs. With tests.separate they stay off the build derivation, which is
   # how the base tools test with perl (built with them) without a cycle
   testDeps = if testsRun then args.tests.dependencies or [ ] else [ ];
@@ -566,10 +569,20 @@ let
   buildDeps =
     { tests, base }:
     filter (d: !(elem d base)) (
-      [ toolchain jib ]
+      [
+        toolchain
+        jib
+      ]
       ++ (args.buildDependencies or [ ])
       ++ tests
-      ++ (if any (p: p.kind == "nu") plan.phases then [ nu ] else [ ])
+      ++ (
+        if
+          any (p: p.kind == "nu") plan.phases
+        then
+          [ nu ]
+        else
+          [ ]
+      )
       ++ (if prebuilt == true then relocTools else [ ])
       ++ concatMap (u: buildSystems.${u}.tools spec ++ stackBefore buildSystems.${u}.stack) uses
     )

@@ -65,10 +65,10 @@ impl System for Cmake {
       Ok(PathBuf::from(&ctx.build))
    }
 
-   fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
+   fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
       let options: Options = ctx.options("cmake")?;
       match verb {
-         "configure" => Self::configure(ctx, &options, socket),
+         "configure" => Self::configure(ctx, attrs, &options, socket),
          "build" => {
             let jobs = format!("-j{}", ctx.njobs);
             run("cmake", &["--build", ".", &jobs], &[])
@@ -106,8 +106,13 @@ impl Cmake {
    }
 
    /// Darwin.cmake finds usr/ and the frameworks from `CMAKE_OSX_SYSROOT`.
-   fn defaults(ctx: &Ctx, options: &Options) -> io::Result<Vec<(String, Def)>> {
+   fn defaults(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<Vec<(String, Def)>> {
       let platform = ctx.platform()?;
+      let tree = attrs
+         .probe_inputs
+         .first()
+         .ok_or_else(|| io::Error::other("the builder tree is not among probeInputs"))?;
+
       let build_type = match ctx.spec()?.profile {
          Profile::Debug => "Debug",
          Profile::Release => "Release",
@@ -126,6 +131,10 @@ impl Cmake {
             Def::Text("lib".to_owned()),
          ),
          (
+            "CMAKE_INSTALL_SBINDIR".to_owned(),
+            Def::Text("bin".to_owned()),
+         ),
+         (
             "CMAKE_PREFIX_PATH".to_owned(),
             Def::Text(
                ctx.deps
@@ -137,6 +146,14 @@ impl Cmake {
          ),
          (
             "CMAKE_SYSTEM_PREFIX_PATH".to_owned(),
+            Def::Text(platform.sysroot.clone()),
+         ),
+         (
+            "CMAKE_PROJECT_TOP_LEVEL_INCLUDES".to_owned(),
+            Def::Text(format!("{tree}/systems/sysroot-libs.cmake")),
+         ),
+         (
+            "PKGS_SYSROOT".to_owned(),
             Def::Text(platform.sysroot.clone()),
          ),
          ("BUILD_SHARED_LIBS".to_owned(), Def::Flag(true)),
@@ -170,8 +187,8 @@ impl Cmake {
       Ok(defs)
    }
 
-   fn configure(ctx: &Ctx, options: &Options, socket: &Path) -> io::Result<()> {
-      let defs = Self::defaults(ctx, options)?;
+   fn configure(ctx: &Ctx, attrs: &Attrs, options: &Options, socket: &Path) -> io::Result<()> {
+      let defs = Self::defaults(ctx, attrs, options)?;
       let srcdir = ctx.project_dir(&options.root);
       let scripts: Vec<String> = walk(&srcdir)?
          .into_iter()

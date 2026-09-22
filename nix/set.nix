@@ -44,7 +44,7 @@ let
   plat = stage.platform // rec {
     inherit system;
     cross = platform != system;
-    buildRustTriple = bootstrap.stage1.${builtins.head (builtins.split "-" system)}.platform.rustTriple;
+    buildRustTriple = bootstrap.stage1.platform.rustTriple;
     inherit (bootstrap) buildTriple;
     # its address cap is $QEMU_RESERVED_VA (jib prepare), build systems want one word here
     emulator =
@@ -142,6 +142,7 @@ let
     # `prebuilt = true` patches upstream ELFs with it (builder/implant.nu)
     relocTools = [ buildPkgs.formatelf ];
     inherit (tools) jib nu;
+    inherit (bootstrap) seed;
     inherit
       toolchain
       launch

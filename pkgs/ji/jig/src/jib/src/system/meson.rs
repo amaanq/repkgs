@@ -137,9 +137,27 @@ impl Meson {
          ("pkg-config", Self::text("pkg-config")),
          ("cmake", Self::text("cmake")),
       ];
+
+      if platform.os == "macos" {
+         binaries.extend([("objc", Self::text("cc")), ("objcpp", Self::text("c++"))]);
+      }
+
       if !platform.emulator.is_empty() {
          binaries.push(("exe_wrapper", Literal::List(platform.emulator.clone())));
       }
+
+      let mut machine = vec![
+         ("system", Self::text(&platform.os_names.meson)),
+         ("kernel", Self::text(&platform.os_names.meson_kernel)),
+         ("cpu_family", Self::text(&platform.names.meson)),
+         ("cpu", Self::text(&platform.cpu)),
+         ("endian", Self::text(&platform.endian)),
+      ];
+
+      if platform.os == "macos" {
+         machine.push(("subsystem", Self::text("macos")));
+      }
+
       let host = Self::machine_file(&format!("{}/cross.ini", ctx.build), &[
          ("binaries", binaries),
          ("properties", vec![
@@ -158,13 +176,7 @@ impl Meson {
                Literal::Text(var("PKG_CONFIG_PATH").unwrap_or_default()),
             ),
          ]),
-         ("host_machine", vec![
-            ("system", Self::text(&platform.os_names.meson)),
-            ("kernel", Self::text(&platform.os_names.meson_kernel)),
-            ("cpu_family", Self::text(&platform.names.meson)),
-            ("cpu", Self::text(&platform.cpu)),
-            ("endian", Self::text(&platform.endian)),
-         ]),
+         ("host_machine", machine),
       ])?;
       let native =
          Self::machine_file(&format!("{}/native.ini", ctx.build), &[("binaries", vec![
@@ -207,6 +219,7 @@ impl Meson {
       let mut defs = vec![
          ("prefix".to_owned(), Def::Text(ctx.out.clone())),
          ("libdir".to_owned(), Def::Text("lib".to_owned())),
+         ("sbindir".to_owned(), Def::Text("bin".to_owned())),
          ("buildtype".to_owned(), Def::Text(buildtype.to_owned())),
          ("default_library".to_owned(), Def::Text("shared".to_owned())),
          ("wrap_mode".to_owned(), Def::Text("nodownload".to_owned())),

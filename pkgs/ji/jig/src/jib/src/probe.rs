@@ -156,28 +156,54 @@ pub fn store_dir(key: &str, dir: &Path, socket: &Path) -> io::Result<()> {
 }
 
 pub fn cmake_init(cache: &Path) -> io::Result<String> {
+   let bracket = |text: &str| {
+      let mut delimiter = String::new();
+
+      while text.contains(&format!("]{delimiter}]")) {
+         delimiter.push('=');
+      }
+
+      format!("[{delimiter}[{text}]{delimiter}]")
+   };
    let mut lines = Vec::new();
+
    for line in read_to_string(cache)?.lines() {
-      let Some((name, value)) = line.split_once(":INTERNAL=") else {
+      if line.starts_with('#') || line.starts_with("//") {
+         continue;
+      }
+
+      let entry = line.strip_prefix('"').map_or_else(
+         || line.split_once(':').filter(|entry| !entry.0.contains('=')),
+         |quoted| quoted.split_once("\":"),
+      );
+      let Some((name, body)) = entry else {
          continue;
       };
+
+      let Some(value) = body.strip_prefix("INTERNAL=") else {
+         continue;
+      };
+
       if name.is_empty()
-         || !name
-            .chars()
-            .all(|found| found.is_ascii_alphanumeric() || found == '_')
          || name.starts_with("CMAKE_")
-         || name.ends_with("-ADVANCED")
-         || value.contains('/')
+         || ["-ADVANCED", "-STRINGS", "-MODIFIED"]
+            .iter()
+            .any(|suffix| name.ends_with(suffix))
       {
          continue;
       }
-      let mut delimiter = String::from("=");
-      while value.contains(&format!("]{delimiter}]")) {
-         delimiter.push('=');
-      }
+
+      let trimmed = value.trim_end_matches([' ', '\t', '\r']);
+      let unquoted = trimmed
+         .strip_prefix('\'')
+         .and_then(|rest| rest.strip_suffix('\''))
+         .unwrap_or(trimmed);
       lines.push(format!(
-         "set({name} [{delimiter}[{value}]{delimiter}] CACHE INTERNAL \"\")"
+         "set({} {} CACHE INTERNAL \"\")",
+         bracket(name),
+         bracket(unquoted),
       ));
    }
+
    Ok(lines.join("\n"))
 }

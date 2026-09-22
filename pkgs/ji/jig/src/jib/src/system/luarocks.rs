@@ -73,6 +73,11 @@ impl Luarocks {
          &lua_dir,
          "CFLAGS=-O2 -fPIC",
       ];
+
+      if ctx.platform()?.os == "macos" {
+         args.push("LIBFLAG=-bundle -undefined dynamic_lookup");
+      }
+
       args.extend(strs(&options.flags));
       args.extend(options.rockspec.as_deref());
       run("luarocks", &args, &[])?;

@@ -37,6 +37,7 @@ use crate::{
 
 #[derive(Deserialize)]
 pub struct Attrs {
+   pub seed:               String,
    #[serde(rename = "buildDependencies")]
    pub build_dependencies: Vec<String>,
    pub dependencies:       Vec<String>,
@@ -209,6 +210,8 @@ pub struct OsNames {
    pub cmake:        String,
    #[serde(default)]
    pub go:           String,
+   #[serde(default)]
+   pub uname:        String,
    #[serde(default)]
    pub meson:        String,
    #[serde(default)]

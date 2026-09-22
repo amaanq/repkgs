@@ -378,12 +378,15 @@ impl Evaluation {
          let path = win_path(include, dir)?;
          if include.contains(['*', '?']) {
             for matched in glob(&path).map_err(io::Error::other)? {
+               let matched_path = matched.map_err(io::Error::other)?;
+
+               if !matched_path.is_file() {
+                  continue;
+               }
+
                paths.push((
                   include.to_owned(),
-                  matched
-                     .map_err(io::Error::other)?
-                     .to_string_lossy()
-                     .into_owned(),
+                  matched_path.to_string_lossy().into_owned(),
                ));
             }
          } else {

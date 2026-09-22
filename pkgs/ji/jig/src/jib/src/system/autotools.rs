@@ -47,7 +47,6 @@ use crate::{
          Env,
          run,
          strs,
-         tool,
          unknown,
       },
       dispatch::System,
@@ -99,10 +98,10 @@ impl System for Autotools {
       Ok(shell()?.into())
    }
 
-   fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
+   fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
       let options: Options = ctx.options("autotools")?;
       match verb {
-         "configure" => Self::configure(ctx, &options, socket),
+         "configure" => Self::configure(ctx, attrs, &options, socket),
          "build" => make::build(ctx, &options.make_flags, &options.build_target),
          "test" => make::test(ctx, &options.make_flags, &options.test_target),
          "install" => {
@@ -117,8 +116,12 @@ impl System for Autotools {
 }
 
 impl Autotools {
-   fn configure(ctx: &Ctx, options: &Options, socket: &Path) -> io::Result<()> {
-      let script = format!("{}/{}", ctx.src, options.configure_script);
+   fn configure(ctx: &Ctx, attrs: &Attrs, options: &Options, socket: &Path) -> io::Result<()> {
+      let script = ctx
+         .project_dir(&options.root)
+         .join(&options.configure_script)
+         .to_string_lossy()
+         .into_owned();
       let platform = ctx.platform()?;
       let host_flags: Vec<String> = if platform.cross {
          vec![
@@ -143,7 +146,10 @@ impl Autotools {
       let restored = probe::restore(&key, Path::new(&cache), socket)?;
       note("config.cache", if restored { "restored" } else { "cold" });
       Self::backports(Path::new(&ctx.src))?;
-      copy(tool("install")?, Self::install_tool(ctx))?;
+      copy(
+         Path::new(&attrs.seed).join("bin/install"),
+         Self::install_tool(ctx),
+      )?;
       let mut args = vec![
          script.as_str(),
          "--disable-nls",
@@ -197,6 +203,11 @@ impl Autotools {
          "**/ltmain.sh",
          b"\t    # Linking convenience modules into shared libraries is allowed,\n",
          b"\t    case $deplib in */libgcc*.$libext | */libclang_rt*.$libext) deplibs=\"$deplib $deplibs\"; continue ;; esac\n\t    # Linking convenience modules into shared libraries is allowed,\n",
+      ),
+      (
+         "**/config.sub",
+         b"| riscv | riscv32 | riscv64 \\",
+         b"| loongarch32 | loongarch64 | riscv | riscv32 | riscv64 \\",
       ),
    ];
 

@@ -67,6 +67,16 @@ impl System for Make {
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
       let options: Options = ctx.options("make")?;
+      // PREFIX/prefix for hand-written Makefiles, configure'd ones ignore them.
+      let mut flags = vec![format!("PREFIX={}", ctx.out), format!("prefix={}", ctx.out)];
+      let platform = ctx.platform()?;
+
+      if platform.cross {
+         flags.push(format!("UNAME={}", platform.os_names.uname));
+      }
+
+      flags.extend(options.flags);
+
       match verb {
          "configure" => {
             let script = format!("./{}", options.configure_script);
@@ -88,10 +98,9 @@ impl System for Make {
                jobs.as_str(),
             )])
          },
-         "build" => build(ctx, &options.flags, &options.build_target),
-         "test" => test(ctx, &options.flags, &options.test_target),
+         "build" => build(ctx, &flags, &options.build_target),
+         "test" => test(ctx, &flags, &options.test_target),
          "install" => {
-            let mut flags = options.flags;
             flags.extend(options.install_flags);
             with_programs(ctx, &options.programs, || {
                install(ctx, &flags, &options.install_target)
@@ -124,6 +133,10 @@ fn with_programs(
    }
    for program in programs {
       for path in glob(&format!("**/{program}{exe}"))? {
+         if !path.is_file() {
+            continue;
+         }
+
          let plain = path
             .to_string_lossy()
             .strip_suffix(exe.as_str())
@@ -152,19 +165,14 @@ pub fn build(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> 
 
 pub fn test(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
    let jobs = format!("-j{}", ctx.test_jobs()?);
-   let mut args = vec![jobs.as_str()];
+   let mut args = vec![jobs.as_str(), "VERBOSE=1"];
    args.extend(strs(targets));
    args.extend(strs(flags));
    run("make", &args, &[])
 }
 
-/// PREFIX/prefix for hand-written Makefiles, configure'd ones ignore them.
-pub fn install(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
-   let upper = format!("PREFIX={}", ctx.out);
-   let lower = format!("prefix={}", ctx.out);
+pub fn install(_ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
    let mut args: Vec<&str> = strs(targets).collect();
-   args.push(&upper);
-   args.push(&lower);
    args.extend(strs(flags));
    run("make", &args, &[])
 }
