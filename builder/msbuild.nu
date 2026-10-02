@@ -1,9 +1,10 @@
+# MSBuild project evaluation through `jib msbuild`, for recipes driving Visual Studio projects
 export def evaluate [file: path, seeds: record, --itemdefs: record = {}]: nothing -> record {
   {properties: $seeds, itemdefs: $itemdefs} | to json | ^jib msbuild $file | from json
 }
 
-export def win-path [p: string, dir: string]: nothing -> string {
-  let s = ($p | str replace -a '\' '/')
-  if ($s | str starts-with "/") { $s } else { $dir | path join $s | path expand -n }
+# a Windows path from a project file, absolute against `dir` unless it already is
+export def win-path [path: string, dir: string]: nothing -> string {
+  let forward = ($path | str replace -a '\' '/')
+  if ($forward | str starts-with "/") { $forward } else { $dir | path join $forward | path expand -n }
 }
-

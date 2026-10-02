@@ -3,8 +3,8 @@
 
 use core.nu *
 
-# Every dynamically linked ELF under bin/, lib/, libexec/ of `dir` (default $out) gets what our
-# linker would have given it:
+# Every dynamically linked ELF under bin/, lib/ and libexec/ of `dir` ($out unless given) gets
+# what our linker would have given it:
 #   - a RUNPATH over libc and the dependencies' lib dirs, padded so reloc-fixup can rewrite it
 #     in place afterwards, with the same slack the driver gives its own links
 #   - for executables also our ld.so as interpreter and the relocation stub as entry point
@@ -14,8 +14,8 @@ use core.nu *
 # reach $out (ghc's `make install` calls the just-installed ghc-pkg). That tree gets interpreter
 # and RUNPATH but no stub, since the stub only works after reloc-fixup, which runs over $out.
 # Idempotent: a second pass over the same files writes the same strings into the same place.
-export def main [c: record, dir?: path]: nothing -> nothing {
-  let dir = ($dir | default $c.out)
-  let stub = (if $dir == $c.out { [--stub $c.platform.relocStub] } else { [] })
-  ^jib implant $dir --interp $c.platform.interp ...$stub ...(attrs).dependencies
+export def main [context: record, dir?: path]: nothing -> nothing {
+  let target = ($dir | default $context.out)
+  let stub = if $target == $context.out { [--stub $context.platform.relocStub] } else { [] }
+  ^jib implant $target --interp $context.platform.interp ...$stub ...(attrs).dependencies
 }
