@@ -578,12 +578,11 @@ derivation's `result.json` instead.
 `identify` prints `{ "<path>": "<32 hex>" }` per argument, a blake3 over the sorted tree of
 relative path, kind and file content (or link target), or over the file when the path is one.
 The result is stored under `identity/v3/<path>` in jigd, so each store path is hashed once.
-Configure cache keys use these identities for sources, patches and recipes.
 
-`probe key <kind> <scripts…> [--extra <json>] [--no-out]` prints `probe/v3/<kind>/<hash>` over
-the scripts, full store roots, identities of source, patches and builder tree, spec, platform,
-environment, `CONFIG_SITE` files and `extra`. Store hashes remain in the key because configure
-results can depend on absolute paths. `restore` and `store` move unchanged file bytes through
+`probe key <kind> <scripts…> [--extra <json>] [--no-out]` prints `probe/v4/<kind>/<hash>` over
+the scripts' contents, `extra`, the full store roots, jig's injected flags (`PKGS_CC`) and `$out`
+unless `--no-out`. Store hashes remain in the key because configure results can depend on
+absolute paths, and `$out` pins every other input of the derivation. `restore` and `store` move unchanged file bytes through
 jigd, with failed uploads reported without failing the build. `restore-dir` and `store-dir` move a tree,
 `cmake-init` renders a `CMakeCache.txt`'s path-free `INTERNAL` entries as a `-C` script.
 

@@ -89,7 +89,7 @@ fn probe_mode(operation: ProbeOperation, socket: &Path) -> Result<i32> {
             .as_deref()
             .map(serde_json::from_str::<serde_json::Value>)
             .transpose()?;
-         let key = probe::key(&kind, &scripts, parsed.as_ref(), no_out, socket)?;
+         let key = probe::key(&kind, &scripts, parsed.as_ref(), no_out)?;
          writeln!(io::stdout().lock(), "{key}")?;
       },
       ProbeOperation::Restore { key, file } => {

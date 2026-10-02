@@ -1,8 +1,5 @@
 use std::{
-   env::{
-      var,
-      vars,
-   },
+   env::var,
    fs::{
       read,
       read_to_string,
@@ -17,7 +14,6 @@ use jig::{
       put_directory,
    },
    files::write_file,
-   identify::identities,
    tree::note,
 };
 use serde::Serialize;
@@ -28,75 +24,42 @@ use serde_json::{
 use wire::client::Client;
 
 use crate::attrs::{
-   Attrs,
    Ctx,
    build_top,
 };
 
-const PRIVATE: [&str; 4] = ["JIG_LOG", "JIG_LOG_ARGS", "JIG_SOCK", "JIG_SLOT"];
-
+/// `$out` unless `no_out`, since configure records the prefix.
 pub fn key<Extra>(
    kind: &str,
    scripts: &[String],
    extra: Option<&Extra>,
    no_out: bool,
-   socket: &Path,
 ) -> io::Result<String>
 where
    Extra: Serialize,
 {
-   let attrs = Attrs::load()?;
    let ctx = Ctx::load(&build_top()?)?;
-   let mut environment: Vec<(String, String)> = vars()
-      .filter(|pair| !PRIVATE.contains(&pair.0.as_str()))
-      .collect();
-   environment.sort();
-   let sites: Vec<Value> = var("CONFIG_SITE")
-      .unwrap_or_default()
-      .split_whitespace()
-      .map(|site| {
-         json!({
-            "path": site,
-            "hash": read(site).ok().map(|bytes| hex(&bytes)),
-         })
-      })
-      .collect();
-   let mut by_content: Vec<String> = Vec::new();
-   for path in attrs
-      .probe_inputs
-      .iter()
-      .chain([&attrs.src])
-      .chain(&attrs.patches)
-   {
-      if !path.is_empty() && !by_content.contains(path) {
-         by_content.push(path.clone());
-      }
-   }
-   let identity = identities(&by_content, socket)?;
-   let of = |path: &String| identity.get(path).cloned().unwrap_or(Value::Null);
    let mut sorted = scripts.to_vec();
    sorted.sort();
-   let script: Vec<Value> = sorted
+   let files = sorted
       .iter()
-      .map(|path| Ok(json!({ "path": path, "hash": hex(&read(path)?) })))
-      .collect::<io::Result<_>>()?;
+      .map(|path| Ok(hex(&read(path)?)))
+      .collect::<io::Result<Vec<_>>>()?;
+   let cc: Value = match var("PKGS_CC") {
+      Ok(flags) => serde_json::from_str(&flags)?,
+      Err(_) => Value::Null,
+   };
    let record = json!({
-      "kind": kind,
-      "script": script,
-      "source": of(&attrs.src),
-      "patches": attrs.patches.iter().map(of).collect::<Vec<_>>(),
-      "recipes": attrs.probe_inputs.iter().map(of).collect::<Vec<_>>(),
-      "spec": ctx.spec,
-      "platform": ctx.platform,
+      "files": files,
+      "args": extra,
       "roots": ctx.roots,
-      "out": if no_out { Value::Null } else { Value::String(ctx.out.clone()) },
-      "build": ctx.build,
-      "environment": environment.iter().map(|pair| json!({ "name": pair.0, "value": pair.1 })).collect::<Vec<_>>(),
-      "sites": sites,
-      "extra": extra,
+      "cc": cc,
+      "out": if no_out { None } else { Some(&ctx.out) },
    });
-   let text = serde_json::to_vec(&record)?;
-   Ok(format!("probe/v3/{kind}/{}", hex(&text)))
+   Ok(format!(
+      "probe/v4/{kind}/{}",
+      hex(&serde_json::to_vec(&record)?)
+   ))
 }
 
 fn hex(bytes: &[u8]) -> String {

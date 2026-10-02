@@ -1,5 +1,4 @@
 use core.nu *
-use build-cache.nu
 
 def --wrapped hadrian [...args: string]: nothing -> nothing {
   let c = (ctx)
@@ -22,14 +21,14 @@ export def configure []: nothing -> nothing {
 # only matters from the bindist's configure on
 def key []: nothing -> string {
   let a = (attrs)
-  build-cache key --no-out $"hadrian/($a.src | path basename)" $a.patches
+  ^jib probe key $"hadrian/($a.src | path basename)" ...$a.patches --no-out
 }
 
 export def build []: nothing -> nothing {
   let dir = $"((ctx).src)/_build"
-  note hadrian-cache (if (build-cache restore-dir (key) $dir) { "restored" } else { "cold" })
+  note hadrian-cache (if (^jib probe restore-dir (key) $dir | complete).exit_code == 0 { "restored" } else { "cold" })
   hadrian binary-dist-dir
-  build-cache store-dir (key) $dir
+  ^jib probe store-dir (key) $dir
 }
 
 export def install []: nothing -> nothing {

@@ -191,7 +191,7 @@ fn install_escript(ctx: &Ctx, file: &str) -> io::Result<()> {
    )
 }
 
-fn deps_key(tool: Tool, options: &Options, socket: &Path) -> io::Result<String> {
+fn deps_key(tool: Tool, options: &Options) -> io::Result<String> {
    let set = Path::new(&*options.deps)
       .file_name()
       .map(|name| name.to_string_lossy().into_owned())
@@ -201,7 +201,6 @@ fn deps_key(tool: Tool, options: &Options, socket: &Path) -> io::Result<String> 
       &[],
       None::<&()>,
       false,
-      socket,
    )
 }
 
@@ -335,7 +334,7 @@ fn setup(tool: Tool, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<Env>
          ("_build/prod/lib", "mix-deps")
       },
    };
-   let key = deps_key(tool, &options, socket)?;
+   let key = deps_key(tool, &options)?;
    let restored = probe::restore_dir(&key, Path::new(compiled), socket)?;
    note(kind, if restored { "restored" } else { "cold" });
    if matches!(tool, Tool::Mix) {
@@ -359,7 +358,7 @@ fn phase(tool: Tool, ctx: &Ctx, verb: &str, socket: &Path) -> io::Result<()> {
          args.extend(strs(&options.flags));
          run("rebar3", &args, &[])?;
          probe::store_dir(
-            &deps_key(tool, &options, socket)?,
+            &deps_key(tool, &options)?,
             Path::new("_build/default/checkouts"),
             socket,
          )

@@ -167,7 +167,6 @@ impl Autotools {
             host:   &host_flags,
          }),
          false,
-         socket,
       )?;
       let restored = probe::restore(&key, Path::new(&cache), socket)?;
       note("config.cache", if restored { "restored" } else { "cold" });

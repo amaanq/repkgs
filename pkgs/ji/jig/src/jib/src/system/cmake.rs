@@ -219,7 +219,6 @@ impl Cmake {
             flags:     &options.flags,
          }),
          false,
-         socket,
       )?;
       let init = format!("{}/probe-init.cmake", ctx.build);
       let restored = probe::restore(&key, Path::new(&init), socket)?;
