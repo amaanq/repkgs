@@ -24,7 +24,7 @@ nvchecker, Homebrew livecheck, Guix refresh).
 - At scale the expensive part is polling. It must be one batched, cached pass that never runs
   per-package code.
 
-## Metadata: `sources.toml`
+## Metadata: `package.toml`
 
 One file per package. Humans write `[upstream]`, `[[source]].url`, `[watch]`, `[locks]`. The
 tool writes `hash` and `[pin]`. Nix reads it with `fromTOML`.
@@ -80,7 +80,7 @@ that listing a whole tree is a glob, and so the same file works in repos without
 discover → resolve → decide → apply → verify
 ```
 
-**discover** globs `sources.toml`, validates (unknown keys are errors that list the known ones).
+**discover** globs `package.toml`, validates (unknown keys are errors that list the known ones).
 
 **resolve** is the only stage that talks to upstreams, and it only evaluates watches. Purls are
 grouped by host: GitHub gets one GraphQL query per 100 repositories, registries their JSON
@@ -114,7 +114,7 @@ plan entry: the `version:` line our build prints, closure size delta, test resul
 
 ## Custom stages
 
-Without an `update.nu` a package needs nothing beyond `sources.toml`: versions come from the
+Without an `update.nu` a package needs nothing beyond `package.toml`: versions come from the
 purl's datasource (github, gitlab, pypi, cargo, npm, hackage, gnu, `generic` with `?url=`, and
 two vendor feeds: `visualstudio` for the VS release manifest, `applesdk` for the macOS software
 update catalog), every `[[source]].url` gets `{version}` and the other `[pin]` keys substituted and prefetched, missing
@@ -152,14 +152,14 @@ compiler-rt source lists from the new tarball, `pkgs/ru/rust-bootstrap/update.nu
 ## CLI
 
 ```
-uptrack list [names]                     parse and validate every sources.toml
+uptrack list [names]                     parse and validate every package.toml
 uptrack check [names] [--json]           poll upstreams, print pending updates and problems (exit 10 if pending)
 uptrack apply [names] [--plan f]         write hash + [pin] (+ hook files, locks) for pending updates
               [--commit]                 one commit per update, `name: 1.2 -> 1.3` (jj, else git)
 uptrack verify [names]                   nix-build at the current pin
 uptrack rehash [names]                   re-prefetch at the current pin, after editing a url
 uptrack lock [names] [--prune]           fill locks/<eco>.toml for packages with [locks]
-uptrack init <dir> <purl> <url-template> new sources.toml, pinned to upstream's newest
+uptrack init <dir> <purl> <url-template> new package.toml, pinned to upstream's newest
 ```
 
 The `uptrack` crate in `pkgs/ji/jig/src/`: purl, version comparison, datasources (github,

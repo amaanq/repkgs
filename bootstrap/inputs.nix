@@ -1,4 +1,4 @@
-# What each bootstrap recipe reads besides its stage: sources from the packages' sources.toml,
+# What each bootstrap recipe reads besides its stage: sources from the packages' package.toml,
 # the C sources of the target-side runtime, patches
 {
   pkg,

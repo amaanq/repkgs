@@ -9,7 +9,7 @@
   on,
 }:
 let
-  glibc = builtins.fromTOML (builtins.readFile ../../gl/glibc/sources.toml);
+  glibc = builtins.fromTOML (builtins.readFile ../../gl/glibc/package.toml);
 in
 package {
   name = "zig";

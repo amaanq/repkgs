@@ -1,6 +1,6 @@
-# Reads a sources.toml (docs/uptrack.md). URL templates expand like uptrack `expand`.
+# Reads a package.toml (docs/uptrack.md). URL templates expand like uptrack `expand`.
 # `unpacker`: store path with bin/bsdtar (the seed), `jig`: the jig that downloads and unpacks.
-# Only the seed's own sources.toml (a .nar) is read without them.
+# Only the seed's own package.toml (a .nar) is read without them.
 {
   unpacker,
   jig ? null,

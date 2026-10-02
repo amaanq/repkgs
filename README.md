@@ -70,7 +70,7 @@ A package is a directory with two files:
 ```
 pkgs/li/libpng/
 ├── package.nix     how to build it
-└── sources.toml    where it comes from: upstream id, URL template, pinned version and hash
+└── package.toml    where it comes from: upstream id, URL template, pinned version and hash
 ```
 
 ```nix
@@ -83,7 +83,7 @@ package {
 }
 ```
 
-`sources.toml` supplies version and tarball. `uses` names the build system, and the build system
+`package.toml` supplies version and tarball. `uses` names the build system, and the build system
 brings its tools, its phases (configure, build, test, install) and its options. Options
 are things like `cmake.defs` above, `cargo.features` or `go.tags`, and every build system has
 `<name>.tool` to swap the program itself (`cargo.tool = buildPkgs.rust-bootstrap`).
@@ -175,7 +175,7 @@ nothing links against.
 
 ## Keeping it current
 
-`uptrack` (pkgs/up/uptrack, also `repkgs update …`) reads every `sources.toml`, asks upstream
+`uptrack` (pkgs/up/uptrack, also `repkgs update …`) reads every `package.toml`, asks upstream
 for new versions, and rewrites pin and hash:
 
 ```console

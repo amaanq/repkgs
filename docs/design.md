@@ -47,7 +47,7 @@ A package is a function returning a small attrset, the *spec*. `nix/package` che
 
 ```
 pkgs/zl/zlib/package.nix     attribute = directory name, two-letter shards
-pkgs/zl/zlib/sources.toml    upstream pin (url template, version, hash)
+pkgs/zl/zlib/package.toml    upstream pin (url template, version, hash)
 pkgs/cp/cpython314/          another major version is another package, pkgs/aliases.toml maps cpython → cpython314
 ```
 
@@ -56,9 +56,9 @@ pkgs/cp/cpython314/          another major version is another package, pkgs/alia
 reads one file. `buildPkgs` is the build machine's set. Another platform is another import.
 
 Every package exists on every platform. `pkg.supported` says whether it is *for* it, without
-forcing the derivation: prebuilts are for the platforms their `sources.toml` has tarballs for (keys `x86_64-linux`, `aarch64-macos`), a
+forcing the derivation: prebuilts are for the platforms their `package.toml` has tarballs for (keys `x86_64-linux`, `aarch64-macos`), a
 recipe can narrow with `platforms.{cpu,os,abi,libc}` lists, `platforms.posix = true` or `platforms.cross = false`, and unsupported
-dependencies propagate. Only the store paths throw (`bun: sources.toml has no 'riscv64-linux' source`), so CI filters on a boolean instead of
+dependencies propagate. Only the store paths throw (`bun: package.toml has no 'riscv64-linux' source`), so CI filters on a boolean instead of
 `tryEval`, which would also hide real errors.
 
 ### Overrides
@@ -71,7 +71,7 @@ import ./. {
     zlib.autotools.flags.append = [ "--zprefix" ];
     git.dependencies.remove = [ "pcre2" ];        # strings name packages of the final set
     curl.env.merge = { CURL_DEBUG = "1"; };
-    jq.pin.merge = { version = "1.8.3"; };        # re-reads sources.toml under this pin
+    jq.pin.merge = { version = "1.8.3"; };        # re-reads package.toml under this pin
     jq.hash.merge = { default = "sha256-…"; };
     gcc.edit = spec: spec // { … };               # when set/append/prepend/merge/remove are not enough
   };
@@ -84,7 +84,7 @@ also takes back what an earlier one appended. Every path is checked (unknown pac
 of a missing field, `append` on a non-list, a dependency naming nothing) and the result is
 validated like a written spec. There is no `.override`, overlay or module system besides this.
 In-tree variants use the same verbs: `llvm22` is `variant pkgs.llvm { }` with its own
-`sources.toml`.
+`package.toml`.
 
 `features` are the other direction: choices a package offers, named by the package.
 
@@ -116,7 +116,7 @@ derivation and readable as `pkgs.curl.features`. Packages without `features` pay
 
 ## Sources and lock files
 
-`sources.toml` → a fixed-output fetch named after the URL, so a bumped version with a stale hash
+`package.toml` → a fixed-output fetch named after the URL, so a bumped version with a stale hash
 is an error, not the old tarball. Archives are unpacked once into the store.
 
 - **Upstream lock files are never copied or hashed.** `fetch.cargoVendor { source }` is a

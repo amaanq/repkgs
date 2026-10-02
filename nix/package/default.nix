@@ -15,7 +15,7 @@
   relocTools,
   # overrides applied to a spec before validation: name -> spec -> spec (nix/overrides.nix)
   edit,
-  # [pin] sys in sources.toml names packages of the set
+  # [pin] sys in package.toml names packages of the set
   pkgs,
   lib,
 }:
@@ -101,14 +101,14 @@ let
     };
   };
 in
-# sources: the package's sources.toml (nix/sources.nix) or null. It supplies version and source
+# sources: the package's package.toml (nix/sources.nix) or null. It supplies version and source
 # unless package.nix sets them (local trees, demos)
 # dir: the package's directory, where a phase prefix that is no build system finds <prefix>.nu
 sources0: dir: features: fn: written:
 let
   edited = if edit == null then written else edit written.name written;
   # an override may repin the package: `pin.merge = { version = "…"; }` plus
-  # `hash.merge = { default = "sha256-…"; }` re-read sources.toml under the new [pin]
+  # `hash.merge = { default = "sha256-…"; }` re-read package.toml under the new [pin]
   repinned = edit != null && sources0 != null && (edited ? pin || edited ? hash);
   sources = if repinned then sources0.repin (edited.pin or { }) (edited.hash or { }) else sources0;
   fromSources =
@@ -196,7 +196,7 @@ let
     if !(elem field schema.recipeFields) || errors == [ ] then value else fail (join "; " errors)
   ) args;
 
-  # `source` as a plain string names a sources.toml key; a cpu the file has no tarball for is
+  # `source` as a plain string names a package.toml key; a cpu the file has no tarball for is
   # unsupported. Paths and derivations (strings with context) are the source itself
   sourceKey =
     let
@@ -251,7 +251,7 @@ let
   prebuilt = args.prebuilt or (any (system: buildSystems.${system}.prebuilt == true) uses);
   # DWARF goes to the `debug` output (jib finish). false when the build cannot be made to keep it
   debug = args.debug or (prebuilt == false);
-  # [pin] sys of sources.toml. null: no sources.toml, dependencies are all by hand
+  # [pin] sys of package.toml. null: no package.toml, dependencies are all by hand
   sys = args.sys or (if sources == null then null else sources.sys);
   options =
     system:

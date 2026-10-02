@@ -1,4 +1,4 @@
-# Calling a package.nix: its sources.toml read when the directory has one, its features resolved,
+# Calling a package.nix: its package.toml read when the directory has one, its features resolved,
 # and `package`/`variant` bound to this name
 {
   scope,
@@ -41,7 +41,7 @@ let
         else
           spec: package sources dir resolved fn (edit0 spec);
       # another package's spec under this name, edited with override verbs: this function
-      # again with the base's package.nix. Own sources.toml when the directory has one
+      # again with the base's package.nix. Own package.toml when the directory has one
       # (llvm22: another pin), else the base's (rust-std: same tarball). A list of trees merges
       variant =
         base: tree:
@@ -52,7 +52,7 @@ let
 in
 dir: name:
 let
-  file = dir + "/sources.toml";
+  file = dir + "/package.toml";
 in
 callWith (import (dir + "/package.nix")) dir name (
   if builtins.pathExists file then readSources file else null

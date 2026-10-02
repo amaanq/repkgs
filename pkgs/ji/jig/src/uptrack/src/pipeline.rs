@@ -575,7 +575,7 @@ fn pin_sys(doc: &DocumentMut) -> Vec<String> {
       .unwrap_or_default()
 }
 
-/// sources.toml with `hash` filled in for every [[source]] and [pin] set to
+/// package.toml with `hash` filled in for every [[source]] and [pin] set to
 /// `pin` plus `sys`. `known`: key -> hash already at hand (an
 /// upstream-published sha256), not prefetched again.
 fn with_hashes(
@@ -632,7 +632,7 @@ fn with_hashes(
    Ok(())
 }
 
-/// sources.toml as treefmt (taplo) formats it, so an update commits clean.
+/// package.toml as treefmt (taplo) formats it, so an update commits clean.
 fn save(doc: &DocumentMut, file: &Path) -> io::Result<()> {
    write(file, doc.to_string())?;
    drop(Command::new("taplo").args(["format"]).arg(file).output());
@@ -702,7 +702,7 @@ pub fn rehash(package: &Package) -> io::Result<()> {
    save(&doc, &package.file)
 }
 
-/// Write hashes + [pin] for the decided update into sources.toml, then the
+/// Write hashes + [pin] for the decided update into package.toml, then the
 /// `files` hook's outputs.
 pub fn apply(entry: &Entry) -> io::Result<()> {
    let (Some(candidate), Some(pin)) = (entry.candidate.as_ref(), entry.pin.as_ref()) else {

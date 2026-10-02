@@ -98,7 +98,7 @@ def "main options" [
   }
 }
 
-# a new package directory with sources.toml from a purl and url template (uptrack init)
+# a new package directory with package.toml from a purl and url template (uptrack init)
 def "main new" [
   name: string # attribute name
   purl: string # pkg:github/owner/repo, pkg:pypi/name, pkg:gnu/name, …

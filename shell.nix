@@ -23,7 +23,7 @@ pkgs.mkShell {
     (import ./treefmt.nix { inherit pkgs; })
     (import ./nix/uptrack.nix { inherit pkgs; })
     pkgs.libarchive # bsdtar, uptrack's prefetch unpacks like nix/sources.nix does
-    pkgs.taplo # uptrack writes sources.toml the way treefmt formats it
+    pkgs.taplo # uptrack writes package.toml the way treefmt formats it
   ]
   ++ pkgs.lib.optionals hasWild [
     pkgs.wild

@@ -1,5 +1,5 @@
 # upstream's std for the target, beside rust-bootstrap's host one when formatelf cross-builds
-# (builder/systems/cargo.nu overlays <toolchain>-std). Shares rust-bootstrap's sources.toml
+# (builder/systems/cargo.nu overlays <toolchain>-std). Shares rust-bootstrap's package.toml
 {
   variant,
   pkgs,

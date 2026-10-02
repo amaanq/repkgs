@@ -1,4 +1,4 @@
-//! `update.nu` beside a sources.toml may export `resolve`, `files` or
+//! `update.nu` beside a package.toml may export `resolve`, `files` or
 //! `verify` to replace that stage for its package.
 //!
 //! It runs in its own nu with this binary's directory on PATH (so

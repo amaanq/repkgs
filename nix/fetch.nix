@@ -1,4 +1,4 @@
-# Lock-file driven dependency fetchers (upstream tarballs themselves come from sources.toml).
+# Lock-file driven dependency fetchers (upstream tarballs themselves come from package.toml).
 #
 # Each is a dynamic derivation: a small producer (`jig fetch <kind>`, run under builder-rpc-v0)
 # reads the lock file out of `source`, writes one builtin:fetchurl derivation per artefact using

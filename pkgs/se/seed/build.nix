@@ -1,7 +1,7 @@
 # The seed: every build-machine binary needed before the set can build its own userland, static
 # musl, built once with nixpkgs (later: by the package set itself). `system` is where the seed
 # runs, `buildSystem` where it is built: static musl is a cross build to nixpkgs either way.
-#   ./upload.nu builds -A nar per system, uploads to the GitHub release and rewrites ./sources.toml
+#   ./upload.nu builds -A nar per system, uploads to the GitHub release and rewrites ./package.toml
 {
   nixpkgs ? import ../../../nix/nixpkgs.nix,
   system ? builtins.currentSystem,
@@ -23,7 +23,7 @@ let
     name:
     let
       manifest = fromTOML (
-        builtins.readFile (../.. + "/${builtins.substring 0 2 name}/${name}/sources.toml")
+        builtins.readFile (../.. + "/${builtins.substring 0 2 name}/${name}/package.toml")
       );
       fetch =
         key:
@@ -289,7 +289,7 @@ let
   nar = pkgs.runCommand "${seed.name}.nar.xz" { nativeBuildInputs = [ pkgs.nix ]; } ''
     mkdir $out
     nix-store --dump ${seed} | ${pkgs.xz}/bin/xz -T$NIX_BUILD_CORES -9e > $out/${seed.name}.nar.xz
-    # what sources.toml pins: hash of the unpacked tree (fetchurl unpack=true is recursive/NAR-hashed)
+    # what package.toml pins: hash of the unpacked tree (fetchurl unpack=true is recursive/NAR-hashed)
     nix-hash --type sha256 --to-sri $(nix-store --dump ${seed} | sha256sum | cut -d' ' -f1) > $out/nar-hash
   '';
 in

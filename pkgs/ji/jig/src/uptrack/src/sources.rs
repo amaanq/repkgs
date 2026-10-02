@@ -1,4 +1,4 @@
-//! `sources.toml`, one per package, validated into package records.
+//! `package.toml`, one per package, validated into package records.
 //!
 //! Humans write `[upstream]`, `[[source]].url`, `[watch]` and `[locks]`, the
 //! tool writes `hash` and `[pin]`.
@@ -83,7 +83,7 @@ struct File {
    locks:    BTreeMap<String, String>,
 }
 
-/// A package as its sources.toml describes it, what every stage passes on.
+/// A package as its package.toml describes it, what every stage passes on.
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Package {
    pub name:     String,
@@ -123,7 +123,7 @@ fn sources_files(root: &Path) -> io::Result<Vec<PathBuf>> {
             if !name.starts_with('.') && name != "target" && !name.starts_with("result") {
                pending.push(path);
             }
-         } else if name == "sources.toml" {
+         } else if name == "package.toml" {
             found.push(path);
          }
       }
@@ -193,7 +193,7 @@ fn parse(file: &Path) -> io::Result<Package> {
    })
 }
 
-/// Every sources.toml under `root`, validated, as package records.
+/// Every package.toml under `root`, validated, as package records.
 pub fn discover(root: &Path) -> io::Result<Vec<Package>> {
    sources_files(root)?
       .iter()

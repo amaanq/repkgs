@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 # For cpus upstream ships no binaries for: cross build our own `<pkg>` from this machine, upload
 # its store path as a nar to the GitHub release `bootstrap-<pkg>-<version>` and add a
-# `<cpu>` source to pkgs/*/<pkg>-bootstrap/sources.toml. The riscv64 set then fetches it like an
+# `<cpu>` source to pkgs/*/<pkg>-bootstrap/package.toml. The riscv64 set then fetches it like an
 # upstream tarball (fixed-output, no dependency on this machine's derivations).
 #   tools/upload-bootstrap.nu jdk [--cpus riscv64] [--repo Mic92/repkgs] [--store-path /nix/store/…]
 
@@ -13,7 +13,7 @@ def main [
 ]: nothing -> nothing {
   let root = ($env.CURRENT_FILE | path dirname | path dirname)
   for pkg in $pkgs {
-    let toml = (glob $"($root)/pkgs/*/($pkg)-bootstrap/sources.toml" | first)
+    let toml = (glob $"($root)/pkgs/*/($pkg)-bootstrap/package.toml" | first)
     let version = (^nix-instantiate --eval --strict --json $root -A $"($pkg).version" | from json)
     let tag = $"bootstrap-($pkg)-($version)"
     let built = ($cpus | split row "," | each {|cpu|

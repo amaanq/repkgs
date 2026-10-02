@@ -55,7 +55,7 @@ use crate::{
 #[derive(Parse)]
 #[pound(name = "uptrack")]
 enum Mode {
-   /// parse and validate every sources.toml.
+   /// parse and validate every package.toml.
    List { names: Vec<String> },
    /// resolve and decide, write nothing. Exits 10 when updates are pending.
    Check {
@@ -93,7 +93,7 @@ enum Mode {
       #[pound(long)]
       prune: bool,
    },
-   /// write a new sources.toml and pin it to the newest version upstream
+   /// write a new package.toml and pin it to the newest version upstream
    /// lists.
    Init {
       /// package directory.
@@ -148,7 +148,7 @@ fn selected(names: &[String], all: bool) -> io::Result<Vec<Package>> {
       .collect();
    if !missing.is_empty() {
       return Err(io::Error::other(format!(
-         "no sources.toml for {}",
+         "no package.toml for {}",
          missing.join(", ")
       )));
    }
@@ -431,7 +431,7 @@ fn lock(names: &[String], prune: bool) -> io::Result<()> {
 
 fn init(dir: &PathBuf, purl: &str, url: &str, allow: Option<&str>) -> io::Result<()> {
    purl.parse::<Purl>()?;
-   let file = dir.join("sources.toml");
+   let file = dir.join("package.toml");
    if file.exists() {
       return Err(io::Error::other(format!("{} exists", file.display())));
    }

@@ -1,7 +1,7 @@
 # gn has no releases: Debian's snapshot tarball of gn.googlesource.com
 { package, buildPkgs }:
 let
-  inherit (builtins.fromTOML (builtins.readFile ./sources.toml)) pin;
+  inherit (builtins.fromTOML (builtins.readFile ./package.toml)) pin;
   rev = builtins.head (builtins.match ".*[.]([0-9a-f]+)" pin.version);
 in
 package {

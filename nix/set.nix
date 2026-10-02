@@ -36,7 +36,7 @@ let
   stage = bootstrap.toolchain.${platform} (
     on (target.libc == "msvc") {
       sdk = fetch.windowsSdk {
-        manifest = (readSources ../pkgs/wi/windows-sdk/sources.toml).fetch "default";
+        manifest = (readSources ../pkgs/wi/windows-sdk/package.toml).fetch "default";
         arch = target.cpu;
       };
     }

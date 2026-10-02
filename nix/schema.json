@@ -32,7 +32,7 @@
         "kind": "string"
       },
       "default": null,
-      "doc": "upstream version, by default from sources.toml"
+      "doc": "upstream version, by default from package.toml"
     },
     {
       "name": "features",
@@ -156,7 +156,7 @@
         ]
       },
       "default": null,
-      "doc": "a sources.toml key, a path or a derivation, by default the platform's tarball"
+      "doc": "a package.toml key, a path or a derivation, by default the platform's tarball"
     },
     {
       "name": "patches",
@@ -432,7 +432,7 @@
         ]
       },
       "default": null,
-      "doc": "libraries the lock files may link, by default [pin] sys from sources.toml"
+      "doc": "libraries the lock files may link, by default [pin] sys from package.toml"
     },
     {
       "name": "bin",

@@ -19,7 +19,7 @@ let
     inherit system;
     buildSystem = system;
   };
-  # the seed's own sources.toml is read without an unpacker: it is the unpacker
+  # the seed's own package.toml is read without an unpacker: it is the unpacker
   sourcesOf =
     name:
     (
@@ -32,7 +32,7 @@ let
           inherit system;
         }
     )
-      (pkg name + "/sources.toml");
+      (pkg name + "/package.toml");
   source = name: (sourcesOf name).default;
   seedPath =
     if seed == null then

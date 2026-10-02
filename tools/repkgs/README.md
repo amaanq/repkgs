@@ -76,7 +76,7 @@ $ repkgs cache stop
 ## Adding and updating packages
 
 ```console
-$ repkgs new foo pkg:github/o/foo 'https://…/foo-{version}.tar.gz'   # pkgs/fo/foo/ with sources.toml
+$ repkgs new foo pkg:github/o/foo 'https://…/foo-{version}.tar.gz'   # pkgs/fo/foo/ with package.toml
 $ repkgs update check                 # what is outdated (uptrack)
 $ repkgs update apply foo             # new pin and hashes
 $ repkgs repro zlib                   # build twice, compare
