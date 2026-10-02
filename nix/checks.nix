@@ -1,9 +1,8 @@
-# What CI builds for one build machine: every supported package of the set as `pkg-<name>`
-# and per other platform as `<platform>-<name>`, separate test suites (tests.separate) as
-# `tests-<name>`, tests/builder as `builder-*`, treefmt and the
-# seed. x86_64-windows-msvc is not in the default list: the SDK under its toolchain is unfree
-# and stays out of the public cache. flake.nix maps this over its systems as `checks`;
-# `nix-build nix/checks.nix` without flakes, `-A pkg-jq` for one.
+# CI for one build machine, `nix-build nix/checks.nix -A pkg-jq` without flakes and `checks` in
+# flake.nix. Every supported package is `pkg-<name>` natively and `<platform>-<name>` elsewhere,
+# separate test suites are `tests-<name>` and tests/builder is `builder-<name>`. The msvc platform
+# stays out of the default list because its toolchain carries the unfree Windows SDK, which the
+# public cache must not hold.
 {
   system ? builtins.currentSystem,
   nixpkgs ? import ./nixpkgs.nix,
@@ -17,42 +16,41 @@
   ],
 }:
 let
-  pkgs = import nixpkgs { inherit system; };
-  inherit (pkgs) lib;
+  host = import nixpkgs { inherit system; };
+  inherit (host) lib;
 
-  setOf = platform: import ../default.nix { inherit system platform; };
-  # nix/package decides `supported` per platform without forcing the derivation
-  buildable = lib.filterAttrs (_: package: package.supported);
-  named = prefix: lib.mapAttrs' (name: value: lib.nameValuePair "${prefix}${name}" value);
-  native = buildable (setOf system);
-  perPlatform =
+  setFor = platform: import ../default.nix { inherit system platform; };
+  prefixed = prefix: lib.mapAttrs' (name: lib.nameValuePair "${prefix}${name}");
+  # `supported` is known without forcing the derivation
+  supported = lib.filterAttrs (_: package: package.supported);
+  here = supported (setFor system);
+  packagesFor =
     platform:
-    named (if platform == system then "pkg-" else "${platform}-") (buildable (setOf platform));
+    prefixed (if platform == system then "pkg-" else "${platform}-") (supported (setFor platform));
   suites = lib.concatMapAttrs (
     name: package: lib.optionalAttrs (package ? tests) { ${name} = package.tests; }
-  ) native;
-  tree = builtins.path {
+  ) here;
+  checkout = builtins.path {
     path = ../.;
     name = "source";
     filter = path: type: baseNameOf path != ".jj" && lib.cleanSourceFilter path type;
   };
+  formatter = import ../treefmt.nix {
+    pkgs = host;
+    evaluates = false;
+  };
 in
-lib.mergeAttrsList (map perPlatform platforms)
-// named "tests-" suites
-// named "builder-" (import ../tests/builder { inherit system; })
+lib.mergeAttrsList (map packagesFor platforms)
+// prefixed "tests-" suites
+// prefixed "builder-" (import ../tests/builder { inherit system; })
 // {
-  schema = pkgs.runCommand "jib-schema-check" { } ''
-    ${(setOf system).jib}/bin/jib schema --check ${./schema.json}
+  schema = host.runCommand "jib-schema-check" { } ''
+    ${(setFor system).jib}/bin/jib schema --check ${./schema.json}
     touch $out
   '';
-  treefmt = pkgs.runCommand "treefmt-check" {
-    nativeBuildInputs = [
-      (import ../treefmt.nix {
-        inherit pkgs;
-        evaluates = false;
-      })
-    ];
-  } "cp -r ${tree} src && chmod -R u+w src && cd src && treefmt --ci --tree-root . && touch $out";
+  treefmt = host.runCommand "treefmt-check" {
+    nativeBuildInputs = [ formatter ];
+  } "cp -r ${checkout} src && chmod -R u+w src && cd src && treefmt --ci --tree-root . && touch $out";
   inherit
     (import ../pkgs/se/seed {
       inherit system;
