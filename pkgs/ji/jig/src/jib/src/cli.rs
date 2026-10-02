@@ -197,4 +197,13 @@ pub enum SystemOperation {
       system: String,
       verb:   String,
    },
+   /// configure settings that point a GHC bindist at our toolchain, one per
+   /// line.
+   GhcToolchain,
+   /// install the unpacked GHC bindist in the working directory, or with
+   /// --deb Debian's unpacked package.
+   GhcInstall {
+      #[pound(long)]
+      deb: bool,
+   },
 }

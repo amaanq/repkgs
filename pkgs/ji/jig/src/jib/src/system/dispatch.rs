@@ -38,6 +38,7 @@ use crate::{
       cmake::Cmake,
       command::Env,
       deno::Deno,
+      ghc,
       go::Go,
       luarocks::Luarocks,
       make::Make,
@@ -165,6 +166,14 @@ pub fn mode(operation: SystemOperation, socket: &Path) -> io::Result<()> {
       },
       SystemOperation::Phase { system: name, verb } => {
          phase(&name, &verb, &ctx, &Attrs::load()?, socket)
+      },
+      SystemOperation::GhcToolchain => ghc::print_toolchain(&ctx),
+      SystemOperation::GhcInstall { deb } => {
+         if deb {
+            ghc::install_deb(&ctx, &Attrs::load()?)
+         } else {
+            ghc::install(&ctx)
+         }
       },
    }
 }

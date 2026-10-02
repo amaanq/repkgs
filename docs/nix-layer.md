@@ -106,7 +106,7 @@ Replace the spelling outright when chosen, without aliases or a compatibility la
 Start with common recipe fields and one system, then migrate the remaining system tables,
 platform facts and fetch/bootstrap input contracts. Each slice removes its duplicate table.
 Keep lock parsing, phase execution and relocation in their existing Rust owners.
-Do not fold `ghc-bindist.nu` or target-side C rewrites into the schema work.
+Do not fold target-side C rewrites into the schema work. The GHC bindist install is a jib system mode.
 
 Done means `jib schema --check nix/schema.json` passes, valid existing recipes evaluate,
 invalid keys and values fail at eval, and `repkgs options` shows the emitted defaults and docs.

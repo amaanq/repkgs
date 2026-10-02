@@ -32,16 +32,14 @@ package (
         run =
           if deb then
             ''
-              use ghc-bindist.nu
-              ghc-bindist install-deb
+              ^jib system ghc-install --deb
             ''
           else
             ''
               # configure runs bin/ghc-toolchain-bin and `make install` the installed ghc-pkg: the
               # bindist must already run here, finish's implant over $out then only adjusts paths
               implant $c $c.src
-              use ghc-bindist.nu
-              ghc-bindist install
+              ^jib system ghc-install
             '';
       }
     ];

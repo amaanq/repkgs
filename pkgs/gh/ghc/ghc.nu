@@ -1,6 +1,5 @@
 use core.nu *
 use build-cache.nu
-use ghc-bindist.nu
 
 def --wrapped hadrian [...args: string]: nothing -> nothing {
   let c = (ctx)
@@ -16,7 +15,7 @@ export def configure []: nothing -> nothing {
     | each {|l| let r = (dep-root $l.dep "ghc links it"); [$"--with-($l.flag)-includes=($r)/($l.inc)" $"--with-($l.flag)-libraries=($r)/lib"] }
     | flatten)
   # no automake for autoreconf's aclocal, and AC_PATH_PROG only takes an absolute preset
-  x sh ./configure $"--prefix=($c.out)" --with-system-libffi ...$libs GHC=ghc $"AutoreconfCmd=(tool autoconf)" ...(ghc-bindist toolchain)
+  x sh ./configure $"--prefix=($c.out)" --with-system-libffi ...$libs GHC=ghc $"AutoreconfCmd=(tool autoconf)" ...(^jib system ghc-toolchain | lines)
 }
 
 # _build round-trips through jigd. Not keyed on $out, which changes with every recipe edit and
@@ -35,5 +34,5 @@ export def build []: nothing -> nothing {
 
 export def install []: nothing -> nothing {
   cd (files --dirs $"((ctx).src)/_build/bindist/ghc-*" | first)
-  ghc-bindist install
+  ^jib system ghc-install
 }

@@ -7,6 +7,7 @@ mod cmake;
 pub mod command;
 mod deno;
 pub mod dispatch;
+mod ghc;
 mod go;
 mod luarocks;
 mod make;
