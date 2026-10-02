@@ -1,25 +1,25 @@
 # repkgs
 
-The command line for working on the package set. With direnv it is on PATH; otherwise
-`tools/repkgs/repkgs`. Every subcommand has `--help`, and `--for <platform>` where a platform
-makes sense (`aarch64-linux`, `aarch64-macos`, `x86_64-windows-msvc`, …).
+The command for working on the package set, on PATH through direnv and otherwise at
+`tools/repkgs/repkgs`. Each subcommand has `--help`, and those where a platform matters take
+`--for <platform>` (`aarch64-linux`, `aarch64-macos`, `x86_64-windows-msvc` and the rest).
 
 `build` and `test` run Nix through ROM, showing the dependency graph and each package's
 current phase. Store paths stay on stdout, and a failed build keeps Nix's exit status.
 The development shell supplies ROM from the `manic-systems/rom` Git repository's `refactor`
 branch, pinned in `flake.lock`. Outside the shell, `rom` must be on PATH.
 
-## Everyday
+## Day to day
 
 ```console
-$ repkgs build jq                     # build, through the compile cache if jigd runs
-$ repkgs build --for aarch64-macos jq # cross
-$ repkgs test jq                      # jq.tests, or jq itself when it tests in-build
-$ repkgs test                         # the builder's own tests, after editing builder/
+$ repkgs build jq                     # through the compile cache when jigd runs
+$ repkgs build --for aarch64-macos jq # for another platform
+$ repkgs test jq                      # jq.tests, or jq when it tests inside its build
+$ repkgs test                         # tests/builder, after a builder/ or jib edit
 $ repkgs log jq                       # the last build log
-$ repkgs info jq                      # version, platforms, build systems, features (--json)
-$ repkgs list --for riscv64-linux --unsupported   # what a platform lacks and why
-$ repkgs options cmake                # every cmake.* a package.nix may set, with defaults
+$ repkgs info jq                      # version, platforms, build systems and features (--json)
+$ repkgs list --for riscv64-linux --unsupported   # what a platform lacks, and why
+$ repkgs options cmake                # every cmake.* option of [package], with defaults
 $ repkgs fmt                          # treefmt
 ```
 
@@ -36,12 +36,12 @@ build-system phases and inline Nu phases are available through `phase`.
 ```console
 > phases                              # perl.configure autotools.build autotools.install perl.scrub
 > phase perl.configure
-> phase autotools.build               # fails somewhere in dist/Time-HiRes
-> ^make -C dist/Time-HiRes            # go at it directly, edit files, repeat
+> phase autotools.build               # say it stops in dist/Time-HiRes
+> ^make -C dist/Time-HiRes            # work on it directly, edit, try again
 > exit
 $ repkgs dev perl 'phase autotools.build'   # reuse the tree and edits
-$ repkgs dev --reset perl             # fresh source, same tree
-$ repkgs dev --fresh perl             # remove everything
+$ repkgs dev --reset perl             # a fresh source in the same tree
+$ repkgs dev --fresh perl             # start over completely
 ```
 
 The tree lives under `$XDG_CACHE_HOME/repkgs/dev/<pkg>-<platform>/`, falling back to
@@ -58,41 +58,41 @@ The seed and Rust toolchain flags work here too.
 repkgs dev --seed ./result-bootstrap-seed --rust-toolchain ./result-bootstrap-rust ripgrep
 ```
 
-Once the fix is clear, turn the edit into a patch next to package.nix (`diff -u` against a
-pristine unpack) and build for real.
+Once the fix is clear, make the edit a patch beside package.toml (`diff -u` against an untouched
+unpack), list it in `patches` and build for real.
 
 ## The compile cache
 
 ```console
-$ repkgs cache start                  # jigd, per user, under /tmp/jigd-<uid>/
+$ repkgs cache start                  # jigd for this user, under /tmp/jigd-<uid>/
 $ repkgs cache status
 $ repkgs cache stop
 ```
 
-`build`, `test`, `dev` and `repro` use it when the socket is there. A daemon elsewhere:
-`JIG_SOCK=/path/to/socket repkgs …`. Mapping the socket into the sandbox needs your user in
-`nix.settings.trusted-users`.
+`build`, `test`, `dev` and `repro` use the socket when it is there, and `JIG_SOCK=/path/to/socket
+repkgs …` points them at another daemon. Mapping the socket into the sandbox takes a user listed
+in `nix.settings.trusted-users`.
 
-## Adding and updating packages
+## New packages and updates
 
 ```console
 $ repkgs new foo pkg:github/o/foo 'https://…/foo-{version}.tar.gz'   # pkgs/fo/foo/ with package.toml
-$ repkgs update check                 # what is outdated (uptrack)
-$ repkgs update apply foo             # new pin and hashes
-$ repkgs repro zlib                   # build twice, compare
+$ repkgs update check                 # what is out of date (uptrack)
+$ repkgs update apply foo             # a new pin and hashes
+$ repkgs repro zlib                   # build again and compare
 ```
 
-## Rare
+## Seldom
 
 ```console
-$ repkgs seed …                       # rebuild and upload the bootstrap seed
-$ repkgs bootstrap ghc riscv64-linux  # cross-build a -bootstrap package's binary and upload it
+$ repkgs seed …                       # build and upload the bootstrap seed
+$ repkgs bootstrap ghc --cpus riscv64 # cross build a -bootstrap package's binary and upload it
 ```
 
 ## Files
 
-`repkgs` is the entry point, `nix.nu` what all subcommands share (nix flags, eval helpers, cache
-socket), and `dev.nu` drives the development shell. `dev.nix` lets Nix resolve the package's
-inputs, including dynamic dependency trees, and export its structured build attributes.
-`jib dev prepare` and `jib dev phase` execute the package's build plan in the kept workspace.
+`repkgs` is the entry point and `nix.nu` holds what every subcommand shares, the nix flags, the
+evaluation helpers and the cache socket. `dev.nu` drives the development shell. `dev.nix` lets Nix
+resolve the package's inputs, including dynamic dependency trees, and export its structured
+build attributes. `jib dev prepare` and `jib dev phase` execute the package's build plan in the kept workspace.
 `dev-shell.nu` provides the interactive `phases` and `phase` commands.
