@@ -141,18 +141,8 @@ pub struct Spec {
    pub uses:     Vec<String>,
    #[serde(default)]
    pub sys:      Option<Vec<String>>,
-   #[serde(default)]
-   pub profile:  Profile,
    #[serde(flatten)]
    pub systems:  Map<String, Value>,
-}
-
-#[derive(Deserialize, Clone, Copy, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum Profile {
-   #[default]
-   Release,
-   Debug,
 }
 
 #[derive(Deserialize, Serialize, Clone)]

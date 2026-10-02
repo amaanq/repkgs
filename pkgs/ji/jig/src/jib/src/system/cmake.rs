@@ -21,7 +21,6 @@ use crate::{
       Attrs,
       Ctx,
       Def,
-      Profile,
    },
    probe,
    schema::Field,
@@ -124,10 +123,6 @@ impl Cmake {
          .first()
          .ok_or_else(|| io::Error::other("the builder tree is not among probeInputs"))?;
 
-      let build_type = match ctx.spec()?.profile {
-         Profile::Debug => "Debug",
-         Profile::Release => "Release",
-      };
       let mut defs = vec![
          (
             "CMAKE_INSTALL_PREFIX".to_owned(),
@@ -135,7 +130,7 @@ impl Cmake {
          ),
          (
             "CMAKE_BUILD_TYPE".to_owned(),
-            Def::Text(build_type.to_owned()),
+            Def::Text("Release".to_owned()),
          ),
          (
             "CMAKE_INSTALL_LIBDIR".to_owned(),

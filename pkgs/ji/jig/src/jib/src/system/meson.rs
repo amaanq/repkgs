@@ -29,7 +29,6 @@ use crate::{
       Ctx,
       Def,
       Platform,
-      Profile,
    },
    schema::Field,
    system::{
@@ -224,15 +223,11 @@ impl Meson {
    /// so packages enable what they declare.
    fn configure(ctx: &Ctx, options: &Options) -> io::Result<()> {
       let platform = ctx.platform()?;
-      let buildtype = match ctx.spec()?.profile {
-         Profile::Debug => "debug",
-         Profile::Release => "plain",
-      };
       let mut defs = vec![
          ("prefix".to_owned(), Def::Text(ctx.out.clone())),
          ("libdir".to_owned(), Def::Text("lib".to_owned())),
          ("sbindir".to_owned(), Def::Text("bin".to_owned())),
-         ("buildtype".to_owned(), Def::Text(buildtype.to_owned())),
+         ("buildtype".to_owned(), Def::Text("plain".to_owned())),
          ("default_library".to_owned(), Def::Text("shared".to_owned())),
          ("wrap_mode".to_owned(), Def::Text("nodownload".to_owned())),
          ("auto_features".to_owned(), Def::Text("disabled".to_owned())),
