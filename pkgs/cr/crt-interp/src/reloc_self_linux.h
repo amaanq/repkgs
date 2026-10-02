@@ -1,22 +1,29 @@
-// reloc.h, Linux: the mapping in /proc/self/maps that contains the address. Only ISO C, so it
-// compiles under any feature-test macros the package sets.
+// reloc_self for Linux: the file behind the mapping that holds the address. ISO C only, since the
+// package's own feature-test macros are in effect here.
 #include <stdio.h>
 #include <string.h>
 
-__attribute__((visibility("hidden"), used)) static void reloc_self(const void* addr, char* out,
-                                                                   size_t n) {
-   unsigned long self = (unsigned long)addr, lo, hi;
+__attribute__((unused)) static int reloc_self(const void* address, char* path, size_t size) {
    FILE* maps = fopen("/proc/self/maps", "re");
-   char line[4096 + 128];
-   while (maps && fgets(line, sizeof line, maps)) {
-      char* path = strchr(line, '/');
-      if (sscanf(line, "%lx-%lx", &lo, &hi) == 2 && lo <= self && self < hi && path) {
-         path[strcspn(path, "\n")] = 0;
-         strncpy(out, path, n - 1);
-         break;
+   if (!maps) {
+      return 0;
+   }
+   unsigned long wanted = (unsigned long)address;
+   unsigned long start = 0;
+   unsigned long end = 0;
+   char line[PATH_MAX + 128];
+   int found = 0;
+   while (!found && fgets(line, sizeof line, maps)) {
+      char* file = strchr(line, '/');
+      if (!file || sscanf(line, "%lx-%lx", &start, &end) != 2 || wanted < start || wanted >= end) {
+         continue;
+      }
+      file[strcspn(file, "\n")] = 0;
+      if (strlen(file) < size) {
+         strcpy(path, file);
+         found = 1;
       }
    }
-   if (maps) {
-      fclose(maps);
-   }
+   fclose(maps);
+   return found;
 }

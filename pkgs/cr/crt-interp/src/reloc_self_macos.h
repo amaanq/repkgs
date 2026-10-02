@@ -1,19 +1,21 @@
-// reloc.h, macOS: dladdr. <dlfcn.h> hides it under _POSIX_C_SOURCE and the package may have
-// included it that way already, so declared here (layout and symbol as in dyld's header).
+// reloc_self for macOS: dladdr names the image holding the address, the main executable included.
+// Declared here under its symbol name so <dlfcn.h> and its feature macros stay out of the package.
 #include <string.h>
 
-typedef struct {
-   const char* dli_fname;
-   void* dli_fbase;
-   const char* dli_sname;
-   void* dli_saddr;
-} reloc_dl_info;
-int reloc_dladdr(const void*, reloc_dl_info*) __asm__("_dladdr");
+struct reloc_image {
+   const char* file;
+   void* base;
+   const char* symbol;
+   void* symbol_address;
+};
 
-__attribute__((visibility("hidden"), used)) static void reloc_self(const void* addr, char* out,
-                                                                   size_t n) {
-   reloc_dl_info info;
-   if (reloc_dladdr(addr, &info) && info.dli_fname) {
-      strncpy(out, info.dli_fname, n - 1);
+int reloc_dladdr(const void* address, struct reloc_image* image) __asm__("_dladdr");
+
+__attribute__((unused)) static int reloc_self(const void* address, char* path, size_t size) {
+   struct reloc_image image;
+   if (!reloc_dladdr(address, &image) || !image.file || strlen(image.file) >= size) {
+      return 0;
    }
+   strcpy(path, image.file);
+   return 1;
 }
