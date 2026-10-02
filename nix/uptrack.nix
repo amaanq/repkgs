@@ -3,7 +3,8 @@
 { pkgs }:
 pkgs.rustPlatform.buildRustPackage {
   pname = "uptrack";
-  version = (builtins.fromTOML (builtins.readFile ../pkgs/ji/jig/src/Cargo.toml)).workspace.package.version;
+  version =
+    (builtins.fromTOML (builtins.readFile ../pkgs/ji/jig/src/Cargo.toml)).workspace.package.version;
   src = builtins.path {
     path = ../pkgs/ji/jig/src;
     name = "uptrack-rust-src";

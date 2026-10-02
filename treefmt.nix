@@ -1,42 +1,30 @@
-# `nix fmt` or `nix-shell --run treefmt` formats, `treefmt --ci` is the check. Built with nixpkgs'
-# `treefmt.withConfig` so every tool is pinned here and shell.nix only carries the wrapper.
+# `nix fmt` or `nix-shell --run treefmt` formats and `treefmt --ci` checks. nixpkgs'
+# treefmt.withConfig pins every tool here, so shell.nix carries only the wrapper.
 {
   pkgs,
-  # nix/checks.nix: inside a build there is no evaluator for package-scripts (it instantiates the set)
+  # false inside a build (nix/checks.nix), where package-scripts has no evaluator to instantiate
+  # the set with
   evaluates ? true,
 }:
 let
-  llvm = pkgs.llvmPackages_23;
+  inherit (pkgs) lib;
+  nu = "${pkgs.nushell}/bin/nu";
   fenix = (builtins.fromJSON (builtins.readFile ./flake.lock)).nodes.fenix.locked;
   rustfmt =
     (import (builtins.fetchTarball {
       url = "https://github.com/${fenix.owner}/${fenix.repo}/archive/${fenix.rev}.tar.gz";
       sha256 = fenix.narHash;
     }) { inherit pkgs; }).latest.rustfmt;
-  # nu's own parser/type checker over each file (authoritative). Fails on any error diagnostic.
-  # cell-path-types: `$rec.field` takes the field's declared type instead of `any`, so typed
-  # records are checked where they are used, not just where they are built
-  nu-typecheck = pkgs.writeShellScript "nu-typecheck" ''
+  # statix takes one path per run
+  statixEach = pkgs.writeShellScript "statix-each" ''
     status=0
-    for f in "$@"; do
-      out=$(${pkgs.nushell}/bin/nu --no-config-file --include-path "$PWD/builder:$PWD/tests/builder/lib" "--experimental-options=[cell-path-types]" --ide-check 50 "$f" | ${pkgs.jq}/bin/jq -r 'select(.type == "diagnostic" and .severity == "Error") | "\(.span.start): \(.message)"')
-      if [ -n "$out" ]; then printf '%s:\n%s\n' "$f" "$out" >&2; status=1; fi
-    done
+    for file in "$@"; do ${pkgs.statix}/bin/statix check -c ${./statix.toml} "$file" || status=1; done
     exit $status
   '';
-  # statix checks one path per call
-  statix-each = pkgs.writeShellScript "statix-each" ''
-    status=0
-    for f in "$@"; do ${pkgs.statix}/bin/statix check -c ${./statix.toml} "$f" || status=1; done
-    exit $status
-  '';
-  # ast-grep: nu via the tree-sitter grammar nushell maintains (lints/nu/), nix is built in (lints/nix/)
-  sgconfig = pkgs.writeText "sgconfig.yml" (
+  # ast-grep reads nu through the tree-sitter grammar nushell maintains
+  astGrep = pkgs.writeText "sgconfig.yml" (
     builtins.toJSON {
-      ruleDirs = [
-        "${./lints/nu}"
-        "${./lints/nix}"
-      ];
+      ruleDirs = [ "${./lints/nu}" ];
       customLanguages.nu = {
         libraryPath = "${pkgs.tree-sitter-grammars.tree-sitter-nu}/parser";
         extensions = [ "nu" ];
@@ -48,7 +36,7 @@ let
     "*.nu"
     "tools/repkgs"
   ];
-  uptrack = import ./nix/uptrack.nix { inherit pkgs; };
+
 in
 pkgs.treefmt.withConfig {
   settings = {
@@ -65,7 +53,7 @@ pkgs.treefmt.withConfig {
         includes = [ "*.nix" ];
       };
       nix-statix = {
-        command = "${statix-each}";
+        command = "${statixEach}";
         includes = [ "*.nix" ];
       };
       nix-deadnix = {
@@ -91,13 +79,12 @@ pkgs.treefmt.withConfig {
         ];
         includes = [ "pkgs/*/*/src/*.rs" ];
       };
-      cpp = {
-        command = "${llvm.clang-tools}/bin/clang-format";
+      c = {
+        command = "${pkgs.llvmPackages_23.clang-tools}/bin/clang-format";
         options = [ "-i" ];
         includes = [
-          "pkgs/*/*/src/*.cc"
-          "pkgs/*/*/src/*.h"
           "pkgs/*/*/src/*.c"
+          "pkgs/*/*/src/*.h"
         ];
       };
       python = {
@@ -119,20 +106,23 @@ pkgs.treefmt.withConfig {
         includes = [ "*.toml" ];
         excludes = [ "locks/*.toml" ];
       };
-      # one entry per line, sorted, so additions merge textually (.gitattributes merge=union)
+      # one sorted entry per line, so additions merge as text (.gitattributes merge=union)
       locks = {
-        command = "${uptrack}/bin/uptrack";
+        command = "${import ./nix/uptrack.nix { inherit pkgs; }}/bin/uptrack";
         options = [ "normalize" ];
         includes = [ "locks/*.toml" ];
       };
-      # nu has no stable formatter, this only checks (parse + types with the nu that runs builds).
+      # nu has no stable formatter, so its files are only parsed and type checked
       nu-typecheck = {
-        command = "${nu-typecheck}";
+        command = nu;
+        options = [
+          "--no-config-file"
+          "lints/nu-typecheck.nu"
+        ];
         includes = nuFiles;
       };
-      # the nu a package assembles from package.toml, its modules and the build systems
-      package-scripts = pkgs.lib.mkIf evaluates {
-        command = "${pkgs.nushell}/bin/nu";
+      package-scripts = lib.mkIf evaluates {
+        command = nu;
         options = [
           "--no-config-file"
           "lints/package-scripts.nu"
@@ -146,10 +136,10 @@ pkgs.treefmt.withConfig {
         command = "${pkgs.ast-grep}/bin/ast-grep";
         options = [
           "scan"
-          "--config=${sgconfig}"
+          "--config=${astGrep}"
           "--report-style=short"
         ];
-        includes = nuFiles ++ [ "pkgs/*/*/*.nix" ];
+        includes = nuFiles;
       };
     };
   };
