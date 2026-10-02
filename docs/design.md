@@ -1,12 +1,12 @@
 # Design
 
-What the set does differently from nixpkgs and why. Things not built yet are in `plan.md`,
-the updater in `uptrack.md`, the exact jig and jigd contract in `jig.md`.
+How the set differs from nixpkgs and why. What is not built yet is in `plan.md`, the updater in
+`uptrack.md`, and the exact contract of jig and jigd in `jig.md`.
 
-Names used below: **jig** is the compiler driver (`cc`, `c++`, `rustc` on the build `PATH`) and
-ELF post-processor, **jigd** the per-machine daemon behind it (compile cache, build slots),
-**launch** the one binary behind every installed script, **uptrack** the updater, **jsem** the
-proxy that backs GHC's `-jsem` tokens with jigd's slots.
+The names that recur: **jig** is the compiler driver (`cc`, `c++` and `rustc` on a build's `PATH`)
+and the ELF post-processor, **jib** the builder that runs a derivation, **jigd** the daemon behind
+them both (compile cache, build slots), **launch** the one binary behind every installed script,
+**uptrack** the updater, and **jsem** the proxy that backs GHC's `-jsem` tokens with jigd's slots.
 
 ## Upstream
 
@@ -17,13 +17,15 @@ this stack. Later upstream changes may be borrowed by hand per package.
 
 ## Goals
 
-1. **Cheap evaluation.** ≤ 0.2 ms and 10 KB per package (nixpkgs: 2.6 ms, 135 KB). Measured
-   against nixpkgs on the shared packages in [eval.md](eval.md).
-2. **Relocatable outputs.** No output contains its own store path. Every derivation is
-   content-addressed, so early cut-off works by default, and a closure runs from any directory.
+1. **Cheap evaluation**, at most 0.2 ms and 10 KB per package where nixpkgs spends 2.6 ms and
+   135 KB, measured on the packages both sets have ([eval.md](eval.md)).
+2. **Relocatable outputs.** No output holds its own store path, so every derivation can be
+   content-addressed, early cut-off happens by default and a closure runs from any directory.
 3. **Rust builders with Nushell phases.** Structured data, real errors, and a seed of a few static binaries.
-4. **One toolchain.** One LLVM targets every platform. Cross is an argument to the set.
-5. **A compile cache under Nix.** Editing a recipe recompiles what changed, not everything after it.
+4. **One toolchain.** A single LLVM targets every platform, and cross compiling is an argument to
+   the set.
+5. **A compile cache under Nix**, so editing a recipe recompiles what changed and not everything
+   downstream of it.
 
 The set uses stock Nix with `ca-derivations` and `dynamic-derivations`, `/nix/store`, no IFD
 and nothing fetched at eval time. glibc everywhere, musl only in the seed and stage0. nixpkgs
@@ -34,59 +36,62 @@ and GCC as a package-set compiler remain outside the scope.
 Build machines are x86_64- and aarch64-linux. riscv64, loongarch64, ppc64le, Windows and macOS
 are cross targets. Windows supports Microsoft's CRT and SDK through the MSVC ABI, or MinGW
 with UCRT and our libc++. macOS uses Apple's SDK and `ld64.lld`. The CPU baseline
-(x86-64-v3, armv8.2-a+lse, rv64gc) is
-part of the platform and injected by jig, so no package carries `-march`.
+(x86-64-v3, armv8.2-a+lse, rv64gc) belongs to the platform and jig adds it, so no package
+carries `-march`.
 
 ## Evaluation
 
-A package is a function returning a small attrset, the *spec*. `nix/package` checks it
-(unknown field, unknown or mistyped option → error) and makes one derivation whose builder is
-`jib build`, with a phase plan and structured JSON attributes. No
-`callPackage`/`mkDerivation`/module layers, no per-package fixpoint: 1000 packages evaluate in
-0.36 s and 10 MB, native or cross.
+A package is its `package.toml`. nix/package/manifest.nix turns the `[package]` table, with its
+`[when]` and `[unless]` layers and string templates resolved, into a *spec*, and nix/package checks
+that spec against the schema jib emits (an unknown field, or an option of the wrong type or with
+an unknown name, is an error) before making one derivation whose builder is `jib build`, with a
+phase plan and structured JSON attributes. There is no callPackage, mkDerivation or module layer
+and no fixpoint per package.
 
 ```
-pkgs/zl/zlib/package.nix     attribute = directory name, two-letter shards
-pkgs/zl/zlib/package.toml    upstream pin (url template, version, hash)
-pkgs/cp/cpython314/          another major version is another package, pkgs/aliases.toml maps cpython → cpython314
+pkgs/zl/zlib/package.toml    attribute = directory name, sharded by its first two letters
+pkgs/cp/cpython314/          another major version is another package, pkgs/aliases.toml maps cpython to it
 ```
 
-`import ./. { platform }` lists `pkgs/` and calls each `package.nix` with what it names
-(`package variant pkgs buildPkgs platform fetch sources toolchain`). It is lazy: `nix-build -A jq`
-reads one file. `buildPkgs` is the build machine's set. Another platform is another import.
+`import ./. { platform }` lists `pkgs/` lazily, so `nix-build -A jq` reads one directory.
+`buildPkgs` is the build machine's set, and another platform is another import. An out-of-tree
+package passed through `packages` may also be a `package.nix` calling `package { … }`.
 
-Every package exists on every platform. `pkg.supported` says whether it is *for* it, without
-forcing the derivation: prebuilts are for the platforms their `package.toml` has tarballs for (keys `x86_64-linux`, `aarch64-macos`), a
-recipe can narrow with `platforms.{cpu,os,abi,libc}` lists, `platforms.posix = true` or `platforms.cross = false`, and unsupported
-dependencies propagate. Only the store paths throw (`bun: package.toml has no 'riscv64-linux' source`), so CI filters on a boolean instead of
-`tryEval`, which would also hide real errors.
+Every package exists on every platform, and `pkg.supported` says whether it is meant for it without
+forcing the derivation. Prebuilt packages are for the platforms their `package.toml` has tarballs
+for (keys such as `x86_64-linux` and `aarch64-macos`), a recipe narrows itself with
+`platforms.{cpu,os,abi,libc}`, `platforms.posix = true` or `platforms.cross = false`, and an
+unsupported dependency makes its dependents unsupported. Only the store paths throw (`bun:
+package.toml has no 'riscv64-linux' source`), so CI filters on a boolean rather than `tryEval`,
+which would hide real errors too.
 
 ### Overrides
 
-One argument, one tree of `<package>.<field>….<verb>`:
+The set takes one tree of `<package>.<field>….<verb>`:
 
 ```nix
 import ./. {
   overrides = {
     zlib.autotools.flags.append = [ "--zprefix" ];
-    git.dependencies.remove = [ "pcre2" ];        # strings name packages of the final set
+    git.dependencies.remove = [ "pcre2" ];        # strings are packages of the final set
     curl.env.merge = { CURL_DEBUG = "1"; };
-    jq.pin.merge = { version = "1.8.3"; };        # re-reads package.toml under this pin
+    jq.pin.merge = { version = "1.8.3"; };        # package.toml read again under this pin
     jq.hash.merge = { default = "sha256-…"; };
-    gcc.edit = spec: spec // { … };               # when set/append/prepend/merge/remove are not enough
+    gcc.edit = spec: spec // { … };               # for what the verbs cannot say
   };
-  packages.openssl-mine = ./openssl-mine;         # out-of-tree package, may replace an in-tree name
+  packages.openssl-mine = ./openssl-mine;         # out of tree, and may replace an in-tree name
 }
 ```
 
-A list of trees is merged first, so ten layers cost what one does, and a later tree's `remove`
-also takes back what an earlier one appended. Every path is checked (unknown package, `remove`
-of a missing field, `append` on a non-list, a dependency naming nothing) and the result is
-validated like a written spec. There is no `.override`, overlay or module system besides this.
-In-tree variants use the same verbs: `llvm22` is `variant pkgs.llvm { }` with its own
-`package.toml`.
+A list of trees joins into one before anything applies, so ten layers cost what one does, and a
+later layer's `remove` takes back what an earlier one appended. Every path is checked (an unknown
+package, a `remove` of a missing field, `append` on something that is no list, a dependency naming
+nothing) and the result is validated like a written spec. That is the whole mechanism, with no
+`.override`, overlays or modules beside it.
 
-`features` are the other direction: choices a package offers, named by the package.
+`features` run the other way, as choices a package offers under its own names. A package.nix
+declares them and reads the values back, so a dependency and the flag that goes with it stay
+together:
 
 ```nix
 { package, pkgs, features, on }:
@@ -102,120 +107,127 @@ package {
 
 ```nix
 import ./. {
-  features = { docs = false; };                   # every package that declares `docs`
-  overrides.curl.features = { tls = "gnutls"; };  # this one
+  features = { docs = false; };                   # every package declaring `docs`
+  overrides.curl.features = { tls = "gnutls"; };  # curl alone
 }
 ```
 
-The package reads values back, so a dependency and the configure flag that goes with it stay
-together in package.nix. A feature's type is its default's type, `values` limits a string or a
-list's elements. Prefer those over booleans when a choice has more than two answers. Resolution is default,
-then the set-wide `features` argument, then `overrides.<pkg>.features`. A wrong type, a value
-outside `values` or an undeclared name is an eval error. The resolved set is part of the
-derivation and readable as `pkgs.curl.features`. Packages without `features` pay nothing.
+A feature takes its default's type, and `values` bounds a string or each item of a list, which
+suits a choice with more than two answers better than a boolean. The default gives way to the
+set-wide argument and that to `overrides.<pkg>.features`. A wrong type, a value outside `values` or
+an undeclared name fails evaluation, the result goes into the derivation and reads back as
+`pkgs.curl.features`, and a package without features pays nothing for them.
 
 ## Sources and lock files
 
-`package.toml` → a fixed-output fetch named after the URL, so a bumped version with a stale hash
-is an error, not the old tarball. Archives are unpacked once into the store.
+A `package.toml` source becomes a fixed-output fetch named after its URL, so a bumped version with
+a stale hash fails instead of reusing the old tarball. Archives are unpacked into the store once.
 
-- **Upstream lock files are never copied or hashed.** `fetch.cargoVendor { source }` is a
-  dynamic derivation: at build time a producer reads `Cargo.lock` from the fetched source and
-  emits one `builtin:fetchurl` per crate with the hash the lock already has. Eval never sees it.
-  npm, pnpm, Yarn, Bundler, uv, Bun, Deno likewise. The producer talks the Nix worker protocol
-  (in jig), so no `nix` in the sandbox and no recursive Nix.
-- **Hashes a lock file lacks** (Go, Hackage, LuaRocks) live in one sorted `locks/<eco>.toml`,
-  `merge=union`, filled by `uptrack lock`. A package's vendor derivation mentions only its subset.
-- **Native libraries behind locked deps** are decided when the package is pinned: uptrack reads
-  the lock files in the source it just hashed, looks the names up in `builder/sys-libs.json`
-  (openssl-sys -> openssl, mattn/go-sqlite3 -> sqlite) and writes `sys = [..]` into `[pin]`.
-  package.nix adds those the set has on the platform as ordinary dependencies, so eval, `info`,
-  `supported` and overrides see them, and ripgrep's package.nix still never lists pcre2. The
-  build system checks the lock against `sys`, so a lock that gained a -sys crate since is an
-  error naming `repkgs update`, not a vendored copy.
-- **Autoconf** probe results that are platform facts are pinned in `nix/config.site`.
+- **Upstream lock files are neither copied nor hashed here.** `fetch.cargoVendor { source }` is a
+  dynamic derivation whose producer reads `Cargo.lock` from the fetched source at build time and
+  writes one `builtin:fetchurl` per crate with the hash the lock already has, so evaluation never
+  sees it. npm, pnpm, Yarn, Bundler, uv, Bun and Deno work the same way. The producer speaks the
+  Nix worker protocol itself (in jig), so there is no `nix` in the sandbox and no recursive Nix.
+- **Hashes that a lock file lacks** (Go, Hackage, LuaRocks) live in one sorted `locks/<eco>.toml`
+  per ecosystem, merged with `merge=union` and filled by `uptrack lock`. A package's vendor
+  derivation mentions only its own share.
+- **Native libraries behind locked dependencies** are settled when the package is pinned. uptrack
+  reads the lock files in the source it just hashed, looks the names up in `builder/sys-libs.json`
+  (openssl-sys to openssl, mattn/go-sqlite3 to sqlite) and writes `sys = [..]` into `[pin]`. The
+  package then takes those of them the set has on the platform as ordinary dependencies, which
+  evaluation, `info`, `supported` and overrides all see, while ripgrep's manifest never names
+  pcre2. The build system checks the lock against `sys`, so a lock that has since gained a -sys
+  crate fails with a pointer to `repkgs update` rather than building a vendored copy.
+- **Autoconf** results that are facts about a platform are pinned in `nix/config.site`.
 
 ## Relocatable outputs
 
-An output refers to other store objects only relative to itself:
-`$ORIGIN/../../<hash>-dep/lib`. The hash is still in the string, so GC, `nix copy` and the
-reference scanner work unchanged.
+An output names other store objects only relative to itself, as in
+`$ORIGIN/../../<hash>-dep/lib`. The hash is still in the string, so garbage collection, `nix copy`
+and the reference scanner work as they always have.
 
 | reference | made relative by |
 |---|---|
-| ELF NEEDED / RUNPATH | jig links with RUNPATH for exactly the dirs that satisfied a `-l`. `reloc-fixup` rewrites in place: NEEDED becomes `$ORIGIN/…/libfoo.so.1` (one `open` per library), RUNPATH keeps libc and `dlopen` dirs |
-| Mach-O LC_LOAD_DYLIB | dependents record each dylib's absolute install name at link time (`-headerpad_max_install_names`), `reloc-fixup` respells them and store LC_RPATHs `@loader_path/…`, re-signs ad hoc |
-| PT_INTERP | a 300-byte entry stub (`crt-interp`) maps ld.so relative to `/proc/self/exe`. glibc unmodified, 0.09 ms |
-| upstream binaries | `prebuilt = true`: formatelf implants the same stub and RUNPATH |
-| scripts, wrappers | `launch`: `bin/foo` hardlink + `bin/.foo.launch` record with `{root}` placeholders. No shebang patching, no makeWrapper |
-| glibc data, pkg-config, cmake | relative to `libc.so.6` (one patch), `${pcfiledir}`, native. `.la` deleted |
-| exported environment | `exports.json` values with `{root}` |
-| compiled-in prefix | built under a scratch prefix that finish moves, leftovers are an error; reloc.h patch (openssl providers) |
+| ELF NEEDED and RUNPATH | jig links with a RUNPATH of exactly the directories that satisfied a `-l`. `reloc-fixup` rewrites in place, making NEEDED `$ORIGIN/…/libfoo.so.1` (one `open` per library) and keeping libc and `dlopen` directories in RUNPATH |
+| Mach-O LC_LOAD_DYLIB | dependents record each dylib's absolute install name at link time (`-headerpad_max_install_names`), and `reloc-fixup` respells those and store LC_RPATHs as `@loader_path/…` and signs again ad hoc |
+| PT_INTERP | a 300-byte entry stub (`crt-interp`) maps ld.so relative to `/proc/self/exe`, with glibc unmodified, in 0.09 ms |
+| upstream binaries | with `prebuilt = true`, jib implant writes the same stub and RUNPATH |
+| scripts and wrappers | `launch`, a `bin/foo` hardlink beside a `bin/.foo.launch` record with `{root}` placeholders, instead of shebang patching or makeWrapper |
+| glibc data, pkg-config, cmake | relative to `libc.so.6` (one patch), `${pcfiledir}`, and cmake's own relative paths, with `.la` files deleted |
+| exported environment | `exports.json` values written with `{root}` |
+| compiled-in prefix | the build installs under a scratch prefix that finish moves, and anything left naming it is an error, the reloc.h patch covering openssl's providers |
 
-The build never sees its store path: `$out` is `$NIX_BUILD_TOP/prefix`, finish makes what it
-knows relative to the final location, fails if any file still names the prefix, and moves the
-tree into the store last. An output's bytes cannot depend on where it lands, which also keeps
-content-addressed rebuilds stable (lld hashes `$out` into build ids and string order;
-[NixOS/nix#16465](https://github.com/NixOS/nix/pull/16465) covers derivations that do see
-`$out`, and [#16477](https://github.com/NixOS/nix/pull/16477) lets a rebuild that still differs
-replace the build trace of a collected output instead of failing).
+A build never sees its store path. `$out` is `$NIX_BUILD_TOP/prefix`, finish makes what it knows
+relative to the final location, fails when a file still names the prefix and moves the tree into
+the store last. So an output's bytes cannot depend on where it lands, which also keeps
+content-addressed rebuilds stable, since lld hashes `$out` into build ids and string order.
+[NixOS/nix#16465](https://github.com/NixOS/nix/pull/16465) covers derivations that do see `$out`,
+and [#16477](https://github.com/NixOS/nix/pull/16477) lets a rebuild that still differs replace a
+collected output's build trace rather than fail.
 
-Ambient data (CA bundle, zoneinfo, fonts) is an environment variable or system path, never a
-store path.
+Ambient data such as the CA bundle, zoneinfo and fonts comes from an environment variable or a
+system path, never from a store path.
 
-Debug info is built for every package and split into a second output, `debug`, filed by
-build-id (`lib/debug/.build-id/ab/cd….debug`) where gdb, lldb, perf, valgrind and
-systemd-coredump look. `out` keeps `.symtab`, so backtraces and profiles have names without
-it. `out` never references `debug` and `debug` is found by id, not path, so the split costs
-relocatability nothing. `debug = false` is for builds that cannot be taught to keep DWARF.
-An ELF package whose build produced none is an error. Sources are not shipped: DWARF names `/build/source/…`, and `pkg.src` is that tree.
+Every package builds with debug info, split into a second output, `debug`, filed by build-id
+(`lib/debug/.build-id/ab/cd….debug`) where gdb, lldb, perf, valgrind and systemd-coredump look. `out`
+keeps `.symtab`, so backtraces and profiles have names without it. Since `out` never references
+`debug` and `debug` is found by id rather than path, the split costs no relocatability.
+`debug = false` is for builds that cannot be made to keep DWARF, and an ELF package whose build
+produced none fails. Sources are not shipped, DWARF names `/build/source/…`, and `pkg.src` is that
+tree.
 
-Because no output names itself, every derivation (bootstrap stages included) is floating
-content-addressed: a change to jig, a builder script or the toolchain that leaves a package's
-bytes alone resolves its dependents to what is already in the store instead of rebuilding them.
-Cross builds pass `--deny <build dep>` to reloc-fixup, so a build-machine path in a target
-output is an error, not a silent reference.
+With no output naming itself, every derivation, bootstrap stages included, is floating
+content-addressed. A change to jig, a builder script or the toolchain that leaves a package's bytes
+alone lets its dependents resolve to what the store already has instead of rebuilding. Cross builds
+pass `--deny <build dependency>` to reloc-fixup, so a build-machine path in a target output fails
+rather than becoming a silent reference.
 
 ## Builders
 
 One jib process prepares the environment and source tree, executes the package's phases,
 then handles debug splitting, launchers, relocation, version checks and `exports.json`.
 Build systems implement the Rust `System` trait. Package-specific Nu phases run in child
-processes and hand their environment and build context back to jib. A package names them
+processes and hand their environment and build context back to jib. A package names its build
+systems and edits their phases:
 
-```nix
-uses = [ "cmake" ];                                   # phases default to the build system's
-cmake.defs = { WITH_FOO = true; };                    # typed options, checked at eval
-phases.after."cmake.install" = [ { name = "x"; run = "<nu>"; } ]; # edits, or the whole list
-phases = [ "foo.gen" "cmake.build" ];                 # foo.<phase> lives in foo.nu beside package.nix
+```toml
+[package]
+uses = [ "cmake" ]                   # the phases default to the build system's
+
+[package.cmake.defs]
+WITH_FOO = true                      # typed options, checked at evaluation
+
+[package.phases.after]
+"cmake.install" = [ "foo.gen" ]      # foo.gen is `gen` in foo.nu beside package.toml
 ```
 
-- **Dependencies contribute data, never behaviour.** Each output has an `exports.json`
-  (include/lib/pkg-config dirs, env, propagation). `prepare` renders the closure into flags jig
-  injects and search paths. Nothing a dependency ships runs in your build.
-- **Two dependency lists.** `buildDependencies` (build machine, on `PATH`) and `dependencies`
-  (target).
-- **Cross is the build system's job**, from one platform record: `--host` + `config.site`, meson
-  cross file, cmake toolchain file, `CARGO_TARGET_*`, `GOARCH`. Tests run under qemu.
+- **Dependencies contribute data and never behaviour.** Each output carries an `exports.json` of
+  include, lib and pkg-config directories, environment and propagation. `prepare` turns the closure
+  into search paths and the flags jig adds, and nothing a dependency ships runs in another build.
+- **Two dependency lists**, `buildDependencies` for the build machine, on `PATH`, and
+  `dependencies` for the target.
+- **Cross compiling belongs to the build system**, driven by one platform record: `--host` and
+  `config.site`, a meson cross file, a cmake toolchain file, `CARGO_TARGET_*`, `GOARCH`. Tests run
+  under qemu.
 - **Hardening and reproducibility are compiler defaults.** jig adds `-O2 -g`, frame pointers and
   the nixpkgs hardening set outside `CFLAGS`, so no Makefile drops them. jib's typed hardening
   table defines the flags, a platform or package turns names off (`cc.hardening.fortify = false`).
-  `SOURCE_DATE_EPOCH`, prefix maps and fixed seeds cover reproducibility.
-- **Tests run**, in the build or as `<pkg>.tests` (`tests.separate`). Every `bin/x --version`
-  must print the pinned version from an empty environment under an audit module that fails on a
-  `dlopen` finding nothing.
+  `SOURCE_DATE_EPOCH`, prefix maps and fixed seeds take care of reproducibility.
+- **Tests run**, inside the build or as `<pkg>.tests` with `tests.separate`. Every `bin/x
+  --version` has to print the pinned version from an empty environment, under an audit module that
+  fails when a `dlopen` finds nothing.
 
 ## jig and jigd
 
-Nix caches derivations, so one changed recipe line reruns every compiler invocation downstream.
-jig is the only compiler on `PATH`. If `/nix/var/nix/jigd/socket` is mapped into the sandbox
-(`extra-sandbox-paths`) it asks jigd first, otherwise it compiles. Derivations never mention the
-cache, so outputs are identical either way, verifiable with CA outputs.
+Nix caches whole derivations, so one changed line in a recipe reruns every compiler call
+downstream of it. jig is the only compiler on `PATH`, and when `/nix/var/nix/jigd/socket` is
+mapped into the sandbox (`extra-sandbox-paths`) it asks jigd before compiling. No derivation
+mentions the cache, so outputs are the same either way, which CA outputs let anyone check.
 
 | cached | key |
 |---|---|
 | `cc -c` objects, probe links, real links (ELF) | compiler path, arguments, environment and source bytes, then the headers and libraries read through `-MD` and lld's dependency file. The package's own `$out` hash is masked in keys and cached bytes and restored on replay |
-| compile failures | replayed when all inputs are known (most of configure) |
+| compile failures | replayed when every input is known, which covers most of configure |
 | rustc crates, Go actions, Haskell units | Rust dep-info, `--extern` and standard library identities, metadata flags and `env!` dependencies. Go's action IDs and cabal's unit id |
 | `config.cache`, cmake probe results, tool cache dirs | source and patches, script paths and contents, complete dependency paths, platform, environment and build-system options |
 
@@ -268,36 +280,38 @@ Nix output checks also pass for both packages with cold and warm caches. In ordi
 builds, diffutils reuses 16 successful header checks from sed. Warm rebuilds restore the whole
 configure cache and reuse 97 percent of sed's compiler actions and 98 percent of diffutils'.
 
-jigd (Rust) holds a bitcask-style object store (append-only packs, in-memory index, whole-pack
-eviction, `sendfile`), remembers store-file identities so hits do not rehash headers, and hands
-out build slots so N sandboxes × `make -jN` do not oversubscribe (cc/rustc per process, go via
-`-toolexec`, ghc via `jsem`). sqlite3.c 82 s → 0.08 s, fd's 200 rlibs 218 s → 1.4 s,
-bit-identical with the C++ wrapper. Request keys, manifests and the pack format are specified in
-`jig.md`. A cache writer can supply compiler artifacts, so the cache stays per user and machine.
+jigd keeps an append-only object store of packs with an in-memory index, evicts whole packs and
+serves hits with `sendfile`. It remembers store-file identities so a hit does not hash headers
+again, and it hands out build slots so N sandboxes running `make -jN` do not oversubscribe the
+machine (per process for cc and rustc, through `-toolexec` for go and through `jsem` for ghc). A
+warm cache took sqlite3.c from 82 s to 0.08 s and fd's 200 rlibs from 218 s to 1.4 s.
+Request keys, manifests and the pack format are specified in `jig.md`. A cache writer can supply
+compiler artifacts, so the cache stays per user and machine.
 
 ## Toolchain, bootstrap, cross
 
 ```
 seed      static musl: LLVM multicall (clang, lld, llvm-ar …), bsdtar, toybox, dash, make, python
-→ stage0  musl headers → compiler-rt → musl → linux headers → libc++ → jig → cc     (build machine, seed clang)
-→ stage1  the same chain with glibc → cc-boot → cmake → llvm: clang, lld, libLLVM.so  (build machine, seed clang)
-→ stage2  linux headers → glibc → compiler-rt → libc++ → cc-<platform>              (per target, stage1's clang)
+→ stage0  musl headers, compiler-rt, musl, linux headers, libc++, jig, cc     (this machine, seed clang)
+→ stage1  the same with glibc, cc-boot, cmake, llvm with clang, lld, libLLVM.so  (this machine, seed clang)
+→ stage2  linux headers, glibc, compiler-rt, libc++, cc-<platform>             (per target, stage1's clang)
 → pkgs/*
 ```
 
 Recipes run through `jig bootstrap` from `jig/src/bootstrap/`. musl, compiler-rt and the C++ runtimes compile from file
 lists without cmake. The source-built Rust chain compiles static jig before stage0 installs it.
-The generated source file is compiler-rt's per-cpu builtins list. What differs per target is keyed
-on object format (`platform.binfmt`: elf, macho, coff), and a libc or SDK tells compiler-rt and
-cc its header dirs and driver flags through `etc/cc/` files. RISC-V needed `-mno-relax`.
+The one generated input is compiler-rt's builtins list per cpu (pkgs/ll/llvm/update.nu). What
+differs per target follows the object format (`platform.binfmt` of elf, macho or coff), and a libc
+or SDK tells compiler-rt and cc its header directories and driver flags through `etc/cc/` files.
+RISC-V needed `-mno-relax`.
 
-Self-hosting languages: the upstream binary is `<lang>-bootstrap` (prebuilt, relocated, build
-dependency only) and `<lang>` is built from source with it (Go, Rust, GHC, OpenJDK). Zig
-bootstraps from the WASM blob in its source. The seed comes from `pkgs/se/seed/build.nix`, today
-via nixpkgs static, eventually from this set.
+A self-hosting language has its upstream binary as `<lang>-bootstrap`, prebuilt, relocated and
+only ever a build dependency, and `<lang>` built from source with it (Go, Rust, GHC, OpenJDK). Zig
+bootstraps from the WASM blob in its source. The seed comes from `pkgs/se/seed/build.nix`, through
+nixpkgs' static packages today and from this set eventually.
 
-## Prior art
+## Influences
 
-Ekala EEPs (path = attribute, explicit build systems), Aux tidepool (exports as data, one path
-for native and cross), nuenv, Zig (target as a flag), Spack/Guix/conda (relocation), wrap-buddy
-and fzakaria (relocatable ELF), llm-agents.nix (declarative updater).
+Ekala's EEPs (path as attribute, explicit build systems), Aux tidepool (exports as data, one path
+for native and cross), nuenv, Zig (the target as a flag), Spack, Guix and conda (relocation),
+wrap-buddy and fzakaria's work on relocatable ELF, and llm-agents.nix (a declarative updater).
