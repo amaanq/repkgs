@@ -59,7 +59,7 @@ export def "main dev" [
   attr: string
   ...cmds: string
 ]: nothing -> nothing {
-  let evaluated = (^nix-instantiate $"(root)/tools/repkgs/dev.nix" ...$XP --argstr attr $attr
+  let evaluated = (^nix-instantiate $"(root)/tools/repkgs/dev.nix" ...$FEATURES --argstr attr $attr
     ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain) | complete)
   if $evaluated.exit_code != 0 { fail $evaluated.stderr }
   let derivation = ($evaluated.stdout | str trim)
@@ -72,7 +72,7 @@ export def "main dev" [
   let directory = ($cache | path join repkgs dev $"($attr)-($for | default native)" | path expand)
   open-workspace $directory $configuration --fresh=$fresh --reset=$reset
 
-  ^nix ...$XP build $"($derivation)^out" --out-link ($directory | path join inputs) -L ...(cache-args)
+  ^nix ...$FEATURES build $"($derivation)^out" --out-link ($directory | path join inputs) -L ...(cache-args)
   if $env.LAST_EXIT_CODE != 0 { fail "could not prepare the development inputs" }
   let session = (prepare-build $directory $configuration)
   let command = $"source ($SHELL | to nuon)\n($cmds | str join ' ')"

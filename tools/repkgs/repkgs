@@ -1,25 +1,31 @@
 #!/usr/bin/env nu
-# One entry point for working on the set. Every subcommand is a thin wrapper that ends in
-# nix-build, nix, uptrack, jigd or treefmt: `repkgs <cmd> --help` shows what it runs.
+# The one command for working on the set. Each subcommand ends in nix-build, nix, uptrack, jigd or
+# treefmt, and `repkgs <command> --help` says which.
 use nix.nu *
 use dev.nu *
 
 def main []: nothing -> nothing { help main }
 
-# build packages through the compile cache
-def "main build" [
-  --for: string # platform, e.g. aarch64-linux, x86_64-windows
-  --seed: path
-  --rust-toolchain: path
-  ...attrs: string # package attributes (jq, jq.tests)
-]: nothing -> nothing {
-  if ($attrs | is-empty) { fail "repkgs build <attr>…, or nix-build -A ci for the whole set" }
-  ^rom --platform nix build ...($attrs | each {|attr| $"($attr)^out" }) -- --file (root) ...$XP --quiet --no-link --print-out-paths ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain)
-  exit $env.LAST_EXIT_CODE
+def built [attrs: list<string>, platform, seed, toolchain, --file: string]: nothing -> nothing {
+  let targets = ($attrs | each {|attr| $"($attr)^out" })
+  let flags = [--quiet --no-link --print-out-paths ...(cache-args) ...(platform-arg $platform) ...(seed-arg $seed) ...(rust-toolchain-arg $toolchain)]
+  # a failed build exits with nix's status
+  try { ^rom --platform nix build ...$targets -- --file ($file | default (root)) ...$FEATURES ...$flags } catch {|failure| exit ($failure.exit_code? | default 1) }
 }
 
-# build <pkg>.tests (tests.separate packages), or the package itself when it tests in-build.
-# No attrs: the builder's own tests (tests/builder), run those after editing builder/
+# build packages with the compile cache
+def "main build" [
+  --for: string # platform, aarch64-linux or x86_64-windows for instance
+  --seed: path
+  --rust-toolchain: path
+  ...attrs: string # attributes, jq or jq.tests
+]: nothing -> nothing {
+  if ($attrs | is-empty) { fail "repkgs build <attr>…, or nix-build nix/checks.nix for everything" }
+  built $attrs $for $seed $rust_toolchain
+}
+
+# build <pkg>.tests for packages that test separately and the package for those that test in its
+# own build. Without attrs, the builder's tests in tests/builder, which follow any builder/ edit
 def "main test" [
   --for: string # platform
   --seed: path
@@ -27,194 +33,218 @@ def "main test" [
   ...attrs: string
 ]: nothing -> nothing {
   if ($attrs | is-empty) {
-    ^rom --platform nix build .^out -- --file $"(root)/tests/builder" ...$XP --quiet --no-link --print-out-paths ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain)
-    exit $env.LAST_EXIT_CODE
+    built [.] $for $seed $rust_toolchain --file $"(root)/tests/builder"
+    return
   }
-  let targets = ($attrs | each {|a| if (eval $"(pkg-expr $a $for $seed $rust_toolchain) ? tests") { $"($a).tests" } else { $a } })
-  main build --for=$for --seed=$seed --rust-toolchain=$rust_toolchain ...$targets
+  let targets = ($attrs | each {|attr|
+    let separate = (eval $"(pkg-expr $attr $for $seed $rust_toolchain) ? tests")
+    if $separate { $"($attr).tests" } else { $attr }
+  })
+  built $targets $for $seed $rust_toolchain
 }
 
-# the build log of a package's derivation
+# print the build log of a package's derivation
 def "main log" [
   --for: string # platform
   --seed: path
   --rust-toolchain: path
   attr: string
 ]: nothing -> nothing {
-  let d = (drv $attr $for $seed $rust_toolchain)
-  let r = (^nix ...$XP log $d | complete)
-  if $r.exit_code != 0 { fail $"no local log for ($d): built elsewhere or substituted, `repkgs build` it here first" }
-  print $r.stdout
+  let derivation = (drv $attr $for $seed $rust_toolchain)
+  let log = (^nix ...$FEATURES log $derivation | complete)
+  if $log.exit_code != 0 { fail $"no local log for ($derivation), it was built elsewhere or substituted, so `repkgs build` it here first" }
+  print $log.stdout
 }
 
-# packages a platform supports, or the ones it does not and why
+# the packages a platform supports, or with --unsupported the others and why
 def "main list" [
   --for: string # platform
   --seed: path
   --rust-toolchain: path
-  --unsupported # show what `supported` filters out, with the reason
+  --unsupported # what `supported` leaves out, with the reason
   --json (-j) # machine-readable
 ]: nothing -> any {
   let set = (set-expr $for $seed $rust_toolchain)
-  let rows = (if $unsupported {
-    eval $"let s = ($set); in map \(n: { name = n; reason = s.${n}.unsupportedReason; }\) \(builtins.filter \(n: !s.${n}.supported\) \(builtins.attrNames s\)\)"
-  } else {
-    eval $"let s = ($set); in builtins.filter \(n: s.${n}.supported\) \(builtins.attrNames s\)"
-  })
-  if $json { $rows | to json } else if $unsupported { $rows } else { $rows | wrap name }
+  if $unsupported {
+    let refused = (eval $"let s = ($set); in map \(n: { name = n; reason = s.${n}.unsupportedReason; }\) \(builtins.filter \(n: !s.${n}.supported\) \(builtins.attrNames s\)\)")
+    return (if $json { $refused | to json } else { $refused })
+  }
+  let names = (eval $"let s = ($set); in builtins.filter \(n: s.${n}.supported\) \(builtins.attrNames s\)")
+  if $json { $names | to json } else { $names | wrap name }
 }
 
-# version, platform support, build systems and features of one package without building it
+# one package's version, platform support, build systems and features, without building it
 def "main info" [
   --for: string # platform
   --seed: path
   --rust-toolchain: path
-  --json (-j) # machine-readable: the full record
+  --json (-j) # machine-readable, the whole record
   attr: string
 ]: nothing -> any {
-  let p = (eval $"let p = (pkg-expr $attr $for $seed $rust_toolchain); in { name = p.pname; version = p.version or null; platform = p.platform; supported = p.supported; reason = p.unsupportedReason; uses = p.args.uses or []; features = builtins.mapAttrs \(n: d: d // { value = p.features.${n}; }\) \(p.args.features or {}\); }")
-  if $json { return ($p | to json) }
-  print ({name: $p.name, version: $p.version, platform: $p.platform, uses: ($p.uses | str join " ")}
-    | merge (if $p.supported { {} } else { {unsupported: $p.reason} }))
-  if ($p.features | is-not-empty) {
-    print ($p.features | transpose feature f | each {|r| {feature: $r.feature, value: ($r.f.value | to nuon), values: ($r.f.values? | default [] | str join " | "), doc: ($r.f.doc? | default "")} } | table -i false)
-  }
+  let fields = "{ name = p.pname; version = p.version or null; platform = p.platform; supported = p.supported; reason = p.unsupportedReason; uses = p.args.uses or []; features = builtins.mapAttrs (n: d: d // { value = p.features.${n}; }) (p.args.features or {}); }"
+  let package = (eval $"let p = (pkg-expr $attr $for $seed $rust_toolchain); in ($fields)")
+  if $json { return ($package | to json) }
+
+  let summary = {name: $package.name, version: $package.version, platform: $package.platform, uses: ($package.uses | str join " ")}
+  print ($summary | merge (if $package.supported { {} } else { {unsupported: $package.reason} }))
+  if ($package.features | is-empty) { return }
+  print ($package.features | transpose feature spec | each {|row|
+    {feature: $row.feature, value: ($row.spec.value | to nuon), values: ($row.spec.values? | default [] | str join " | "), doc: ($row.spec.doc? | default "")}
+  } | table -i false)
 }
 
-# The Nix option declarations provide defaults and validation for jib's typed inputs.
+# the options each build system takes, with their defaults and meaning
 def "main options" [
-  --json (-j) # machine-readable: { <system> = { <option> = { type, default, doc } } }
-  ...systems: string # build systems, default all
+  --json (-j) # machine-readable, { <system> = { <option> = { type, default, doc } } }
+  ...systems: string # build systems, all by default
 ]: nothing -> any {
-  let all = (eval $"\(import (root)/nix/options.nix {}\).options")
-  let names = (if ($systems | is-empty) { $all | columns } else { $systems | uniq })
-  let unknown = ($names | where $it not-in ($all | columns))
-  if ($unknown | is-not-empty) { fail $"no build system '($unknown | str join ' ')', have: ($all | columns | str join ' ')" }
-  if $json { return ($all | select ...$names | to json) }
-  for bs in $names {
-    print $"## ($bs)\n"
-    print ($all | get $bs | transpose option v | each {|r| {option: $"`($bs).($r.option)`", type: ($r.v.type | str join " | " | str replace "set | string" package), default: (if ($r.v.type | str join " " | str contains "set string") { "lock file" } else { $r.v.default | to nuon }), meaning: $r.v.doc} } | to md --pretty)
+  let every = (eval $"\(import (root)/nix/options.nix {}\).options")
+  let known = ($every | columns)
+  let wanted = (if ($systems | is-empty) { $known } else { $systems | uniq })
+  let unknown = ($wanted | where $it not-in $known)
+  if ($unknown | is-not-empty) { fail $"no build system '($unknown | str join ' ')', have: ($known | str join ' ')" }
+  if $json { return ($every | select ...$wanted | to json) }
+
+  for system in $wanted {
+    print $"## ($system)\n"
+    let rows = ($every | get $system | transpose option spec | each {|row|
+      let kinds = ($row.spec.type | str join " ")
+      {
+        option: $"`($system).($row.option)`"
+        type: ($row.spec.type | str join " | " | str replace "set | string" package)
+        default: (if ($kinds | str contains "set string") { "lock file" } else { $row.spec.default | to nuon })
+        meaning: $row.spec.doc
+      }
+    })
+    print ($rows | to md --pretty)
     print ""
   }
 }
 
-# a new package directory with package.toml from a purl and url template (uptrack init)
+# start a package directory whose package.toml comes from a purl and a url template (uptrack init)
 def "main new" [
   name: string # attribute name
-  purl: string # pkg:github/owner/repo, pkg:pypi/name, pkg:gnu/name, …
+  purl: string # pkg:github/owner/repo, pkg:pypi/name, pkg:gnu/name and the like
   url: string # source url with {version} {tag} {major} {minor}
 ]: nothing -> nothing {
   let dir = $"(root)/pkgs/($name | str substring 0..<2)/($name)"
   if ($dir | path exists) { fail $"($dir) exists" }
-  try { with-env { UPTRACK_ROOT: (root) } { ^uptrack init $dir $purl $url } } catch {
+  try { with-env {UPTRACK_ROOT: (root)} { ^uptrack init $dir $purl $url } } catch {
     rm -rf $dir
     fail $"uptrack init failed for ($purl), nothing written"
   }
-  if not ($"($dir)/package.nix" | path exists) {
-    $"{\n  package,\n  pkgs,\n}:\npackage {\n  name = \"($name)\";\n  uses = [ \"autotools\" ];\n}\n" | save $"($dir)/package.nix"
+  let manifest = $"($dir)/package.toml"
+  if not ((open $manifest) | columns | any {|table| $table == package }) {
+    "\n[package]\nuses = [ \"autotools\" ]\n" | save --append $manifest
   }
-  print -e $"($dir): edit package.nix, then repkgs build ($name)"
+  print -e $"($dir): fill in the [package] table, then repkgs build ($name)"
 }
 
-# versions and lock tables: uptrack check | apply | lock | verify | rehash | list. The
-# development shell supplies uptrack (nix/uptrack.nix), outside it `uptrack` must be on PATH
+# uptrack check, apply, lock, verify, rehash or list over the tree. The development shell has
+# uptrack (nix/uptrack.nix), elsewhere it must be on PATH
 def --wrapped "main update" [...args: string]: nothing -> nothing {
-  with-env { UPTRACK_ROOT: (root) } { ^uptrack ...$args }
+  with-env {UPTRACK_ROOT: (root)} { ^uptrack ...$args }
 }
 
-# rebuild and compare against the store (nix-build --check)
+# build packages again and compare with the store (nix-build --check)
 def "main repro" [
   --for: string # platform
   --seed: path
   --rust-toolchain: path
-  ...attrs: string # default: zlib xz pcre2 jq sqlite ncurses
+  ...attrs: string # zlib xz pcre2 jq sqlite ncurses by default
 ]: nothing -> table {
   let attrs = (if ($attrs | is-empty) { [zlib xz pcre2 jq sqlite ncurses] } else { $attrs })
-  $attrs | each {|a|
-    let build = (^nix-build (root) ...$XP -A $a --no-out-link ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain) | complete)
-    if $build.exit_code != 0 { return {attr: $a, status: build-failed} }
-    let resolved = (^nix-store --query --deriver ($build.stdout | str trim) | str trim)
-    # --check compiles for real: no cache
-    let check = (^nix-build $resolved ...$XP --no-out-link --check --keep-failed | complete)
-    {attr: $a, status: (if $check.exit_code == 0 { "reproducible" } else if $check.stderr =~ "may not be deterministic|differs" { "DIFFERS" } else { "check-failed" })}
+  $attrs | each {|attr|
+    let build = (^nix-build (root) ...$FEATURES -A $attr --no-out-link ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain) | complete)
+    if $build.exit_code != 0 { return {attr: $attr, status: build-failed} }
+    let derivation = (^nix-store --query --deriver ($build.stdout | str trim) | str trim)
+    # --check really compiles, so the cache stays out of it
+    let check = (^nix-build $derivation ...$FEATURES --no-out-link --check --keep-failed | complete)
+    let status = if $check.exit_code == 0 { "reproducible" } else if $check.stderr =~ "may not be deterministic|differs" { "DIFFERS" } else { "check-failed" }
+    {attr: $attr, status: $status}
   }
 }
 
-# the compile cache daemon: start | stop | status
+def wait-for [deadline: datetime, ready: closure, late: closure]: nothing -> nothing {
+  loop {
+    if (do $ready) { return }
+    if (date now) >= $deadline { do $late }
+    sleep 25ms
+  }
+}
+
+# start, stop or report on the compile cache daemon
 def "main cache" [
   action: string # start, stop or status
-  --size: int = 50 # GiB before whole packs are evicted (start)
+  --size: int = 50 # GiB kept before whole packs are evicted, for start
   --daemon: path
   --seed: path
   --rust-toolchain: path
 ]: nothing -> nothing {
   let dir = (jigd-dir)
-  let sock = $"($dir)/socket"
+  let socket = $"($dir)/socket"
   let pidfile = $"($dir)/pid"
+  let log = $"($dir)/log"
   match $action {
     "start" => {
       if $size < 0 { fail "cache size must be nonnegative" }
-      if (is-socket $sock) { print -e $"jigd already serving ($sock)"; return }
-      let executable = (if $daemon == null {
-        let build = (^nix-build (root) ...$XP -A jigd --no-out-link ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain) err> /dev/stderr | complete)
+      if (is-socket $socket) {
+        print -e $"jigd already serving ($socket)"
+        return
+      }
+      let program = if $daemon != null { $daemon | path expand --strict } else {
+        let build = (^nix-build (root) ...$FEATURES -A jigd --no-out-link ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain) err> /dev/stderr | complete)
         if $build.exit_code != 0 { fail "could not build jigd" }
         $build.stdout | str trim | path join bin jigd
-      } else { $daemon | path expand --strict })
+      }
       mkdir $dir
-      let log = $"($dir)/log"
-      let pid = (^setsid --fork sh -c 'printf "%s\n" "$$"; JIGD_SIZE="$1" exec "$2" "$3" >"$4" 2>&1 < /dev/null' -- $size $executable $sock $log | str trim | into int)
-      let deadline = (date now) + 5sec
-      loop {
-        let process = (^kill -0 $pid | complete)
-        if $process.exit_code != 0 {
+      let pid = (^setsid --fork sh -c 'printf "%s\n" "$$"; JIGD_SIZE="$1" exec "$2" "$3" >"$4" 2>&1 < /dev/null' -- $size $program $socket $log | str trim | into int)
+      wait-for ((date now) + 5sec) {||
+        if (^kill -0 $pid | complete).exit_code != 0 {
           rm -f $pidfile
           fail $"jigd failed to start\n(open --raw $log)"
         }
-        if (is-socket $sock) {
-          $pid | into string | save -f $pidfile
-          print -e $"jigd pid ($pid), socket ($sock), log ($log)"
-          break
-        }
-        if (date now) >= $deadline {
-          ^kill $pid
-          rm -f $pidfile
-          fail $"jigd did not open ($sock)\n(open --raw $log)"
-        }
-        sleep 25ms
+        is-socket $socket
+      } {||
+        ^kill $pid
+        rm -f $pidfile
+        fail $"jigd did not open ($socket)\n(open --raw $log)"
       }
+      $pid | into string | save -f $pidfile
+      print -e $"jigd pid ($pid), socket ($socket), log ($log)"
     }
     "stop" => {
       if not ($pidfile | path exists) { return }
       let stopped = (^kill (open --raw $pidfile | str trim) | complete)
       if $stopped.exit_code != 0 { fail $stopped.stderr }
-      let deadline = (date now) + 5sec
-      while (is-socket $sock) {
-        if (date now) >= $deadline { fail $"jigd has not stopped, see ($dir)/log" }
-        sleep 25ms
-      }
+      wait-for ((date now) + 5sec) {|| not (is-socket $socket) } {|| fail $"jigd has not stopped, see ($log)" }
       rm -f $pidfile
     }
     "status" => {
-      let s = (jigd-socket)
-      if $s == null { print "jigd: not running"; return }
-      print $"jigd: ($s)"
-      if ($"($dir)/log" | path exists) { ^tail -n 3 $"($dir)/log" }
+      let serving = (jigd-socket)
+      if $serving == null {
+        print "jigd: not running"
+        return
+      }
+      print $"jigd: ($serving)"
+      if ($log | path exists) { ^tail -n 3 $log }
     }
     _ => { fail "repkgs cache start|stop|status" }
   }
 }
 
-# build seed nars on this machine and upload them (pkgs/se/seed/upload.nu)
+# build the seed nars here and upload them (pkgs/se/seed/upload.nu)
 def --wrapped "main seed" [...args: string]: nothing -> nothing {
   ^$"(root)/pkgs/se/seed/upload.nu" ...$args
 }
 
-# cross build <pkg> for cpus upstream has no binaries for and upload it as <pkg>-bootstrap's source (tools/upload-bootstrap.nu)
+# cross build <pkg> for cpus upstream ships no binaries for and upload it as the source of
+# <pkg>-bootstrap (tools/upload-bootstrap.nu)
 def --wrapped "main bootstrap" [...args: string]: nothing -> nothing {
   ^$"(root)/tools/upload-bootstrap.nu" ...$args
 }
 
-# format and lint the tree (treefmt)
+# format and lint the tree with treefmt
 def --wrapped "main fmt" [...args: string]: nothing -> nothing {
   cd (root)
   ^treefmt ...$args

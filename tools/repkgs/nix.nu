@@ -1,13 +1,16 @@
-# what every subcommand shares: where the set is, how nix is called, where the cache socket is
-export const INSIDE = "/nix/var/nix/jigd/socket"
-# what the set needs from nix, whatever nix.conf says
-export const XP = [--extra-experimental-features "nix-command ca-derivations dynamic-derivations"]
+# shared by the subcommands: the tree, how nix is called, and where the jigd socket is
+# the socket path builds see, mapped there through extra-sandbox-paths
+export const SANDBOX_SOCKET = "/nix/var/nix/jigd/socket"
+# the features the set relies on, whatever nix.conf enables
+export const FEATURES = [--extra-experimental-features "nix-command ca-derivations dynamic-derivations"]
 
 const ROOT = path self ../..
 export def root []: nothing -> string { $ROOT }
 
-# --for as nix sees it: on a command line, and inside an expression
-export def platform-arg [p]: nothing -> list<string> { if $p == null { [] } else { [--argstr platform $p] } }
+export def platform-arg [platform]: nothing -> list<string> {
+  if $platform == null { [] } else { [--argstr platform $platform] }
+}
+
 export def seed-path [seed: any]: nothing -> any {
   if $seed == null { return null }
   let path = ($seed | path expand --strict)
@@ -37,48 +40,45 @@ export def set-expr [p, seed: any, toolchain: any]: nothing -> string {
   $"\(import (root) { ($fields | str join ' ') }\)"
 }
 
-export def fail [msg: string]: nothing -> error { error make --unspanned {msg: $msg} }
+export def fail [message: string]: nothing -> error { error make --unspanned {msg: $message} }
 
-# one nix expression to JSON. Nix's own errors (unknown package or platform, a package.nix
-# mistake) are its last `error:` line, not the trace through our query expression
+# an expression evaluated to JSON. When nix fails, its last `error:` line names the real problem
+# (an unknown package or platform, a broken recipe) where the full trace runs through our query
 export def eval [expr: string]: nothing -> any {
-  # read-write: a dynamic derivation's path is only known once its .drv is written
-  let r = (^nix-instantiate ...$XP --eval --read-write-mode --strict --json --expr $expr | complete)
-  if $r.exit_code != 0 {
-    fail ($r.stderr | lines | where $it =~ '^\s*error:' | last | default $r.stderr | str replace -r '^\s*error:\s*' "")
-  }
-  $r.stdout | from json
+  # read-write, since a dynamic derivation has a path only once its .drv is written
+  let result = (^nix-instantiate ...$FEATURES --eval --read-write-mode --strict --json --expr $expr | complete)
+  if $result.exit_code == 0 { return ($result.stdout | from json) }
+  let last = ($result.stderr | lines | where $it =~ '^\s*error:' | last | default $result.stderr)
+  fail ($last | str replace -r '^\s*error:\s*' "")
 }
 
-# the package <attr> of the set for platform p, as an expression. `s.${"7zip"}` parses where
-# s.7zip does not, and a typo names its neighbours instead of nix's attribute trace
+# `s.${"7zip"}` parses where s.7zip does not, and a misspelt name lists the packages sharing its
+# first two letters instead of a trace through this expression
 export def pkg-expr [attr: string, p, seed: any, toolchain: any]: nothing -> string {
-  let n = ($attr | to json)
-  $"\(let s = (set-expr $p $seed $toolchain); n = ($n); in s.${n} or \(builtins.throw \"no package ${n}, near: ${toString \(builtins.filter \(a: builtins.substring 0 2 a == builtins.substring 0 2 n\) \(builtins.attrNames s\)\)}\"\)\)"
+  let quoted = ($attr | to json)
+  $"\(let s = (set-expr $p $seed $toolchain); n = ($quoted); in s.${n} or \(builtins.throw \"no package ${n}, near: ${toString \(builtins.filter \(a: builtins.substring 0 2 a == builtins.substring 0 2 n\) \(builtins.attrNames s\)\)}\"\)\)"
 }
 
-# a socket file something is listening on (a crashed jigd leaves the file behind)
-export def is-socket [p: string]: nothing -> bool {
-  ($p | path exists) and (ls -D $p | get 0.type) == "socket" and (open --raw /proc/net/unix | str contains $" ($p | path expand)\n")
+# a socket with a listener, since a crashed jigd leaves its socket file behind
+export def is-socket [path: string]: nothing -> bool {
+  let listening = (open --raw /proc/net/unix | str contains $" ($path | path expand)\n")
+  ($path | path exists) and (ls -D $path | get 0.type) == "socket" and $listening
 }
 
-# under /tmp, not XDG_RUNTIME_DIR: the nix build user has to reach it through extra-sandbox-paths
+# /tmp rather than XDG_RUNTIME_DIR, because the nix build user reaches it through extra-sandbox-paths
 export def jigd-dir []: nothing -> string { $"/tmp/jigd-(id -u)" }
 
 export def jigd-socket []: nothing -> any {
-  [$env.JIG_SOCK? $INSIDE $"(jigd-dir)/socket"] | compact | where {|p| is-socket $p } | get 0?
+  [$env.JIG_SOCK? $SANDBOX_SOCKET $"(jigd-dir)/socket"] | compact | where {|path| is-socket $path } | get 0?
 }
 
-# maps the jigd socket into the sandbox (trusted user) and keeps the build local, a remote has no cache
+# maps the socket into the sandbox, which takes a trusted user, and keeps the build here since a
+# remote builder has no cache
 export def cache-args []: nothing -> list<string> {
-  let sock = (jigd-socket)
-  if $sock == null {
-    print -e "repkgs: no jigd socket, building uncached (repkgs cache start)"
-    []
-  } else {
-    [--option extra-sandbox-paths $"($INSIDE)=($sock)" --builders ""]
-  }
+  let socket = (jigd-socket)
+  if $socket != null { return [--option extra-sandbox-paths $"($SANDBOX_SOCKET)=($socket)" --builders ""] }
+  print -e "repkgs: no jigd socket, building uncached (repkgs cache start)"
+  []
 }
 
 export def drv [attr: string, p, seed: any, toolchain: any]: nothing -> string { eval $"(pkg-expr $attr $p $seed $toolchain).drvPath" }
-
