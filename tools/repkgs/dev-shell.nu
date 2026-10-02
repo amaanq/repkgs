@@ -11,8 +11,7 @@ def phases [] {
 
 def --env phase [name: string@phases] {
   let attrs = (open $env.NIX_ATTRS_JSON_FILE)
-  ^$attrs.builder dev phase $name
-  if $env.LAST_EXIT_CODE != 0 { error make {msg: $"phase ($name) failed"} }
+  try { ^$attrs.builder dev phase $name } catch { error make {msg: $"phase ($name) failed"} }
   load-build-env
 }
 

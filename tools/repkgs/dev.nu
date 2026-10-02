@@ -43,8 +43,7 @@ def prepare-build [directory: path, configuration: record]: nothing -> record {
   }
   let variables = ($environment | transpose name value | where value != null
     | each {|entry| $"($entry.name)=($entry.value)" })
-  ^env -i ...$variables $attrs.builder dev prepare
-  if $env.LAST_EXIT_CODE != 0 { fail "development setup failed" }
+  try { ^env -i ...$variables $attrs.builder dev prepare } catch { fail "development setup failed" }
 
   $configuration | to json | save -f ($directory | path join configuration.json)
   {variables: $variables, shell: ($attrs.devNu | path join bin nu)}
@@ -72,12 +71,17 @@ export def "main dev" [
   let directory = ($cache | path join repkgs dev $"($attr)-($for | default native)" | path expand)
   open-workspace $directory $configuration --fresh=$fresh --reset=$reset
 
-  ^nix ...$FEATURES build $"($derivation)^out" --out-link ($directory | path join inputs) -L ...(cache-args)
-  if $env.LAST_EXIT_CODE != 0 { fail "could not prepare the development inputs" }
+  try {
+    ^nix ...$FEATURES build $"($derivation)^out" --out-link ($directory | path join inputs) -L ...(cache-args)
+  } catch {
+    fail "could not prepare the development inputs"
+  }
   let session = (prepare-build $directory $configuration)
   let command = $"source ($SHELL | to nuon)\n($cmds | str join ' ')"
   let run = (if ($cmds | is-empty) { [-e $command] } else { [-c $command] })
-  (^env -i ...$session.variables $session.shell
-    --no-config-file --experimental-options=[cell-path-types] ...$run)
-  if $env.LAST_EXIT_CODE != 0 { fail "development command failed" }
+  try {
+    ^env -i ...$session.variables $session.shell --no-config-file --experimental-options=[cell-path-types] ...$run
+  } catch {
+    fail "development command failed"
+  }
 }

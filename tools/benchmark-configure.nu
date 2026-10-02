@@ -104,7 +104,8 @@ def "main work" [directory: path, mode: string]: nothing -> nothing {
   load-env $prepared.env
   cd $prepared.cwd
   let ctx = ($env.NIX_BUILD_TOP | path join ctx.json)
-  open $ctx | update cache ($mode starts-with shared or $mode starts-with whole) | save --force $ctx
+  let context = (open $ctx)
+  $context | update cache ($mode starts-with shared or $mode starts-with whole) | save --force $ctx
   $env.JIG_LOG = ($directory | path join $"($mode)-jig.log")
   load-env (^jib system setup autotools | from json)
   cd (^jib system workdir autotools | str trim)
