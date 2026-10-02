@@ -10,7 +10,7 @@ export def retarget-tools []: nothing -> nothing {
   let swaps = ([m4 perl bash] | each {|name|
     {built: (tool $name), runs: $"(dep-root $name 'the scripts run it')/bin/($name)"}
   })
-  for script in (glob $"((ctx).out)/bin/*") {
+  for script in (files --any $"((ctx).out)/bin/*") {
     edit $script {|| let text = $in; $swaps | reduce --fold $text {|swap, edited| $edited | str replace --all $swap.built $swap.runs } }
   }
 }

@@ -5,7 +5,8 @@ export def configure []: nothing -> nothing {
   # jdk.jpackage uses std::nothrow without including <new>, which libstdc++ and older libc++
   # pulled in through <string>. tstrings.h is included by all of it
   let header = "src/jdk.jpackage/share/native/common/tstrings.h"
-  open --raw $header | str replace "#include <string>" "#include <new>\n#include <string>" | save -f $header
+  let text   = (open --raw $header)
+  $text | str replace "#include <string>" "#include <new>\n#include <string>" | save -f $header
 
   let cross = if $c.platform.cross {
     [$"--openjdk-target=($c.platform.gnuTriple)" $"--with-build-jdk=(tool-root jdk)"
@@ -34,7 +35,7 @@ export def build []: nothing -> nothing {
 
 export def install []: nothing -> nothing {
   let c     = (ctx)
-  let image = (glob build/*/images/jdk | first)
+  let image = (files --any build/*/images/jdk | first)
   mkdir $c.out
   for entry in [bin conf include jmods lib release] { cp -r $"($image)/($entry)" $c.out }
 }

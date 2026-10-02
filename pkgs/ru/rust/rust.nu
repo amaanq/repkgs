@@ -10,7 +10,8 @@ def machine []: nothing -> string {
 # shebang fixing edits vendored files, and cargo checks every file sum it finds
 def drop-file-sums []: nothing -> nothing {
   for sums in (files vendor/*/.cargo-checksum.json) {
-    open $sums | merge {files: {}} | to json -r | save -f $sums
+    let crate = (open $sums)
+    $crate | merge {files: {}} | to json -r | save -f $sums
   }
 }
 

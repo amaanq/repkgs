@@ -85,10 +85,11 @@ export def windows-layout []: nothing -> nothing {
 # the PEP 739 file names the paths of the python that generated it, under cross the build
 # machine's. These are where ours lands, relative like --relative-paths writes them
 export def build-details []: nothing -> nothing {
-  let out    = (ctx).out
-  let file   = (files $"($out)/lib/python3.*/build-details.json" | first)
-  let python = ($file | path dirname | path basename)
-  open $file
+  let out     = (ctx).out
+  let file    = (files $"($out)/lib/python3.*/build-details.json" | first)
+  let python  = ($file | path dirname | path basename)
+  let details = (open $file)
+  $details
   | reject libpython.static
   | merge deep {
     base_prefix: "../.."

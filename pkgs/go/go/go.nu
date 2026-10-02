@@ -22,10 +22,10 @@ export def build []: nothing -> nothing {
   rm -rf pkg/obj pkg/bootstrap
   if $c.platform.cross {
     rm -rf ...(ls bin pkg/tool | get name | where {|entry| ($entry | path basename) != $target })
-    mv ...(glob $"bin/($target)/*") bin/
+    mv ...(files --any $"bin/($target)/*") bin/
     rm -rf $"bin/($target)"
   }
   mkdir $c.out
   for entry in [bin pkg src lib misc go.env VERSION] { ^cp -r $entry $c.out }
-  for testdata in (glob $"($c.out)/src/**/testdata") { rm -rf $testdata }
+  for testdata in (files --any $"($c.out)/src/**/testdata") { rm -rf $testdata }
 }
