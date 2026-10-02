@@ -28,7 +28,9 @@ in
       (pkg "llvm" + "/upstream-x86-vastart-stack-probe.patch")
       (pkg "llvm" + "/jig-absent-log.patch")
     ];
-    targets = (import (pkg "llvm" + "/defs.nix")).LLVM_TARGETS_TO_BUILD;
+    targets =
+      (builtins.fromTOML (builtins.readFile (pkg "llvm" + "/package.toml")))
+      .package.cmake.defs.LLVM_TARGETS_TO_BUILD;
   };
   cmake.src = source "cmake-bootstrap";
   compiler-rt.src = llvm;
