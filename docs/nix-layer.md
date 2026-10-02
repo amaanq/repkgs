@@ -1,8 +1,9 @@
 # Nix layer
 
-The implemented slices cover Autotools, Make, CMake, Meson, Cargo and Go with literal
-defaults, nullable options, lists and maps. Nix still binds their tool packages and lock
-fetchers. The broader contracts and symbolic defaults below remain proposed work.
+Every build system's options now come from the schema, with literal defaults, required
+options, nullable options, lists, maps, enums and closed records. A required option has
+no default of its own and Nix supplies it from `lock.deps`. Nix still binds tool packages
+and lock fetchers. The broader contracts and symbolic defaults below remain proposed work.
 
 ## Ownership
 
