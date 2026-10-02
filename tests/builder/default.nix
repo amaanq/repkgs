@@ -1,7 +1,8 @@
-# Builder behaviour: every directory here is a test. Its test.nu runs under the bootstrap's nu with
-# builder/ and lib/ on the include path and $env.fixtures set to the directory. One with a
-# package.nix is first built as out-of-tree package test-<name> ($env.pkg, $env.debug), so each test
-# needs only its own toolchain. `nix-build tests/builder -A <name>`, `repkgs test` for all.
+# Builder behaviour, one test per directory. Its test.nu runs under the bootstrap's nu with builder/
+# and lib/ on the include path and $env.fixtures naming the directory. A directory with a
+# package.toml or package.nix is first built as the out-of-tree package test-<name>, handed over as
+# $env.pkg and $env.debug, so each test needs only its own toolchain. `nix-build tests/builder -A
+# <name>` runs one and `repkgs test` all.
 {
   system ? builtins.currentSystem,
   platform ? system,
@@ -11,21 +12,29 @@
 }:
 let
   inherit (builtins)
-    readDir
-    mapAttrs
-    pathExists
-    removeAttrs
     attrNames
     filter
+    fromJSON
+    fromTOML
     listToAttrs
+    mapAttrs
+    pathExists
+    readDir
+    readFile
     ;
-  dirs = removeAttrs (readDir ./.) [
+  here = removeAttrs (readDir ./.) [
     "lib"
     "default.nix"
   ];
-  tests = mapAttrs (n: _: ./. + "/${n}") dirs;
-  isPackage = n: pathExists (tests.${n} + "/package.nix");
-  # as test-<name>: a bare `go` would replace the set's go, which the go build system runs
+  testDir = name: ./. + "/${name}";
+  built =
+    name:
+    let
+      manifest = testDir name + "/package.toml";
+    in
+    pathExists (testDir name + "/package.nix")
+    || pathExists manifest && fromTOML (readFile manifest) ? package;
+  # named test-<name>, since a bare `go` would replace the go that the go build system runs
   set = import ../../nix/set.nix {
     inherit
       system
@@ -35,43 +44,48 @@ let
       buildTools
       ;
     packages = listToAttrs (
-      map (n: {
-        name = "test-${n}";
-        value = tests.${n};
-      }) (filter isPackage (attrNames tests))
+      map (name: {
+        name = "test-${name}";
+        value = testDir name;
+      }) (filter built (attrNames here))
     );
   };
-  seedPath = set.bootstrap.seed;
+  inherit (set) tools;
+  # nu takes include dirs separated by \x1e
+  includes = "${../../builder}${fromJSON "\"\\u001e\""}${./lib}";
+  check =
+    name: _:
+    let
+      dir = testDir name;
+      pkg = set.pkgs."test-${name}";
+    in
+    derivation (
+      {
+        name = "check-${name}";
+        inherit system;
+        __contentAddressed = true;
+        outputHashMode = "recursive";
+        outputHashAlgo = "sha256";
+        builder = "${tools.nu}/bin/nu";
+        args = [
+          "--no-config-file"
+          "--include-path=${includes}"
+          "${dir}/test.nu"
+        ];
+        PATH = "${tools.nu}/bin:${tools.jib}/bin:${set.bootstrap.seed}/bin";
+        fixtures = dir;
+        SYS_LIBS = ../../builder/sys-libs.json;
+      }
+      // (
+        if built name then
+          {
+            inherit pkg;
+            inherit (pkg) debug;
+            src = "${dir}/src";
+          }
+        else
+          { }
+      )
+    );
 in
-mapAttrs (
-  name: dir:
-  derivation (
-    {
-      name = "check-${name}";
-      inherit system;
-      __contentAddressed = true;
-      outputHashMode = "recursive";
-      outputHashAlgo = "sha256";
-      PATH = "${set.tools.nu}/bin:${set.tools.jib}/bin:${seedPath}/bin";
-      fixtures = dir;
-      SYS_LIBS = ../../builder/sys-libs.json;
-      builder = "${set.tools.nu}/bin/nu";
-      # nu separates include dirs with \x1e
-      args = [
-        "--no-config-file"
-        "--include-path=${../../builder}${builtins.fromJSON "\"\\u001e\""}${./lib}"
-        "${dir}/test.nu"
-      ];
-    }
-    // (
-      if isPackage name then
-        rec {
-          pkg = set.pkgs."test-${name}";
-          inherit (pkg) debug;
-          src = "${dir}/src";
-        }
-      else
-        { }
-    )
-  )
-) tests
+mapAttrs check here

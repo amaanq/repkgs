@@ -1,0 +1,10 @@
+[package]
+version = "1"
+source  = { name = "src", tree = "src" }
+
+[[package.phases]]
+name = "build"
+run = '''
+mkdir $"($c.out)/bin"
+x cc tz.c -o $"($c.out)/bin/tz"
+'''

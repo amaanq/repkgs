@@ -1,2 +1,2 @@
-# cpython.project's devEnv: bin/python3 that imports the checkout named by REPKGS_PROJECT
+# the devEnv of cpython.project, a python3 that also imports the checkout $REPKGS_PROJECT names
 { pkgs }: (pkgs.cpython.project { src = ./src; }).devEnv

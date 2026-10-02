@@ -1,0 +1,10 @@
+[package]
+version = "2.0.0"
+source  = { name = "src", tree = "src" }
+uses    = [ "npm" ]
+
+[package.npm]
+script = "{null}"
+
+[package.tests]
+version = "test-npm"
