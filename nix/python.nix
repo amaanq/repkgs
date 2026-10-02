@@ -1,4 +1,4 @@
-# What cpython's package.nix adds to the interpreter:
+# What `helpers = "python"` in a package.toml adds to the interpreter:
 #   cpython.env { src | lock, … }     an environment: every locked dependency plus bin/python3
 #   cpython.project { src, … }        { package = the application; devEnv = an env whose python
 #                                     also imports the checkout named by $REPKGS_PROJECT }

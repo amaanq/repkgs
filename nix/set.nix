@@ -156,7 +156,7 @@ let
       ;
     platform = plat;
     pkgs = self;
-    # cpython's package.nix adds .env/.project with this (nix/python.nix)
+    # `helpers = "python"` in a package.toml (nix/package/manifest.nix)
     pythonProject =
       package: python:
       import ./python.nix {

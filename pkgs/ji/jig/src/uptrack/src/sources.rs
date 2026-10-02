@@ -93,6 +93,8 @@ struct File {
    _unless:  Option<IgnoredAny>,
    #[serde(default, rename = "from")]
    _from:    Option<IgnoredAny>,
+   #[serde(default, rename = "helpers")]
+   _helpers: Option<IgnoredAny>,
 }
 
 /// A package as its package.toml describes it, what every stage passes on.

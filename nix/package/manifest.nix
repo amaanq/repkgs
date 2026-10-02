@@ -1,6 +1,7 @@
 # A package described by its package.toml alone, no package.nix. Besides [upstream], [[source]]
 # and [pin] (nix/sources.nix) the file holds:
 #   from = "<package>"   that package's sources instead of its own, for a subproject of its tarball
+#   helpers = "python"   the interpreter also carries .env and .project (nix/python.nix)
 #   [package]           recipe fields, `name` defaults to the directory
 #   [vars]              named strings for {var:…}
 #   [when.<condition>]  merged on top where the condition holds, [unless.<condition>] where not
@@ -34,6 +35,7 @@
   sources,
   toolchain,
   fetch,
+  pythonProject,
 }:
 let
   inherit (builtins)
@@ -62,6 +64,7 @@ let
     "when"
     "unless"
     "from"
+    "helpers"
   ];
   strays = filter (key: !elem key known) (attrNames table);
 
@@ -262,12 +265,8 @@ let
         { }
     )
     // (if fields ? patches then { patches = map (file: dir + "/${file}") fields.patches; } else { });
-in
-if strays != [ ] then
-  throw "${where}: unknown table ${concatStringsSep ", " strays}"
-else
   # a build system's table is emptied where `uses` does not list the system
-  package (
+  made = package (
     resolved
     // builtins.listToAttrs (
       map
@@ -277,4 +276,14 @@ else
         })
         (filter (system: resolved ? ${system} && !elem system (resolved.uses or [ ])) (attrNames systems))
     )
-  )
+  );
+  helpers = {
+    python = pythonProject package self;
+  };
+  self =
+    if !(table ? helpers) then
+      made
+    else
+      made // helpers.${table.helpers} or (throw "${where}: no helpers ${table.helpers}");
+in
+if strays != [ ] then throw "${where}: unknown table ${concatStringsSep ", " strays}" else self
