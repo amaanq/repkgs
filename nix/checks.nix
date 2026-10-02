@@ -20,44 +20,39 @@ let
   pkgs = import nixpkgs { inherit system; };
   inherit (pkgs) lib;
 
-  setFor =
-    platform:
-    import ../default.nix {
-      inherit system platform;
-    };
+  setOf = platform: import ../default.nix { inherit system platform; };
   # nix/package decides `supported` per platform without forcing the derivation
-  supported = set: lib.filterAttrs (_: p: p.supported) set;
-  prefixed = prefix: lib.mapAttrs' (n: v: lib.nameValuePair "${prefix}${n}" v);
-  forPlatform = p: prefixed (if p == system then "pkg-" else "${p}-") (supported (setFor p));
-  separateTests = lib.concatMapAttrs (n: p: if p ? tests then { ${n} = p.tests; } else { }) (
-    supported (setFor system)
-  );
+  buildable = lib.filterAttrs (_: package: package.supported);
+  named = prefix: lib.mapAttrs' (name: value: lib.nameValuePair "${prefix}${name}" value);
+  native = buildable (setOf system);
+  perPlatform =
+    platform:
+    named (if platform == system then "pkg-" else "${platform}-") (buildable (setOf platform));
+  suites = lib.concatMapAttrs (
+    name: package: lib.optionalAttrs (package ? tests) { ${name} = package.tests; }
+  ) native;
+  tree = builtins.path {
+    path = ../.;
+    name = "source";
+    filter = path: type: baseNameOf path != ".jj" && lib.cleanSourceFilter path type;
+  };
 in
-lib.mergeAttrsList (map forPlatform platforms)
-// prefixed "tests-" separateTests
-// prefixed "builder-" (import ../tests/builder { inherit system; })
+lib.mergeAttrsList (map perPlatform platforms)
+// named "tests-" suites
+// named "builder-" (import ../tests/builder { inherit system; })
 // {
   schema = pkgs.runCommand "jib-schema-check" { } ''
-    ${(setFor system).jib}/bin/jib schema --check ${./schema.json}
+    ${(setOf system).jib}/bin/jib schema --check ${./schema.json}
     touch $out
   '';
-  treefmt =
-    pkgs.runCommand "treefmt-check"
-      {
-        nativeBuildInputs = [
-          (import ../treefmt.nix {
-            inherit pkgs;
-            evaluates = false;
-          })
-        ];
-      }
-      "cp -r ${
-        builtins.path {
-          path = ../.;
-          name = "source";
-          filter = p: t: baseNameOf p != ".jj" && lib.cleanSourceFilter p t;
-        }
-      } src && chmod -R u+w src && cd src && treefmt --ci --tree-root . && touch $out";
+  treefmt = pkgs.runCommand "treefmt-check" {
+    nativeBuildInputs = [
+      (import ../treefmt.nix {
+        inherit pkgs;
+        evaluates = false;
+      })
+    ];
+  } "cp -r ${tree} src && chmod -R u+w src && cd src && treefmt --ci --tree-root . && touch $out";
   inherit
     (import ../pkgs/se/seed {
       inherit system;
