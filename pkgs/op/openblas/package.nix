@@ -21,6 +21,7 @@ package {
   # it. The CMake build instead fills in per-core parameters from a table in cmake/prebuild.cmake
   # that lags the Makefiles (no HAVE_SME for ARMV9SME, no -march=.._v for riscv64 in 0.3.34)
   uses = [ "make" ];
+  platforms.os = [ "linux" ]; # flang-rt's, FC below names it by path rather than as a dependency
   patches = [ ./upstream-power-integrated-as.patch ];
   make.flags = [
     "DYNAMIC_ARCH=1"
