@@ -1,7 +1,7 @@
-# The seed: every build-machine binary needed before the set can build its own userland, static
-# musl, built once with nixpkgs (later: by the package set itself). `system` is where the seed
-# runs, `buildSystem` where it is built: static musl is a cross build to nixpkgs either way.
-#   ./upload.nu builds -A nar per system, uploads to the GitHub release and rewrites ./package.toml
+# The seed: the static musl programs for the build machine that the set needs before it can build
+# its own userland, built with nixpkgs. It runs on `system` and is built on `buildSystem`, and
+# static musl makes that a cross build either way. ./upload.nu builds `nar` per system, uploads it
+# and rewrites ./package.toml.
 {
   nixpkgs ? import ../../../nix/nixpkgs.nix,
   system ? builtins.currentSystem,
@@ -10,47 +10,44 @@
 let
   cross = system != buildSystem;
   cpu = builtins.head (builtins.split "-" system);
-  ps = import nixpkgs {
+  musl = import nixpkgs {
     localSystem = buildSystem;
     crossSystem = {
       config = "${cpu}-unknown-linux-musl";
       isStatic = true;
     };
   };
-  pkgs = ps.buildPackages;
-  # The LLVM build must precede Rust and Nu, including the tools that unpack its sources.
+  native = musl.buildPackages;
+  inherit (native) lib;
+  triple = musl.stdenv.hostPlatform.config;
+
+  # a package.toml's pinned sources, fetched with nixpkgs, since the seed exists before jig does
   source =
     name:
     let
       manifest = fromTOML (
         builtins.readFile (../.. + "/${builtins.substring 0 2 name}/${name}/package.toml")
       );
+      inherit (manifest.pin) version;
+      tag = manifest.pin.tag or version;
       fetch =
         key:
         let
-          archive = builtins.head (builtins.filter (entry: entry.key == key) manifest.source);
+          entry = builtins.head (builtins.filter (candidate: candidate.key == key) manifest.source);
         in
-        (pkgs.fetchzip.override { withUnzip = false; }) {
-          name = "${name}-${manifest.pin.version}-${if key == "default" then "source" else key}";
-          url =
-            builtins.replaceStrings
-              [ "{version}" "{tag}" ]
-              [
-                manifest.pin.version
-                (manifest.pin.tag or manifest.pin.version)
-              ]
-              archive.url;
-          inherit (archive) hash;
+        (native.fetchzip.override { withUnzip = false; }) {
+          name = "${name}-${version}-${if key == "default" then "source" else key}";
+          url = builtins.replaceStrings [ "{version}" "{tag}" ] [ version tag ] entry.url;
+          inherit (entry) hash;
         };
     in
     {
-      inherit (manifest.pin) version;
-      inherit fetch;
+      inherit version fetch;
       default = fetch "default";
     };
-  llvmSource = source "llvm";
-  # the seed compiles stage0 and stage1 for the build machine only (bootstrap/default.nix)
-  targets =
+
+  # stage0 and stage1 build for this machine only (bootstrap/default.nix), so one backend suffices
+  backend =
     {
       x86_64 = "X86";
       aarch64 = "AArch64";
@@ -59,35 +56,34 @@ let
       powerpc64le = "PowerPC";
     }
     .${cpu};
-  triple = ps.stdenv.hostPlatform.config;
-
-  llvm = ps.stdenv.mkDerivation {
+  llvmSource = source "llvm";
+  # configured as a native build since the static binary runs on the machine it targets. For
+  # another cpu, llvm builds its tblgen tools in a NATIVE subtree with this machine's compiler
+  llvm = musl.stdenv.mkDerivation {
     pname = "seed-llvm";
     inherit (llvmSource) version;
     src = llvmSource.default;
     patches = [ ../../ll/llvm/upstream-x86-vastart-stack-probe.patch ];
     nativeBuildInputs = [
-      pkgs.cmakeMinimal
-      (pkgs.ninja.override {
+      native.cmakeMinimal
+      (native.ninja.override {
         buildDocs = false;
-        python3 = pkgs.python3Minimal;
+        python3 = native.python3Minimal;
       })
-      pkgs.python3Minimal
+      native.python3Minimal
     ];
     buildInputs = [
-      ps.zlib
-      ps.zstd
+      musl.zlib
+      musl.zstd
     ];
     dontUseCmakeConfigure = true;
-    # a musl-static binary for the build machine runs there: configured as a native build. For
-    # another cpu llvm builds its tblgen tools in a NATIVE sub-tree with the build machine's compiler
     configurePhase = ''
       cmake -S llvm -B build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$out \
         -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX -DCMAKE_AR=$(command -v $AR) -DCMAKE_RANLIB=$(command -v $RANLIB) \
-        ${pkgs.lib.optionalString cross "-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=${cpu} -DCROSS_TOOLCHAIN_FLAGS_NATIVE='-DCMAKE_C_COMPILER=${pkgs.stdenv.cc}/bin/cc;-DCMAKE_CXX_COMPILER=${pkgs.stdenv.cc}/bin/c++'"} \
+        ${lib.optionalString cross "-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=${cpu} -DCROSS_TOOLCHAIN_FLAGS_NATIVE='-DCMAKE_C_COMPILER=${native.stdenv.cc}/bin/cc;-DCMAKE_CXX_COMPILER=${native.stdenv.cc}/bin/c++'"} \
         -DLLVM_ENABLE_PROJECTS="clang;lld" \
-        -DLLVM_TARGETS_TO_BUILD="${targets}" \
+        -DLLVM_TARGETS_TO_BUILD="${backend}" \
         -DLLVM_HOST_TRIPLE=${triple} -DLLVM_DEFAULT_TARGET_TRIPLE=${triple} \
         -DLLVM_TOOL_LLVM_DRIVER_BUILD=ON \
         -DLLVM_BUILD_STATIC=ON -DLLVM_ENABLE_PIC=OFF -DLLVM_PARALLEL_LINK_JOBS=4 \
@@ -103,7 +99,7 @@ let
         -DLLVM_TOOLCHAIN_TOOLS="llvm-ar;llvm-ranlib;llvm-nm;llvm-objcopy;llvm-strip;llvm-objdump;llvm-readelf;llvm-readobj;llvm-size;llvm-strings;llvm-cxxfilt"
     '';
     buildPhase = "ninja -C build -j$NIX_BUILD_CORES llvm-driver clang-resource-headers";
-    # the multicall binary + the names it answers to (from the generated .def) + clang's resource headers
+    # one multicall binary, a link per name LLVMDriverTools.def gives it, and clang's resource headers
     installPhase = ''
       mkdir -p $out/bin $out/lib
       cp build/bin/llvm $out/bin/llvm
@@ -120,8 +116,10 @@ let
     dontFixup = true;
   };
 
+  # a cross seed still bootstraps rust with this machine's llvm
   rustBootstrap = import ./rust.nix {
-    inherit ps source;
+    ps = musl;
+    inherit source;
     pkgs = import nixpkgs { system = buildSystem; };
     llvm =
       if cross then
@@ -132,33 +130,33 @@ let
       else
         llvm;
   };
-  nuSource = source "nushell";
-  rustPlatform = ps.makeRustPlatform {
+  rustPlatform = musl.makeRustPlatform {
     rustc = rustBootstrap.rust;
     cargo = rustBootstrap.rust;
   };
-  # jib's sources stay out of jig's so that editing the builder side does not rebuild the
-  # toolchain and everything under it. cargo still wants the workspace member to have its main.rs
+
+  # jib's sources stay out of jig's, so a builder edit leaves the toolchain under jig alone. cargo
+  # still wants every workspace member's main.rs
   rustCrate =
-    name: skipped:
+    name: excluded:
+    let
+      kept =
+        path: type:
+        (type == "directory" && baseNameOf path != "target")
+        || builtins.match ".*\\.rs" path != null
+        || builtins.elem (baseNameOf path) [
+          "Cargo.toml"
+          "Cargo.lock"
+          "README.md"
+        ];
+    in
     rustPlatform.buildRustPackage {
       pname = "seed-${name}";
       version = "3.0.0";
       src = builtins.path {
         path = ../../ji/jig/src;
         name = "${name}-rust-src";
-        filter =
-          path: type:
-          !(skipped path)
-          && (
-            (type == "directory" && baseNameOf path != "target")
-            || builtins.match ".*\\.rs" path != null
-            || builtins.elem (baseNameOf path) [
-              "Cargo.toml"
-              "Cargo.lock"
-              "README.md"
-            ]
-          );
+        filter = path: type: !(excluded path) && kept path type;
       };
       cargoLock.lockFile = ../../ji/jig/src/Cargo.lock;
       cargoBuildFlags = [
@@ -173,12 +171,14 @@ let
   jig = rustCrate "jig" (
     path: builtins.match ".*/(jib|jsem|uptrack)/src/.+" path != null && baseNameOf path != "main.rs"
   );
-  jib = rustCrate "jib" (_path: false);
+  jib = rustCrate "jib" (_: false);
+
+  nuSource = source "nushell";
   nu =
-    (ps.nushell.override {
+    (musl.nushell.override {
       inherit rustPlatform;
       withDefaultFeatures = false;
-      additionalFeatures = _features: [
+      additionalFeatures = _: [
         "network"
         "sqlite"
         "trash-support"
@@ -196,28 +196,30 @@ let
             --replace-fail HashMap BTreeMap
         '';
       };
-  bsdtar = ps.libarchive;
-  # nu has no ln/chmod/readlink and configure scripts need expr/tr/sed/... before anything is built
-  toybox = ps.toybox.overrideAttrs (_o: {
+
+  bsdtar = musl.libarchive;
+  # nu has no ln, chmod or readlink, and configure scripts want expr, tr and sed before any build
+  toybox = musl.toybox.overrideAttrs (_: {
     configurePhase = "cp ${../../to/toybox/toybox.config} .config; chmod +w .config; make oldconfig </dev/null >/dev/null";
   });
-
-  # what glibc's and the GNU userland's own builds need beyond toybox: a POSIX sh, make, and the
-  # GNU text tools their scripts are written for. bison+m4 because glibc ships only intl/plural.y
-  inherit (ps) dash;
+  inherit (musl) dash;
+  # what glibc and the GNU userland build with beyond toybox, a POSIX sh, make and the GNU text
+  # tools their scripts assume. glibc ships intl/plural.y without its parser, hence bison and m4
   tools = {
-    make = ps.gnumake.override { guileSupport = false; };
-    gawk = ps.gawk.override { interactive = false; };
-    sed = ps.gnused;
-    grep = ps.gnugrep.override { pcre2 = null; };
-    m4 = ps.gnum4;
-    inherit (ps) bison;
+    make = musl.gnumake.override { guileSupport = false; };
+    gawk = musl.gawk.override { interactive = false; };
+    sed = musl.gnused;
+    grep = musl.gnugrep.override { pcre2 = null; };
+    m4 = musl.gnum4;
+    inherit (musl) bison;
   };
-  # glibc's build runs python scripts. No extension modules, no ensurepip: the stdlib as source
-  python = ps.stdenv.mkDerivation {
+
+  # glibc's build runs python scripts, which need only the stdlib as source, without extension
+  # modules or ensurepip
+  python = musl.stdenv.mkDerivation {
     name = "seed-python";
     src = (source "cpython314").default;
-    # everything that would want a library we do not ship
+    # every module that would want a library the seed does not carry
     preConfigure = ''
       cat > Modules/Setup.local <<EOF
       *disabled*
@@ -240,7 +242,7 @@ let
       "ac_cv_file__dev_ptmx=yes"
       "ac_cv_file__dev_ptc=no"
       "ac_cv_buggy_getaddrinfo=no"
-      "--with-build-python=${pkgs.python314}/bin/python3"
+      "--with-build-python=${native.python314}/bin/python3"
     ];
     env = {
       LDFLAGS = "-static";
@@ -255,20 +257,18 @@ let
       rm -rf test idlelib tkinter turtledemo ensurepip lib2to3 config-3* site-packages
       rm -rf $out/share $out/lib/pkgconfig $out/bin/idle* $out/bin/pydoc* $out/lib/libpython*.a $out/include
       find $out -name __pycache__ -prune -exec rm -rf {} +
-      ${pkgs.lib.optionalString (
+      ${lib.optionalString (
         !cross
       ) ''$out/bin/python3 -B -c "import sys, os, re, json, subprocess, argparse"''}
     '';
     dontFixup = true;
   };
 
-  seed = pkgs.runCommand "seed-4-${system}" { allowedReferences = [ ]; } ''
+  seed = native.runCommand "seed-4-${system}" { allowedReferences = [ ]; } ''
     mkdir -p $out/bin $out/lib $out/share
     cp ${bsdtar}/bin/bsdtar ${toybox}/bin/toybox ${dash}/bin/dash $out/bin/
     ln -s dash $out/bin/sh
-    ${pkgs.lib.concatStringsSep "\n" (
-      pkgs.lib.mapAttrsToList (n: p: "cp ${p}/bin/${n} $out/bin/") tools
-    )}
+    ${lib.concatStringsSep "\n" (lib.mapAttrsToList (n: p: "cp ${p}/bin/${n} $out/bin/") tools)}
     cp ${tools.bison}/bin/yacc $out/bin/ 2>/dev/null || true
     cp -r ${tools.bison}/share/bison $out/share/bison
     cp -L ${python}/bin/python3 $out/bin/python3
@@ -283,12 +283,12 @@ let
     ${llvm}/bin/llvm-strip $out/bin/bsdtar $out/bin/toybox $out/bin/dash $out/bin/python3 ${
       toString (map (n: "$out/bin/${n}") (builtins.attrNames tools))
     }
-    find $out -type f -exec ${pkgs.nukeReferences}/bin/nuke-refs {} +
+    find $out -type f -exec ${native.nukeReferences}/bin/nuke-refs {} +
   '';
 
-  nar = pkgs.runCommand "${seed.name}.nar.xz" { nativeBuildInputs = [ pkgs.nix ]; } ''
+  nar = native.runCommand "${seed.name}.nar.xz" { nativeBuildInputs = [ native.nix ]; } ''
     mkdir $out
-    nix-store --dump ${seed} | ${pkgs.xz}/bin/xz -T$NIX_BUILD_CORES -9e > $out/${seed.name}.nar.xz
+    nix-store --dump ${seed} | ${native.xz}/bin/xz -T$NIX_BUILD_CORES -9e > $out/${seed.name}.nar.xz
     # what package.toml pins: hash of the unpacked tree (fetchurl unpack=true is recursive/NAR-hashed)
     nix-hash --type sha256 --to-sri $(nix-store --dump ${seed} | sha256sum | cut -d' ' -f1) > $out/nar-hash
   '';
