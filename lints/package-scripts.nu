@@ -12,7 +12,12 @@ def main [...files: path] {
   let failed = ($names | zip $scripts | where $it.1 != null | par-each {|pair|
     # the modules `use core.nu *` by bare name, and the derivation passes this include path
     let builder = ($pair.1 | parse -r '^use (\S+)/core\.nu' | get 0.capture0)
-    let errors = ($pair.1
+    # `zig stor` parses as an external, so each module's called phases are imported by name too
+    let imports = ($pair.1 | parse -r '(?m)^use (?<path>\S+/(?<module>[^/\s]+)\.nu)$' | each {|used|
+      let called = ($pair.1 | parse -r ('(?m)^\s*' + $used.module + ' (?<phase>\S+)') | get phase | uniq)
+      if ($called | is-empty) { null } else { $"use ($used.path) [($called | str join ' ')]" }
+    } | compact)
+    let errors = ([$pair.1 ...$imports] | str join "\n"
       | ^$nu.current-exe --no-config-file $"--include-path=($builder)" "--experimental-options=[cell-path-types]" --ide-check 50 /dev/stdin
       | lines
       | each { from json }
