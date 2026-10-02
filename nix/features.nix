@@ -8,48 +8,50 @@
 #   dependencies = on (features.tls != "none") [ pkgs.${features.tls} ];
 #
 # The type is the default's (bool, string, list, int), `values` limits a string or a list's
-# elements to a set. Resolved
-# once per package as default <- set-wide `features` argument (only names the package declares)
-# <- `overrides.<pkg>.features`. A name the package does not declare or a value of another type
-# is an error. The result is in the derivation (drv hash) and on it as `.features`.
+# elements to a set. Resolved once per package as default <- set-wide `features` argument (only
+# names the package declares) <- `overrides.<pkg>.features`. A name the package does not declare
+# or a value of another type is an error. The result is in the derivation (drv hash) and on it as
+# `.features`.
 let
   inherit (builtins)
     all
     attrNames
     elem
-    isList
     intersectAttrs
+    isList
     mapAttrs
     typeOf
     ;
-  check =
-    pkg: decl: given:
+  accepted =
+    package: declared:
     mapAttrs (
-      n: v:
+      feature: value:
       let
-        d = decl.${n};
+        declaration = declared.${feature};
+        chosen = if isList value then value else [ value ];
       in
-      if typeOf v != typeOf d.default then
-        throw "${pkg}: feature ${n} wants a ${typeOf d.default}, got a ${typeOf v}"
-      else if d ? values && !(all (x: elem x d.values) (if isList v then v else [ v ])) then
-        throw "${pkg}: feature ${n} = ${toString v}, not among ${toString d.values}"
+      if typeOf value != typeOf declaration.default then
+        throw "${package}: feature ${feature} wants a ${typeOf declaration.default}, got a ${typeOf value}"
+      else if declaration ? values && !all (entry: elem entry declaration.values) chosen then
+        throw "${package}: feature ${feature} = ${toString value}, not among ${toString declaration.values}"
       else
-        v
-    ) given;
+        value
+    );
 in
 {
-  # decl: the package's `features` field ({} when absent). global: the set's. local: overrides.<pkg>.features
+  # declared: the package's `features` field ({} when absent). setWide: the set's. local:
+  # overrides.<pkg>.features
   resolve =
-    pkg: decl: global: local:
+    package: declared: setWide: local:
     let
-      defaults = mapAttrs (_: d: d.default) decl;
-      g = intersectAttrs decl global;
-      unknown = attrNames (removeAttrs local (attrNames decl));
+      undeclared = attrNames (removeAttrs local (attrNames declared));
     in
-    if decl == { } && local == { } then
+    if declared == { } && local == { } then
       { }
-    else if unknown != [ ] then
-      throw "${pkg}: unknown features ${toString unknown} (has: ${toString (attrNames decl)})"
+    else if undeclared != [ ] then
+      throw "${package}: unknown features ${toString undeclared} (has: ${toString (attrNames declared)})"
     else
-      defaults // check pkg decl g // check pkg decl local;
+      mapAttrs (_: declaration: declaration.default) declared
+      // accepted package declared (intersectAttrs declared setWide)
+      // accepted package declared local;
 }
