@@ -232,4 +232,4 @@ compiler. The first jig build needs the whole Rust chain, later jig edits rebuil
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Patches under `pkgs/` carry the license of the project they apply to.
+EUPL-1.2, see [LICENSE](LICENSE). Each patch under `pkgs/` stays under the license of the project it patches.
