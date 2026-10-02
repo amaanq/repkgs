@@ -10,3 +10,14 @@ hash = "sha256-jonPS317BDeQVd/zK5n8tIf7SHoSwmV7v/mJfn6jS0o="
 version = "4.4.3"
 date    = "2026-08-25"
 tag     = "v4.4.3"
+
+[package]
+uses   = [ "make" ]
+phases = [ "boot.configure", "make.build", "make.install" ]
+bin    = [ "cmake", "ctest", "cpack" ]
+
+[package.platforms]
+cross = false
+
+[package.tests]
+run = false

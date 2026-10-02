@@ -10,3 +10,10 @@ hash = "sha256-BsSIbZwB6s8i3dDTRYJ1EdVbJmiO0oxcLu6qiYlPkOI="
 version = "15.2.0"
 tag     = "15.2.0"
 sys     = [ "jemalloc", "pcre2" ]
+
+[package]
+uses = [ "cargo" ]
+bin  = [ "rg" ]
+
+[package.cargo]
+features = [ "pcre2" ]

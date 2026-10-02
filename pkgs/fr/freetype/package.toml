@@ -8,3 +8,14 @@ hash = "sha256-AQKiXuGitV2OM650gwybyrApUi3s+D+EX4faoxPAQDg="
 
 [pin]
 version = "2.14.3"
+
+[package]
+uses         = [ "meson" ]
+dependencies = [ "zlib", "libpng", "bzip2" ]
+
+[package.meson.defs]
+brotli   = "disabled"
+bzip2    = "enabled"
+harfbuzz = "disabled"
+png      = "enabled"
+zlib     = "system"

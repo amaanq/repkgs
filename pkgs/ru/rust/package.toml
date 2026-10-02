@@ -11,3 +11,20 @@ version = "1.98.1"
 date    = "2026-09-03"
 tag     = "1.98.1"
 sys     = [ "curl", "jemalloc", "libffi", "libgit2", "openssl", "xz", "zlib" ]
+
+[package]
+phases            = [ "rust.configure", "rust.build", "rust.install" ]
+buildDependencies = [  ]
+dependencies      = [ "llvm22" ]
+bin               = [ "rustc", "cargo" ]
+exports           = false
+
+[package.tests]
+run     = false
+version = "-V"
+
+[when.native]
+buildDependencies = [ "rust-bootstrap", "cpython", "cmake", "ninja", "pkgconf" ]
+
+[when.cross]
+buildDependencies = [ "llvm22", "rust-bootstrap", "cpython", "cmake", "ninja", "pkgconf" ]

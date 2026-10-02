@@ -10,3 +10,10 @@ hash = "sha256-/dG1n59SKBaEBg72pAWltAtVmJ2cXxlFFhP+klrkTos="
 [pin]
 version = "1.10.0"
 tag     = "v1.10.0"
+
+[package]
+uses = [ "cmake" ]
+
+[package.cmake]
+root = "build/cmake"
+tool = "{tool:cmake-bootstrap}"

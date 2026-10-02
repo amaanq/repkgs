@@ -2,10 +2,27 @@
 purl = "pkg:generic/tzdb?url=https://data.iana.org/time-zones/releases/"
 
 [[source]]
-key = "default"
-url = "https://data.iana.org/time-zones/releases/tzdb-{version}.tar.lz"
+key  = "default"
+url  = "https://data.iana.org/time-zones/releases/tzdb-{version}.tar.lz"
 hash = "sha256-TjXA+l6ZZva71ZabS5c3V0Pk6UvD2R0/lSGMa8idJJM="
 
 [pin]
 version = "2026d"
-date = "2026-09-16"
+date    = "2026-09-16"
+
+[package]
+uses = [ "make" ]
+
+[package.platforms]
+os = [ "linux", "macos" ]
+
+[package.make]
+flags        = [ "cc=cc", "AR=llvm-ar", "RANLIB=llvm-ranlib", "USRDIR=", "ZICDIR=$(BINDIR)" ]
+installFlags = [ "TOPDIR=$(PREFIX)" ]
+programs     = [ "zic", "zdump" ]
+
+[package.tests]
+run = false
+
+[when.cross.make]
+flags = [ "zic={tool:tzdata}/bin/zic" ]

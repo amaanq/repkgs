@@ -9,3 +9,10 @@ hash = "sha256-Hy/GIteZQdGmMLyL5kj+eOHok2xEVko3tSB+uYocjY4="
 [pin]
 version = "1.0.16"
 tag     = "v1.0.16"
+
+[package]
+uses              = [ "meson" ]
+buildDependencies = [ "cpython" ]
+
+[package.meson.defs]
+docs = false

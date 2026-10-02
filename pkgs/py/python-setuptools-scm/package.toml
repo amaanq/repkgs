@@ -9,3 +9,17 @@ hash = "sha256-GJ7c7sWsZR3ubSp4tdI1YPDLrn8xrrGLB/J5XJVEv6A="
 [pin]
 version = "10.2.3"
 date    = "2026-09-03"
+
+[package]
+uses              = [ "python" ]
+buildDependencies = [  ]
+dependencies      = [ "python-packaging", "python-setuptools", "python-vcs-versioning" ]
+
+[package.python]
+module = "setuptools_scm"
+
+[when.native]
+buildDependencies = [ "{pkg:python-setuptools}" ]
+
+[when.cross]
+buildDependencies = [ "python-setuptools" ]

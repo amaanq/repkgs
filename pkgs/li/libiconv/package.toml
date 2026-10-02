@@ -2,10 +2,16 @@
 purl = "pkg:gnu/libiconv"
 
 [[source]]
-key = "default"
-url = "https://ftpmirror.gnu.org/libiconv/libiconv-{version}.tar.gz"
+key  = "default"
+url  = "https://ftpmirror.gnu.org/libiconv/libiconv-{version}.tar.gz"
 hash = "sha256-8LQi9LEIysWa4iIj7LXdWJtmR6UtTt7vvkhXaaa1cRg="
 
 [pin]
 version = "1.19"
-date = "2026-03-07"
+date    = "2026-03-07"
+
+[package]
+uses = [ "autotools" ]
+
+[package.platforms]
+os = [ "windows" ]

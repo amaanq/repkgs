@@ -10,3 +10,13 @@ hash = "sha256-7ALnBTS9PaY6uJsCMdc3pFhO+3w5UxuohvgACfjj1/U="
 version = "1.70.0"
 date    = "2026-07-29"
 tag     = "v1.70.0"
+
+[package]
+uses = [ "cmake" ]
+
+[package.cmake]
+tool = "{tool:cmake-bootstrap}"
+
+[package.cmake.defs]
+BUILD_TESTING   = false
+ENABLE_LIB_ONLY = true

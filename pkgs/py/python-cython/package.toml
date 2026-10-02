@@ -9,3 +9,12 @@ hash = "sha256-FqxiQqEW/pHhqz3uhKYYlNHyC2FJvQJ3OR/iCYF6088="
 [pin]
 version = "3.3.0"
 date    = "2026-08-22"
+
+[package]
+uses              = [ "python" ]
+buildDependencies = [ "python-setuptools" ]
+dependencies      = [ "cpython" ]
+bin               = [ "cython" ]
+
+[package.python]
+module = "Cython"

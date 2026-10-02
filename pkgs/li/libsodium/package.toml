@@ -10,3 +10,6 @@ hash = "sha256-k8u7iNqvjLA0PptbneDyE8zCtutJlV2LirrRb41tmBY="
 version = "1.0.22"
 date    = "2026-04-09"
 tag     = "1.0.22"
+
+[package]
+uses = [ "autotools" ]

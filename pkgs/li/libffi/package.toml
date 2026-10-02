@@ -9,3 +9,15 @@ hash = "sha256-2LRjE2bftNUNc2wDbB+bezAzF5AkfpbMS6VOAQ/I/bE="
 [pin]
 version = "3.8.0"
 tag     = "v3.8.0"
+
+[package]
+uses = [ "autotools" ]
+
+[package.autotools]
+flags = [  ]
+
+[when.os.macos.autotools]
+flags = [ "--disable-symvers" ]
+
+[when.os.windows.autotools]
+flags = [ "--disable-symvers" ]

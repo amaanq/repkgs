@@ -13,3 +13,11 @@ tag     = "v0.74.4"
 
 [locks]
 go = "."
+
+[package]
+uses = [ "go" ]
+
+[package.go]
+ldflags      = [ "-X main.version={pin.version}", "-X main.revision=nix1" ]
+packages     = [ "." ]
+testPackages = [ "./src/algo/...", "./src/util/...", "./src/tui/..." ]

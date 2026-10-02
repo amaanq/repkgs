@@ -9,3 +9,14 @@ hash = "sha256-kDHkfxuvnfWZIeZ7K/H1Y0EdhcHhcPrIWa5ltIthQKk="
 [pin]
 version = "1.8.2"
 tag     = "jq-1.8.2"
+
+[package]
+uses         = [ "autotools" ]
+dependencies = [ "oniguruma" ]
+
+[package.autotools]
+flags      = [ "--with-oniguruma=yes", "--disable-docs", "--disable-maintainer-mode" ]
+testTarget = [ "check", "TESTS=tests/jqtest" ]
+
+[package.tests]
+separate = true

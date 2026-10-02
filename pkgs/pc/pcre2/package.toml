@@ -10,3 +10,16 @@ hash = "sha256-F7mA1MwwC8HtRC3wRQHSrx6PS3kMdWswdud0lf40T04="
 version = "10.48"
 tag     = "pcre2-10.48"
 date    = "2026-08-31"
+
+[package]
+uses         = [ "cmake" ]
+dependencies = [ "zlib", "bzip2" ]
+
+[package.cmake.defs]
+PCRE2GREP_SUPPORT_CALLOUT_FORK = false
+PCRE2_BUILD_PCRE2_16           = true
+PCRE2_BUILD_PCRE2_32           = true
+PCRE2_SUPPORT_JIT              = true
+
+[package.tests]
+separate = true

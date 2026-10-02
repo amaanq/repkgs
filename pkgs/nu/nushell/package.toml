@@ -11,3 +11,17 @@ version = "0.115.1"
 tag     = "0.115.1"
 date    = "2026-08-23"
 sys     = [ "curl", "clang", "libgit2", "lz4", "openssl", "sqlite", "zlib", "zstd" ]
+
+[package]
+uses = [ "cargo" ]
+bin  = [ "nu" ]
+
+[package.cargo]
+features          = [ "network", "sqlite", "trash-support", "rustls-tls" ]
+noDefaultFeatures = true
+
+[package.cargo.cratePatches]
+pest_consume_macros = [ "{file:deterministic-parser.patch}" ]
+
+[package.tests]
+run = false

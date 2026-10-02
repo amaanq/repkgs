@@ -2,11 +2,21 @@
 purl = "pkg:github/besser82/libxcrypt"
 
 [[source]]
-key = "default"
-url = "https://github.com/besser82/libxcrypt/releases/download/{tag}/libxcrypt-{version}.tar.xz"
+key  = "default"
+url  = "https://github.com/besser82/libxcrypt/releases/download/{tag}/libxcrypt-{version}.tar.xz"
 hash = "sha256-EPgsI4eMBRAOxApyhgD3GTGGxH5+e/A5nca/ywPFJSw="
 
 [pin]
 version = "4.5.2"
-date = "2025-11-10"
-tag = "v4.5.2"
+date    = "2025-11-10"
+tag     = "v4.5.2"
+
+[package]
+uses              = [ "autotools" ]
+buildDependencies = [ "perl" ]
+
+[package.platforms]
+os = [ "linux", "macos" ]
+
+[package.autotools]
+flags = [ "--disable-werror" ]

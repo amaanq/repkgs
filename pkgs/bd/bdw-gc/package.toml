@@ -10,3 +10,15 @@ hash = "sha256-kerfViIXplH19xkUCA+kvSqTc1BGlPfSngEZWyxdt24="
 version = "8.2.12"
 date    = "2026-02-05"
 tag     = "v8.2.12"
+
+[package]
+uses = [ "cmake" ]
+
+[package.cmake.defs]
+enable_cplusplus    = true
+enable_docs         = false
+enable_large_config = true
+enable_mmap         = true
+
+[package.cc]
+cflags = [ "-DINITIAL_MARK_STACK_SIZE=1048576" ]

@@ -9,3 +9,9 @@ hash = "sha256-jnMGOncnH+ffgtyNzA8tZPtxPCR/yq9jmPsJZE4BhXo="
 [pin]
 version = "62"
 tag     = "r62"
+
+[package]
+uses = [ "meson" ]
+
+[package.meson.defs]
+with_INIReader = true

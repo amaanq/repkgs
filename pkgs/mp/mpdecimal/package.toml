@@ -8,3 +8,9 @@ hash = "sha256-q/Vs8IM0HwdarNCxmDjvkfQOrJQPxByl5an2p9KmGIw="
 
 [pin]
 version = "4.0.1"
+
+[package]
+uses = [ "autotools" ]
+
+[package.tests]
+run = false

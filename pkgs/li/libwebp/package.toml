@@ -2,10 +2,17 @@
 purl = "pkg:github/webmproject/libwebp"
 
 [[source]]
-key = "default"
-url = "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-{version}.tar.gz"
+key  = "default"
+url  = "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-{version}.tar.gz"
 hash = "sha256-OL08KaKdtyg0OVTkAMmgMhAT7Gb+FrXdIZFwQ0rbBjw="
 
 [pin]
 version = "1.6.0"
-tag = "v1.6.0"
+tag     = "v1.6.0"
+
+[package]
+uses         = [ "cmake" ]
+dependencies = [ "libjpeg-turbo", "libpng", "giflib" ]
+
+[package.cmake.defs]
+WEBP_BUILD_EXTRAS = false

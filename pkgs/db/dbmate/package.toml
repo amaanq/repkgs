@@ -14,3 +14,17 @@ sys     = [ "sqlite" ]
 
 [locks]
 go = "."
+
+[package]
+uses              = [ "go" ]
+buildDependencies = [ "sqlite" ]
+
+[package.platforms]
+abi = [ "gnu", "apple" ]
+
+[package.go]
+packages     = [ "." ]
+testPackages = [ "./pkg/dbutil/...", "./pkg/driver/sqlite/..." ]
+
+[package.tests]
+version = true

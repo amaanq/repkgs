@@ -12,3 +12,13 @@ hash = "sha256-6aDXZRLq2c36dbasyVzcecQKoMvY81RIGYasdF211UY="
 [pin]
 version = "1.2.0"
 tag     = "v1.2.0"
+
+[package]
+uses         = [ "luarocks" ]
+dependencies = [ "lua" ]
+
+[package.platforms]
+posix = true
+
+[package.tests]
+version = true

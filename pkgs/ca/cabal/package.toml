@@ -12,3 +12,14 @@ hash = "sha256-ApkI072VfH0Id3Fvp3IobAMbYGckn5vCpQfgm0B9ELQ="
 [pin]
 version = "3.18.1.0"
 sys     = [ "zlib" ]
+
+[package]
+uses = [ "cabal" ]
+
+[package.cabal]
+exes = [ "cabal" ]
+tool = "{tool:cabal-bootstrap}"
+
+[package.tests]
+run     = false
+version = "--numeric-version"

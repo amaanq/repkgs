@@ -14,3 +14,15 @@ hash = "sha256-E9EOo0ihjqTrVS7RffpXUBeqdkvRoYnXAmscz1BmNwo="
 [pin]
 version = "1.4.2"
 tag     = "bun-v1.4.2"
+
+[package]
+prebuilt = true
+
+[package.tests]
+version = true
+
+[package.install]
+"bin/bun" = "bun"
+
+[package.links]
+"bin/bunx" = "bun"

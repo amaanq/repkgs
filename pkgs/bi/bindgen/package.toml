@@ -10,3 +10,13 @@ hash = "sha256-b+0LM4AbngOsOPp0YjLww3EINHJFSbISLbUa2H/HiaA="
 version = "0.73.2"
 tag     = "v0.73.2"
 sys     = [ "clang" ]
+
+[package]
+uses = [ "cargo" ]
+bin  = [ "bindgen" ]
+
+[package.cargo]
+flags = [ "-p", "bindgen-cli" ]
+
+[package.tests]
+run = false

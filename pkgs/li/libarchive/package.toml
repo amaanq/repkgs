@@ -10,3 +10,22 @@ hash = "sha256-LJU8SE3vfvc0aaYy1rSl8w8MU6v4ckWPMlxl/NJHoiI="
 version = "3.8.9"
 tag     = "v3.8.9"
 date    = "2026-07-28"
+
+[package]
+uses         = [ "cmake" ]
+dependencies = [ "zlib", "bzip2", "xz", "zstd", "lz4", "expat" ]
+bin          = [ "bsdtar", "bsdcpio", "bsdunzip" ]
+
+[package.cmake]
+tool = "{tool:cmake-bootstrap}"
+
+[package.cmake.defs]
+ENABLE_ACL     = false
+ENABLE_EXPAT   = true
+ENABLE_LIBXML2 = false
+ENABLE_OPENSSL = false
+ENABLE_TEST    = false
+ENABLE_XATTR   = false
+
+[package.tests]
+run = false

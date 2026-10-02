@@ -10,3 +10,18 @@ hash = "sha256-Dplx++3rh2UoZaVuvNYc6za12BF4rO9RCQq9l0WcBCw="
 version = "1.92.0"
 date    = "2026-08-12"
 tag     = "boost-1.92.0"
+
+[package]
+patches      = [ "upstream-redis-cmath.patch" ]
+uses         = [ "cmake" ]
+dependencies = [ "zlib", "bzip2", "zstd", "openssl" ]
+
+[package.cmake.defs]
+BOOST_ENABLE_MPI    = false
+BOOST_ENABLE_PYTHON = false
+
+[package.tests]
+run = false
+
+[package.cc]
+cxxflags = [ "-Wno-pragma-clang-attribute" ]

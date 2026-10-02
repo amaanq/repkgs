@@ -10,3 +10,13 @@ hash = "sha256-eTxmXRr0EzW3B39yKr0w8C0YIwQ+CiyxtE+Z55zL4DM="
 version = "2.8.4"
 tag     = "R_2_8_4"
 date    = "2026-08-31"
+
+[package]
+uses = [ "cmake" ]
+
+[package.cmake]
+tool = "{tool:cmake-bootstrap}"
+
+[package.cmake.defs]
+EXPAT_BUILD_DOCS     = false
+EXPAT_BUILD_EXAMPLES = false

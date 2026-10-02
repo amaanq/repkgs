@@ -11,3 +11,6 @@ hash = "sha256-GSIuLeKmz3xEC3RTNaiAWQSFBF61kPxUx/Rqo1SUT+E="
 version = "2.4.19"
 tag     = "v2.4.19"
 date    = "2026-04-27"
+
+[package.install]
+"include/cups/" = "cups/*.h"

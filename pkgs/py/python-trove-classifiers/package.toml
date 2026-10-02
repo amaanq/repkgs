@@ -9,3 +9,10 @@ hash = "sha256-0/6Vh13oaNNNmDyRPzLOp0Hu1qwwZSCq1jBabFUTEH8="
 [pin]
 version = "2026.6.1.19"
 date    = "2026-06-01"
+
+[package]
+uses              = [ "python" ]
+buildDependencies = [ "python-setuptools" ]
+
+[package.python]
+module = "trove_classifiers"

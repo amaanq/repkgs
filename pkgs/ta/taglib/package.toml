@@ -10,3 +10,14 @@ hash = "sha256-8q7goHzzAfiqjy+l1gtSVhiLIuwzbcKa3qywtnj1f9s="
 version = "2.3.2"
 date    = "2026-09-05"
 tag     = "v2.3.2"
+
+[package]
+patches      = [ "relocatable.patch" ]
+uses         = [ "cmake" ]
+dependencies = [ "zlib", "utf8cpp" ]
+
+[package.cmake.defs]
+WITH_ZLIB = true
+
+[package.tests]
+run = false

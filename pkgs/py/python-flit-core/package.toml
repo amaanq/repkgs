@@ -9,3 +9,10 @@ hash = "sha256-KfMVkTWDksIUkmKExGkfzm4UCxdGpQr7jmobNMJQF8A="
 [pin]
 version = "4.1.0"
 date    = "2026-09-16"
+
+[package]
+uses = [ "python" ]
+
+[package.python]
+backend = "flit_core"
+module  = "flit_core"

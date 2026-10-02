@@ -10,3 +10,9 @@ hash = "sha256-vc7nKVVZ/h6q+dQUNiuXnkcqX7L2CkG6WUiybLNXAjU="
 version = "4.2.0"
 date    = "2026-08-23"
 tag     = "v4.2.0"
+
+[package]
+uses = [ "cmake" ]
+
+[package.phases]
+remove = [ "cmake.build", "cmake.test" ]

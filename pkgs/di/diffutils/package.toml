@@ -8,3 +8,16 @@ hash = "sha256-loVV9JE2m1jzVNVgfK/8TgGJz1CR9i+8r25Dxp/hZjk="
 
 [pin]
 version = "3.12"
+
+[package]
+patches        = [ "upstream-strptime-prototypes.patch" ]
+uses           = [ "autotools" ]
+bin            = [ "diff", "cmp" ]
+bootstrapTools = true
+
+[package.autotools]
+makeFlags = [ "SUBDIRS=lib src" ]
+
+[package.tests]
+dependencies = [ "{tool:perl}" ]
+separate     = true

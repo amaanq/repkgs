@@ -10,3 +10,14 @@ hash = "sha256-qxY8EOtak5NzB59u5NI3qf1Ij9/RNUTYw3NsPnIQNQ0="
 version = "5.8.4"
 date    = "2026-09-09"
 tag     = "v5.8.4"
+
+[package]
+patches = [ "upstream-msvc-abi.patch" ]
+uses    = [ "cmake" ]
+
+[package.platforms]
+abi = [ "gnu", "apple" ]
+
+[package.cmake]
+flags = [ "-DBUILD_SHARED_LIBS=ON", "-DXZ_NLS=OFF", "-DXZ_DOC=OFF", "-DXZ_POSIX_SHELL=/bin/sh" ]
+tool  = "{tool:cmake-bootstrap}"

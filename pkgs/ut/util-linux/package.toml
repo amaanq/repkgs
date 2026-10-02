@@ -2,9 +2,29 @@
 purl = 'pkg:generic/util-linux?url=https://github.com/util-linux/util-linux/tags&regex=v([0-9.]+)\.tar\.gz'
 
 [[source]]
-key = "default"
-url = "https://www.kernel.org/pub/linux/utils/util-linux/v{major}.{minor}/util-linux-{version}.tar.xz"
+key  = "default"
+url  = "https://www.kernel.org/pub/linux/utils/util-linux/v{major}.{minor}/util-linux-{version}.tar.xz"
 hash = "sha256-CG6jB8tsF58N+bhVMzN/ccKqjbLc9NlhhW2EF/uEv9c="
 
 [pin]
 version = "2.42.3"
+
+[package]
+patches           = [ "relocatable.patch" ]
+uses              = [ "meson" ]
+buildDependencies = [ "bison", "flex" ]
+dependencies      = [ "ncurses", "zlib", "readline", "sqlite", "libxcrypt", "libcap" ]
+
+[package.platforms]
+os = [ "linux" ]
+
+[package.meson.defs]
+auto_features = "auto"
+build-python  = "disabled"
+build-vipw    = "disabled"
+cryptsetup    = "disabled"
+libutil       = "enabled"
+ncursesw      = "enabled"
+readline      = "enabled"
+sysconfdir    = "/etc"
+zlib          = "enabled"

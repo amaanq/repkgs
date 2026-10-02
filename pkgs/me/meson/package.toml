@@ -8,3 +8,11 @@ hash = "sha256-mY8LTnQ/YHbv5XiXDXayN35V7qdC+dKpOn/ePPXj9Os="
 
 [pin]
 version = "1.12.0"
+
+[package]
+uses              = [ "python" ]
+buildDependencies = [ "python-setuptools" ]
+dependencies      = [ "cpython" ]
+
+[package.python]
+module = "mesonbuild"

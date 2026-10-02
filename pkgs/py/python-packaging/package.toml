@@ -8,3 +8,10 @@ hash = "sha256-fsi79ICnqDdsE9ElZ+mm9nmnfjfBZqsS1e3bXKcM3bo="
 
 [pin]
 version = "26.3"
+
+[package]
+uses = [ "python" ]
+
+[package.python]
+backend = "flit_core"
+module  = "packaging"

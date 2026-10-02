@@ -11,3 +11,18 @@ hash = "sha256-vWwDbgnehE+oqrMZ7UUiTNHWD2EErajgWA0VY1gz9zI="
 version = "24.21.0"
 tag     = "v24.21.0"
 date    = "2026-09-08"
+
+[package]
+patches = [
+  "upstream-libcxx-includes.patch",
+  "upstream-icu-emulator.patch",
+  "v8-cfi-arm64.patch",
+  "upstream-highway-rvv-baseline.patch",
+]
+phases = [ "nodejs.configure", "nodejs.build", "nodejs.install" ]
+buildDependencies = [ "cpython", "ninja" ]
+dependencies = [ "zlib", "openssl", "zstd", "brotli", "libuv", "nghttp2", "c-ares", "sqlite" ]
+bin = [ "node", "npm", "npx" ]
+
+[package.tests]
+run = false

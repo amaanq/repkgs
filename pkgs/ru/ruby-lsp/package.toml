@@ -11,3 +11,11 @@ version = "0.26.11"
 tag     = "v0.26.11"
 date    = "2026-08-20"
 sys     = [ "libyaml" ]
+
+[package]
+uses         = [ "bundler" ]
+dependencies = [ "ruby" ]
+bin          = [ "ruby-lsp", "ruby-lsp-check" ]
+
+[package.platforms]
+cpu = [ "x86_64" ]

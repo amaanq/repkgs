@@ -10,3 +10,10 @@ hash = "sha256-x5kY1lpzmiRxHIkRdQotYE4jDM5+bOqmuWAVacajz74="
 version = "0.19.5"
 tag     = "v0.19.5"
 date    = "2026-08-30"
+
+[package]
+uses = [ "bun" ]
+
+[package.tests]
+run     = false
+version = true

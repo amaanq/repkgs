@@ -9,3 +9,11 @@ hash = "sha256-0XTizJgsP+/w05C7gc9V14Jq8N4M1QhYMbKHXwA23NY="
 [pin]
 version = "2.4.1"
 date    = "2026-09-16"
+
+[package]
+uses              = [ "python" ]
+buildDependencies = [ "python-setuptools" ]
+dependencies      = [ "python-packaging" ]
+
+[package.python]
+module = "vcs_versioning"

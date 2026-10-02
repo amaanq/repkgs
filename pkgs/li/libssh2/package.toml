@@ -10,3 +10,15 @@ hash = "sha256-EZ4pbvGLjoYoO0ChKmM+dIcfWhJh48542frYTP+uZb4="
 version = "1.11.1"
 date    = "2024-10-16"
 tag     = "libssh2-1.11.1"
+
+[package]
+uses         = [ "cmake" ]
+dependencies = [ "openssl", "zlib" ]
+
+[package.cmake.defs]
+BUILD_EXAMPLES          = false
+CRYPTO_BACKEND          = "OpenSSL"
+ENABLE_ZLIB_COMPRESSION = true
+
+[package.tests]
+run = false

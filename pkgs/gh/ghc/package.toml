@@ -11,3 +11,28 @@ hash = "sha256-ujDRF/tuls/7YxD52xy5ldZKGCJXCoP0nrCYg+vragg="
 
 [pin]
 version = "9.14.1"
+
+[package]
+patches           = [ "upstream-hadrian-autoreconf-exec.patch" ]
+uses              = [ "cabal" ]
+buildDependencies = [ "cpython", "autoconf" ]
+dependencies      = [ "gmp", "ncurses", "libffi" ]
+bin               = [ "ghc", "ghc-pkg", "runghc", "hsc2hs", "haddock" ]
+exports           = false
+
+[package.platforms]
+cross = false
+
+[package.cabal]
+exes  = [ "hadrian" ]
+flags = [ "--index-state=HEAD", "--flags=-selftest" ]
+root  = "hadrian"
+
+[package.phases]
+remove = [ "cabal.test" ]
+
+[package.phases.replace]
+"cabal.install" = [ "ghc.configure", "ghc.build", "ghc.install" ]
+
+[package.tests]
+version = "--numeric-version"

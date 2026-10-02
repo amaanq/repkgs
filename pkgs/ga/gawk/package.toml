@@ -9,3 +9,18 @@ hash = "sha256-j5SjDboKkRhpSgDrnZBn4Az0LseugKFFOeUu1GlRGvc="
 [pin]
 version = "5.4.1"
 date    = "2026-07-09"
+
+[package]
+patches        = [ "relocatable.patch", "upstream-node-struct-without-mpfr.patch" ]
+uses           = [ "autotools" ]
+bin            = [ "gawk", "awk" ]
+bootstrapTools = true
+
+[package.platforms]
+posix = true
+
+[package.autotools]
+flags = [ "--disable-mpfr" ]
+
+[package.tests]
+run = false

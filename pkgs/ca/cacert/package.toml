@@ -8,3 +8,13 @@ hash = "sha256-euVWKJiFsx7F8YRMgRrrHswBmDBmrV/guiuvqtSUnSs="
 
 [pin]
 version = "2026.07.22"
+
+[package.exports]
+libDirs = [  ]
+libs    = [  ]
+
+[package.exports.env]
+SSL_CERT_FILE = "{root}/etc/ssl/certs/ca-bundle.crt"
+
+[package.install]
+"etc/ssl/certs/ca-bundle.crt" = "certifi/cacert.pem"

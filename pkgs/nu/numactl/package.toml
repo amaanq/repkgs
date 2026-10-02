@@ -9,3 +9,12 @@ hash = "sha256-TkicEqDVWOoGXC+g7T6ZUCKrtSyPzNq7kd7YQ5yCJX8="
 [pin]
 version = "2.0.19"
 tag     = "v2.0.19"
+
+[package]
+uses = [ "autotools" ]
+
+[package.platforms]
+os = [ "linux" ]
+
+[package.tests]
+run = false

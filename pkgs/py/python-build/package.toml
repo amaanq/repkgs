@@ -9,3 +9,11 @@ hash = "sha256-gqN63eWGXKUKFD89eqY3YHX3UYGMdgsE4IuUyzVnyYM="
 [pin]
 version = "1.6.1"
 date    = "2026-09-10"
+
+[package]
+uses         = [ "python" ]
+dependencies = [ "python-packaging", "python-pyproject-hooks" ]
+
+[package.python]
+backend = "flit_core"
+module  = "build"

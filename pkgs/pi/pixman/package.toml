@@ -8,3 +8,17 @@ hash = "sha256-SiXzRtCuAkbg4LBFc3USTRwj9qsAtLyfzaDMed8h7Cc="
 
 [pin]
 version = "0.46.4"
+
+[package]
+uses         = [ "meson" ]
+dependencies = [ "libpng" ]
+
+[package.meson]
+skipTests = [ "stress-test", "tolerance-test", "composite" ]
+
+[package.meson.defs]
+libpng = "enabled"
+tests  = "enabled"
+
+[package.tests]
+separate = true

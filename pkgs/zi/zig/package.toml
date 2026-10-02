@@ -8,3 +8,52 @@ hash = "sha256-qtfORcQVu7RmaQyRI5QgRyayJumO0DmwWLM0EejtRx8="
 
 [pin]
 version = "0.16.0"
+
+[package]
+patches      = [ "upstream-cmake-zig-executable.patch" ]
+uses         = [ "cmake" ]
+dependencies = [ "llvm21", "clang21", "lld21", "zlib", "zstd" ]
+prebuilt     = true
+
+[package.cmake.defs]
+CMAKE_BUILD_TYPE     = "RelWithDebInfo"
+ZIG_EXTRA_BUILD_ARGS = "--build-id=sha1"
+ZIG_PIE              = true
+ZIG_SHARED_LLVM      = true
+ZIG_TARGET_MCPU      = "baseline"
+
+[package.phases.after]
+"cmake.build"     = "zig.store"
+"cmake.configure" = "zig.restore"
+
+[package.tests]
+run     = false
+version = "version"
+
+[package.env]
+ZIG_GLOBAL_CACHE_DIR = "/build/zig-cache"
+
+[when.cross.cmake.defs]
+CMAKE_PROGRAM_PATH  = "{pkg:llvm21}/host"
+ZIG_EXECUTABLE      = "{tool:zig}/bin/zig"
+ZIG_STATIC_ZLIB     = true
+ZIG_STATIC_ZSTD     = true
+ZIG_USE_LLVM_CONFIG = true
+
+[when.os.macos.cmake.defs]
+ZIG_TARGET_TRIPLE = "aarch64-linux-gnu.2.44"
+
+[when.os.windows.cmake.defs]
+ZIG_TARGET_TRIPLE = "x86_64-linux-gnu.2.44"
+
+[when.cpu.aarch64.cmake.defs]
+ZIG_TARGET_TRIPLE = "aarch64-linux-gnu.2.44"
+
+[when.cpu.loongarch64.cmake.defs]
+ZIG_TARGET_TRIPLE = "loongarch64-linux-gnu.2.44"
+
+[when.cpu.powerpc64le.cmake.defs]
+ZIG_TARGET_TRIPLE = "powerpc64le-linux-gnu.2.44"
+
+[when.cpu.riscv64.cmake.defs]
+ZIG_TARGET_TRIPLE = "riscv64-linux-gnu.2.44"

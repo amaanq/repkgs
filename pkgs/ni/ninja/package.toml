@@ -10,3 +10,20 @@ hash = "sha256-D9HsIjv8EJ1qAdXFAKy260K77cCvopgQ2Fx6uXpt6VI="
 version = "1.13.2"
 tag     = "v1.13.2"
 date    = "2025-11-20"
+
+[package]
+phases = [ "ninja.build" ]
+
+[package.install]
+
+[when.native.install]
+"bin/ninja" = "../build/ninja"
+
+[when.os.linux.install]
+"bin/ninja" = "../build/ninja"
+
+[when.os.macos.install]
+"bin/ninja" = "../build/ninja"
+
+[when.os.windows.install]
+"bin/ninja.exe" = "../build/ninja.exe"

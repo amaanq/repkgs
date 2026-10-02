@@ -10,3 +10,6 @@ hash = "sha256-F4c1uFlO0YWCu4zxbEHIP98WGMFHMG7PtM5b9u5ffJY="
 version = "6.0.0"
 tag     = "6.0.0"
 date    = "2026-08-21"
+
+[package]
+uses = [ "rebar3" ]

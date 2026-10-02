@@ -9,3 +9,14 @@ hash = "sha256-BABNGaRCbWWTOvAAUkX0mvNWE5/JO0LRghULCwjI3gM="
 [pin]
 version = "4.10"
 date    = "2026-04-21"
+
+[package]
+uses           = [ "autotools" ]
+bootstrapTools = true
+
+[package.autotools]
+flags = [ "--disable-acl", "--without-selinux" ]
+
+[package.tests]
+dependencies = [ "{tool:perl}" ]
+separate     = true

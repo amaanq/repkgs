@@ -8,3 +8,9 @@ hash = "sha256-MFH4r3mt2cADhV/C0yAfbxn+HdiqB5JEFjt/zVZ8UrM="
 
 [pin]
 version = "84.0.0"
+
+[package]
+uses = [ "python" ]
+
+[package.python]
+module = "setuptools"

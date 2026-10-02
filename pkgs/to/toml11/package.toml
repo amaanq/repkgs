@@ -10,3 +10,6 @@ hash = "sha256-sgWKYxNT22nw376ttGsTdg0AMzOwp8QH3E8mx0BZJTQ="
 version = "4.4.0"
 date    = "2025-02-15"
 tag     = "v4.4.0"
+
+[package]
+uses = [ "cmake" ]

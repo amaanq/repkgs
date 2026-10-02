@@ -10,3 +10,19 @@ hash = "sha256-xGXYZmvFBTZiUxtBKKbyqPI8reliajVHOgKT+U9ru0Y="
 version = "0.2.1"
 tag     = "v0.2.1"
 date    = "2026-09-09"
+
+[package]
+uses = [ "cargo" ]
+bin  = [ "formatelf", "auto-formatelf" ]
+
+[package.cargo]
+
+[package.links]
+"bin/auto-formatelf" = "formatelf"
+"bin/patchelf"       = "formatelf"
+
+[when.native.cargo]
+tool = "{tool:rust-bootstrap}"
+
+[when.os.linux.cargo]
+tool = "{tool:rust-bootstrap}"

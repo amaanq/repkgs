@@ -11,3 +11,10 @@ hash = "sha256-lHnIoNlmBleWeLzu4oVuSNtVcSEpU3C449JmE3IDQbM="
 
 [pin]
 version = "0.11.0"
+
+[package]
+uses = [ "cabal" ]
+
+[package.cabal]
+exes    = [ "shellcheck" ]
+project = "allow-newer: ShellCheck:aeson, ShellCheck:QuickCheck"

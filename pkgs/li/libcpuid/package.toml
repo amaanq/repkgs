@@ -10,3 +10,12 @@ hash = "sha256-RURoeuiElYT+abMsSjV8Wpn923CvSJW5/BSoUBPEHGA="
 version = "0.8.2"
 date    = "2026-09-13"
 tag     = "v0.8.2"
+
+[package]
+uses = [ "cmake" ]
+
+[package.platforms]
+abi = [ "gnu", "apple" ]
+
+[package.cmake.defs]
+LIBCPUID_BUILD_DRIVERS = false

@@ -9,3 +9,23 @@ hash = "sha256-rSuKyVSRN0gxukoMrkjXHo7UeCN356J/Hsz+NhdLhjk="
 [pin]
 version = "4.11.0"
 date    = "2026-07-11"
+
+[package]
+patches        = [ "relocatable.patch" ]
+uses           = [ "autotools" ]
+bin            = [ "find", "xargs" ]
+bootstrapTools = true
+
+[package.platforms]
+posix = true
+
+[package.autotools]
+flags = [
+  "--without-selinux",
+  "--localstatedir=/tmp",
+  "ac_cv_path_SORT=sort",
+  "SORT_SUPPORTS_Z=true",
+]
+
+[package.tests]
+run = false

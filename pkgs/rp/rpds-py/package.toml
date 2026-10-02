@@ -8,3 +8,12 @@ hash = "sha256-gTUbK9VVGF6irxjzF0gJMjonYRG2K1ifWZXmvReZUtM="
 
 [pin]
 version = "2026.6.3"
+
+[package]
+uses              = [ "python", "cargo" ]
+phases            = [ "python.build", "python.install", "python.test" ]
+buildDependencies = [ "maturin" ]
+
+[package.python]
+backend = "maturin"
+module  = "rpds"

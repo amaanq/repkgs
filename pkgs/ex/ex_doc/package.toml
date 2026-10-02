@@ -10,3 +10,9 @@ hash = "sha256-wDdBjq62TX8m50LeszMx4f8nlUeMgElpKZ3imHNq7Hs="
 version = "0.40.4"
 tag     = "v0.40.4"
 date    = "2026-09-03"
+
+[package]
+uses = [ "mix" ]
+
+[package.mix]
+escript = [ "ex_doc" ]
