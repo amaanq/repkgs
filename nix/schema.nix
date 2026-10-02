@@ -24,6 +24,8 @@ let
           null = "null";
           list = "list";
           map = "set";
+          enum = "string";
+          record = "set";
         }
         .${descriptor.kind}
       ];
@@ -32,7 +34,9 @@ let
     if descriptor.kind == "union" then
       builtins.any (variant: matches variant value) descriptor.variants
     else if descriptor.kind == "package" then
-      builtins.isAttrs value && (value.type or null) == "derivation" && value ? outPath
+      builtins.isAttrs value && value ? outPath
+    else if descriptor.kind == "enum" then
+      builtins.elem value descriptor.values
     else
       builtins.elem (builtins.typeOf value) (nixTypes descriptor);
   describe =
@@ -41,16 +45,18 @@ let
       builtins.concatStringsSep " or " (map describe descriptor.variants)
     else if descriptor.kind == "package" then
       "package"
+    else if descriptor.kind == "enum" then
+      "one of ${builtins.concatStringsSep " " descriptor.values}"
     else
       builtins.head (nixTypes descriptor);
   checkValue =
     recursive: path: descriptor: value:
     let
       expected = describe descriptor;
-      actual = builtins.typeOf value;
+      actual = if builtins.isString value then ''"${value}"'' else builtins.typeOf value;
     in
     if !(matches descriptor value) then
-      [ "option ${path} is a ${actual}, expected ${expected}" ]
+      [ "option ${path} is ${actual}, expected ${expected}" ]
     else if recursive && descriptor.kind == "union" then
       checkValue true path (builtins.head (
         builtins.filter (variant: matches variant value) descriptor.variants
@@ -64,6 +70,19 @@ let
     else if recursive && descriptor.kind == "map" then
       builtins.concatMap (name: checkValue true "${path}.${name}" descriptor.value value.${name}) (
         builtins.attrNames value
+      )
+    else if recursive && descriptor.kind == "record" then
+      builtins.concatMap (
+        name:
+        if descriptor.fields ? ${name} then
+          checkValue true "${path}.${name}" descriptor.fields.${name} value.${name}
+        else
+          [
+            "unknown option ${path}.${name} (have ${builtins.concatStringsSep " " (builtins.attrNames descriptor.fields)})"
+          ]
+      ) (builtins.attrNames value)
+      ++ map (name: "option ${path}.${name} is missing") (
+        builtins.attrNames (removeAttrs descriptor.fields (builtins.attrNames value))
       )
     else
       [ ];
@@ -88,7 +107,7 @@ in
       declared = fields.${system} // builtins.mapAttrs (_: type: { inherit type; }) extra;
     in
     if !builtins.isAttrs value then
-      [ "option ${system} is a ${builtins.typeOf value}, expected set" ]
+      [ "option ${system} is ${builtins.typeOf value}, expected set" ]
     else
       builtins.concatMap (
         name:

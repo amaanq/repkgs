@@ -268,6 +268,68 @@
         "system": "bundler"
       }
     ],
+    "cabal": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "cabal"
+      },
+      {
+        "name": "deps",
+        "type": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "package"
+            },
+            {
+              "kind": "string"
+            }
+          ]
+        },
+        "default": null,
+        "required": true,
+        "doc": "hackage repository to solve against, by default the shared set from locks/hackage.toml",
+        "system": "cabal"
+      },
+      {
+        "name": "flags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "extra arguments for every cabal subcommand (--flags=…, --allow-newer)",
+        "system": "cabal"
+      },
+      {
+        "name": "exes",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "exe components to build and install",
+        "system": "cabal"
+      },
+      {
+        "name": "project",
+        "type": {
+          "kind": "string"
+        },
+        "default": "",
+        "doc": "extra cabal.project text (allow-newer:, constraints:)",
+        "system": "cabal"
+      }
+    ],
     "cargo": [
       {
         "name": "root",
@@ -651,6 +713,64 @@
         "system": "go"
       }
     ],
+    "luarocks": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "luarocks"
+      },
+      {
+        "name": "deps",
+        "type": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "package"
+            },
+            {
+              "kind": "string"
+            }
+          ]
+        },
+        "default": null,
+        "required": true,
+        "doc": "rock server directory, by default the shared set from locks/luarocks.toml",
+        "system": "luarocks"
+      },
+      {
+        "name": "rockspec",
+        "type": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        },
+        "default": null,
+        "doc": "rockspec file when the source has several (null lets luarocks pick)",
+        "system": "luarocks"
+      },
+      {
+        "name": "flags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "extra arguments for luarocks make",
+        "system": "luarocks"
+      }
+    ],
     "make": [
       {
         "name": "root",
@@ -992,6 +1112,142 @@
         "system": "pnpm"
       }
     ],
+    "pyapp": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "pyapp"
+      },
+      {
+        "name": "deps",
+        "type": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "package"
+            },
+            {
+              "kind": "string"
+            }
+          ]
+        },
+        "default": null,
+        "required": true,
+        "doc": "the locked dependencies, fetched (fetch.pythonDeps) from the package's own lock file",
+        "system": "pyapp"
+      },
+      {
+        "name": "check",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "modules that must import from the installed layout",
+        "system": "pyapp"
+      },
+      {
+        "name": "mode",
+        "type": {
+          "kind": "enum",
+          "values": [
+            "project",
+            "env",
+            "dev"
+          ]
+        },
+        "default": "project",
+        "doc": "project installs the application, env and dev a virtual environment",
+        "system": "pyapp"
+      },
+      {
+        "name": "overrides",
+        "type": {
+          "kind": "map",
+          "value": {
+            "kind": "record",
+            "fields": {
+              "configSettings": {
+                "kind": "map",
+                "value": {
+                  "kind": "string"
+                }
+              },
+              "env": {
+                "kind": "map",
+                "value": {
+                  "kind": "string"
+                }
+              },
+              "patches": {
+                "kind": "list",
+                "element": {
+                  "kind": "string"
+                }
+              },
+              "run": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        "default": {},
+        "doc": "per-package build options",
+        "system": "pyapp"
+      }
+    ],
+    "python": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "python"
+      },
+      {
+        "name": "backend",
+        "type": {
+          "kind": "string"
+        },
+        "default": "setuptools",
+        "doc": "PEP 517 backend when pyproject.toml names none, setuptools, flit_core, hatchling or maturin",
+        "system": "python"
+      },
+      {
+        "name": "module",
+        "type": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        },
+        "default": null,
+        "doc": "module the import test loads (null uses the package name with - as _)",
+        "system": "python"
+      },
+      {
+        "name": "pytest",
+        "type": {
+          "kind": "boolean"
+        },
+        "default": false,
+        "doc": "also run pytest on tests/",
+        "system": "python"
+      }
+    ],
     "rebar3": [
       {
         "name": "root",
@@ -1031,6 +1287,65 @@
         "default": [],
         "doc": "extra arguments for rebar3 compile",
         "system": "rebar3"
+      }
+    ],
+    "vcxproj": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "vcxproj"
+      },
+      {
+        "name": "projects",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "vcxproj files or traversal projects relative to the source root",
+        "system": "vcxproj"
+      },
+      {
+        "name": "exclude",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "project file stems excluded from the build",
+        "system": "vcxproj"
+      },
+      {
+        "name": "properties",
+        "type": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        },
+        "default": {},
+        "doc": "MSBuild global properties",
+        "system": "vcxproj"
+      },
+      {
+        "name": "install",
+        "type": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        },
+        "default": {},
+        "doc": "installation directory per configuration type",
+        "system": "vcxproj"
       }
     ],
     "yarn": [

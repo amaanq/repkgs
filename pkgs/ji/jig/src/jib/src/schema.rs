@@ -41,6 +41,8 @@ pub enum Type {
    List { element: Box<Self> },
    Map { value: Box<Self> },
    Union { variants: Vec<Self> },
+   Enum { values: Vec<String> },
+   Record { fields: BTreeMap<String, Self> },
 }
 
 #[derive(Deserialize, Eq, PartialEq, Serialize)]
@@ -89,6 +91,12 @@ impl Display for PackagePath {
    }
 }
 
+impl AsRef<Path> for PackagePath {
+   fn as_ref(&self) -> &Path {
+      Path::new(&self.0)
+   }
+}
+
 impl Deref for PackagePath {
    type Target = str;
 
@@ -109,12 +117,12 @@ impl<Item: Into<Self>> From<Vec<Item>> for Literal {
    }
 }
 
-impl<Item: Into<Self>> From<BTreeMap<String, Item>> for Literal {
-   fn from(value: BTreeMap<String, Item>) -> Self {
+impl<Key: Display, Item: Into<Self>> From<BTreeMap<Key, Item>> for Literal {
+   fn from(value: BTreeMap<Key, Item>) -> Self {
       Self::Map(
          value
             .into_iter()
-            .map(|(name, item)| (name, item.into()))
+            .map(|(name, item)| (name.to_string(), item.into()))
             .collect(),
       )
    }
@@ -178,7 +186,7 @@ impl<Item: OptionType> OptionType for Vec<Item> {
    }
 }
 
-impl<Item: OptionType> OptionType for BTreeMap<String, Item> {
+impl<Key: Display, Item: OptionType> OptionType for BTreeMap<Key, Item> {
    fn kind() -> Type {
       Type::Map {
          value: Box::new(Item::kind()),
@@ -237,6 +245,36 @@ impl Field {
          system:   system.to_owned(),
       }
    }
+}
+
+macro_rules! record {
+   ($name:ident {
+      $($field:ident ($spelling:literal): $kind:ty),* $(,)?
+   }) => {
+      #[derive(Default, serde::Deserialize)]
+      #[serde(deny_unknown_fields)]
+      struct $name {
+         $(#[serde(rename = $spelling)] $field: $kind),*
+      }
+
+      impl crate::schema::OptionType for $name {
+         fn kind() -> crate::schema::Type {
+            crate::schema::Type::Record {
+               fields: [$((
+                  $spelling.to_owned(),
+                  <$kind as crate::schema::OptionType>::kind(),
+               )),*]
+               .into(),
+            }
+         }
+      }
+
+      impl From<$name> for crate::schema::Literal {
+         fn from(value: $name) -> Self {
+            Self::Map([$(($spelling.to_owned(), value.$field.into())),*].into())
+         }
+      }
+   };
 }
 
 macro_rules! options {

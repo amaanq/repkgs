@@ -36,6 +36,7 @@ use crate::{
       Attrs,
       Ctx,
    },
+   schema::Field,
    system::{
       command::{
          run,
@@ -50,14 +51,19 @@ use crate::{
    },
 };
 
-#[derive(Deserialize)]
-struct Options {
-   projects:   Vec<String>,
-   exclude:    Vec<String>,
-   properties: BTreeMap<String, String>,
-   install:    BTreeMap<ConfigurationType, String>,
-   #[serde(rename = "root")]
-   _root:      String,
+options! {
+   Options {
+      _root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      projects ("projects"): Vec<String> = Vec::new()
+         => "vcxproj files or traversal projects relative to the source root",
+      exclude ("exclude"): Vec<String> = Vec::new()
+         => "project file stems excluded from the build",
+      properties ("properties"): BTreeMap<String, String> = BTreeMap::new()
+         => "MSBuild global properties",
+      install ("install"): BTreeMap<ConfigurationType, String> = BTreeMap::new()
+         => "installation directory per configuration type",
+   }
 }
 
 #[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -120,6 +126,10 @@ pub struct Vcxproj;
 impl System for Vcxproj {
    fn name(&self) -> &'static str {
       "vcxproj"
+   }
+
+   fn options(&self) -> Option<Vec<Field>> {
+      Some(Options::schema(self.name()))
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {

@@ -38,6 +38,13 @@ use crate::{
    },
    implant,
    prepare::succeed,
+   schema::{
+      Field,
+      Literal,
+      OptionType,
+      PackagePath,
+      Type,
+   },
    system::{
       cargo::Cargo,
       command::{
@@ -54,31 +61,73 @@ use crate::{
    },
 };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   root:      String,
-   deps:      String,
-   check:     Vec<String>,
-   mode:      Mode,
-   overrides: BTreeMap<String, Override>,
+options! {
+   Options {
+      root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      deps ("deps"): PackagePath
+         => "the locked dependencies, fetched (fetch.pythonDeps) from the package's own lock file",
+      check ("check"): Vec<String> = Vec::new()
+         => "modules that must import from the installed layout",
+      mode ("mode"): Mode = Mode::Project
+         => "project installs the application, env and dev a virtual environment",
+      overrides ("overrides"): BTreeMap<String, Override> = BTreeMap::new()
+         => "per-package build options",
+   }
 }
 
-#[derive(Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
+#[derive(Clone, Copy, Deserialize, PartialEq)]
+#[serde(try_from = "String")]
 enum Mode {
    Project,
    Env,
    Dev,
 }
 
-#[derive(Default, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-struct Override {
-   patches:         Vec<String>,
-   env:             BTreeMap<String, String>,
-   run:             String,
-   config_settings: BTreeMap<String, String>,
+impl Mode {
+   const ALL: [Self; 3] = [Self::Project, Self::Env, Self::Dev];
+
+   const fn name(self) -> &'static str {
+      match self {
+         Self::Project => "project",
+         Self::Env => "env",
+         Self::Dev => "dev",
+      }
+   }
+}
+
+impl TryFrom<String> for Mode {
+   type Error = io::Error;
+
+   fn try_from(value: String) -> io::Result<Self> {
+      Self::ALL
+         .into_iter()
+         .find(|mode| mode.name() == value)
+         .ok_or_else(|| io::Error::other(format!("unknown pyapp mode {value}")))
+   }
+}
+
+impl From<Mode> for Literal {
+   fn from(value: Mode) -> Self {
+      Self::String(value.name().to_owned())
+   }
+}
+
+impl OptionType for Mode {
+   fn kind() -> Type {
+      Type::Enum {
+         values: Self::ALL.map(|mode| mode.name().to_owned()).to_vec(),
+      }
+   }
+}
+
+record! {
+   Override {
+      patches ("patches"): Vec<String>,
+      env ("env"): BTreeMap<String, String>,
+      run ("run"): String,
+      config_settings ("configSettings"): BTreeMap<String, String>,
+   }
 }
 
 #[derive(Deserialize)]
@@ -110,6 +159,10 @@ pub struct Pyapp;
 impl System for Pyapp {
    fn name(&self) -> &'static str {
       "pyapp"
+   }
+
+   fn options(&self) -> Option<Vec<Field>> {
+      Some(Options::schema(self.name()))
    }
 
    /// PYTHONPATH is the application's site-packages, filling up during the
@@ -215,7 +268,7 @@ fn build(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<()> {
          .ok_or_else(|| io::Error::other("python -m build produced no wheel"))?;
       install_wheel(ctx, &own.to_string_lossy(), true)?;
    } else {
-      env_python(ctx, &options.mode)?;
+      env_python(ctx, options.mode)?;
    }
 
    let platform = ctx.platform()?;
@@ -318,13 +371,13 @@ fn build_wheel(
    built
 }
 
-fn env_python(ctx: &Ctx, mode: &Mode) -> io::Result<()> {
+fn env_python(ctx: &Ctx, mode: Mode) -> io::Result<()> {
    let python = ctx
       .deps
       .iter()
       .find(|dep| dep.name.starts_with("cpython"))
       .ok_or_else(|| io::Error::other("pkgs.cpython must be in dependencies"))?;
-   let dev = if *mode == Mode::Dev {
+   let dev = if mode == Mode::Dev {
       "${REPKGS_PROJECT:+$REPKGS_PROJECT:$REPKGS_PROJECT/src:}"
    } else {
       ""

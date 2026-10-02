@@ -11,12 +11,15 @@ use jig::{
    files::write_file,
    tree::writable,
 };
-use serde::Deserialize;
 
 use crate::{
    attrs::{
       Attrs,
       Ctx,
+   },
+   schema::{
+      Field,
+      PackagePath,
    },
    system::{
       command::{
@@ -29,13 +32,17 @@ use crate::{
    },
 };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   deps:     String,
-   #[serde(default)]
-   rockspec: Option<String>,
-   flags:    Vec<String>,
+options! {
+   Options {
+      _root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      deps ("deps"): PackagePath
+         => "rock server directory, by default the shared set from locks/luarocks.toml",
+      rockspec ("rockspec"): Option<String> = None
+         => "rockspec file when the source has several (null lets luarocks pick)",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "extra arguments for luarocks make",
+   }
 }
 
 pub struct Luarocks;
@@ -43,6 +50,10 @@ pub struct Luarocks;
 impl System for Luarocks {
    fn name(&self) -> &'static str {
       "luarocks"
+   }
+
+   fn options(&self) -> Option<Vec<Field>> {
+      Some(Options::schema(self.name()))
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {

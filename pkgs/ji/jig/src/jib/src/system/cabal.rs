@@ -31,6 +31,10 @@ use crate::{
       Ctx,
    },
    prepare::succeed,
+   schema::{
+      Field,
+      PackagePath,
+   },
    system::{
       command::{
          Env,
@@ -45,14 +49,19 @@ use crate::{
    },
 };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   root:    String,
-   deps:    String,
-   flags:   Vec<String>,
-   exes:    Vec<String>,
-   project: String,
+options! {
+   Options {
+      root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      deps ("deps"): PackagePath
+         => "hackage repository to solve against, by default the shared set from locks/hackage.toml",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "extra arguments for every cabal subcommand (--flags=\u{2026}, --allow-newer)",
+      exes ("exes"): Vec<String> = Vec::new()
+         => "exe components to build and install",
+      project ("project"): String = String::new()
+         => "extra cabal.project text (allow-newer:, constraints:)",
+   }
 }
 
 #[derive(Deserialize)]
@@ -81,6 +90,10 @@ pub struct Cabal;
 impl System for Cabal {
    fn name(&self) -> &'static str {
       "cabal"
+   }
+
+   fn options(&self) -> Option<Vec<Field>> {
+      Some(Options::schema(self.name()))
    }
 
    /// cabal writes its index cache into a noindex repository's directory, so

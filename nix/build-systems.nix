@@ -2,7 +2,8 @@
 # order (build test install unless said otherwise), `tool` (swappable per package as `<name>.tool`)
 # and `tools` (a list, or spec -> list) go on PATH, `dependencies` add to
 # the package's, `prebuilt` is the package's default for that field, `unsupported` is a reason
-# (or null) why no user of it can build on this platform, and `options` are what a
+# (or null) why no user of it can build on this platform, and `options` (emitted by `jib schema`
+# into nix/schema.json) are what a
 # package may set under `<name>.*`: `{ type; default; doc; }` each, `type` the `builtins.typeOf`
 # names allowed, checked at eval time along with the name. The system reads the merged result
 # from the spec under `<name>`. Every system has `root`; `deps` (the fetched tree of locked dependencies,
@@ -19,31 +20,6 @@
 }:
 let
   schema = import ./schema.nix;
-  opt = type: default: doc: {
-    type = if builtins.isList type then type else [ type ];
-    inherit default doc;
-  };
-  str = opt "string";
-  optStr = opt [
-    "string"
-    "null"
-  ];
-  strs = opt "list";
-  bool = opt "bool";
-  attrs = opt "set";
-  # a derivation, or the placeholder string a dynamic derivation's output is at eval time. The
-  # default comes from `lock.deps` (the package's own lock file), null where that is allowed means
-  # the source vendors its dependencies
-  deps =
-    nullable: fetcher:
-    opt (
-      [
-        "set"
-        "string"
-      ]
-      ++ (if nullable then [ "null" ] else [ ])
-    ) null "the locked dependencies, fetched (${fetcher}), by default from the package's own lock file";
-  flags = tool: strs [ ] "extra arguments for ${tool}";
   # bin scripts say #!/usr/bin/env node, prebuilt .node addons (rollup, esbuild) link libgcc_s.so.1
   nodeDeps = [
     pkgs.nodejs
@@ -55,11 +31,15 @@ builtins.mapAttrs
   (
     name: bs:
     let
-      options = {
-        root = str "." "directory below the source the project lives in (monorepos, build/cmake)";
-      }
-      // (if bs ? tool then { tool = opt "set" bs.tool "the package that provides ${name}"; } else { })
-      // bs.options;
+      options =
+        lib.on (bs ? tool) {
+          tool = {
+            type = [ "set" ];
+            default = bs.tool;
+            doc = "the package that provides ${name}";
+          };
+        }
+        // schema.options.${name};
       extra = if builtins.isFunction (bs.tools or [ ]) then bs.tools else _: bs.tools or [ ];
       # one set per build system, only `lock` options depend on the package
       optionDefaults = builtins.mapAttrs (_: o: o.default) options;
@@ -120,7 +100,6 @@ builtins.mapAttrs
         "install"
       ];
       tools = [ sh ];
-      options = schema.options.make;
     };
     autotools = {
       unsupported =
@@ -136,7 +115,6 @@ builtins.mapAttrs
       ];
       # make and bash come with baseTools (or the seed's for bootstrapTools packages)
       tools = [ sh ];
-      options = schema.options.autotools;
     };
     cmake = {
       phases = [
@@ -150,7 +128,6 @@ builtins.mapAttrs
         buildPkgs.ninja
         sh
       ];
-      options = schema.options.cmake;
     };
     vcxproj = {
       unsupported =
@@ -161,12 +138,6 @@ builtins.mapAttrs
         "install"
       ];
       tools = [ buildPkgs.ninja ];
-      options = {
-        projects = strs [ ] "vcxproj files or traversal projects relative to the source root";
-        exclude = strs [ ] "project file stems excluded from the build";
-        properties = attrs { } "MSBuild global properties";
-        install = attrs { } "installation directory per configuration type";
-      };
     };
     meson = {
       phases = [
@@ -180,7 +151,6 @@ builtins.mapAttrs
         buildPkgs.ninja
         sh
       ];
-      options = schema.options.meson;
     };
     python = {
       phases = [
@@ -197,11 +167,6 @@ builtins.mapAttrs
         python-build
         python-installer
       ];
-      options = {
-        backend = str "setuptools" "PEP 517 backend when pyproject.toml names none: setuptools, flit_core, maturin";
-        module = optStr null "module the import test loads (null: the package name with - as _)";
-        pytest = bool false "also run pytest on tests/";
-      };
     };
     cargo = {
       # `cargo.tool = buildPkgs.rust-bootstrap` for what must exist before llvm and rust are
@@ -209,7 +174,6 @@ builtins.mapAttrs
       tool = buildPkgs.rust;
       tools = spec: lib.on platform.cross [ pkgs."${spec.cargo.tool.pname}-std" ];
       lock.deps = fetch.cargoVendor;
-      options = schema.options.cargo;
     };
     cabal = {
       unsupported = if platform.cross then "ghc-bootstrap only targets the build machine" else null;
@@ -223,33 +187,17 @@ builtins.mapAttrs
         pkgs.gmp # ghc-bignum: every linked program wants -lgmp
         pkgs.libffi # and the RTS -lffi
       ];
-      options = {
-        deps = deps false "fetch.hackageSet" // {
-          default = fetch.hackageSet { };
-          doc = "hackage repository to solve against, by default the shared set from locks/hackage.toml";
-        };
-        flags = flags "every cabal subcommand (--flags=…, --allow-newer)";
-        exes = strs [ ] "exe components to build and install";
-        project = str "" "extra cabal.project text (allow-newer:, constraints:)";
-      };
+      lock.deps = _: fetch.hackageSet { };
     };
     luarocks = {
       phases = [ "install" ]; # luarocks make builds into --tree
       tool = buildPkgs.luarocks;
       tools = [ sh ];
-      options = {
-        deps = deps false "fetch.luaRocksSet" // {
-          default = fetch.luaRocksSet { inherit (buildPkgs) lua; };
-          doc = "rock server directory, by default the shared set from locks/luarocks.toml";
-        };
-        rockspec = optStr null "rockspec file when the source has several (null: luarocks picks)";
-        flags = flags "luarocks make";
-      };
+      lock.deps = _: fetch.luaRocksSet { inherit (buildPkgs) lua; };
     };
     go = {
       tool = buildPkgs.go;
       lock.deps = fetch.goModules;
-      options = schema.options.go;
     };
     pnpm = {
       tool = buildPkgs.pnpm;
@@ -260,7 +208,6 @@ builtins.mapAttrs
       ++ nodeTools;
       lock.deps = fetch.pnpmDeps;
       dependencies = nodeDeps;
-      options = schema.options.pnpm;
     };
     pyapp = {
       # binary wheels carry upstream-linked .so files: finish implants interp/RUNPATH like for any
@@ -286,30 +233,21 @@ builtins.mapAttrs
           rust
         ]
         ++ lib.on platform.cross [ pkgs.rust-std ];
-      options = {
-        deps = deps false "fetch.pythonDeps";
-        check = strs [ ] "modules that must import from the installed layout";
-        mode = str "project" "project, env or dev";
-        overrides = attrs { } "per-package build options";
-      };
     };
     bundler = {
       tool = buildPkgs.ruby;
       tools = [ sh ];
       lock.deps = fetch.gems;
-      options = schema.options.bundler;
     };
     deno = {
       tool = buildPkgs.deno;
       lock.deps = fetch.denoDeps;
-      options = schema.options.deno;
     };
     bun = {
       tool = buildPkgs.bun;
       tools = [ sh ] ++ nodeTools;
       lock.deps = fetch.bunDeps;
       dependencies = nodeDeps;
-      options = schema.options.bun;
     };
     yarn = {
       tool = buildPkgs.yarn;
@@ -320,7 +258,6 @@ builtins.mapAttrs
       ++ nodeTools;
       lock.deps = fetch.yarnDeps;
       dependencies = nodeDeps;
-      options = schema.options.yarn;
     };
     mix = {
       # no test phase by default: MIX_ENV=test deps are outside the prod lock subset
@@ -336,7 +273,6 @@ builtins.mapAttrs
       ];
       lock.deps = fetch.hexDeps;
       dependencies = [ pkgs.erlang ]; # escripts say #!/usr/bin/env escript, releases exec erl
-      options = schema.options.mix;
     };
     rebar3 = {
       # no test phase by default: eunit/ct deps live in the test profile, outside rebar.lock
@@ -350,13 +286,11 @@ builtins.mapAttrs
       ];
       lock.deps = fetch.hexDeps;
       dependencies = [ pkgs.erlang ];
-      options = schema.options.rebar3;
     };
     npm = {
       tool = buildPkgs.nodejs;
       tools = [ sh ] ++ nodeTools;
       lock.deps = fetch.npmDeps;
       dependencies = nodeDeps;
-      options = schema.options.npm;
     };
   }

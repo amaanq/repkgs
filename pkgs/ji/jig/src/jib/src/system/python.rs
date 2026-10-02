@@ -30,10 +30,7 @@ use jig::{
    store::STORE_DIR,
    tree::writable,
 };
-use serde::{
-   Deserialize,
-   Serialize,
-};
+use serde::Serialize;
 
 use crate::{
    attrs::{
@@ -41,6 +38,7 @@ use crate::{
       Ctx,
    },
    exports::closure,
+   schema::Field,
    system::{
       command::{
          Env,
@@ -51,14 +49,17 @@ use crate::{
    },
 };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   root:    String,
-   backend: String,
-   #[serde(default)]
-   module:  Option<String>,
-   pytest:  bool,
+options! {
+   Options {
+      root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      backend ("backend"): String = "setuptools".to_owned()
+         => "PEP 517 backend when pyproject.toml names none, setuptools, flit_core, hatchling or maturin",
+      module ("module"): Option<String> = None
+         => "module the import test loads (null uses the package name with - as _)",
+      pytest ("pytest"): bool = false
+         => "also run pytest on tests/",
+   }
 }
 
 #[derive(Serialize)]
@@ -71,6 +72,10 @@ pub struct Python;
 impl System for Python {
    fn name(&self) -> &'static str {
       "python"
+   }
+
+   fn options(&self) -> Option<Vec<Field>> {
+      Some(Options::schema(self.name()))
    }
 
    /// the source tree comes last so a backend can build itself before any of
