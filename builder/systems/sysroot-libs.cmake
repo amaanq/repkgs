@@ -1,25 +1,27 @@
-# find_library() answers with a file in the sysroot (<sysroot>/usr/lib/libm.so, the macOS SDK's
-# libz.tbd or Foo.framework). Recorded in an installed *Config.cmake or .pc that path names this
-# build's sysroot for every dependent. The linker finds -lm / -framework Foo in whichever sysroot
-# is current, so hand that back instead. Injected through CMAKE_PROJECT_TOP_LEVEL_INCLUDES by
-# builder/systems/cmake.nu with -DPKGS_SYSROOT.
-function(find_library var)
-  _find_library(${var} ${ARGN})
-  set(lib "${${var}}")
-  string(FIND "${lib}" "${PKGS_SYSROOT}/" at)
-  if(NOT at EQUAL 0)
+# find_library() returns files inside the sysroot, <sysroot>/usr/lib/libm.so or the macOS SDK's
+# libz.tbd and Foo.framework. An installed *Config.cmake or .pc that records such a path ties every
+# dependent to this build's sysroot, while -lm and -framework Foo resolve in whatever sysroot links
+# later. jib's cmake system injects this through CMAKE_PROJECT_TOP_LEVEL_INCLUDES with -DPKGS_SYSROOT.
+function(find_library result)
+  _find_library(${result} ${ARGN})
+  set(found "${${result}}")
+  string(FIND "${found}" "${PKGS_SYSROOT}/" position)
+  if(NOT position EQUAL 0)
     return()
-  elseif(lib MATCHES "/lib([^/]+)\\.(so|a|tbd|dylib)$")
-    set(lib "-l${CMAKE_MATCH_1}")
-  elseif(lib MATCHES "/([^/]+)\\.framework$")
-    set(lib "-framework ${CMAKE_MATCH_1}")
+  endif()
+
+  if(found MATCHES "/lib([^/]+)\\.(so|a|tbd|dylib)$")
+    set(found "-l${CMAKE_MATCH_1}")
+  elseif(found MATCHES "/([^/]+)\\.framework$")
+    set(found "-framework ${CMAKE_MATCH_1}")
   else()
     return()
   endif()
-  get_property(type CACHE ${var} PROPERTY TYPE)
-  if(type)
-    set_property(CACHE ${var} PROPERTY VALUE "${lib}")
+
+  get_property(cached CACHE ${result} PROPERTY TYPE)
+  if(cached)
+    set_property(CACHE ${result} PROPERTY VALUE "${found}")
   else()
-    set(${var} "${lib}" PARENT_SCOPE)
+    set(${result} "${found}" PARENT_SCOPE)
   endif()
 endfunction()
