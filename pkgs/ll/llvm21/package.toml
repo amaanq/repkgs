@@ -9,3 +9,44 @@ hash = "sha256-pgd8g9Yfvp7abjCCKSmIn1smAROjqtfZaJkaUkBSKW0="
 [pin]
 version = "21.1.8"
 tag     = "llvmorg-21.1.8"
+
+[package]
+patches           = [ "upstream-rdf-std-specializations.patch", "upstream-x86-vastart-stack-probe.patch" ]
+uses              = [ "cmake" ]
+buildDependencies = [ "cpython" ]
+dependencies      = [ "zlib", "zstd" ]
+bin               = [ "llvm-config" ]
+
+[package.cmake]
+root = "llvm"
+
+[package.cmake.defs]
+BUILD_SHARED_LIBS       = false
+LLVM_BUILD_LLVM_DYLIB   = true
+LLVM_ENABLE_BINDINGS    = false
+LLVM_ENABLE_LIBEDIT     = false
+LLVM_ENABLE_LIBPFM      = false
+LLVM_ENABLE_LIBXML2     = false
+LLVM_ENABLE_TERMINFO    = false
+LLVM_ENABLE_ZLIB        = "FORCE_ON"
+LLVM_ENABLE_ZSTD        = "FORCE_ON"
+LLVM_INCLUDE_BENCHMARKS = false
+LLVM_INCLUDE_DOCS       = false
+LLVM_INCLUDE_EXAMPLES   = false
+LLVM_INCLUDE_TESTS      = false
+LLVM_INSTALL_UTILS      = false
+LLVM_LINK_LLVM_DYLIB    = true
+LLVM_PARALLEL_LINK_JOBS = 4
+LLVM_TARGETS_TO_BUILD   = "all"
+
+[package.phases.after]
+"cmake.install" = [  ]
+
+[package.tests]
+run = false
+
+[when.cross.cmake.defs]
+CROSS_TOOLCHAIN_FLAGS_NATIVE = "-DCMAKE_C_COMPILER=cc-build;-DCMAKE_CXX_COMPILER=c++-build;-DCMAKE_EXE_LINKER_FLAGS=-static;-DLLVM_BUILD_LLVM_DYLIB=ON;-DLLVM_LINK_LLVM_DYLIB=ON;-DLLVM_HOST_TRIPLE={platform.clangTarget}"
+
+[when.cross.phases.after]
+"cmake.install" = [ "llvm21.host-config" ]

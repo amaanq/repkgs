@@ -8,7 +8,7 @@
   args,
   written,
   fail,
-  dir,
+  dirs,
   prelude,
   separate,
 }:
@@ -125,13 +125,19 @@ let
   # <store dir>/<m>.nu: nu names a module after its file, a bare store path would be <hash>-<m>
   module =
     name:
-    "${
-      builtins.path {
-        path = dir;
-        name = "module";
-        filter = path: _: baseNameOf path == "${name}.nu";
-      }
-    }/${name}.nu";
+    let
+      found = filter (dir: builtins.pathExists (dir + "/${name}.nu")) dirs;
+    in
+    if found == [ ] then
+      fail "phases: no ${name}.nu beside package.toml"
+    else
+      "${
+        builtins.path {
+          path = head found;
+          name = "module";
+          filter = path: _: baseNameOf path == "${name}.nu";
+        }
+      }/${name}.nu";
   steps = map step list;
   header = builtins.concatStringsSep "\n" ([ prelude ] ++ map (name: "use ${module name}") modules);
 in

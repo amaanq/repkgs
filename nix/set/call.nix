@@ -15,7 +15,7 @@ let
   # top of the spec (identity for the package itself). `variant pkgs.llvm { … }` re-enters here
   # with llvm's function, so the base body sees this name's sources and features
   callWith =
-    fn: dir: name: sources: edit0:
+    fn: dirs: name: sources: edit0:
     let
       formals = builtins.functionArgs fn;
       edit = if edit0 == null then (spec: spec) else edit0;
@@ -37,15 +37,15 @@ let
       features = resolved;
       package =
         if edit0 == null then
-          package sources dir resolved fn
+          package sources dirs resolved fn
         else
-          spec: package sources dir resolved fn (edit0 spec);
+          spec: package sources dirs resolved fn (edit0 spec);
       # another package's spec under this name, edited with override verbs: this function
       # again with the base's package.nix. Own package.toml when the directory has one
       # (llvm22: another pin), else the base's (rust-std: same tarball). A list of trees merges
       variant =
         base: tree:
-        callWith base.fn base.dir name (if sources == null then base.sources else sources) (
+        callWith base.fn base.dirs name (if sources == null then base.sources else sources) (
           spec: overrides.applyOne self name (overrides.merge tree) (edit spec // { inherit name; })
         );
     });
@@ -61,13 +61,14 @@ let
     else
       import ../package/manifest.nix { inherit dir name table; };
   # `from = "<package>"`: the sources of that package, a subproject of its tarball
-  lender = ../../pkgs + "/${builtins.substring 0 2 table.from}/${table.from}/package.toml";
+  lender = ../../pkgs + "/${builtins.substring 0 2 table.from}/${table.from}";
   sources =
     if table ? from then
-      readSources lender
+      readSources (lender + "/package.toml")
     else if table ? source || table ? upstream then
       readSources file
     else
       null;
 in
-callWith fn dir name sources null
+# a phase module not beside package.toml may be the lender's
+callWith fn ([ dir ] ++ (if table ? from then [ lender ] else [ ])) name sources null

@@ -1,0 +1,51 @@
+from = "llvm"
+
+[package]
+patches           = [  ]
+uses              = [ "cmake" ]
+buildDependencies = [ "cpython" ]
+dependencies      = [ "llvm", "zlib", "zstd" ]
+bin               = [  ]
+
+[package.cmake]
+root = "clang"
+
+[package.cmake.defs]
+BUILD_SHARED_LIBS                     = false
+CLANG_BUILD_EXAMPLES                  = false
+CLANG_BUILD_TOOLS                     = false
+CLANG_ENABLE_ARCMT                    = false
+CLANG_ENABLE_STATIC_ANALYZER          = false
+CLANG_INCLUDE_DOCS                    = false
+CLANG_INCLUDE_TESTS                   = false
+CLANG_LINK_CLANG_DYLIB                = true
+CLANG_TOOLING_BUILD_AST_INTROSPECTION = false
+LIBCLANG_BUILD_STATIC                 = false
+LLVM_DIR                              = "{pkg:llvm}/lib/cmake/llvm"
+LLVM_INCLUDE_TESTS                    = false
+LLVM_LINK_LLVM_DYLIB                  = true
+LLVM_PARALLEL_LINK_JOBS               = 4
+LLVM_TABLEGEN_EXE                     = "{tool:llvm}/bin/llvm-tblgen"
+LLVM_TOOLS_BINARY_DIR                 = "{tool:llvm}/bin"
+
+[package.phases]
+remove = [ "cmake.test" ]
+
+[package.phases.after]
+"cmake.install" = [ "clang.keep-tblgen" ]
+
+[package.tests]
+run = false
+
+[when.native]
+buildDependencies = [ "{pkg:llvm}" ]
+
+[when.native.cmake.defs]
+LLVM_TABLEGEN_EXE     = "{pkg:llvm}/bin/llvm-tblgen"
+LLVM_TOOLS_BINARY_DIR = "{pkg:llvm}/bin"
+
+[when.cross]
+buildDependencies = [ "llvm", "clang" ]
+
+[when.cross.cmake.defs]
+CLANG_TABLEGEN = "{tool:clang}/bin/clang-tblgen"

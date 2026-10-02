@@ -1,0 +1,39 @@
+from = "llvm"
+
+[package]
+patches           = [  ]
+uses              = [ "cmake" ]
+buildDependencies = [ "cpython" ]
+dependencies      = [ "llvm", "zlib", "zstd" ]
+bin               = [ "ld.lld" ]
+
+[package.cmake]
+root = "lld"
+
+[package.cmake.defs]
+BUILD_SHARED_LIBS       = false
+LLVM_DIR                = "{pkg:llvm}/lib/cmake/llvm"
+LLVM_INCLUDE_TESTS      = false
+LLVM_LINK_LLVM_DYLIB    = true
+LLVM_PARALLEL_LINK_JOBS = 4
+LLVM_TABLEGEN_EXE       = "{tool:llvm}/bin/llvm-tblgen"
+LLVM_TOOLS_BINARY_DIR   = "{tool:llvm}/bin"
+
+[package.phases]
+remove = [ "cmake.test" ]
+
+[package.phases.after]
+
+[package.tests]
+run     = false
+version = true
+
+[when.native]
+buildDependencies = [ "{pkg:llvm}" ]
+
+[when.native.cmake.defs]
+LLVM_TABLEGEN_EXE     = "{pkg:llvm}/bin/llvm-tblgen"
+LLVM_TOOLS_BINARY_DIR = "{pkg:llvm}/bin"
+
+[when.cross]
+buildDependencies = [ "llvm" ]

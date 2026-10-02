@@ -9,3 +9,52 @@ hash = "sha256-YpXsAx/jqbxBpTLljJBfLEyeG4vSY94K4HYHSqyXYyg="
 [pin]
 version = "6.6"
 date    = "2025-12-30"
+
+[package]
+patches           = [ "relocatable.patch" ]
+uses              = [ "autotools" ]
+buildDependencies = [  ]
+bin               = [ "tic", "tput", "infocmp" ]
+
+[package.autotools]
+flags = [
+  "--with-shared",
+  "--without-debug",
+  "--without-ada",
+  "--enable-widec",
+  "--with-versioned-syms",
+  "--enable-pc-files",
+  "--disable-stripping",
+  "--with-terminfo-dirs=/etc/terminfo:/lib/terminfo:/usr/share/terminfo",
+  "--with-manpage-format=normal",
+]
+
+[package.phases.after]
+"autotools.install" = [ "ncurses.narrow-names" ]
+
+[package.phases.before]
+"autotools.configure" = [ "ncurses.configure-env" ]
+
+[package.tests]
+run     = false
+version = "-V"
+
+[when.os.windows.autotools]
+flags = [
+  "--enable-term-driver",
+  "--enable-sp-funcs",
+  "--with-tic-path={tool:ncurses}/bin/tic",
+  "--with-infocmp-path={tool:ncurses}/bin/infocmp",
+]
+
+[when.cross]
+buildDependencies = [ "ncurses" ]
+
+[unless.os.windows.autotools]
+flags = [ "--with-termlib" ]
+
+[unless.cpu.x86_64.autotools]
+flags = [
+  "--with-tic-path={tool:ncurses}/bin/tic",
+  "--with-infocmp-path={tool:ncurses}/bin/infocmp",
+]

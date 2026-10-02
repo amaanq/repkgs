@@ -103,8 +103,8 @@ let
 in
 # sources: the package's package.toml (nix/sources.nix) or null. It supplies version and source
 # unless package.nix sets them (local trees, demos)
-# dir: the package's directory, where a phase prefix that is no build system finds <prefix>.nu
-sources0: dir: features: fn: written:
+# dirs: where a phase prefix that is no build system finds <prefix>.nu, the package's own first
+sources0: dirs: features: fn: written:
 let
   edited = if edit == null then written else edit written.name written;
   # an override may repin the package: `pin.merge = { version = "…"; }` plus
@@ -235,7 +235,7 @@ let
       uses
       args
       fail
-      dir
+      dirs
       prelude
       separate
       ;
@@ -379,7 +379,7 @@ drv
   decl = written.features or { };
   inherit (phases) script;
   inherit
-    dir
+    dirs
     features
     fn
     supported
