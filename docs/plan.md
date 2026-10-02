@@ -1,6 +1,6 @@
 # Plan
 
-What is not built yet. design.md describes what is.
+The work still ahead. design.md covers what exists.
 
 ## Source bootstrap
 
@@ -12,7 +12,7 @@ stages through kaem rebuild there with a matching kaem output. A full replay on 
 and regenerating release archives' generated files remain unverified.
 The dependency boundary and rebuild commands are in [bootstrap.md](bootstrap.md).
 
-## Compilers still taken as upstream binaries
+## Compilers we still download prebuilt
 
 An upstream binary may only ever be `<x>-bootstrap`, a build dependency of an `<x>` built from
 source, as go, rust, zig and jdk already are. These remain:
@@ -83,7 +83,7 @@ for npm, pnpm and bun, and `uptrack check` should warn when a lock names a libra
   with several sources), bin and proc-macro crates in rustc mode, and rustc keys that change when
   only the vendor store path does. A recurring `compiled-error` across identical rebuilds points
   at an unstable conftest key.
-- Hash link inputs in parallel if llvm-sized links show up in profiles.
+- Should llvm-sized links show up in profiles, hash their inputs in parallel.
 
 ## Builder
 

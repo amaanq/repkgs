@@ -1,8 +1,8 @@
 # Choices a package offers, declared as its `features` and read back as values:
 #
 #   features = {
-#     tls = { values = [ "openssl" "gnutls" "none" ]; default = "openssl"; doc = "TLS backend"; };
-#     http3 = { default = false; };
+#     codec = { values = [ "zstd" "lz4" "both" ]; default = "zstd"; doc = "compression codec"; };
+#     manpages = { default = false; };
 #   };
 #
 # A feature has its default's type, and `values` bounds a string or each item of a list. The set's

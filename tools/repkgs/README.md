@@ -16,7 +16,7 @@ $ repkgs build jq                     # through the compile cache when jigd runs
 $ repkgs build --for aarch64-macos jq # for another platform
 $ repkgs test jq                      # jq.tests, or jq when it tests inside its build
 $ repkgs test                         # tests/builder, after a builder/ or jib edit
-$ repkgs log jq                       # the last build log
+$ repkgs log jq                       # its most recent build log
 $ repkgs info jq                      # version, platforms, build systems and features (--json)
 $ repkgs list --for riscv64-linux --unsupported   # what a platform lacks, and why
 $ repkgs options cmake                # every cmake.* option of [build], with defaults
@@ -26,7 +26,7 @@ $ repkgs fmt                          # nuff, --check to only check
 ## When a build fails
 
 ```console
-$ repkgs dev perl                     # or --for aarch64-macos perl
+$ repkgs dev perl                     # --for aarch64-macos picks another platform
 ```
 
 drops you into a nu shell with the package's compiler, flags and dependencies. Jib unpacks

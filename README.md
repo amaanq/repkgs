@@ -25,9 +25,9 @@ next.
 
 ## Trying it
 
-The daemon needs Nix master with [NixOS/nix#16459](https://github.com/NixOS/nix/pull/16459), and
-[#16465](https://github.com/NixOS/nix/pull/16465) and
-[#16477](https://github.com/NixOS/nix/pull/16477) help CA rebuilds after a gc.
+The daemon needs a Nix carrying [NixOS/nix#16459](https://github.com/NixOS/nix/pull/16459).
+After a garbage collection, CA rebuilds also go better with
+[#16465](https://github.com/NixOS/nix/pull/16465) and [#16477](https://github.com/NixOS/nix/pull/16477).
 [nix/nix](nix/nix/default.nix) builds such a Nix (`nix-build nix/nix`, or the flake's
 `packages.x86_64-linux.nix`). On NixOS:
 
@@ -42,8 +42,8 @@ nix.settings = {
 Then:
 
 ```console
-$ nix-build -A jq                                   # for this machine
-$ nix-build -A jq --argstr platform aarch64-linux   # for another
+$ nix-build -A jq                                   # native
+$ nix-build -A jq --argstr platform aarch64-linux   # cross
 $ nix-build -A ripgrep -A fd -A deno -A pandoc      # cargo, prebuilt, haskell and more
 $ nix-build bootstrap -A stage2.x86_64.cc           # the toolchain alone
 ```
@@ -54,11 +54,11 @@ The first build fetches the seed and builds the toolchain, and later ones are in
 [tools/repkgs/README.md](tools/repkgs/README.md):
 
 ```console
-$ repkgs build jq                        # through the compile cache (repkgs cache start)
-$ repkgs build --for aarch64-linux jq    # for another platform
-$ repkgs test jq                         # jq.tests
-$ repkgs dev jq                          # a failing build by hand, in a tree that stays
-$ repkgs info deno                       # version, build systems, platform support
+$ repkgs build jq                        # with jigd caching compiles, after `repkgs cache start`
+$ repkgs build --for aarch64-linux jq    # cross
+$ repkgs test jq                         # builds jq.tests
+$ repkgs dev jq                          # steps through the phases in a kept build tree
+$ repkgs info deno                       # pinned version, build systems, supported platforms
 ```
 
 ## Writing a package
@@ -115,10 +115,10 @@ function of the target's facts and the package sets returning a list of changes 
 
 nix/package/manifest.nix documents the whole format.
 
-Lock files need no translation. For Cargo, Go, npm, pnpm, Yarn, Bundler, Deno, Hex, Hackage and
-LuaRocks a dynamic derivation turns the lock file in the source into fixed-output fetches at build
-time, using the hashes the lock already carries. Go, Hackage and LuaRocks locks carry none, so
-those live in `locks/*.toml`.
+A lock file in the source is used as it is. At build time a dynamic derivation reads it and fetches
+each entry as a fixed output with the hash the lock records, for Cargo, Go, npm, pnpm, Yarn,
+Bundler, Deno, Hex, Hackage and LuaRocks. go.sum, Hackage and LuaRocks record no usable hashes, so
+`locks/*.toml` holds those.
 
 When a build system's phases are not enough, `before.<phase>`, `after.<phase>`,
 `replace.<phase>` (a phase or a list) and `skip` (a list) edit its list, or `phases` spells the
@@ -155,7 +155,7 @@ nothing links against.
 
 An out-of-tree package passed through `packages` may still be a `package.nix` calling `package
 { … }` with the same fields, and may declare `features` with a default that a user chooses through
-`import ./. { features.tls = "gnutls"; }` or `overrides.<pkg>.features` (nix/features.nix).
+`import ./. { features.crypto = "nettle"; }` or `overrides.<pkg>.features` (nix/features.nix).
 
 ## Keeping it current
 
@@ -165,7 +165,7 @@ upstream for new versions and rewrites pin and hash:
 ```console
 $ uptrack check          # what is out of date
 $ uptrack apply zlib     # bump, prefetch, rewrite the hash (--commit makes one commit per bump)
-$ uptrack lock fzf       # refresh locks/go.toml from its go.sum
+$ uptrack lock fzf       # re-pin the Go modules fzf needs in locks/go.toml
 ```
 
 [docs/uptrack.md](docs/uptrack.md) has the rest.
@@ -179,7 +179,7 @@ bootstrap/        seed, stage0 (musl cc), stage1 (llvm), stage2 (a cc per platfo
 nix/              evaluation: package/ turns a manifest into a derivation, build-systems.nix binds
                   each `uses` entry, fetch.nix holds the lock-file fetchers
 builder/          the nu that phase modules import
-locks/            hashes that lock files lack (go.sum, hackage, luarocks)
+locks/            hashes for the ecosystems whose lock files lack them
 tests/builder/    a small package per language checking what the builder does (`repkgs test`)
 docs/             design.md (why), jig.md, uptrack.md, plan.md
 tools/repkgs/     the command (its README.md is for changing it)

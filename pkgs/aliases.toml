@@ -1,2 +1,2 @@
-# unversioned name -> default line (docs/design.md "Language versions")
+# the package a bare language name means
 cpython = "cpython314"

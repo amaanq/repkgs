@@ -18,7 +18,7 @@ def main [
     let tag      = $"bootstrap-($pkg)-($version)"
 
     let nars = ($cpus | split row "," | each {|cpu|
-      print -e $"building ($pkg) ($version) for ($cpu)"
+      print -e $"($pkg) ($version): cross building for ($cpu)"
       # the bundle copies foreign libraries in and drops store references, which is what a
       # `prebuilt = true` package unpacks
       let out = if $store_path != null { $store_path } else {

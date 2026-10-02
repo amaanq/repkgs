@@ -125,13 +125,13 @@ def "main options" [
 def "main new" [
   name: string # attribute name
   purl: string # pkg:github/owner/repo, pkg:pypi/name, pkg:gnu/name and the like
-  url: string # source url with {version} {tag} {major} {minor}
+  url: string # where the tarball lives, {version}, {tag}, {major} and {minor} filled per release
 ]: nothing -> nothing {
   let dir = $"(root)/pkgs/($name | str substring 0..<2)/($name)"
-  if ($dir | path exists) { fail $"($dir) exists" }
+  if ($dir | path exists) { fail $"($dir) is already a package" }
   try { with-env {UPTRACK_ROOT: (root)} { ^uptrack init $dir $purl $url } } catch {
     rm -rf $dir
-    fail $"uptrack init failed for ($purl), nothing written"
+    fail $"uptrack init rejected ($purl), so the directory is gone again"
   }
   let manifest = $"($dir)/recipe.toml"
   if not ((open $manifest) | columns | any {|table| $table == build }) {
@@ -175,7 +175,7 @@ def wait-for [deadline: datetime, ready: closure, late: closure]: nothing -> not
 
 # start, stop or report on the compile cache daemon
 def "main cache" [
-  action: string # start, stop or status
+  action: string # one of start, stop, status
   --size: int = 50 # GiB kept before whole packs are evicted, for start
   --daemon: path
   --seed: path
@@ -229,7 +229,7 @@ def "main cache" [
       print $"jigd: ($serving)"
       if ($log | path exists) { ^tail -n 3 $log }
     }
-    _ => { fail "repkgs cache start|stop|status" }
+    _ => { fail $"repkgs cache takes start, stop or status, not ($action)" }
   }
 }
 

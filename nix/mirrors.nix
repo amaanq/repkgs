@@ -1,5 +1,5 @@
-# Alternative hosts for source downloads, by URL prefix. nix/sources.nix hands the fetcher every
-# spelling of a url (`urls`), tried in order; recipe.toml keeps naming the canonical one.
+# Other hosts serving the same files, keyed by the URL prefix they replace. A recipe names the
+# canonical URL, and nix/sources.nix passes the fetcher that URL plus each rewrite as `urls`.
 {
   "https://ftp.gnu.org/gnu/" = [
     "https://ftpmirror.gnu.org/"

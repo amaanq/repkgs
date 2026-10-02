@@ -132,10 +132,10 @@ tag that Temurin's file names and URLs use.
 uptrack list [names]                     parse and validate every recipe.toml
 uptrack check [names] [--json]           resolve and decide, exit 10 when updates are pending
 uptrack apply [names] [--plan f]         write hash, [pin], hook files and locks for pending updates
-              [--commit]                 one commit per update, `name: 1.2 -> 1.3` (jj, else git)
+              [--commit]                 commits each update alone as `name: 1.2 -> 1.3`, with jj or git
 uptrack verify [names]                   build at the current pin
 uptrack rehash [names]                   prefetch again at the current pin, after a url edit
-uptrack lock [names] [--prune]           fill locks/<eco>.toml for packages with [locks]
+uptrack lock [names] [--prune]           resolve the [locks] of packages into locks/<eco>.toml
 uptrack init <dir> <purl> <url-template> a new recipe.toml pinned to the newest release
 uptrack normalize                        rewrite locks/<eco>.toml in normal form
 uptrack versions <purl>                  a datasource's candidates as JSON, for hooks

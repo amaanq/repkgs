@@ -1,6 +1,6 @@
 # Edits to package specs from outside the tree, passed as `overrides` (docs/design.md, Overrides):
 #
-#   import ./. { overrides = { jq.autotools.flags.append = [ "--x" ]; }; }
+#   import ./. { overrides = { curl.autotools.flags.prepend = [ "--disable-ldap" ]; }; }
 #
 # The tree is <package>.<field>….<verb>. On a field
 #   set       the value, created when missing
@@ -122,7 +122,7 @@ let
         else if node ? remove then
           (if present then null else fail "remove: no such field")
         else
-          fail "no such field (use .set to create it)";
+          fail "missing, and only .set adds a field";
       drop =
         value:
         if !some then
@@ -196,16 +196,18 @@ let
   applyOne =
     pkgs: name: node: spec:
     if !isAttrs node then
-      throw "overrides: ${name}: expected { <field>… }, got a ${typeOf node}"
+      throw "overrides: ${name} must be an attribute set of fields, not a ${typeOf node}"
     else if !isFunction (node.edit or same) then
-      throw "overrides: ${name}.edit: expected a function spec -> spec, got a ${typeOf node.edit}"
+      throw "overrides: ${name}.edit must map a spec to a spec, not be a ${typeOf node.edit}"
     else
-      (node.edit or same) (
-        descend {
+      let
+        fields = removeAttrs node [ "edit" ];
+        place = {
           package = name;
           inherit pkgs;
-        } [ ] (removeAttrs node [ "edit" ]) true spec
-      );
+        };
+      in
+      (node.edit or same) (descend place [ ] fields true spec);
 in
 {
   merge = trees: if isList trees then join trees else trees;

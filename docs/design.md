@@ -72,12 +72,12 @@ The set takes one tree of `<package>.<field>….<verb>`:
 ```nix
 import ./. {
   overrides = {
-    zlib.autotools.flags.append = [ "--zprefix" ];
-    git.dependencies.remove = [ "pcre2" ];        # strings are packages of the final set
-    curl.env.merge = { CURL_DEBUG = "1"; };
-    jq.pin.merge = { version = "1.8.3"; };        # recipe.toml read again under this pin
-    jq.hash.merge = { default = "sha256-…"; };
-    gcc.edit = spec: spec // { … };               # for what the verbs cannot say
+    xz.autotools.flags.prepend = [ "--disable-nls" ];
+    curl.dependencies.remove = [ "nghttp2" ];     # names resolve in the final set
+    sqlite.env.merge = { SQLITE_DEBUG = "1"; };
+    zstd.pin.merge = { version = "1.5.6"; };      # its recipe.toml read again at this version
+    zstd.hash.merge = { default = "sha256-…"; };
+    ruby.edit = spec: spec // { … };              # anything the verbs cannot express
   };
   packages.openssl-mine = ./openssl-mine;         # out of tree, and may replace an in-tree name
 }
@@ -96,19 +96,19 @@ together:
 ```nix
 { package, pkgs, features, on }:
 package {
-  name = "curl";
+  name = "libarchive";
   features = {
-    tls = { values = [ "openssl" "gnutls" "none" ]; default = "openssl"; };
+    crypto = { values = [ "openssl" "nettle" "none" ]; default = "openssl"; };
     docs = { default = false; };
   };
-  dependencies = on (features.tls != "none") [ pkgs.${features.tls} ];
+  dependencies = on (features.crypto != "none") [ pkgs.${features.crypto} ];
 }
 ```
 
 ```nix
 import ./. {
   features = { docs = false; };                   # every package declaring `docs`
-  overrides.curl.features = { tls = "gnutls"; };  # curl alone
+  overrides.libarchive.features = { crypto = "nettle"; };  # libarchive alone
 }
 ```
 

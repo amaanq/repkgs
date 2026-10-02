@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # Runs cross-built packages on a real machine through .github/workflows/target-test.yaml:
-#   tools/target-test x86_64-windows-gnu jq curl zstd
+#   tools/target-test aarch64-macos ripgrep xz
 # It builds them, packs the closure as a release asset, starts the workflow with one version check
 # per package and follows the run.
 const REPO = "Mic92/repkgs"
@@ -40,7 +40,7 @@ def main [platform: string, --remote (-r): string, ...attrs: string] {
 
   let build = $"($env.NIX_BUILD? | default nix-build) . ($attrs | each {|attr| $'-A ($attr)' } | str join ' ') --argstr platform ($platform) --no-out-link"
   let outs = (do $here $build | lines | where $it =~ '^/nix/store')
-  if ($outs | length) != ($attrs | length) { error make {msg: "build failed"} }
+  if ($outs | length) != ($attrs | length) { error make {msg: $"only ($outs | length) of ($attrs | length) packages built"} }
   let checks = ($attrs | zip $outs | each {|pair| version-check $platform $pair.0 $pair.1 $here })
 
   let archive = $"/tmp/target-test-($platform).tar.gz"

@@ -1,2 +1,2 @@
-# `go.vendor = …; go.tags = …;` is the package spec vocabulary (one line per option), not an accident
+# recipes set one build-system option per line, so `go.tags` beside `go.vendor` is intended
 disabled = [ "repeated_keys" ]
