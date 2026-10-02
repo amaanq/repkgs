@@ -1,44 +1,57 @@
 name: target-test
-# Runs cross-built outputs on a real target. The payload is a tarball of store paths (nix-store
-# -qR | tar -C /) uploaded as a release asset: tools/target-test does both ends.
+# Cross-built outputs run on real hardware. tools/target-test packs their closure (nix-store -qR
+# into tar -C /) as a release asset, starts this with one command per line and follows the run.
 on:
   workflow_dispatch:
     inputs:
       runner:
-        description: runs-on
+        description: the machine, a runs-on label
         required: true
         type: choice
         options: [windows-latest, windows-11-arm, macos-latest, macos-13, ubuntu-24.04-arm]
       url:
-        description: payload tarball
+        description: the closure tarball
         required: true
       commands:
-        description: one per line, store paths as packed
+        description: one per line, naming store paths as they were packed
         required: true
 
 jobs:
   run:
     runs-on: ${{ inputs.runner }}
     steps:
-      - name: fetch
+      - name: unpack the closure
         shell: bash
         run: |
-          curl -fsSL -o payload.tar.gz "${{ inputs.url }}"
-          case "$RUNNER_OS" in
-            Windows) mkdir -p /c/nix && tar -C /c -xzf payload.tar.gz && echo "STORE_PREFIX=/c" >> "$GITHUB_ENV" ;;
-            macOS) curl -fsSL https://install.determinate.systems/nix | sh -s -- install --no-confirm >/dev/null && sudo tar -C / -xzf payload.tar.gz && echo "STORE_PREFIX=" >> "$GITHUB_ENV" ;;
-            *) sudo mkdir -p /nix && sudo chown "$USER" /nix && tar -C / -xzf payload.tar.gz && echo "STORE_PREFIX=" >> "$GITHUB_ENV" ;;
-          esac
-      - name: run
+          curl -fsSL -o closure.tar.gz "${{ inputs.url }}"
+          if [ "$RUNNER_OS" = Windows ]; then
+            # Windows has no /nix, so the store lands under C: and the commands are rewritten to match
+            mkdir -p /c/nix
+            tar -C /c -xzf closure.tar.gz
+            echo "STORE_PREFIX=/c" >> "$GITHUB_ENV"
+          elif [ "$RUNNER_OS" = macOS ]; then
+            curl -fsSL https://install.determinate.systems/nix | sh -s -- install --no-confirm >/dev/null
+            sudo tar -C / -xzf closure.tar.gz
+            echo "STORE_PREFIX=" >> "$GITHUB_ENV"
+          else
+            sudo mkdir -p /nix
+            sudo chown "$USER" /nix
+            tar -C / -xzf closure.tar.gz
+            echo "STORE_PREFIX=" >> "$GITHUB_ENV"
+          fi
+      - name: run the commands
         shell: bash
         run: |
-          rc=0
-          while IFS= read -r cmd; do
-            [ -z "$cmd" ] && continue
-            echo "::group::$cmd"
-            (cd "$STORE_PREFIX/" && eval "${cmd//\/nix\/store/$STORE_PREFIX/nix/store}") || { echo "::error::exit $? from $cmd"; rc=1; }
+          failed=0
+          while IFS= read -r command; do
+            if [ -z "$command" ]; then continue; fi
+            echo "::group::$command"
+            if ! (cd "$STORE_PREFIX/" && eval "${command//\/nix\/store/$STORE_PREFIX/nix/store}"); then
+              echo "::error::$command failed"
+              failed=1
+            fi
             echo "::endgroup::"
           done <<'EOF'
           ${{ inputs.commands }}
           EOF
-          exit $rc
+          exit $failed
