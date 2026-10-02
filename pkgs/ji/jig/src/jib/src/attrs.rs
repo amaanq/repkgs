@@ -130,6 +130,8 @@ pub struct Spec {
    #[serde(default)]
    pub links:    BTreeMap<String, String>,
    #[serde(default)]
+   pub remove:   Vec<String>,
+   #[serde(default)]
    pub tests:    Tests,
    #[serde(default)]
    pub exports:  Value,

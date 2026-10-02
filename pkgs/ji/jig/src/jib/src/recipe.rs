@@ -74,7 +74,7 @@ fn completions() -> Type {
    )
 }
 
-fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 22] {
+fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 19] {
    let prebuilt = Type::Enum {
       values: vec!["ldso".to_owned()],
    };
@@ -159,6 +159,11 @@ fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 22] {
          "upstream binaries, implanted with our interpreter (true) or run via launch (ldso)",
       ),
       ("debug", Type::Boolean, "split DWARF into the debug output"),
+   ]
+}
+
+fn outputs() -> [(&'static str, Type, &'static str); 4] {
+   [
       (
          "install",
          Type::map(Type::union(vec![source(), Type::list(source())])),
@@ -170,6 +175,11 @@ fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 22] {
          "output path -> symlink target",
       ),
       (
+         "remove",
+         Type::list(Type::String),
+         "output paths (globs) deleted after install, each must match",
+      ),
+      (
          "completions",
          completions(),
          "shell completion files, installed where each shell looks",
@@ -179,6 +189,8 @@ fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 22] {
 
 pub fn recipe(systems: Vec<String>) -> Vec<Field> {
    let name = Field::common("name", Type::String, true, "attribute and output name");
-   let rest = optional(systems).map(|(field, kind, doc)| Field::common(field, kind, false, doc));
-   once(name).chain(rest).collect()
+   let rest = optional(systems).into_iter().chain(outputs());
+   once(name)
+      .chain(rest.map(|(field, kind, doc)| Field::common(field, kind, false, doc)))
+      .collect()
 }

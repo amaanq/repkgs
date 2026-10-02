@@ -198,6 +198,21 @@ fn install_map(spec: &Spec, out: &Path, exe: &str) -> io::Result<()> {
       }
       symlink(format!("{link}{suffix}"), &placed)?;
    }
+   for pattern in &spec.remove {
+      let found = glob(&out.join(pattern).to_string_lossy())?;
+      if found.is_empty() {
+         return Err(io::Error::other(format!(
+            "remove {pattern}: nothing matches"
+         )));
+      }
+      for path in found {
+         if symlink_metadata(&path)?.is_dir() {
+            remove_dir_all(&path)?;
+         } else {
+            remove_file(&path)?;
+         }
+      }
+   }
    Ok(())
 }
 

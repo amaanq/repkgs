@@ -767,6 +767,17 @@
       "doc": "output path -> symlink target"
     },
     {
+      "name": "remove",
+      "type": {
+        "kind": "list",
+        "element": {
+          "kind": "string"
+        }
+      },
+      "default": null,
+      "doc": "output paths (globs) deleted after install, each must match"
+    },
+    {
       "name": "completions",
       "type": {
         "kind": "record",
