@@ -18,3 +18,15 @@ hash = "sha256-PKM42XI+p2RS/iYvcr87TcfDJp+fuFPolCjVW82YiGs="
 
 [pin]
 version = "1.27.1"
+
+[package]
+source   = "{platform.os}-{platform.cpu}"
+bin      = [ "go" ]
+exports  = false
+prebuilt = "ldso"
+
+[package.tests]
+version = "version"
+
+[package.install]
+"." = [ "bin", "pkg", "src", "lib", "go.env", "VERSION" ]

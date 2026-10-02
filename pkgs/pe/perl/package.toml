@@ -16,3 +16,31 @@ hash = "sha256-6BQWltgzuR5bUab1AjuqhrhHuwquo3/HlHjGWJ51Jp4="
 version = "5.40.5"
 tag     = "v5.40.5"
 cross   = "1.6.5"
+
+[package]
+uses           = [ "autotools" ]
+dependencies   = [ "zlib" ]
+bootstrapTools = true
+
+[package.platforms]
+posix = true
+
+[package.autotools]
+outOfTree = false
+
+[package.phases.after]
+"autotools.install" = "perl.scrub"
+
+[package.phases.replace]
+"autotools.configure" = "perl.configure"
+
+[package.tests]
+run = false
+
+[package.env]
+
+[when.cross.env]
+PERL_CROSS       = "{source:cross}"
+PERL_CROSS_PATCH = "{file:upstream-cross-darwin.patch}"
+PERL_MM_SHEBANG  = "relocatable"
+PERL_SYSROOT     = "{toolchain.sysroot}"

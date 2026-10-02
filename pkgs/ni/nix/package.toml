@@ -10,3 +10,51 @@ hash = "sha256-C/YEm/5IPiAMxQH5aHlkwgQMkLqK7NVsudEWdlzBZAA="
 version = "2.35.2"
 tag     = "2.35.2"
 date    = "2026-08-12"
+
+[package]
+patches = [ "upstream-clang23-nodiscard.patch", "relocatable.patch" ]
+uses = [ "meson" ]
+buildDependencies = [ "bison", "cmake", "flex" ]
+dependencies = [
+  "bzip2",
+  "curl",
+  "libarchive",
+  "openssl",
+  "sqlite",
+  "xz",
+  "zlib",
+  "zstd",
+  "bdw-gc",
+  "blake3",
+  "boost",
+  "libsodium",
+  "lowdown",
+  "brotli",
+  "nlohmann-json",
+  "libgit2",
+  "toml11",
+  "editline",
+  "mimalloc",
+]
+
+[package.meson.defs]
+doc-gen            = false
+functional-tests   = false
+json-schema-checks = false
+"nix:mimalloc"     = "enabled"
+unit-tests         = false
+
+[package.tests]
+run = false
+
+[when.native]
+dependencies = [ "libcpuid" ]
+
+[when.native.meson.defs]
+"libutil:cpuid" = "enabled"
+
+[when.os.linux]
+dependencies = [ "libseccomp" ]
+
+[when.os.linux.meson.defs]
+"libstore:seccomp-sandboxing" = "enabled"

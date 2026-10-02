@@ -21,3 +21,24 @@ hash   = "sha256-2pm3qHjvJYPtWbn2i2TJdg+AlHo14TTeOjU6KR2Dn/k="
 
 [pin]
 version = "9.14.1"
+
+[package]
+phases            = [ "ghc-bootstrap.install" ]
+buildDependencies = [  ]
+dependencies      = [ "gmp", "ncurses", "libffi" ]
+bin               = [ "ghc", "ghc-pkg", "runghc" ]
+exports           = false
+prebuilt          = true
+
+[package.platforms]
+cross = false
+
+[package.tests]
+version = "--numeric-version"
+
+[unless.cpu.riscv64]
+buildDependencies = [ "cpython" ]
+
+[when.cpu.riscv64]
+dependencies = [ "numactl", "llvm" ]
+version      = "9.10.3"

@@ -9,3 +9,33 @@ hash = "sha256-D/ubKmwdu4QWtZZz7ypZ9bK7wuYiqzl0iMteWUYbicI="
 [pin]
 version = "3.6.3"
 tag     = "openssl-3.6.3"
+
+[package]
+patches           = [ "relocatable.patch" ]
+uses              = [ "make" ]
+buildDependencies = [ "perl" ]
+
+[package.make]
+configureFlags = [
+  "{platform.opensslTarget}",
+  "--libdir=lib",
+  "--openssldir=/etc/ssl",
+  "shared",
+  "no-tests",
+]
+configureScript = "Configure"
+installFlags = [ "OPENSSLDIR=$(prefix)/etc/ssl" ]
+installTarget = [ "install_sw", "install_ssldirs", "install_man_docs" ]
+
+[package.phases.after]
+"make.install" = [ "openssl.drop-rehash" ]
+
+[package.tests]
+run     = false
+version = "version"
+
+[package.cc]
+cflags = [ "-DOSSL_RELOCATABLE" ]
+
+[when.os.linux.make]
+configureFlags = [ "enable-ktls" ]

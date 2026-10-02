@@ -10,3 +10,35 @@ hash = "sha256-VawU8wEZyDSU6/N4weSaLWvlyKxB2leY3uW075ZXnWc="
 version = "29.1"
 date    = "2026-09-16"
 tag     = "OTP-29.1"
+
+[package]
+patches           = [ "upstream-cstdlib.patch", "erl-dirname.patch" ]
+uses              = [ "autotools" ]
+buildDependencies = [ "perl" ]
+dependencies      = [ "ncurses", "openssl", "zlib" ]
+bin               = [ "erl", "erlc", "escript" ]
+exports           = false
+
+[package.platforms]
+posix = true
+
+[package.autotools]
+flags = [
+  "--enable-kernel-poll",
+  "--with-ssl={pkg:openssl}",
+  "--without-javac",
+  "--without-odbc",
+  "--without-wx",
+  "--disable-parallel-configure",
+]
+outOfTree = false
+
+[package.tests]
+run     = false
+version = 'erl -noshell -eval {ok,V}=file:read_file(filename:join([code:root_dir(),"releases",erlang:system_info(otp_release),"OTP_VERSION"])),io:put_chars(V),halt().'
+
+[when.cross]
+buildDependencies = [ "erlang" ]
+
+[when.cross.autotools]
+flags = [ "erl_xcomp_sysroot={toolchain.sysroot}" ]
