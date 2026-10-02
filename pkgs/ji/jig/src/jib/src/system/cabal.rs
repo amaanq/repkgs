@@ -32,8 +32,10 @@ use crate::{
    },
    prepare::succeed,
    schema::{
+      Condition,
       Field,
       PackagePath,
+      Unsupported,
    },
    system::{
       command::{
@@ -94,6 +96,13 @@ impl System for Cabal {
 
    fn options(&self) -> io::Result<Vec<Field>> {
       Options::schema(self.name())
+   }
+
+   fn unsupported(&self) -> Option<Unsupported> {
+      Some(Unsupported::new(
+         Condition::Cross,
+         "ghc-bootstrap only targets the build machine",
+      ))
    }
 
    /// cabal writes its index cache into a noindex repository's directory, so

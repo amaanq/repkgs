@@ -299,12 +299,48 @@ macro_rules! options {
    };
 }
 
+/// The platform a build system cannot serve.
+#[derive(Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Condition {
+   Cross,
+   Libc(String),
+   LibcOtherThan(String),
+}
+
+#[derive(Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Unsupported {
+   when:   Condition,
+   reason: String,
+}
+
+impl Unsupported {
+   pub fn new(when: Condition, reason: &str) -> Self {
+      Self {
+         when,
+         reason: reason.to_owned(),
+      }
+   }
+}
+
+#[derive(Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Descriptor {
+   pub phases:      Vec<String>,
+   #[serde(default, skip_serializing_if = "is_false")]
+   pub prebuilt:    bool,
+   #[serde(default, skip_serializing_if = "Option::is_none")]
+   pub unsupported: Option<Unsupported>,
+   pub options:     Vec<Field>,
+}
+
 #[derive(Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Schema {
    hardening: Vec<Hardening>,
    recipe:    Vec<Field>,
-   systems:   BTreeMap<String, Vec<Field>>,
+   systems:   BTreeMap<String, Descriptor>,
 }
 
 pub fn run(check: Option<&Path>) -> io::Result<()> {

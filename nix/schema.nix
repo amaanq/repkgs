@@ -28,7 +28,7 @@ let
         value = row;
       }) rows
     );
-  fields = mapAttrs (_: byName) data.systems;
+  fields = mapAttrs (_: system: byName system.options) data.systems;
   recipe = byName data.recipe;
   nixTypes =
     descriptor:
@@ -125,6 +125,7 @@ let
 in
 {
   inherit (data) hardening;
+  descriptors = data.systems;
   recipeFields = attrNames recipe;
   options = mapAttrs (
     _: declared:

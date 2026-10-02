@@ -78,6 +78,11 @@ impl System for Python {
       Options::schema(self.name())
    }
 
+   // tests import the installed module
+   fn phases(&self) -> &'static [&'static str] {
+      &["build", "install", "test"]
+   }
+
    /// the source tree comes last so a backend can build itself before any of
    /// the stack exists.
    fn setup(&self, ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {

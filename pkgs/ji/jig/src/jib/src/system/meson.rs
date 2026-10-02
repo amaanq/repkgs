@@ -93,6 +93,10 @@ impl System for Meson {
       Options::schema(self.name())
    }
 
+   fn phases(&self) -> &'static [&'static str] {
+      &["configure", "build", "test", "install"]
+   }
+
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
       Ok(PathBuf::from(&ctx.build))
    }

@@ -174,6 +174,13 @@ impl System for Pyapp {
       Options::schema(self.name())
    }
 
+   // binary wheels carry upstream-linked .so files: finish implants
+   // interp/RUNPATH like for any prebuilt package (after split-debug,
+   // llvm-objcopy crashes on formatelf's layout)
+   fn prebuilt(&self) -> bool {
+      true
+   }
+
    /// PYTHONPATH is the application's site-packages, filling up during the
    /// build, then the build backends.
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {

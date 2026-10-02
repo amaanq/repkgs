@@ -37,9 +37,11 @@ use crate::{
       Ctx,
    },
    schema::{
+      Condition,
       Field,
       OptionType,
       Type,
+      Unsupported,
    },
    system::{
       command::{
@@ -144,6 +146,17 @@ impl System for Vcxproj {
 
    fn options(&self) -> io::Result<Vec<Field>> {
       Options::schema(self.name())
+   }
+
+   fn phases(&self) -> &'static [&'static str] {
+      &["configure", "build", "install"]
+   }
+
+   fn unsupported(&self) -> Option<Unsupported> {
+      Some(Unsupported::new(
+         Condition::LibcOtherThan("msvc".to_owned()),
+         "Visual Studio projects describe an MSVC-ABI build",
+      ))
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {

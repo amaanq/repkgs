@@ -21,7 +21,11 @@ use crate::{
       build_top,
    },
    cli::SystemOperation,
-   schema::Field,
+   schema::{
+      Descriptor,
+      Field,
+      Unsupported,
+   },
    system::{
       autotools::Autotools,
       beam::{
@@ -58,6 +62,18 @@ pub trait System: Sync {
 
    fn options(&self) -> io::Result<Vec<Field>>;
 
+   fn phases(&self) -> &'static [&'static str] {
+      &["build", "test", "install"]
+   }
+
+   fn prebuilt(&self) -> bool {
+      false
+   }
+
+   fn unsupported(&self) -> Option<Unsupported> {
+      None
+   }
+
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
       let options: Root = ctx.options(self.name())?;
       Ok(ctx.project_dir(&options.root))
@@ -80,10 +96,22 @@ const SYSTEMS: &[&dyn System] = &[
    &Rebar3, &Mix, &Luarocks, &Deno, &Pyapp, &Bundler, &Vcxproj,
 ];
 
-pub fn schemas() -> io::Result<BTreeMap<String, Vec<Field>>> {
+pub fn schemas() -> io::Result<BTreeMap<String, Descriptor>> {
    SYSTEMS
       .iter()
-      .map(|system| Ok((system.name().to_owned(), system.options()?)))
+      .map(|system| {
+         let descriptor = Descriptor {
+            phases:      system
+               .phases()
+               .iter()
+               .map(|&verb| verb.to_owned())
+               .collect(),
+            prebuilt:    system.prebuilt(),
+            unsupported: system.unsupported(),
+            options:     system.options()?,
+         };
+         Ok((system.name().to_owned(), descriptor))
+      })
       .collect()
 }
 

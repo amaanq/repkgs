@@ -78,6 +78,12 @@ macro_rules! tools {
                }
             }
 
+            // no test phase by default: MIX_ENV=test deps are outside the prod lock subset, eunit/ct
+            // deps live in the test profile, outside rebar.lock
+            fn phases(&self) -> &'static [&'static str] {
+               &["build", "install"]
+            }
+
             fn setup(&self, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<Env> {
                setup($tool, ctx, attrs, socket)
             }

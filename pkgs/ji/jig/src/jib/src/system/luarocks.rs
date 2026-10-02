@@ -56,6 +56,11 @@ impl System for Luarocks {
       Options::schema(self.name())
    }
 
+   // luarocks make builds into --tree
+   fn phases(&self) -> &'static [&'static str] {
+      &["install"]
+   }
+
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
       let options: Options = ctx.options("luarocks")?;
       match verb {

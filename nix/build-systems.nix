@@ -1,15 +1,10 @@
-# What `uses = [ "<name>" ]` means: jib's system/<name>.rs implements the phases, `phases` is the default
-# order (build test install unless said otherwise), `tool` (swappable per package as `<name>.tool`)
-# and `tools` (a list, or spec -> list) go on PATH, `dependencies` add to
-# the package's, `prebuilt` is the package's default for that field, `unsupported` is a reason
-# (or null) why no user of it can build on this platform, and `options` (emitted by `jib schema`
-# into nix/schema.json) are what a
-# package may set under `<name>.*`: `{ type; default; doc; }` each, `type` the `builtins.typeOf`
-# names allowed, checked at eval time along with the name. The system reads the merged result
-# from the spec under `<name>`. Every system has `root`; `deps` (the fetched tree of locked dependencies,
-# `lock.deps = fetcher` defaults it to the package's own lock file) and `flags` (extra words on
-# the tool's command line) mean the same wherever they exist. `repkgs options` renders this as a
-# table. `sh` is for tools that spawn a shell by name (ninja, npm run, libtool).
+# What `uses = [ "<name>" ]` means. jib's system/<name>.rs implements the phases and declares, in
+# nix/schema.json, the default phase order, whether its packages are prebuilt, the platform it
+# cannot serve and the options a package may set under `<name>.*`. This file binds the packages:
+# `tool` (swappable per package as `<name>.tool`) and `tools` (a list, or spec -> list) go on PATH,
+# `dependencies` add to the package's, `lock.<option> = fetcher` fills that option from the
+# package's own lock file, and `stack` lists tools that are themselves built with the system.
+# `sh` is for tools that spawn a shell by name (ninja, npm run, libtool).
 {
   buildPkgs,
   pkgs,
@@ -26,126 +21,27 @@ let
     pkgs.libgcc-shim
   ];
   nodeTools = [ buildPkgs.libgcc-shim ]; # the same addons while building (builder/node-common.nu)
-in
-builtins.mapAttrs
-  (
-    name: bs:
-    let
-      options =
-        lib.on (bs ? tool) {
-          tool = {
-            type = [ "set" ];
-            default = bs.tool;
-            doc = "the package that provides ${name}";
-          };
-        }
-        // schema.options.${name};
-      extra = if builtins.isFunction (bs.tools or [ ]) then bs.tools else _: bs.tools or [ ];
-      # one set per build system, only `lock` options depend on the package
-      optionDefaults = builtins.mapAttrs (_: o: o.default) options;
-    in
-    {
-      inherit options;
-      validate =
-        args:
-        schema.validate (
-          {
-            system = name;
-            extra = if bs ? tool then { tool.kind = "package"; } else { };
-          }
-          // args
-        );
-      phases = map (v: "${name}.${v}") (
-        bs.phases or [
-          "build"
-          "test"
-          "install"
-        ]
-      );
-      phase = builtins.listToAttrs (
-        map
-          (verb: {
-            name = "${name}.${verb}";
-            value = {
-              test = verb == "test";
-            };
-          })
-          [
-            "configure"
-            "build"
-            "test"
-            "install"
-          ]
-      );
-      # what the package's `<name>` record starts from: every option's default, `lock` ones fetched
-      defaults =
-        if bs ? lock then
-          source: optionDefaults // builtins.mapAttrs (_: f: f { inherit source; }) bs.lock
-        else
-          _: optionDefaults;
-      # `tool`: the build system's own program, a package may swap it (`cmake.tool = …`)
-      tools = spec: (if bs ? tool then [ spec.${name}.tool ] else [ ]) ++ extra spec;
-      dependencies = bs.dependencies or [ ];
-      prebuilt = bs.prebuilt or false;
-      unsupported = bs.unsupported or null;
-      stack = bs.stack or [ ];
-    }
-  )
-  {
-    make = {
-      phases = [
-        "configure"
-        "build"
-        "test"
-        "install"
-      ];
-      tools = [ sh ];
-    };
-    autotools = {
-      unsupported =
-        if platform.libc == "msvc" then
-          "configure and libtool do not know the MSVC ABI, config.sub rejects the triple"
-        else
-          null;
-      phases = [
-        "configure"
-        "build"
-        "test"
-        "install"
-      ];
-      # make and bash come with baseTools (or the seed's for bootstrapTools packages)
-      tools = [ sh ];
-    };
+  excludes =
+    when:
+    if when == "cross" then
+      platform.cross
+    else if when ? libc then
+      platform.libc == when.libc
+    else
+      platform.libc != when.libcOtherThan;
+  bindings = {
+    make.tools = [ sh ];
+    # make and bash come with baseTools (or the seed's for bootstrapTools packages)
+    autotools.tools = [ sh ];
     cmake = {
-      phases = [
-        "configure"
-        "build"
-        "test"
-        "install"
-      ];
       tool = buildPkgs.cmake;
       tools = [
         buildPkgs.ninja
         sh
       ];
     };
-    vcxproj = {
-      unsupported =
-        if platform.libc != "msvc" then "Visual Studio projects describe an MSVC-ABI build" else null;
-      phases = [
-        "configure"
-        "build"
-        "install"
-      ];
-      tools = [ buildPkgs.ninja ];
-    };
+    vcxproj.tools = [ buildPkgs.ninja ];
     meson = {
-      phases = [
-        "configure"
-        "build"
-        "test"
-        "install"
-      ];
       tool = buildPkgs.meson;
       tools = [
         buildPkgs.ninja
@@ -153,11 +49,6 @@ builtins.mapAttrs
       ];
     };
     python = {
-      phases = [
-        "build"
-        "install"
-        "test"
-      ]; # tests import the installed module
       # the PEP 517 front end and its deps. Members of the stack itself get only what exists before them
       tool = buildPkgs.cpython;
       stack = with buildPkgs; [
@@ -176,7 +67,6 @@ builtins.mapAttrs
       lock.deps = fetch.cargoVendor;
     };
     cabal = {
-      unsupported = if platform.cross then "ghc-bootstrap only targets the build machine" else null;
       # `cabal.tool = buildPkgs.cabal-bootstrap` for cabal itself
       tool = buildPkgs.cabal;
       tools = [
@@ -190,7 +80,6 @@ builtins.mapAttrs
       lock.deps = _: fetch.hackageSet { };
     };
     luarocks = {
-      phases = [ "install" ]; # luarocks make builds into --tree
       tool = buildPkgs.luarocks;
       tools = [ sh ];
       lock.deps = _: fetch.luaRocksSet { inherit (buildPkgs) lua; };
@@ -210,9 +99,6 @@ builtins.mapAttrs
       dependencies = nodeDeps;
     };
     pyapp = {
-      # binary wheels carry upstream-linked .so files: finish implants interp/RUNPATH like for any
-      # prebuilt package (after split-debug, llvm-objcopy crashes on formatelf's layout)
-      prebuilt = true;
       lock.deps = args: fetch.pythonDeps (args // { python = pkgs.cpython; });
       # uv.lock does not lock build backends: every one the set has
       tools =
@@ -260,11 +146,6 @@ builtins.mapAttrs
       dependencies = nodeDeps;
     };
     mix = {
-      # no test phase by default: MIX_ENV=test deps are outside the prod lock subset
-      phases = [
-        "build"
-        "install"
-      ];
       tool = buildPkgs.elixir;
       tools = [
         buildPkgs.erlang
@@ -275,11 +156,6 @@ builtins.mapAttrs
       dependencies = [ pkgs.erlang ]; # escripts say #!/usr/bin/env escript, releases exec erl
     };
     rebar3 = {
-      # no test phase by default: eunit/ct deps live in the test profile, outside rebar.lock
-      phases = [
-        "build"
-        "install"
-      ];
       tools = [
         buildPkgs.rebar3
         buildPkgs.erlang
@@ -293,4 +169,51 @@ builtins.mapAttrs
       lock.deps = fetch.npmDeps;
       dependencies = nodeDeps;
     };
+  };
+in
+builtins.mapAttrs (
+  name: descriptor:
+  let
+    bound = bindings.${name} or { };
+    options =
+      lib.on (bound ? tool) {
+        tool = {
+          type = [ "set" ];
+          default = bound.tool;
+          doc = "the package that provides ${name}";
+        };
+      }
+      // schema.options.${name};
+    extra = if builtins.isFunction (bound.tools or [ ]) then bound.tools else _: bound.tools or [ ];
+    # one set per build system, only `lock` options depend on the package
+    optionDefaults = builtins.mapAttrs (_: o: o.default) options;
+  in
+  {
+    inherit options;
+    validate =
+      args:
+      schema.validate (
+        {
+          system = name;
+          extra = lib.on (bound ? tool) { tool.kind = "package"; };
+        }
+        // args
+      );
+    phases = map (verb: "${name}.${verb}") descriptor.phases;
+    # what the package's `<name>` record starts from: every option's default, `lock` ones fetched
+    defaults =
+      if bound ? lock then
+        source: optionDefaults // builtins.mapAttrs (_: f: f { inherit source; }) bound.lock
+      else
+        _: optionDefaults;
+    tools = spec: lib.on (bound ? tool) [ spec.${name}.tool ] ++ extra spec;
+    dependencies = bound.dependencies or [ ];
+    prebuilt = descriptor.prebuilt or false;
+    unsupported =
+      if descriptor ? unsupported && excludes descriptor.unsupported.when then
+        descriptor.unsupported.reason
+      else
+        null;
+    stack = bound.stack or [ ];
   }
+) schema.descriptors

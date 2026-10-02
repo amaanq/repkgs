@@ -852,405 +852,499 @@
     }
   ],
   "systems": {
-    "autotools": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
+    "autotools": {
+      "phases": [
+        "configure",
+        "build",
+        "test",
+        "install"
+      ],
+      "unsupported": {
+        "when": {
+          "libc": "msvc"
         },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "autotools"
+        "reason": "configure and libtool do not know the MSVC ABI, config.sub rejects the triple"
       },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
+      "options": [
+        {
+          "name": "root",
+          "type": {
             "kind": "string"
-          }
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "autotools"
         },
-        "default": [],
-        "doc": "extra arguments for configure",
-        "system": "autotools"
-      },
-      {
-        "name": "makeFlags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "arguments for every make invocation (build, test, install)",
-        "system": "autotools"
-      },
-      {
-        "name": "installFlags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "arguments for `make install` only",
-        "system": "autotools"
-      },
-      {
-        "name": "buildTarget",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "make goals for build (empty means the makefile's default goal)",
-        "system": "autotools"
-      },
-      {
-        "name": "testTarget",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [
-          "check"
-        ],
-        "doc": "make goals for test",
-        "system": "autotools"
-      },
-      {
-        "name": "installTarget",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [
-          "install"
-        ],
-        "doc": "make goals for install",
-        "system": "autotools"
-      },
-      {
-        "name": "configureScript",
-        "type": {
-          "kind": "string"
-        },
-        "default": "configure",
-        "doc": "configure script relative to the project",
-        "system": "autotools"
-      },
-      {
-        "name": "outOfTree",
-        "type": {
-          "kind": "boolean"
-        },
-        "default": true,
-        "doc": "configure from a separate build directory",
-        "system": "autotools"
-      }
-    ],
-    "bun": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "bun"
-      },
-      {
-        "name": "script",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "string"
-            },
-            {
-              "kind": "null"
-            }
-          ]
-        },
-        "default": "build",
-        "doc": "package.json script the build phase runs (null runs none)",
-        "system": "bun"
-      },
-      {
-        "name": "deps",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "package"
-            },
-            {
-              "kind": "string"
-            }
-          ]
-        },
-        "default": null,
-        "required": true,
-        "doc": "the locked dependencies, fetched from the package's own lock file",
-        "system": "bun"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "extra arguments for bun install",
-        "system": "bun"
-      },
-      {
-        "name": "compile",
-        "type": {
-          "kind": "map",
-          "value": {
-            "kind": "string"
-          }
-        },
-        "default": {},
-        "doc": "bin name -> entry module, `bun build --compile` single executables instead of installing the tree",
-        "system": "bun"
-      }
-    ],
-    "bundler": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "bundler"
-      },
-      {
-        "name": "deps",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "package"
-            },
-            {
-              "kind": "string"
-            }
-          ]
-        },
-        "default": null,
-        "required": true,
-        "doc": "the locked dependencies, fetched (fetch.gems) from the package's own lock file",
-        "system": "bundler"
-      },
-      {
-        "name": "without",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [
-          "development",
-          "test"
-        ],
-        "doc": "Gemfile groups to leave out",
-        "system": "bundler"
-      },
-      {
-        "name": "test",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "list",
-              "element": {
-                "kind": "string"
-              }
-            },
-            {
-              "kind": "null"
-            }
-          ]
-        },
-        "default": null,
-        "doc": "command run under `bundle exec` as the test (null runs none, test gems are usually in `without`)",
-        "system": "bundler"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "extra arguments for bundle install",
-        "system": "bundler"
-      }
-    ],
-    "cabal": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "cabal"
-      },
-      {
-        "name": "deps",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "package"
-            },
-            {
-              "kind": "string"
-            }
-          ]
-        },
-        "default": null,
-        "required": true,
-        "doc": "hackage repository to solve against, by default the shared set from locks/hackage.toml",
-        "system": "cabal"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "extra arguments for every cabal subcommand (--flags=…, --allow-newer)",
-        "system": "cabal"
-      },
-      {
-        "name": "exes",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "exe components to build and install",
-        "system": "cabal"
-      },
-      {
-        "name": "project",
-        "type": {
-          "kind": "string"
-        },
-        "default": "",
-        "doc": "extra cabal.project text (allow-newer:, constraints:)",
-        "system": "cabal"
-      }
-    ],
-    "cargo": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "cargo"
-      },
-      {
-        "name": "features",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "--features",
-        "system": "cargo"
-      },
-      {
-        "name": "noDefaultFeatures",
-        "type": {
-          "kind": "boolean"
-        },
-        "default": false,
-        "doc": "--no-default-features",
-        "system": "cargo"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "extra arguments for cargo build and cargo test",
-        "system": "cargo"
-      },
-      {
-        "name": "skipTests",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "cargo test --skip filters (substring of the test path)",
-        "system": "cargo"
-      },
-      {
-        "name": "deps",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "package"
-            },
-            {
-              "kind": "string"
-            },
-            {
-              "kind": "null"
-            }
-          ]
-        },
-        "default": null,
-        "doc": "the locked dependencies, fetched (fetch.cargoVendor), by default from the package's own lock file",
-        "system": "cargo"
-      },
-      {
-        "name": "cratePatches",
-        "type": {
-          "kind": "map",
-          "value": {
+        {
+          "name": "flags",
+          "type": {
             "kind": "list",
             "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for configure",
+          "system": "autotools"
+        },
+        {
+          "name": "makeFlags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "arguments for every make invocation (build, test, install)",
+          "system": "autotools"
+        },
+        {
+          "name": "installFlags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "arguments for `make install` only",
+          "system": "autotools"
+        },
+        {
+          "name": "buildTarget",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "make goals for build (empty means the makefile's default goal)",
+          "system": "autotools"
+        },
+        {
+          "name": "testTarget",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [
+            "check"
+          ],
+          "doc": "make goals for test",
+          "system": "autotools"
+        },
+        {
+          "name": "installTarget",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [
+            "install"
+          ],
+          "doc": "make goals for install",
+          "system": "autotools"
+        },
+        {
+          "name": "configureScript",
+          "type": {
+            "kind": "string"
+          },
+          "default": "configure",
+          "doc": "configure script relative to the project",
+          "system": "autotools"
+        },
+        {
+          "name": "outOfTree",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": true,
+          "doc": "configure from a separate build directory",
+          "system": "autotools"
+        }
+      ]
+    },
+    "bun": {
+      "phases": [
+        "build",
+        "test",
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "bun"
+        },
+        {
+          "name": "script",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "default": "build",
+          "doc": "package.json script the build phase runs (null runs none)",
+          "system": "bun"
+        },
+        {
+          "name": "deps",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "package"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          },
+          "default": null,
+          "required": true,
+          "doc": "the locked dependencies, fetched from the package's own lock file",
+          "system": "bun"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for bun install",
+          "system": "bun"
+        },
+        {
+          "name": "compile",
+          "type": {
+            "kind": "map",
+            "value": {
+              "kind": "string"
+            }
+          },
+          "default": {},
+          "doc": "bin name -> entry module, `bun build --compile` single executables instead of installing the tree",
+          "system": "bun"
+        }
+      ]
+    },
+    "bundler": {
+      "phases": [
+        "build",
+        "test",
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "bundler"
+        },
+        {
+          "name": "deps",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "package"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          },
+          "default": null,
+          "required": true,
+          "doc": "the locked dependencies, fetched (fetch.gems) from the package's own lock file",
+          "system": "bundler"
+        },
+        {
+          "name": "without",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [
+            "development",
+            "test"
+          ],
+          "doc": "Gemfile groups to leave out",
+          "system": "bundler"
+        },
+        {
+          "name": "test",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "list",
+                "element": {
+                  "kind": "string"
+                }
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "default": null,
+          "doc": "command run under `bundle exec` as the test (null runs none, test gems are usually in `without`)",
+          "system": "bundler"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for bundle install",
+          "system": "bundler"
+        }
+      ]
+    },
+    "cabal": {
+      "phases": [
+        "build",
+        "test",
+        "install"
+      ],
+      "unsupported": {
+        "when": "cross",
+        "reason": "ghc-bootstrap only targets the build machine"
+      },
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "cabal"
+        },
+        {
+          "name": "deps",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "package"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          },
+          "default": null,
+          "required": true,
+          "doc": "hackage repository to solve against, by default the shared set from locks/hackage.toml",
+          "system": "cabal"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for every cabal subcommand (--flags=…, --allow-newer)",
+          "system": "cabal"
+        },
+        {
+          "name": "exes",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "exe components to build and install",
+          "system": "cabal"
+        },
+        {
+          "name": "project",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "doc": "extra cabal.project text (allow-newer:, constraints:)",
+          "system": "cabal"
+        }
+      ]
+    },
+    "cargo": {
+      "phases": [
+        "build",
+        "test",
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "cargo"
+        },
+        {
+          "name": "features",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "--features",
+          "system": "cargo"
+        },
+        {
+          "name": "noDefaultFeatures",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "doc": "--no-default-features",
+          "system": "cargo"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for cargo build and cargo test",
+          "system": "cargo"
+        },
+        {
+          "name": "skipTests",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "cargo test --skip filters (substring of the test path)",
+          "system": "cargo"
+        },
+        {
+          "name": "deps",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "package"
+              },
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "default": null,
+          "doc": "the locked dependencies, fetched (fetch.cargoVendor), by default from the package's own lock file",
+          "system": "cargo"
+        },
+        {
+          "name": "cratePatches",
+          "type": {
+            "kind": "map",
+            "value": {
+              "kind": "list",
+              "element": {
+                "kind": "union",
+                "variants": [
+                  {
+                    "kind": "string"
+                  },
+                  {
+                    "kind": "path"
+                  },
+                  {
+                    "kind": "package"
+                  }
+                ]
+              }
+            }
+          },
+          "default": {},
+          "doc": "crate name -> patches applied to its vendored copy (-p1 inside the crate)",
+          "system": "cargo"
+        }
+      ]
+    },
+    "cmake": {
+      "phases": [
+        "configure",
+        "build",
+        "test",
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "cmake"
+        },
+        {
+          "name": "defs",
+          "type": {
+            "kind": "map",
+            "value": {
               "kind": "union",
               "variants": [
                 {
+                  "kind": "boolean"
+                },
+                {
                   "kind": "string"
+                },
+                {
+                  "kind": "integer"
                 },
                 {
                   "kind": "path"
@@ -1260,984 +1354,1040 @@
                 }
               ]
             }
-          }
+          },
+          "default": {},
+          "doc": "-D cache entries. true/false render ON/OFF, packages their store path",
+          "system": "cmake"
         },
-        "default": {},
-        "doc": "crate name -> patches applied to its vendored copy (-p1 inside the crate)",
-        "system": "cargo"
-      }
-    ],
-    "cmake": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
+        {
+          "name": "generator",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Ninja",
+          "doc": "cmake -G",
+          "system": "cmake"
         },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "cmake"
-      },
-      {
-        "name": "defs",
-        "type": {
-          "kind": "map",
-          "value": {
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for cmake at configure time",
+          "system": "cmake"
+        },
+        {
+          "name": "skipTests",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "ctest -E regexes",
+          "system": "cmake"
+        }
+      ]
+    },
+    "deno": {
+      "phases": [
+        "build",
+        "test",
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "deno"
+        },
+        {
+          "name": "deps",
+          "type": {
             "kind": "union",
             "variants": [
               {
-                "kind": "boolean"
+                "kind": "package"
               },
               {
                 "kind": "string"
-              },
-              {
-                "kind": "integer"
-              },
-              {
-                "kind": "path"
-              },
-              {
-                "kind": "package"
               }
             ]
-          }
+          },
+          "default": null,
+          "required": true,
+          "doc": "the locked dependencies, fetched (fetch.denoDeps) from the package's own lock file",
+          "system": "deno"
         },
-        "default": {},
-        "doc": "-D cache entries. true/false render ON/OFF, packages their store path",
-        "system": "cmake"
-      },
-      {
-        "name": "generator",
-        "type": {
-          "kind": "string"
-        },
-        "default": "Ninja",
-        "doc": "cmake -G",
-        "system": "cmake"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "extra arguments for cmake at configure time",
-        "system": "cmake"
-      },
-      {
-        "name": "skipTests",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "ctest -E regexes",
-        "system": "cmake"
-      }
-    ],
-    "deno": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "deno"
-      },
-      {
-        "name": "deps",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "package"
-            },
-            {
+        {
+          "name": "entry",
+          "type": {
+            "kind": "map",
+            "value": {
               "kind": "string"
             }
-          ]
+          },
+          "default": {},
+          "doc": "bin name -> module path, each becomes bin/<name> running `deno run` on it",
+          "system": "deno"
         },
-        "default": null,
-        "required": true,
-        "doc": "the locked dependencies, fetched (fetch.denoDeps) from the package's own lock file",
-        "system": "deno"
-      },
-      {
-        "name": "entry",
-        "type": {
-          "kind": "map",
-          "value": {
-            "kind": "string"
-          }
-        },
-        "default": {},
-        "doc": "bin name -> module path, each becomes bin/<name> running `deno run` on it",
-        "system": "deno"
-      },
-      {
-        "name": "permissions",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [
-          "-A"
-        ],
-        "doc": "permission flags for run and test",
-        "system": "deno"
-      },
-      {
-        "name": "check",
-        "type": {
-          "kind": "boolean"
-        },
-        "default": true,
-        "doc": "deno check the entry points",
-        "system": "deno"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "extra arguments for deno run and deno test",
-        "system": "deno"
-      }
-    ],
-    "go": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "go"
-      },
-      {
-        "name": "tags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "-tags",
-        "system": "go"
-      },
-      {
-        "name": "ldflags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "-ldflags words (-X main.version=…)",
-        "system": "go"
-      },
-      {
-        "name": "packages",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [
-          "./..."
-        ],
-        "doc": "packages to build",
-        "system": "go"
-      },
-      {
-        "name": "testPackages",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "list",
-              "element": {
-                "kind": "string"
-              }
-            },
-            {
-              "kind": "null"
-            }
-          ]
-        },
-        "default": null,
-        "doc": "packages to test (null uses `packages`)",
-        "system": "go"
-      },
-      {
-        "name": "skipTests",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "go test -skip regexes",
-        "system": "go"
-      },
-      {
-        "name": "deps",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "package"
-            },
-            {
-              "kind": "string"
-            },
-            {
-              "kind": "null"
-            }
-          ]
-        },
-        "default": null,
-        "doc": "GOPROXY tree (fetch.goModules, by default from go.sum), or null to build from the source's vendor/",
-        "system": "go"
-      },
-      {
-        "name": "cgo",
-        "type": {
-          "kind": "boolean"
-        },
-        "default": true,
-        "doc": "CGO_ENABLED and external linking",
-        "system": "go"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "extra arguments for go build and go test",
-        "system": "go"
-      }
-    ],
-    "luarocks": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "luarocks"
-      },
-      {
-        "name": "deps",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "package"
-            },
-            {
+        {
+          "name": "permissions",
+          "type": {
+            "kind": "list",
+            "element": {
               "kind": "string"
             }
-          ]
+          },
+          "default": [
+            "-A"
+          ],
+          "doc": "permission flags for run and test",
+          "system": "deno"
         },
-        "default": null,
-        "required": true,
-        "doc": "rock server directory, by default the shared set from locks/luarocks.toml",
-        "system": "luarocks"
-      },
-      {
-        "name": "rockspec",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
+        {
+          "name": "check",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": true,
+          "doc": "deno check the entry points",
+          "system": "deno"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
               "kind": "string"
-            },
-            {
-              "kind": "null"
             }
-          ]
-        },
-        "default": null,
-        "doc": "rockspec file when the source has several (null lets luarocks pick)",
-        "system": "luarocks"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
+          },
+          "default": [],
+          "doc": "extra arguments for deno run and deno test",
+          "system": "deno"
+        }
+      ]
+    },
+    "go": {
+      "phases": [
+        "build",
+        "test",
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
             "kind": "string"
-          }
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "go"
         },
-        "default": [],
-        "doc": "extra arguments for luarocks make",
-        "system": "luarocks"
-      }
-    ],
-    "make": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
+        {
+          "name": "tags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "-tags",
+          "system": "go"
         },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "make"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
+        {
+          "name": "ldflags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "-ldflags words (-X main.version=…)",
+          "system": "go"
         },
-        "default": [],
-        "doc": "arguments for every make invocation (build, test, install)",
-        "system": "make"
-      },
-      {
-        "name": "installFlags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
+        {
+          "name": "packages",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [
+            "./..."
+          ],
+          "doc": "packages to build",
+          "system": "go"
         },
-        "default": [],
-        "doc": "arguments for `make install` only",
-        "system": "make"
-      },
-      {
-        "name": "buildTarget",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "make goals for build (empty means the makefile's default goal)",
-        "system": "make"
-      },
-      {
-        "name": "testTarget",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [
-          "check"
-        ],
-        "doc": "make goals for test",
-        "system": "make"
-      },
-      {
-        "name": "installTarget",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [
-          "install"
-        ],
-        "doc": "make goals for install",
-        "system": "make"
-      },
-      {
-        "name": "configureScript",
-        "type": {
-          "kind": "string"
-        },
-        "default": "configure",
-        "doc": "hand-written configure script relative to the project, run with --prefix when it exists",
-        "system": "make"
-      },
-      {
-        "name": "configureFlags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "extra arguments for make.configureScript",
-        "system": "make"
-      },
-      {
-        "name": "programs",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "programs the Makefile installs without the platform executable suffix",
-        "system": "make"
-      }
-    ],
-    "meson": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "meson"
-      },
-      {
-        "name": "defs",
-        "type": {
-          "kind": "map",
-          "value": {
+        {
+          "name": "testPackages",
+          "type": {
             "kind": "union",
             "variants": [
               {
-                "kind": "boolean"
-              },
-              {
-                "kind": "string"
-              },
-              {
-                "kind": "integer"
-              },
-              {
-                "kind": "path"
-              },
-              {
-                "kind": "package"
-              }
-            ]
-          }
-        },
-        "default": {},
-        "doc": "-D options, merged over prefix/libdir/buildtype defaults",
-        "system": "meson"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "extra arguments for meson setup",
-        "system": "meson"
-      },
-      {
-        "name": "skipTests",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "substrings of `meson test --list` names",
-        "system": "meson"
-      }
-    ],
-    "mix": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "mix"
-      },
-      {
-        "name": "deps",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "package"
-            },
-            {
-              "kind": "string"
-            }
-          ]
-        },
-        "default": null,
-        "required": true,
-        "doc": "the locked dependencies, fetched (fetch.hexDeps) from the package's own lock file",
-        "system": "mix"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "extra arguments for mix compile",
-        "system": "mix"
-      },
-      {
-        "name": "escript",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "escripts `mix escript.build` writes, installed into bin/. Empty means a mix release",
-        "system": "mix"
-      }
-    ],
-    "npm": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "npm"
-      },
-      {
-        "name": "script",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "string"
-            },
-            {
-              "kind": "null"
-            }
-          ]
-        },
-        "default": "build",
-        "doc": "package.json script the build phase runs (null runs none)",
-        "system": "npm"
-      },
-      {
-        "name": "deps",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "package"
-            },
-            {
-              "kind": "string"
-            }
-          ]
-        },
-        "default": null,
-        "required": true,
-        "doc": "the locked dependencies, fetched from the package's own lock file",
-        "system": "npm"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "extra arguments for the package manager's install",
-        "system": "npm"
-      }
-    ],
-    "pnpm": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "pnpm"
-      },
-      {
-        "name": "script",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "string"
-            },
-            {
-              "kind": "null"
-            }
-          ]
-        },
-        "default": "build",
-        "doc": "package.json script the build phase runs (null runs none)",
-        "system": "pnpm"
-      },
-      {
-        "name": "deps",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "package"
-            },
-            {
-              "kind": "string"
-            }
-          ]
-        },
-        "default": null,
-        "required": true,
-        "doc": "the locked dependencies, fetched from the package's own lock file",
-        "system": "pnpm"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "extra arguments for the package manager's install",
-        "system": "pnpm"
-      }
-    ],
-    "pyapp": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "pyapp"
-      },
-      {
-        "name": "deps",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "package"
-            },
-            {
-              "kind": "string"
-            }
-          ]
-        },
-        "default": null,
-        "required": true,
-        "doc": "the locked dependencies, fetched (fetch.pythonDeps) from the package's own lock file",
-        "system": "pyapp"
-      },
-      {
-        "name": "check",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "modules that must import from the installed layout",
-        "system": "pyapp"
-      },
-      {
-        "name": "mode",
-        "type": {
-          "kind": "enum",
-          "values": [
-            "project",
-            "env",
-            "dev"
-          ]
-        },
-        "default": "project",
-        "doc": "project installs the application, env and dev a virtual environment",
-        "system": "pyapp"
-      },
-      {
-        "name": "overrides",
-        "type": {
-          "kind": "map",
-          "value": {
-            "kind": "record",
-            "fields": {
-              "configSettings": {
-                "kind": "map",
-                "value": {
-                  "kind": "string"
-                }
-              },
-              "env": {
-                "kind": "map",
-                "value": {
-                  "kind": "string"
-                }
-              },
-              "patches": {
                 "kind": "list",
                 "element": {
                   "kind": "string"
                 }
               },
-              "run": {
-                "kind": "string"
+              {
+                "kind": "null"
               }
-            }
-          }
-        },
-        "default": {},
-        "doc": "per-package build options",
-        "system": "pyapp"
-      }
-    ],
-    "python": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "python"
-      },
-      {
-        "name": "backend",
-        "type": {
-          "kind": "string"
-        },
-        "default": "setuptools",
-        "doc": "PEP 517 backend when pyproject.toml names none, setuptools, flit_core, hatchling or maturin",
-        "system": "python"
-      },
-      {
-        "name": "module",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "string"
-            },
-            {
-              "kind": "null"
-            }
-          ]
-        },
-        "default": null,
-        "doc": "module the import test loads (null uses the package name with - as _)",
-        "system": "python"
-      },
-      {
-        "name": "pytest",
-        "type": {
-          "kind": "boolean"
-        },
-        "default": false,
-        "doc": "also run pytest on tests/",
-        "system": "python"
-      }
-    ],
-    "rebar3": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "rebar3"
-      },
-      {
-        "name": "deps",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "package"
-            },
-            {
-              "kind": "string"
-            }
-          ]
-        },
-        "default": null,
-        "required": true,
-        "doc": "the locked dependencies, fetched (fetch.hexDeps) from the package's own lock file",
-        "system": "rebar3"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "extra arguments for rebar3 compile",
-        "system": "rebar3"
-      }
-    ],
-    "vcxproj": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "vcxproj"
-      },
-      {
-        "name": "projects",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "vcxproj files or traversal projects relative to the source root",
-        "system": "vcxproj"
-      },
-      {
-        "name": "exclude",
-        "type": {
-          "kind": "list",
-          "element": {
-            "kind": "string"
-          }
-        },
-        "default": [],
-        "doc": "project file stems excluded from the build",
-        "system": "vcxproj"
-      },
-      {
-        "name": "properties",
-        "type": {
-          "kind": "map",
-          "value": {
-            "kind": "string"
-          }
-        },
-        "default": {},
-        "doc": "MSBuild global properties",
-        "system": "vcxproj"
-      },
-      {
-        "name": "install",
-        "type": {
-          "kind": "map",
-          "key": {
-            "kind": "enum",
-            "values": [
-              "Application",
-              "DynamicLibrary",
-              "StaticLibrary"
             ]
           },
-          "value": {
-            "kind": "string"
-          }
+          "default": null,
+          "doc": "packages to test (null uses `packages`)",
+          "system": "go"
         },
-        "default": {},
-        "doc": "installation directory per configuration type",
-        "system": "vcxproj"
-      }
-    ],
-    "yarn": [
-      {
-        "name": "root",
-        "type": {
-          "kind": "string"
-        },
-        "default": ".",
-        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-        "system": "yarn"
-      },
-      {
-        "name": "script",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "string"
-            },
-            {
-              "kind": "null"
-            }
-          ]
-        },
-        "default": "build",
-        "doc": "package.json script the build phase runs (null runs none)",
-        "system": "yarn"
-      },
-      {
-        "name": "deps",
-        "type": {
-          "kind": "union",
-          "variants": [
-            {
-              "kind": "package"
-            },
-            {
+        {
+          "name": "skipTests",
+          "type": {
+            "kind": "list",
+            "element": {
               "kind": "string"
             }
-          ]
+          },
+          "default": [],
+          "doc": "go test -skip regexes",
+          "system": "go"
         },
-        "default": null,
-        "required": true,
-        "doc": "the locked dependencies, fetched from the package's own lock file",
-        "system": "yarn"
-      },
-      {
-        "name": "flags",
-        "type": {
-          "kind": "list",
-          "element": {
+        {
+          "name": "deps",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "package"
+              },
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "default": null,
+          "doc": "GOPROXY tree (fetch.goModules, by default from go.sum), or null to build from the source's vendor/",
+          "system": "go"
+        },
+        {
+          "name": "cgo",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": true,
+          "doc": "CGO_ENABLED and external linking",
+          "system": "go"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for go build and go test",
+          "system": "go"
+        }
+      ]
+    },
+    "luarocks": {
+      "phases": [
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
             "kind": "string"
-          }
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "luarocks"
         },
-        "default": [],
-        "doc": "extra arguments for the package manager's install",
-        "system": "yarn"
-      }
-    ]
+        {
+          "name": "deps",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "package"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          },
+          "default": null,
+          "required": true,
+          "doc": "rock server directory, by default the shared set from locks/luarocks.toml",
+          "system": "luarocks"
+        },
+        {
+          "name": "rockspec",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "default": null,
+          "doc": "rockspec file when the source has several (null lets luarocks pick)",
+          "system": "luarocks"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for luarocks make",
+          "system": "luarocks"
+        }
+      ]
+    },
+    "make": {
+      "phases": [
+        "configure",
+        "build",
+        "test",
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "make"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "arguments for every make invocation (build, test, install)",
+          "system": "make"
+        },
+        {
+          "name": "installFlags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "arguments for `make install` only",
+          "system": "make"
+        },
+        {
+          "name": "buildTarget",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "make goals for build (empty means the makefile's default goal)",
+          "system": "make"
+        },
+        {
+          "name": "testTarget",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [
+            "check"
+          ],
+          "doc": "make goals for test",
+          "system": "make"
+        },
+        {
+          "name": "installTarget",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [
+            "install"
+          ],
+          "doc": "make goals for install",
+          "system": "make"
+        },
+        {
+          "name": "configureScript",
+          "type": {
+            "kind": "string"
+          },
+          "default": "configure",
+          "doc": "hand-written configure script relative to the project, run with --prefix when it exists",
+          "system": "make"
+        },
+        {
+          "name": "configureFlags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for make.configureScript",
+          "system": "make"
+        },
+        {
+          "name": "programs",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "programs the Makefile installs without the platform executable suffix",
+          "system": "make"
+        }
+      ]
+    },
+    "meson": {
+      "phases": [
+        "configure",
+        "build",
+        "test",
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "meson"
+        },
+        {
+          "name": "defs",
+          "type": {
+            "kind": "map",
+            "value": {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "boolean"
+                },
+                {
+                  "kind": "string"
+                },
+                {
+                  "kind": "integer"
+                },
+                {
+                  "kind": "path"
+                },
+                {
+                  "kind": "package"
+                }
+              ]
+            }
+          },
+          "default": {},
+          "doc": "-D options, merged over prefix/libdir/buildtype defaults",
+          "system": "meson"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for meson setup",
+          "system": "meson"
+        },
+        {
+          "name": "skipTests",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "substrings of `meson test --list` names",
+          "system": "meson"
+        }
+      ]
+    },
+    "mix": {
+      "phases": [
+        "build",
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "mix"
+        },
+        {
+          "name": "deps",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "package"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          },
+          "default": null,
+          "required": true,
+          "doc": "the locked dependencies, fetched (fetch.hexDeps) from the package's own lock file",
+          "system": "mix"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for mix compile",
+          "system": "mix"
+        },
+        {
+          "name": "escript",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "escripts `mix escript.build` writes, installed into bin/. Empty means a mix release",
+          "system": "mix"
+        }
+      ]
+    },
+    "npm": {
+      "phases": [
+        "build",
+        "test",
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "npm"
+        },
+        {
+          "name": "script",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "default": "build",
+          "doc": "package.json script the build phase runs (null runs none)",
+          "system": "npm"
+        },
+        {
+          "name": "deps",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "package"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          },
+          "default": null,
+          "required": true,
+          "doc": "the locked dependencies, fetched from the package's own lock file",
+          "system": "npm"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for the package manager's install",
+          "system": "npm"
+        }
+      ]
+    },
+    "pnpm": {
+      "phases": [
+        "build",
+        "test",
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "pnpm"
+        },
+        {
+          "name": "script",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "default": "build",
+          "doc": "package.json script the build phase runs (null runs none)",
+          "system": "pnpm"
+        },
+        {
+          "name": "deps",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "package"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          },
+          "default": null,
+          "required": true,
+          "doc": "the locked dependencies, fetched from the package's own lock file",
+          "system": "pnpm"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for the package manager's install",
+          "system": "pnpm"
+        }
+      ]
+    },
+    "pyapp": {
+      "phases": [
+        "build",
+        "test",
+        "install"
+      ],
+      "prebuilt": true,
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "pyapp"
+        },
+        {
+          "name": "deps",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "package"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          },
+          "default": null,
+          "required": true,
+          "doc": "the locked dependencies, fetched (fetch.pythonDeps) from the package's own lock file",
+          "system": "pyapp"
+        },
+        {
+          "name": "check",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "modules that must import from the installed layout",
+          "system": "pyapp"
+        },
+        {
+          "name": "mode",
+          "type": {
+            "kind": "enum",
+            "values": [
+              "project",
+              "env",
+              "dev"
+            ]
+          },
+          "default": "project",
+          "doc": "project installs the application, env and dev a virtual environment",
+          "system": "pyapp"
+        },
+        {
+          "name": "overrides",
+          "type": {
+            "kind": "map",
+            "value": {
+              "kind": "record",
+              "fields": {
+                "configSettings": {
+                  "kind": "map",
+                  "value": {
+                    "kind": "string"
+                  }
+                },
+                "env": {
+                  "kind": "map",
+                  "value": {
+                    "kind": "string"
+                  }
+                },
+                "patches": {
+                  "kind": "list",
+                  "element": {
+                    "kind": "string"
+                  }
+                },
+                "run": {
+                  "kind": "string"
+                }
+              }
+            }
+          },
+          "default": {},
+          "doc": "per-package build options",
+          "system": "pyapp"
+        }
+      ]
+    },
+    "python": {
+      "phases": [
+        "build",
+        "install",
+        "test"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "python"
+        },
+        {
+          "name": "backend",
+          "type": {
+            "kind": "string"
+          },
+          "default": "setuptools",
+          "doc": "PEP 517 backend when pyproject.toml names none, setuptools, flit_core, hatchling or maturin",
+          "system": "python"
+        },
+        {
+          "name": "module",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "default": null,
+          "doc": "module the import test loads (null uses the package name with - as _)",
+          "system": "python"
+        },
+        {
+          "name": "pytest",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "doc": "also run pytest on tests/",
+          "system": "python"
+        }
+      ]
+    },
+    "rebar3": {
+      "phases": [
+        "build",
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "rebar3"
+        },
+        {
+          "name": "deps",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "package"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          },
+          "default": null,
+          "required": true,
+          "doc": "the locked dependencies, fetched (fetch.hexDeps) from the package's own lock file",
+          "system": "rebar3"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for rebar3 compile",
+          "system": "rebar3"
+        }
+      ]
+    },
+    "vcxproj": {
+      "phases": [
+        "configure",
+        "build",
+        "install"
+      ],
+      "unsupported": {
+        "when": {
+          "libcOtherThan": "msvc"
+        },
+        "reason": "Visual Studio projects describe an MSVC-ABI build"
+      },
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "vcxproj"
+        },
+        {
+          "name": "projects",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "vcxproj files or traversal projects relative to the source root",
+          "system": "vcxproj"
+        },
+        {
+          "name": "exclude",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "project file stems excluded from the build",
+          "system": "vcxproj"
+        },
+        {
+          "name": "properties",
+          "type": {
+            "kind": "map",
+            "value": {
+              "kind": "string"
+            }
+          },
+          "default": {},
+          "doc": "MSBuild global properties",
+          "system": "vcxproj"
+        },
+        {
+          "name": "install",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "enum",
+              "values": [
+                "Application",
+                "DynamicLibrary",
+                "StaticLibrary"
+              ]
+            },
+            "value": {
+              "kind": "string"
+            }
+          },
+          "default": {},
+          "doc": "installation directory per configuration type",
+          "system": "vcxproj"
+        }
+      ]
+    },
+    "yarn": {
+      "phases": [
+        "build",
+        "test",
+        "install"
+      ],
+      "options": [
+        {
+          "name": "root",
+          "type": {
+            "kind": "string"
+          },
+          "default": ".",
+          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+          "system": "yarn"
+        },
+        {
+          "name": "script",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "default": "build",
+          "doc": "package.json script the build phase runs (null runs none)",
+          "system": "yarn"
+        },
+        {
+          "name": "deps",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "package"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          },
+          "default": null,
+          "required": true,
+          "doc": "the locked dependencies, fetched from the package's own lock file",
+          "system": "yarn"
+        },
+        {
+          "name": "flags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra arguments for the package manager's install",
+          "system": "yarn"
+        }
+      ]
+    }
   }
 }

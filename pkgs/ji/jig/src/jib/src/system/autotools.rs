@@ -38,7 +38,11 @@ use crate::{
       Ctx,
    },
    probe,
-   schema::Field,
+   schema::{
+      Condition,
+      Field,
+      Unsupported,
+   },
    site::site,
    system::{
       command::{
@@ -94,6 +98,17 @@ impl System for Autotools {
 
    fn options(&self) -> io::Result<Vec<Field>> {
       Options::schema(self.name())
+   }
+
+   fn phases(&self) -> &'static [&'static str] {
+      &["configure", "build", "test", "install"]
+   }
+
+   fn unsupported(&self) -> Option<Unsupported> {
+      Some(Unsupported::new(
+         Condition::Libc("msvc".to_owned()),
+         "configure and libtool do not know the MSVC ABI, config.sub rejects the triple",
+      ))
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {

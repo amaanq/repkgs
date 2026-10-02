@@ -78,6 +78,10 @@ impl System for Make {
       Options::schema(self.name())
    }
 
+   fn phases(&self) -> &'static [&'static str] {
+      &["configure", "build", "test", "install"]
+   }
+
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
       let options: Options = ctx.options("make")?;
       Ok(ctx.project_dir(&options.root))
