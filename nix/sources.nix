@@ -1,6 +1,6 @@
-# Reads a package.toml (docs/uptrack.md). URL templates expand like uptrack `expand`.
-# `unpacker`: store path with bin/bsdtar (the seed), `jig`: the jig that downloads and unpacks.
-# Only the seed's own package.toml (a .nar) is read without them.
+# The sources half of a package.toml (docs/uptrack.md), with URL placeholders filled the way
+# uptrack fills them. `unpacker` is a store path holding bin/bsdtar and `jig` the jig that fetches
+# and unpacks with it. Only the seed's own package.toml, a .nar, is read without them.
 {
   unpacker,
   jig ? null,
@@ -27,6 +27,9 @@ let
     substring
     ;
   fetchurl = import <nix/fetchurl.nix>;
+
+  # every spelling of a url, itself first and then its path on each mirror (nix/mirrors.nix).
+  # Grouping the prefixes by host keeps the common url to one lookup
   mirrors = import ./mirrors.nix;
   hostOf =
     url:
@@ -34,61 +37,65 @@ let
       found = match "https://([^/]*)/.*" url;
     in
     if found == null then null else head found;
-  startsWith = prefix: text: substring 0 (stringLength prefix) text == prefix;
-  # the url itself, then the same path on every mirror of its prefix (nix/mirrors.nix). Mirrors
-  # are indexed by host so most urls cost one lookup, not a scan
-  prefixesByHost = groupBy hostOf (attrNames mirrors);
-  alternatives =
+  prefixesOn = groupBy hostOf (attrNames mirrors);
+  spellings =
     url:
     let
       host = hostOf url;
-      prefixes = filter (prefix: startsWith prefix url) (
-        if host == null then [ ] else prefixesByHost.${host} or [ ]
-      );
-      rest = prefix: substring (stringLength prefix) (-1) url;
+      candidates = if host == null then [ ] else prefixesOn.${host} or [ ];
+      matching = filter (prefix: substring 0 (stringLength prefix) url == prefix) candidates;
+      onMirrors =
+        prefix:
+        let
+          path = substring (stringLength prefix) (-1) url;
+        in
+        map (mirror: mirror + path) mirrors.${prefix};
     in
-    [ url ] ++ concatMap (prefix: map (mirror: mirror + rest prefix) mirrors.${prefix}) prefixes;
+    [ url ] ++ concatMap onMirrors matching;
 
-  # "llvm-project-21.1.8.src" from …/llvm-project-21.1.8.src.tar.xz, "fd-v10.5.0" for github tag archives
-  # strip one extension, and a ".tar" before it
-  withoutExtension =
-    name:
-    let
-      parts = match "((.*)\\.tar|(.*))\\.[a-z0-9]+" name;
-    in
-    if parts == null then
-      name
-    else if elemAt parts 1 != null then
-      elemAt parts 1
-    else
-      elemAt parts 2;
-  downloadName =
+  # the url's file name without its extension (and a .tar before it), or repo-tag for a github tag
+  # archive. A fixed-output path is found by name and hash, so a name that follows the url keeps a
+  # bumped url with a stale hash from reusing the old download
+  storeName =
     url:
     let
-      stem = withoutExtension url;
+      bare = match "((.*)\\.tar|(.*))\\.[a-z0-9]+" url;
+      stem =
+        if bare == null then
+          url
+        else if elemAt bare 1 != null then
+          elemAt bare 1
+        else
+          elemAt bare 2;
       github = match "https://github.com/[^/]+/([^/]+)/archive/refs/tags/(.*)" stem;
     in
     replaceStrings [ "~" ] [ "-" ] (
-      if github != null then "${elemAt github 0}-${elemAt github 1}" else baseNameOf stem
+      if github == null then baseNameOf stem else "${elemAt github 0}-${elemAt github 1}"
     );
 
-  # what every fetch-and-unpack derivation shares
-  unpacking = {
-    inherit system unpacker;
-    builder = "${jig}/bin/jig";
-    args = [ "unpack" ];
-    outputHashMode = "recursive";
-    preferLocalBuild = true;
-    impureEnvVars = [
-      "http_proxy"
-      "https_proxy"
-      "ftp_proxy"
-      "all_proxy"
-      "no_proxy"
-    ];
-  };
+  # one fixed-output derivation runs `jig unpack` over the download, so the store holds the
+  # unpacked tree and `hash` is that tree's NAR hash, the one uptrack computes too
+  unpacked =
+    source: url:
+    derivation {
+      inherit system unpacker;
+      name = source.name or (storeName url);
+      builder = "${jig}/bin/jig";
+      args = [ "unpack" ];
+      urls = spellings url;
+      outputHash = source.hash;
+      outputHashMode = "recursive";
+      preferLocalBuild = true;
+      impureEnvVars = [
+        "http_proxy"
+        "https_proxy"
+        "ftp_proxy"
+        "all_proxy"
+        "no_proxy"
+      ];
+    };
 
-  # `pin`: [pin] keys over the file's, `hashes`: source key -> hash (nix/package, overrides)
+  # `pin` overrides [pin] keys and `hashes` source hashes by key, for overrides (nix/package)
   read =
     pin: hashes: file:
     let
@@ -96,33 +103,34 @@ let
       pinned = (table.pin or { }) // pin;
       version = pinned.version or "";
       tag = pinned.tag or version;
-      # every [pin] key is a {key} placeholder, plus three spellings derived from the version.
-      # Nearly every url uses {version} and {tag} only: the full table is built for the rest
-      placeholders =
+
+      # {version} and {tag} cover nearly every url, the other placeholders are every [pin] key and
+      # three spellings of the version
+      everyPlaceholder =
         let
-          parts = match "([^.]*)\\.?([^.]*).*" version;
+          numbers = match "([^.]*)\\.?([^.]*).*" version;
         in
         {
           tag = version;
           version_ = replaceStrings [ "." ] [ "_" ] version;
-          major = elemAt parts 0;
-          minor = elemAt parts 1;
+          major = elemAt numbers 0;
+          minor = elemAt numbers 1;
         }
         // pinned;
-      expand =
+      fill =
         template:
         let
-          common = replaceStrings [ "{version}" "{tag}" ] [ version tag ] template;
+          quick = replaceStrings [ "{version}" "{tag}" ] [ version tag ] template;
         in
-        if match ".*[{].*" common == null then
-          common
+        if match ".*[{].*" quick == null then
+          quick
         else
-          replaceStrings (map (key: "{${key}}") (attrNames placeholders)) (map toString (
-            attrValues placeholders
-          )) common;
+          replaceStrings (map (key: "{${key}}") (attrNames everyPlaceholder)) (map toString (
+            attrValues everyPlaceholder
+          )) quick;
+
       listed = table.source or [ ];
-      # one `default` source is the common case: no table
-      keyed =
+      declared =
         if length listed == 1 && (head listed).key == "default" then
           { default = head listed; }
         else
@@ -132,26 +140,23 @@ let
               value = source;
             }) listed
           );
-      byKey =
+      sources =
         if hashes == { } then
-          keyed
+          declared
         else
           mapAttrs (
-            key: source: source // (if hashes ? ${key} then { hash = hashes.${key}; } else { })
-          ) keyed;
+            key: source: if hashes ? ${key} then source // { hash = hashes.${key}; } else source
+          ) declared;
+
+      # `unpack = false` and .nar urls, the seed among them, go through builtin:fetchurl
       fetch =
         key:
         let
-          source = byKey.${key} or (throw "${toString file}: no source '${key}'");
-          url = expand source.url;
+          source = sources.${key} or (throw "${toString file}: no source '${key}'");
+          url = fill source.url;
           nar = match ".*\\.nar(\\.[a-z0-9]+)?" url != null;
         in
-        # `hash` is the NAR hash of what lands in the store: for archives the unpacked tree (single
-        # top-level directory stripped, u+w; jig's unpack, shared with uptrack so the hashes agree), fetched and
-        # unpacked by one fixed-output derivation running `jig unpack` (rustls with built-in roots)
-        # and the seed's bsdtar, so builds copy a directory instead of decompressing every time.
-        # `unpack = false` and .nar urls (the seed itself) go through builtin:fetchurl.
-        if !(source.unpack or true) || nar then
+        if nar || !(source.unpack or true) then
           fetchurl {
             inherit url;
             name = source.name or (baseNameOf url);
@@ -159,24 +164,14 @@ let
             unpack = nar;
           }
         else
-          derivation (
-            unpacking
-            // {
-              # a fixed-output path is found by (name, hash): with a constant name a bumped url whose
-              # hash was not updated silently reuses the old download, so the name follows the url
-              name = source.name or (downloadName url);
-              urls = alternatives url;
-              outputHash = source.hash;
-            }
-          );
+          unpacked source url;
     in
     {
       inherit version tag fetch;
-      # our libraries the lock file links (builder/sys-libs.json), written by uptrack
+      # libraries of the set that the lock files link, which uptrack records (builder/sys-libs.json)
       sys = pinned.sys or [ ];
-      has = key: byKey ? ${key};
+      has = key: sources ? ${key};
       default = fetch "default";
-      # the same file under another pin (nix/package, for overrides)
       repin = pin: hashes: read pin hashes file;
     };
 in
