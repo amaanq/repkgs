@@ -1,5 +1,12 @@
 BasedOnStyle: Google
-ColumnLimit: 120
+ColumnLimit: 100
+IndentWidth: 3
+ContinuationIndentWidth: 3
+AccessModifierOffset: -3
 DerivePointerAlignment: false
 PointerAlignment: Left
 IncludeBlocks: Regroup
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+InsertBraces: true
