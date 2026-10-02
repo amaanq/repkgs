@@ -33,3 +33,6 @@ flags = [ "--with-cross-build=/build/native-icu" ]
 
 [when.os.macos.autotools]
 flags = [ "--enable-rpath" ]
+
+[when.cross.tests]
+run = false
