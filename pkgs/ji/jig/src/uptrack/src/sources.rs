@@ -19,6 +19,7 @@ use std::{
 use serde::{
    Deserialize,
    Serialize,
+   de::IgnoredAny,
 };
 use serde_json::{
    Map,
@@ -81,6 +82,17 @@ struct File {
    watch:    Watch,
    #[serde(default)]
    locks:    BTreeMap<String, String>,
+   // the build half of package.toml, nix/package/manifest.nix reads and checks it
+   #[serde(default, rename = "package")]
+   _package: Option<IgnoredAny>,
+   #[serde(default, rename = "vars")]
+   _vars:    Option<IgnoredAny>,
+   #[serde(default, rename = "when")]
+   _when:    Option<IgnoredAny>,
+   #[serde(default, rename = "unless")]
+   _unless:  Option<IgnoredAny>,
+   #[serde(default, rename = "from")]
+   _from:    Option<IgnoredAny>,
 }
 
 /// A package as its package.toml describes it, what every stage passes on.
@@ -132,7 +144,7 @@ fn sources_files(root: &Path) -> io::Result<Vec<PathBuf>> {
    Ok(found)
 }
 
-fn parse(file: &Path) -> io::Result<Package> {
+fn parse(file: &Path) -> io::Result<Option<Package>> {
    let parsed: File = toml::from_str(&read_to_string(file)?)
       .map_err(|error| io::Error::other(format!("{}: {error}", file.display())))?;
    let fail = |message: String| io::Error::other(format!("{}: {message}", file.display()));
@@ -149,6 +161,10 @@ fn parse(file: &Path) -> io::Result<Package> {
    // poll, hash stays as written
    let tracked = parsed.upstream.purl.is_some();
    let frozen = parsed.upstream.frozen.is_some();
+   let unsourced = parsed.source.is_empty() && parsed.pin.is_empty() && parsed.locks.is_empty();
+   if !tracked && !frozen && unsourced {
+      return Ok(None);
+   }
    if !tracked && !frozen && (!parsed.source.is_empty() || parsed.locks.is_empty()) {
       return Err(fail("upstream.purl (or frozen) is required".to_owned()));
    }
@@ -178,7 +194,7 @@ fn parse(file: &Path) -> io::Result<Package> {
       Some(ref path) => hooks::exports(path)?,
       None => Vec::new(),
    };
-   Ok(Package {
+   Ok(Some(Package {
       name,
       dir,
       file: file.to_path_buf(),
@@ -190,13 +206,13 @@ fn parse(file: &Path) -> io::Result<Package> {
       pin: parsed.pin,
       watch: parsed.watch,
       locks: parsed.locks,
-   })
+   }))
 }
 
 /// Every package.toml under `root`, validated, as package records.
 pub fn discover(root: &Path) -> io::Result<Vec<Package>> {
    sources_files(root)?
       .iter()
-      .map(|file| parse(file))
+      .filter_map(|file| parse(file).transpose())
       .collect()
 }

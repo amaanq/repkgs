@@ -1,4 +1,5 @@
-# pkgs/<first two letters>/<name>/package.nix, attribute name == directory name, then the
+# pkgs/<first two letters>/<name>/ with a package.nix, or a package.toml with a [package] table,
+# attribute name == directory name, then the
 # out-of-tree `packages`, then the unversioned aliases of pkgs/aliases.toml
 {
   call,
@@ -10,10 +11,12 @@ let
     attrNames
     concatMap
     filter
+    fromTOML
     listToAttrs
     mapAttrs
     pathExists
     readDir
+    readFile
     substring
     ;
   root = ../../pkgs;
@@ -26,11 +29,15 @@ let
     map (name: {
       inherit name;
       value = call (dir + "/${name}") name;
-    }) (filter (name: pathExists (dir + "/${name}/package.nix")) (attrNames (readDir dir)));
+    }) (filter (name: isPackage (dir + "/${name}")) (attrNames (readDir dir)));
+  isPackage =
+    dir:
+    pathExists (dir + "/package.nix")
+    || pathExists (dir + "/package.toml") && fromTOML (readFile (dir + "/package.toml")) ? package;
   # unversioned names for the default line of multi-version packages (pkgs/aliases.toml)
   aliases = mapAttrs (
     alias: target:
-    if pathExists (root + "/${substring 0 2 alias}/${alias}/package.nix") then
+    if isPackage (root + "/${substring 0 2 alias}/${alias}") then
       throw "alias ${alias} shadows a package directory"
     else
       self.${target}

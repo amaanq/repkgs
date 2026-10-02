@@ -53,7 +53,21 @@ in
 dir: name:
 let
   file = dir + "/package.toml";
+  recipe = dir + "/package.nix";
+  table = if builtins.pathExists file then builtins.fromTOML (builtins.readFile file) else { };
+  fn =
+    if builtins.pathExists recipe then
+      import recipe
+    else
+      import ../package/manifest.nix { inherit dir name table; };
+  # `from = "<package>"`: the sources of that package, a subproject of its tarball
+  lender = ../../pkgs + "/${builtins.substring 0 2 table.from}/${table.from}/package.toml";
+  sources =
+    if table ? from then
+      readSources lender
+    else if table ? source || table ? upstream then
+      readSources file
+    else
+      null;
 in
-callWith (import (dir + "/package.nix")) dir name (
-  if builtins.pathExists file then readSources file else null
-) null
+callWith fn dir name sources null
