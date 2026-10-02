@@ -7,10 +7,9 @@ export def driver []: nothing -> nothing {
   let cc     = $env.TOOLCHAIN
   let inside = {|pattern| files --dirs $"($c.out)/($pattern)" | first | str replace $c.out "@" }
   let flags  = [
-    $"-B($cc)/bin" $"--target=($c.platform.clangTarget)" ($c.platform.march | first)
-    $"--sysroot=($c.platform.sysroot)" $"-resource-dir=($c.platform.sysroot)/lib/clang"
-    -rtlib=compiler-rt -fintrinsic-modules-path (do $inside "lib/clang/*/finclude/flang/*")
-    $"-L(do $inside 'lib/clang/*/lib/*')"
+    $"-B($cc)/bin" ...($c.spec.cmake.defs.CMAKE_Fortran_FLAGS | split row " ")
+    $"-resource-dir=($c.platform.sysroot)/lib/clang" -rtlib=compiler-rt
+    -fintrinsic-modules-path (do $inside "lib/clang/*/finclude/flang/*") $"-L(do $inside 'lib/clang/*/lib/*')"
   ]
   mkdir $"($c.out)/bin" $"($c.out)/etc"
   (open $"($cc)/etc/jig.json" | reject flags cxxflags prefix-map
