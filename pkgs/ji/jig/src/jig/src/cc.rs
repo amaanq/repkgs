@@ -475,6 +475,14 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
             .map(|key| (key, cache))
       }) {
          Ok(connection) => Some(connection),
+         Err(error)
+            if matches!(
+               error.kind(),
+               io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+            ) =>
+         {
+            None
+         },
          Err(error) => {
             diagnostic(format_args!("jig compilation cache unavailable, {error}"));
             None
