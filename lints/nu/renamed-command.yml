@@ -1,0 +1,9 @@
+# nu still runs these but warns on each call, and the warning lands in every build log
+id: renamed-command
+language: nu
+severity: error
+message: "nu 0.114 renamed this, the warning ends up in build logs"
+note: "`str downcase` became `str lowercase` and `str upcase` became `str uppercase`"
+rule:
+  kind: command
+  regex: '^str (downcase|upcase)\b'

@@ -1,0 +1,13 @@
+# glob lists in directory order, and once that order became an archive's member order and two builds
+# of one content-addressed derivation differed
+id: unsorted-glob
+language: nu
+severity: error
+message: "glob lists in directory order, `files` (builder/glob.nu) sorts"
+ignores:
+  - builder/glob.nu
+  - experiments/**
+  - tools/**
+rule:
+  kind: command
+  regex: '^glob\s'

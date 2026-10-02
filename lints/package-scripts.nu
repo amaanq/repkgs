@@ -1,18 +1,26 @@
 #!/usr/bin/env nu
-# Has nu parse the build script of each given file's package (`pkg.script`, what the derivation
-# runs) before a build does: a module phase with the wrong signature, a misspelt command in an
-# inline phase. Instantiating puts the builder and module copies it `use`s into the store.
+# Parses the build script a package's derivation runs (`pkg.script`) before any build does, so a
+# module phase with the wrong signature or a misspelt command fails here. Each argument is a file
+# in a package directory. Instantiating copies the builder and the modules a script uses into the store.
 def main [...files: path] {
   let root = ($env.FILE_PWD | path dirname)
-  let names = ($files | each { path dirname | path basename } | each { $'"($in)"' } | str join " ")
-  let scripts = (^nix-instantiate --read-write-mode --eval --strict --json --option extra-experimental-features "ca-derivations dynamic-derivations" --expr $"let set = import ($root) { }; in map \(n: set.${n}.script or null\) [($names)]" | from json)
-  let failed = ($files | zip $scripts | where $it.1 != null | par-each {|p|
-    # modules say `use core.nu *` by bare name, the derivation passes the same --include-path
-    let tree = ($p.1 | parse -r '^use (\S+)/core\.nu' | get 0.capture0)
-    let errors = ($p.1 | ^$nu.current-exe --no-config-file $"--include-path=($tree)" "--experimental-options=[cell-path-types]" --ide-check 50 /dev/stdin
-      | lines | each { from json } | where type == diagnostic and severity == Error
-      | get message | uniq | each {|m| $"  ($m)" })
-    if ($errors | is-empty) { null } else { $"($p.0): generated build script\n($errors | str join "\n")" }
+  let names = ($files | each { path dirname | path basename } | uniq)
+  let quoted = ($names | each {|name| $'"($name)"' } | str join " ")
+  let expr = $"let set = import ($root) { }; in map \(name: set.${name}.script or null\) [($quoted)]"
+  let scripts = (^nix-instantiate --read-write-mode --eval --strict --json --option extra-experimental-features "ca-derivations dynamic-derivations" --expr $expr | from json)
+
+  let failed = ($names | zip $scripts | where $it.1 != null | par-each {|pair|
+    # the modules `use core.nu *` by bare name, and the derivation passes this include path
+    let builder = ($pair.1 | parse -r '^use (\S+)/core\.nu' | get 0.capture0)
+    let errors = ($pair.1
+      | ^$nu.current-exe --no-config-file $"--include-path=($builder)" "--experimental-options=[cell-path-types]" --ide-check 50 /dev/stdin
+      | lines
+      | each { from json }
+      | where type == diagnostic and severity == Error
+      | get message
+      | uniq
+      | each {|message| $"  ($message)" })
+    if ($errors | is-empty) { null } else { $"($pair.0): generated build script\n($errors | str join "\n")" }
   } | compact)
   if ($failed | is-not-empty) {
     print -e ($failed | str join "\n")

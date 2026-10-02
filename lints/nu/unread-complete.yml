@@ -1,0 +1,17 @@
+id: unread-complete
+language: nu
+severity: error
+message: "`| complete` catches the failure, and nothing here reads its exit_code"
+rule:
+  kind: pipe_element
+  regex: '^complete$'
+  inside:
+    kind: pipeline
+    not:
+      inside:
+        stopBy: end
+        any:
+          - kind: stmt_let
+          - kind: expr_parenthesized
+          - kind: assignment
+          - kind: val_closure

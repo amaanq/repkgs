@@ -1,7 +1,7 @@
-id: each-if-without-else
+id: dropped-rows
 language: nu
 severity: error
-message: "rows where the `if` is false become null and `each` drops them silently: add `else`, filter with `where` first, or say so with `| compact`"
+message: "a false `if` with no `else` yields null and `each` loses the row, so add an else, filter first with `where`, or end in `| compact`"
 rule:
   kind: pipe_element
   has:
@@ -15,9 +15,13 @@ rule:
         has:
           kind: pipe_element
           nthChild: {position: 1, reverse: true, ofRule: {kind: pipe_element}}
-          has: {kind: ctrl_if, not: {regex: '\belse\b'}}
+          has:
+            kind: ctrl_if
+            not: {regex: '\belse\b'}
   not:
     precedes:
       kind: pipe_element
       regex: '^(compact|ignore|flatten)\b'
-      stopBy: {kind: pipe_element, not: {regex: '^(compact|ignore|flatten)\b'}}
+      stopBy:
+        kind: pipe_element
+        not: {regex: '^(compact|ignore|flatten)\b'}

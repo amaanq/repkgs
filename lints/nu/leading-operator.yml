@@ -1,0 +1,9 @@
+# nu reads `let x = a` and then `++ b` on the next line as a command named `++`, which fails only
+# when it runs
+id: leading-operator
+language: nu
+severity: error
+message: "a line that starts with an operator runs as its own command, so wrap the expression in ( ) or spread it"
+rule:
+  kind: command
+  regex: '^(\+\+|\||and |or |\+ |- |\* |/ |== |!= )'
