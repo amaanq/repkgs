@@ -1,0 +1,41 @@
+[upstream]
+purl = "pkg:github/llvm/llvm-project"
+
+[[source]]
+key  = "default"
+url  = "https://github.com/llvm/llvm-project/releases/download/{tag}/llvm-project-{version}.src.tar.xz"
+hash = "sha256-pgd8g9Yfvp7abjCCKSmIn1smAROjqtfZaJkaUkBSKW0="
+
+[pin]
+version = "21.1.8"
+tag     = "llvmorg-21.1.8"
+
+[build]
+bin     = [ "llvm-config" ]
+check   = false
+needs   = [ "zlib", "zstd" ]
+patches = [ "upstream-rdf-std-specializations.patch", "upstream-x86-vastart-stack-probe.patch" ]
+systems = [ "cmake" ]
+tools   = [ "cpython" ]
+
+[build.cmake]
+root = "llvm"
+
+[build.cmake.defs]
+BUILD_SHARED_LIBS       = false
+LLVM_BUILD_LLVM_DYLIB   = true
+LLVM_ENABLE_BINDINGS    = false
+LLVM_ENABLE_LIBEDIT     = false
+LLVM_ENABLE_LIBPFM      = false
+LLVM_ENABLE_LIBXML2     = false
+LLVM_ENABLE_TERMINFO    = false
+LLVM_ENABLE_ZLIB        = "FORCE_ON"
+LLVM_ENABLE_ZSTD        = "FORCE_ON"
+LLVM_INCLUDE_BENCHMARKS = false
+LLVM_INCLUDE_DOCS       = false
+LLVM_INCLUDE_EXAMPLES   = false
+LLVM_INCLUDE_TESTS      = false
+LLVM_INSTALL_UTILS      = false
+LLVM_LINK_LLVM_DYLIB    = true
+LLVM_PARALLEL_LINK_JOBS = 4
+LLVM_TARGETS_TO_BUILD   = "all"

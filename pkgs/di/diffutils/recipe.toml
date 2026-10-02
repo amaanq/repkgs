@@ -1,0 +1,22 @@
+[upstream]
+purl = "pkg:gnu/diffutils"
+
+[[source]]
+key  = "default"
+url  = "https://ftp.gnu.org/gnu/diffutils/diffutils-{version}.tar.xz"
+hash = "sha256-loVV9JE2m1jzVNVgfK/8TgGJz1CR9i+8r25Dxp/hZjk="
+
+[pin]
+version = "3.12"
+
+[build]
+bin            = [ "diff", "cmp" ]
+bootstrapTools = true
+patches        = [ "upstream-strptime-prototypes.patch" ]
+systems        = [ "autotools" ]
+
+[build.autotools]
+makeFlags = [ "SUBDIRS=lib src" ]
+
+[build.check]
+separate = true

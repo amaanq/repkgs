@@ -129,7 +129,7 @@ let
       found = filter (dir: builtins.pathExists (dir + "/${name}.nu")) dirs;
     in
     if found == [ ] then
-      fail "phases: no ${name}.nu beside package.toml"
+      fail "phases: no ${name}.nu beside recipe.toml"
     else
       "${
         builtins.path {

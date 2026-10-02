@@ -1,0 +1,39 @@
+[upstream]
+purl = "pkg:gnu/ncurses"
+
+[[source]]
+key  = "default"
+url  = "https://ftpmirror.gnu.org/ncurses/ncurses-{version}.tar.gz"
+hash = "sha256-YpXsAx/jqbxBpTLljJBfLEyeG4vSY94K4HYHSqyXYyg="
+
+[pin]
+version = "6.6"
+date    = "2025-12-30"
+
+[build]
+bin     = [ "tic", "tput", "infocmp" ]
+patches = [ "relocatable.patch" ]
+systems = [ "autotools" ]
+
+[build.after]
+"autotools.install" = [ "ncurses.narrow-names" ]
+
+[build.autotools]
+flags = [
+  "--with-shared",
+  "--without-debug",
+  "--without-ada",
+  "--enable-widec",
+  "--with-versioned-syms",
+  "--enable-pc-files",
+  "--disable-stripping",
+  "--with-terminfo-dirs=/etc/terminfo:/lib/terminfo:/usr/share/terminfo",
+  "--with-manpage-format=normal",
+]
+
+[build.before]
+"autotools.configure" = [ "ncurses.configure-env" ]
+
+[build.check]
+run     = false
+version = "-V"

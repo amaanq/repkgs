@@ -1,4 +1,4 @@
-# The interpreter's `.env` and `.project`, attached by `helpers = "python"` in its package.toml.
+# The interpreter's `.env` and `.project`, attached by `helpers = "python"` in its recipe.toml.
 # Both build pyapp packages over fetch.pythonDeps (tests/builder/pyproject):
 #   .env { src or lock, … }   every locked dependency and bin/python3
 #   .project { src, … }       { package, devEnv }, where devEnv's python also imports the checkout

@@ -1,0 +1,21 @@
+[upstream]
+purl = "pkg:gnu/sed"
+
+[[source]]
+key  = "default"
+url  = "https://ftp.gnu.org/gnu/sed/sed-{version}.tar.xz"
+hash = "sha256-BABNGaRCbWWTOvAAUkX0mvNWE5/JO0LRghULCwjI3gM="
+
+[pin]
+version = "4.10"
+date    = "2026-04-21"
+
+[build]
+bootstrapTools = true
+systems        = [ "autotools" ]
+
+[build.autotools]
+flags = [ "--disable-acl", "--without-selinux" ]
+
+[build.check]
+separate = true

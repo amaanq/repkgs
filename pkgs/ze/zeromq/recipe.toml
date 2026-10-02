@@ -1,0 +1,28 @@
+[upstream]
+purl = "pkg:github/zeromq/libzmq"
+
+[[source]]
+key  = "default"
+url  = "https://github.com/zeromq/libzmq/releases/download/{tag}/zeromq-{version}.tar.gz"
+hash = "sha256-3bTqZlmSfTeWMw9hbZipX4PHN+I9IrKQtg6wZYN0G1o="
+
+[pin]
+version = "4.3.5"
+date    = "2023-10-09"
+tag     = "v4.3.5"
+
+[build]
+needs   = [ "libsodium" ]
+patches = [ "upstream-nothrow-include-new.patch" ]
+systems = [ "cmake" ]
+
+[build.check]
+parallel = false
+
+[build.cmake]
+skipTests = [ "test_mock_pub_sub" ]
+
+[build.cmake.defs]
+CMAKE_POLICY_VERSION_MINIMUM = "3.5"
+ENABLE_CURVE                 = true
+WITH_LIBSODIUM               = true

@@ -19,7 +19,7 @@ let
     inherit system;
     buildSystem = system;
   };
-  # the seed is the unpacker, so its own package.toml has to be read without one
+  # the seed is the unpacker, so its own recipe.toml has to be read without one
   readerFor =
     name:
     if name == "seed" then
@@ -30,7 +30,7 @@ let
         inherit (seedBuild) jig;
         inherit system;
       };
-  sourcesOf = name: readerFor name (pkg name + "/package.toml");
+  sourcesOf = name: readerFor name (pkg name + "/recipe.toml");
   source = name: (sourcesOf name).default;
   seedPath =
     if seed == null then

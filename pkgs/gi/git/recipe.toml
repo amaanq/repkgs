@@ -1,0 +1,26 @@
+[upstream]
+purl = "pkg:github/git/git"
+
+[[source]]
+key  = "default"
+url  = "https://www.kernel.org/pub/software/scm/git/git-{version}.tar.xz"
+hash = "sha256-aTL1jVJ8xz4CMocAzzHaEepLgUO/7OXTb/Ao0GR5AVQ="
+
+[pin]
+version = "2.55.0"
+tag     = "v2.55.0"
+
+[build]
+patches = [ "relocatable.patch" ]
+systems = [ "autotools", "cargo" ]
+needs   = [ "zlib", "curl", "expat", "pcre2", "openssl" ]
+
+[build.targets]
+posix = true
+
+[build.autotools]
+flags      = [ "--with-curl", "--with-expat", "--with-libpcre2", "--without-tcltk" ]
+outOfTree  = false
+testTarget = [ "-C", "t", "T=t0000-basic.sh" ]
+
+[build.phases]

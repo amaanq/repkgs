@@ -14,6 +14,7 @@ commands = [
   { argv = [ "nixfmt" ], check_argv = [ "nixfmt", "--check" ] },
   { argv = [ "statix", "check", "-c", "statix.toml" ], check_argv = [ "statix", "check", "-c", "statix.toml" ], per_file = true },
   { argv = [ "deadnix", "--fail", "--edit" ], check_argv = [ "deadnix", "--fail" ] },
+  { argv = [ "nu", "--no-config-file", "lints/format.nu", "package-scripts" ], check_argv = [ "nu", "--no-config-file", "lints/format.nu", "package-scripts" ] },
 ]
 includes = [ "**/*.nix" ]
 mode = "files"

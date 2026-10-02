@@ -1,4 +1,4 @@
-# Calling a package.nix: its package.toml read when the directory has one, its features resolved,
+# Calling a package.nix: its recipe.toml read when the directory has one, its features resolved,
 # and `package`/`variant` bound to this name
 {
   scope,
@@ -41,7 +41,7 @@ let
         else
           spec: package sources dirs resolved fn (edit0 spec);
       # another package's spec under this name, edited with override verbs: this function
-      # again with the base's package.nix. Own package.toml when the directory has one
+      # again with the base's package.nix. Own recipe.toml when the directory has one
       # (llvm22: another pin), else the base's (rust-std: same tarball). A list of trees merges
       variant =
         base: tree:
@@ -52,7 +52,7 @@ let
 in
 dir: name:
 let
-  file = dir + "/package.toml";
+  file = dir + "/recipe.toml";
   recipe = dir + "/package.nix";
   table = if builtins.pathExists file then builtins.fromTOML (builtins.readFile file) else { };
   fn =
@@ -60,15 +60,15 @@ let
       import recipe
     else
       import ../package/manifest.nix { inherit dir name table; };
-  # `from = "<package>"`: the sources of that package, a subproject of its tarball
-  lender = ../../pkgs + "/${builtins.substring 0 2 table.from}/${table.from}";
+  # `sources-from = "<package>"`: the sources of that package, a subproject of its tarball
+  lender = ../../pkgs + "/${builtins.substring 0 2 table."sources-from"}/${table."sources-from"}";
   sources =
-    if table ? from then
-      readSources (lender + "/package.toml")
+    if table ? "sources-from" then
+      readSources (lender + "/recipe.toml")
     else if table ? source || table ? upstream then
       readSources file
     else
       null;
 in
-# a phase module not beside package.toml may be the lender's
-callWith fn ([ dir ] ++ (if table ? from then [ lender ] else [ ])) name sources null
+# a phase module not beside recipe.toml may be the lender's
+callWith fn ([ dir ] ++ (if table ? "sources-from" then [ lender ] else [ ])) name sources null

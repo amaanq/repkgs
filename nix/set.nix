@@ -39,7 +39,7 @@ let
   stage = bootstrap.toolchain.${platform} (
     on (target.libc == "msvc") {
       sdk = fetch.windowsSdk {
-        manifest = (readSources ../pkgs/wi/windows-sdk/package.toml).fetch "default";
+        manifest = (readSources ../pkgs/wi/windows-sdk/recipe.toml).fetch "default";
         arch = target.cpu;
       };
     }
@@ -146,7 +146,7 @@ let
     pkgs = self;
   };
 
-  # what a package.nix or package.toml may ask for
+  # what a package.nix or recipe.toml may ask for
   scope = {
     inherit
       package

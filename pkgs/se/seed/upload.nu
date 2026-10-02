@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # Builds the seed nar for each system here (build.nix cross compiles), uploads them to the GitHub
-# release seed-<N> and points ./package.toml at them. <N> comes from build.nix's seed-<N>-<system>.
+# release seed-<N> and points ./recipe.toml at them. <N> comes from build.nix's seed-<N>-<system>.
 #   pkgs/se/seed/upload.nu [--systems x86_64-linux,aarch64-linux,riscv64-linux] [--repo Mic92/repkgs]
 
 def main [
@@ -8,7 +8,7 @@ def main [
   --repo: string = "Mic92/repkgs" # where the seed-<N> releases live
 ]: nothing -> nothing {
   let here     = ($env.CURRENT_FILE | path dirname)
-  let manifest = $"($here)/package.toml"
+  let manifest = $"($here)/recipe.toml"
   let builder  = (^nix config show system | str trim)
 
   let nars = ($systems | split row "," | each {|system|

@@ -1,0 +1,4 @@
+{ file, ... }:
+[
+  { source = file "src"; }
+]

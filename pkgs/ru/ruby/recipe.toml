@@ -1,0 +1,32 @@
+[upstream]
+purl = "pkg:github/ruby/ruby"
+
+[[source]]
+key  = "default"
+url  = "https://cache.ruby-lang.org/pub/ruby/{major}.{minor}/ruby-{version}.tar.xz"
+hash = "sha256-2iG4H3UV+BZvqXtz73tDYjNgWRs1+UmB5bGf6ftHjTI="
+
+[pin]
+version = "4.0.7"
+date    = "2026-09-15"
+tag     = "v4.0.7"
+
+[build]
+bin     = [ "ruby", "gem", "bundle", "irb", "rake" ]
+check   = false
+needs   = [ "bash", "zlib", "openssl", "libyaml", "libffi" ]
+systems = [ "autotools" ]
+
+[build.after]
+"autotools.install" = [ "ruby.relocate-rbconfig" ]
+
+[build.autotools]
+flags = [
+  "--enable-load-relative",
+  "--disable-install-doc",
+  "--sysconfdir=/etc",
+  "--enable-shared",
+  "--with-out-ext=win32,win32ole,readline,gdbm,dbm",
+  "--without-git",
+  "--without-baseruby",
+]

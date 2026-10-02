@@ -1,0 +1,24 @@
+[upstream]
+purl = "pkg:gnu/gawk"
+
+[[source]]
+key  = "default"
+url  = "https://ftp.gnu.org/gnu/gawk/gawk-{version}.tar.xz"
+hash = "sha256-j5SjDboKkRhpSgDrnZBn4Az0LseugKFFOeUu1GlRGvc="
+
+[pin]
+version = "5.4.1"
+date    = "2026-07-09"
+
+[build]
+bin            = [ "gawk", "awk" ]
+bootstrapTools = true
+check          = false
+patches        = [ "relocatable.patch", "upstream-node-struct-without-mpfr.patch" ]
+systems        = [ "autotools" ]
+
+[build.autotools]
+flags = [ "--disable-mpfr" ]
+
+[build.targets]
+posix = true

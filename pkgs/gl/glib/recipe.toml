@@ -1,0 +1,35 @@
+[upstream]
+purl = "pkg:generic/glib"
+
+[[source]]
+key  = "default"
+url  = "https://download.gnome.org/sources/glib/{major}.{minor}/glib-{version}.tar.xz"
+hash = "sha256-rGcq5QW/oiAHKfmc0Ce1xY2a+cAGhbeZXM43G5LFtHY="
+
+[pin]
+version = "2.88.3"
+
+[watch]
+url   = "https://download.gnome.org/sources/glib/cache.json"
+regex = 'glib-([0-9]+\.[0-9]*[02468]\.[0-9]+)\.tar'
+
+[build]
+bin     = [ "glib-compile-resources", "gdbus" ]
+check   = false
+needs   = [ "pcre2", "libffi", "zlib", "cpython" ]
+patches = [ "relocatable.patch" ]
+systems = [ "meson" ]
+
+[build.meson.defs]
+documentation = false
+dtrace        = "disabled"
+introspection = "disabled"
+libmount      = "disabled"
+localstatedir = "/var"
+man-pages     = "disabled"
+nls           = "disabled"
+selinux       = "disabled"
+sysprof       = "disabled"
+systemtap     = "disabled"
+tests         = false
+wrap_mode     = "nodownload"

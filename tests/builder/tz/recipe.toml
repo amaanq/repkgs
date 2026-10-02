@@ -1,0 +1,9 @@
+[build]
+version = "1"
+
+[[build.phases]]
+name = "build"
+run = """
+mkdir $"($c.out)/bin"
+x cc tz.c -o $"($c.out)/bin/tz"
+"""

@@ -1,7 +1,0 @@
-[package]
-version = "1.2"
-source  = { name = "src", tree = "src" }
-uses    = [ "cmake" ]
-
-[package.tests]
-version = "hello"

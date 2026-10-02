@@ -1,0 +1,36 @@
+[upstream]
+purl = 'pkg:generic/ghc?url=https://downloads.haskell.org/~ghc/&regex=href="(\d+\.\d+\.\d{1,2})/"'
+
+[locks]
+hackage = "hadrian"
+
+[[source]]
+key  = "default"
+url  = "https://downloads.haskell.org/~ghc/{version}/ghc-{version}-src.tar.xz"
+hash = "sha256-ujDRF/tuls/7YxD52xy5ldZKGCJXCoP0nrCYg+vragg="
+
+[pin]
+version = "9.14.1"
+
+[build]
+bin     = [ "ghc", "ghc-pkg", "runghc", "hsc2hs", "haddock" ]
+exports = false
+needs   = [ "gmp", "ncurses", "libffi" ]
+patches = [ "upstream-hadrian-autoreconf-exec.patch" ]
+skip    = [ "cabal.test" ]
+systems = [ "cabal" ]
+tools   = [ "cpython", "autoconf" ]
+
+[build.cabal]
+exes  = [ "hadrian" ]
+flags = [ "--index-state=HEAD", "--flags=-selftest" ]
+root  = "hadrian"
+
+[build.check]
+version = "--numeric-version"
+
+[build.replace]
+"cabal.install" = [ "ghc.configure", "ghc.build", "ghc.install" ]
+
+[build.targets]
+cross = false

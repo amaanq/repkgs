@@ -1,6 +1,6 @@
-# The sources half of a package.toml (docs/uptrack.md), with URL placeholders filled the way
+# The sources half of a recipe.toml (docs/uptrack.md), with URL placeholders filled the way
 # uptrack fills them. `unpacker` is a store path holding bin/bsdtar and `jig` the jig that fetches
-# and unpacks with it. Only the seed's own package.toml, a .nar, is read without them.
+# and unpacks with it. Only the seed's own recipe.toml, a .nar, is read without them.
 {
   unpacker,
   jig ? null,

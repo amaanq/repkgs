@@ -1,4 +1,4 @@
-# pkgs/<first two letters>/<name>/ with a package.nix, or a package.toml with a [package] table,
+# pkgs/<first two letters>/<name>/ with a package.nix, or a recipe.toml with a [build] table,
 # attribute name == directory name, then the
 # out-of-tree `packages`, then the unversioned aliases of pkgs/aliases.toml
 {
@@ -33,7 +33,7 @@ let
   isPackage =
     dir:
     pathExists (dir + "/package.nix")
-    || pathExists (dir + "/package.toml") && fromTOML (readFile (dir + "/package.toml")) ? package;
+    || pathExists (dir + "/recipe.toml") && fromTOML (readFile (dir + "/recipe.toml")) ? build;
   # unversioned names for the default line of multi-version packages (pkgs/aliases.toml)
   aliases = mapAttrs (
     alias: target:

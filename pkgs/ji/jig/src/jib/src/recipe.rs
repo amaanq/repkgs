@@ -83,7 +83,7 @@ fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 19] {
       (
          "version",
          Type::String,
-         "upstream version, by default from package.toml",
+         "upstream version, by default from recipe.toml",
       ),
       (
          "features",
@@ -98,7 +98,7 @@ fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 19] {
       (
          "source",
          source(),
-         "a package.toml key, a path or a derivation, by default the platform's tarball",
+         "a recipe.toml key, a path or a derivation, by default the platform's tarball",
       ),
       (
          "patches",
@@ -128,7 +128,7 @@ fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 19] {
       (
          "sys",
          Type::union(vec![strings(), Type::Null]),
-         "libraries the lock files may link, by default [pin] sys from package.toml",
+         "libraries the lock files may link, by default [pin] sys from recipe.toml",
       ),
       ("bin", strings(), "programs the version check runs"),
       (

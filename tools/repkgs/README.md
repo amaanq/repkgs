@@ -19,7 +19,7 @@ $ repkgs test                         # tests/builder, after a builder/ or jib e
 $ repkgs log jq                       # the last build log
 $ repkgs info jq                      # version, platforms, build systems and features (--json)
 $ repkgs list --for riscv64-linux --unsupported   # what a platform lacks, and why
-$ repkgs options cmake                # every cmake.* option of [package], with defaults
+$ repkgs options cmake                # every cmake.* option of [build], with defaults
 $ repkgs fmt                          # nuff, --check to only check
 ```
 
@@ -58,7 +58,7 @@ The seed and Rust toolchain flags work here too.
 repkgs dev --seed ./result-bootstrap-seed --rust-toolchain ./result-bootstrap-rust ripgrep
 ```
 
-Once the fix is clear, make the edit a patch beside package.toml (`diff -u` against an untouched
+Once the fix is clear, make the edit a patch beside recipe.toml (`diff -u` against an untouched
 unpack), list it in `patches` and build for real.
 
 ## The compile cache
@@ -76,7 +76,7 @@ in `nix.settings.trusted-users`.
 ## New packages and updates
 
 ```console
-$ repkgs new foo pkg:github/o/foo 'https://…/foo-{version}.tar.gz'   # pkgs/fo/foo/ with package.toml
+$ repkgs new foo pkg:github/o/foo 'https://…/foo-{version}.tar.gz'   # pkgs/fo/foo/ with recipe.toml
 $ repkgs update check                 # what is out of date (uptrack)
 $ repkgs update apply foo             # a new pin and hashes
 $ repkgs repro zlib                   # build again and compare

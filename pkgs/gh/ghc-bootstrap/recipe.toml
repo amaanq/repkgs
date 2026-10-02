@@ -1,0 +1,36 @@
+[upstream]
+purl    = 'pkg:generic/ghc?url=https://downloads.haskell.org/~ghc/&regex=href="(\d+\.\d+\.\d{1,2})/"'
+relocks = [ "hackage" ]                                                                               # the version set is a cabal plan for this compiler's boot libraries
+allow   = "==9.14.*"
+
+[[source]]
+key  = "x86_64-linux"
+url  = "https://downloads.haskell.org/~ghc/{version}/ghc-{version}-x86_64-deb12-linux.tar.xz"
+hash = "sha256-GC8kkBVwi1RLdWv65kSngsWdfG4yHx7HqWvP4SNvE18="
+
+[[source]]
+key  = "aarch64-linux"
+url  = "https://downloads.haskell.org/~ghc/{version}/ghc-{version}-aarch64-deb12-linux.tar.xz"
+hash = "sha256-C3VwOfx07bf3RLWrJbstY3dEmuICM2ZnWfbmE/18qqo="
+
+[[source]]
+key    = "riscv64-linux"
+frozen = "no upstream riscv64 bindist, Debian's 9.10 meets GHC 9.14's minimum bootstrap version"
+url    = "https://snapshot.debian.org/archive/debian/20260317T082636Z/pool/main/g/ghc/ghc_9.10.3-4_riscv64.deb"
+hash   = "sha256-2pm3qHjvJYPtWbn2i2TJdg+AlHo14TTeOjU6KR2Dn/k="
+
+[pin]
+version = "9.14.1"
+
+[build]
+bin      = [ "ghc", "ghc-pkg", "runghc" ]
+exports  = false
+needs    = [ "gmp", "ncurses", "libffi" ]
+phases   = [ "ghc-bootstrap.install" ]
+prebuilt = true
+
+[build.check]
+version = "--numeric-version"
+
+[build.targets]
+cross = false

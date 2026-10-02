@@ -1,0 +1,19 @@
+[upstream]
+purl = "pkg:pypi/build"
+
+[[source]]
+key  = "default"
+url  = "https://files.pythonhosted.org/packages/source/b/build/build-{version}.tar.gz"
+hash = "sha256-gqN63eWGXKUKFD89eqY3YHX3UYGMdgsE4IuUyzVnyYM="
+
+[pin]
+version = "1.6.1"
+date    = "2026-09-10"
+
+[build]
+needs   = [ "python-packaging", "python-pyproject-hooks" ]
+systems = [ "python" ]
+
+[build.python]
+backend = "flit_core"
+module  = "build"

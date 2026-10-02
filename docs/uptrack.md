@@ -1,6 +1,6 @@
 # uptrack
 
-The updater for this tree and any other that keeps its pins in `package.toml`. It lives in the jig
+The updater for this tree and any other that keeps its pins in `recipe.toml`. It lives in the jig
 workspace (`pkgs/ji/jig/src/uptrack`) and is on PATH in the development shell and through
 `repkgs update`.
 
@@ -20,10 +20,10 @@ workspace (`pkgs/ji/jig/src/uptrack`) and is on PATH in the development shell an
 - **Polling is the expensive part at scale**, so it is one cached pass that never runs a package's
   own code.
 
-## `package.toml`
+## `recipe.toml`
 
 People write `[upstream]`, the `url` of each `[[source]]`, `[watch]` and `[locks]`. uptrack writes
-each `hash` and `[pin]`. Nix reads the file with `fromTOML`, and the `[package]` half describing the
+each `hash` and `[pin]`. Nix reads the file with `fromTOML`, and the `[build]` half describing the
 build is the package set's business (README.md) and ignored here.
 
 ```toml
@@ -69,7 +69,7 @@ usable without Nix too.
 discover → resolve → decide → apply → verify
 ```
 
-**discover** globs `package.toml` and validates it. An unknown key is an error that lists the
+**discover** globs `recipe.toml` and validates it. An unknown key is an error that lists the
 known ones, and a manifest with no upstream, source, pin or locks describes a build only and is
 skipped.
 
@@ -106,7 +106,7 @@ as its version.
 
 ## Hooks
 
-Most packages need nothing beyond `package.toml`. Where a stage needs code,
+Most packages need nothing beyond `recipe.toml`. Where a stage needs code,
 `pkgs/xx/<name>/update.nu` exports a replacement:
 
 ```nu
@@ -129,14 +129,14 @@ tag that Temurin's file names and URLs use.
 ## Commands
 
 ```
-uptrack list [names]                     parse and validate every package.toml
+uptrack list [names]                     parse and validate every recipe.toml
 uptrack check [names] [--json]           resolve and decide, exit 10 when updates are pending
 uptrack apply [names] [--plan f]         write hash, [pin], hook files and locks for pending updates
               [--commit]                 one commit per update, `name: 1.2 -> 1.3` (jj, else git)
 uptrack verify [names]                   build at the current pin
 uptrack rehash [names]                   prefetch again at the current pin, after a url edit
 uptrack lock [names] [--prune]           fill locks/<eco>.toml for packages with [locks]
-uptrack init <dir> <purl> <url-template> a new package.toml pinned to the newest release
+uptrack init <dir> <purl> <url-template> a new recipe.toml pinned to the newest release
 uptrack normalize                        rewrite locks/<eco>.toml in normal form
 uptrack versions <purl>                  a datasource's candidates as JSON, for hooks
 uptrack get <url> [--max-age d]          a cached GET as JSON, for hooks

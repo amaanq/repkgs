@@ -1,0 +1,19 @@
+[upstream]
+purl = "pkg:github/pnggroup/libpng"
+
+[[source]]
+key  = "default"
+url  = "https://downloads.sourceforge.net/libpng/libpng-{version}.tar.xz"
+hash = "sha256-JSdzPsfRBjnk8DB/fkOCkaiUJ9/neQ2myIK5xnQuSsM="
+
+[pin]
+version = "1.6.58"
+
+[build]
+needs   = [ "zlib" ]
+patches = [ "upstream-cmake-install-pc-when-generated.patch" ]
+systems = [ "cmake" ]
+
+[build.cmake.defs]
+PNG_STATIC = false
+PNG_TOOLS  = true

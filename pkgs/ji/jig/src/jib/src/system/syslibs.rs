@@ -81,7 +81,7 @@ pub fn wanted(attrs: &Attrs, dir: &Path) -> io::Result<Vec<String>> {
 }
 
 // the lock can link libraries [pin] sys does not name, the pin is stale. None
-// means no package.toml, dependencies are by hand
+// means no recipe.toml, dependencies are by hand
 pub fn check(attrs: &Attrs, dir: &Path, sys: Option<&[String]>) -> io::Result<()> {
    check_names(&wanted(attrs, dir)?, sys, "rehash")
 }
@@ -99,7 +99,7 @@ pub fn check_names(wanted: &[String], sys: Option<&[String]>, command: &str) -> 
       return Ok(());
    }
    Err(io::Error::other(format!(
-      "sys-libs: the lock can link {}, missing from [pin] sys in package.toml. `repkgs update \
+      "sys-libs: the lock can link {}, missing from [pin] sys in recipe.toml. `repkgs update \
        {command} <pkg>` rewrites it",
       missing.join(", ")
    )))

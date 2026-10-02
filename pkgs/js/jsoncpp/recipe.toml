@@ -1,0 +1,21 @@
+[upstream]
+purl = "pkg:github/open-source-parsers/jsoncpp"
+
+[[source]]
+key  = "default"
+url  = "https://github.com/open-source-parsers/jsoncpp/archive/refs/tags/{version}.tar.gz"
+hash = "sha256-5cH9G4/TVCM5HX6QSk3P4m5+cwuK4x8hP9FohBcmjik="
+
+[pin]
+version = "1.9.8"
+date    = "2026-06-14"
+tag     = "1.9.8"
+
+[build]
+systems = [ "cmake" ]
+
+[build.cmake.defs]
+BUILD_OBJECT_LIBS                = false
+BUILD_STATIC_LIBS                = true
+JSONCPP_WITH_POST_BUILD_UNITTEST = false
+JSONCPP_WITH_TESTS               = false

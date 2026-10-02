@@ -7,7 +7,7 @@ derivation holds. The *re-* stands for relocatable, reproducible and another try
   `--argstr platform riscv64-linux` cross compiles with it rather than with a second compiler.
 - **Relocatable outputs.** Binaries locate their libraries relative to themselves, so a store
   path copied anywhere still runs. Upstream prebuilt binaries are treated the same way.
-- **Recipes are data.** A package is a `package.toml`, the source pin and the build description
+- **Recipes are data.** A package is a `recipe.toml`, the source pin and the build description
   in one file. Phase code that has to exist is nushell, run by jib, the builder, with no bash and
   no setup hooks.
 - **A compile cache under Nix.** `cc`, `rustc`, `go` and configure probes are cached by content
@@ -63,9 +63,9 @@ $ repkgs info deno                       # version, build systems, platform supp
 
 ## Writing a package
 
-A package is a directory under `pkgs/<first two letters>/<name>/` holding a `package.toml`. Its
+A package is a directory under `pkgs/<first two letters>/<name>/` holding a `recipe.toml`. Its
 `[upstream]`, `[[source]]` and `[pin]` tables say where the source comes from and are what
-uptrack keeps current. Its `[package]` table says how to build it:
+uptrack keeps current. Its `[build]` table says how to build it:
 
 ```toml
 [upstream]
@@ -79,49 +79,57 @@ hash = "sha256-…"
 [pin]
 version = "1.6.58"
 
-[package]
-patches      = [ "upstream-cmake-install-pc-when-generated.patch" ]
-uses         = [ "cmake" ]
-dependencies = [ "zlib" ]
+[build]
+patches = [ "upstream-cmake-install-pc-when-generated.patch" ]
+systems = [ "cmake" ]
+needs   = [ "zlib" ]
 
-[package.cmake.defs]
+[build.cmake.defs]
 PNG_STATIC = false
 PNG_TOOLS  = true
 ```
 
-`uses` picks the build systems, which bring their tools, their phases (configure, build, test,
+`systems` picks the build systems, which bring their tools, their phases (configure, build, test,
 install) and their options, such as `cmake.defs` above, `cargo.features` or `go.tags`. Every build
 system also has `<name>.tool` to swap the program itself. jib declares the options and
 nix/schema.json carries them, so a misspelt field or a wrong type fails evaluation.
 `repkgs options cmake` lists them.
 
-`dependencies` are linked and come from the target platform's set, `buildDependencies` run during
-the build and come from the build machine's. Both are found through the usual search paths (`-I`,
-`-L`, pkg-config, cmake) without further description. `patches` are files beside package.toml,
+`needs` are linked and come from the target platform's set, `tools` run during the build and come
+from the build machine's. Both are found through the usual search paths (`-I`,
+`-L`, pkg-config, cmake) without further description. `patches` are files beside recipe.toml,
 applied after unpacking, and `bin = [ "rg" ]` names the programs when they are not the package's
 name.
 
-Strings may refer to things the file cannot spell: `{pkg:<name>}` and `{tool:<name>}` are packages
-of the target and build sets, `{source:<key>}` a source of this package, `{file:<name>}` a file
-beside it, `{platform.<fact>}` a fact about the target and `{pin.version}` the pinned version.
-`[when.<condition>]` and `[unless.<condition>]` tables merge on top where a condition such as
-`cross`, `os.windows` or `libc.musl` holds. nix/package/manifest.nix documents the whole format.
+What depends on the platform or names another package goes in a `recipe.nix` beside it, a
+function of the target's facts and the package sets returning a list of changes merged over
+`[build]` in order:
+
+```nix
+{ platform, pkgs, when, ... }:
+[
+  { cmake.defs.ZLIB_ROOT = "${pkgs.zlib}"; }
+  (when (platform.os == "windows") { needs = [ "libiconv" ]; })
+]
+```
+
+nix/package/manifest.nix documents the whole format.
 
 Lock files need no translation. For Cargo, Go, npm, pnpm, Yarn, Bundler, Deno, Hex, Hackage and
 LuaRocks a dynamic derivation turns the lock file in the source into fixed-output fetches at build
 time, using the hashes the lock already carries. Go, Hackage and LuaRocks locks carry none, so
 those live in `locks/*.toml`.
 
-When a build system's phases are not enough, `phases` edits its list with `before.<phase>`,
-`after.<phase>`, `replace.<phase>` (a phase or a list) and `remove` (a list), or spells the whole
-list out. A phase is a build system's or a function in a nu module beside package.toml, so
+When a build system's phases are not enough, `before.<phase>`, `after.<phase>`,
+`replace.<phase>` (a phase or a list) and `skip` (a list) edit its list, or `phases` spells the
+whole list out. A phase is a build system's or a function in a nu module beside recipe.toml, so
 `"rust.configure"` is `configure` in `rust.nu`. Its `ctx` holds the paths and facts of the build:
 
 ```toml
-[package.phases]
-remove = [ "cargo.test" ]
+[build]
+skip = [ "cargo.test" ]
 
-[package.phases.replace]
+[build.replace]
 "autotools.configure" = "perl.configure"
 ```
 
@@ -130,8 +138,8 @@ paths from it once installed.
 
 Every build ends the same way. ELF outputs are made relocatable, and `bin/<name> --version` runs
 in an empty environment and must print the pinned version. A `dlopen` that finds nothing during
-that run fails the build unless `tests.dlopen = [ "libudev.so.1" ]` marks it optional, and the run
-repeats from a copy of the closure under another root. `tests.separate = true` moves the test
+that run fails the build unless `check.dlopen = [ "libudev.so.1" ]` marks it optional, and the run
+repeats from a copy of the closure under another root. `check.separate = true` moves the test
 phase into its own derivation.
 
 The compiler driver supplies hardening and `-O2 -g`, not `CFLAGS`. `cc.hardening.fortify = false`
@@ -151,7 +159,7 @@ An out-of-tree package passed through `packages` may still be a `package.nix` ca
 
 ## Keeping it current
 
-`uptrack` (pkgs/ji/jig/src/uptrack, also `repkgs update …`) reads every `package.toml`, asks
+`uptrack` (pkgs/ji/jig/src/uptrack, also `repkgs update …`) reads every `recipe.toml`, asks
 upstream for new versions and rewrites pin and hash:
 
 ```console
@@ -165,7 +173,7 @@ $ uptrack lock fzf       # refresh locks/go.toml from its go.sum
 ## Layout
 
 ```
-pkgs/xx/<name>/   the packages, xx being the name's first two letters, with package.toml, phase
+pkgs/xx/<name>/   the packages, xx being the name's first two letters, with recipe.toml, phase
                   modules (<name>.nu), patches and in-tree sources (src/)
 bootstrap/        seed, stage0 (musl cc), stage1 (llvm), stage2 (a cc per platform)
 nix/              evaluation: package/ turns a manifest into a derivation, build-systems.nix binds

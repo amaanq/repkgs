@@ -41,15 +41,15 @@ carries `-march`.
 
 ## Evaluation
 
-A package is its `package.toml`. nix/package/manifest.nix turns the `[package]` table, with its
-`[when]` and `[unless]` layers and string templates resolved, into a *spec*, and nix/package checks
+A package is its `recipe.toml`. nix/package/manifest.nix turns the `[build]` table, with the
+changes its `recipe.nix` returns merged on top, into a *spec*, and nix/package checks
 that spec against the schema jib emits (an unknown field, or an option of the wrong type or with
 an unknown name, is an error) before making one derivation whose builder is `jib build`, with a
 phase plan and structured JSON attributes. There is no callPackage, mkDerivation or module layer
 and no fixpoint per package.
 
 ```
-pkgs/zl/zlib/package.toml    attribute = directory name, sharded by its first two letters
+pkgs/zl/zlib/recipe.toml     attribute = directory name, sharded by its first two letters
 pkgs/cp/cpython314/          another major version is another package, pkgs/aliases.toml maps cpython to it
 ```
 
@@ -58,11 +58,11 @@ pkgs/cp/cpython314/          another major version is another package, pkgs/alia
 package passed through `packages` may also be a `package.nix` calling `package { … }`.
 
 Every package exists on every platform, and `pkg.supported` says whether it is meant for it without
-forcing the derivation. Prebuilt packages are for the platforms their `package.toml` has tarballs
+forcing the derivation. Prebuilt packages are for the platforms their `recipe.toml` has tarballs
 for (keys such as `x86_64-linux` and `aarch64-macos`), a recipe narrows itself with
-`platforms.{cpu,os,abi,libc}`, `platforms.posix = true` or `platforms.cross = false`, and an
+`targets.{cpu,os,abi,libc}`, `targets.posix = true` or `targets.cross = false`, and an
 unsupported dependency makes its dependents unsupported. Only the store paths throw (`bun:
-package.toml has no 'riscv64-linux' source`), so CI filters on a boolean rather than `tryEval`,
+recipe.toml has no 'riscv64-linux' source`), so CI filters on a boolean rather than `tryEval`,
 which would hide real errors too.
 
 ### Overrides
@@ -75,7 +75,7 @@ import ./. {
     zlib.autotools.flags.append = [ "--zprefix" ];
     git.dependencies.remove = [ "pcre2" ];        # strings are packages of the final set
     curl.env.merge = { CURL_DEBUG = "1"; };
-    jq.pin.merge = { version = "1.8.3"; };        # package.toml read again under this pin
+    jq.pin.merge = { version = "1.8.3"; };        # recipe.toml read again under this pin
     jq.hash.merge = { default = "sha256-…"; };
     gcc.edit = spec: spec // { … };               # for what the verbs cannot say
   };
@@ -120,7 +120,7 @@ an undeclared name fails evaluation, the result goes into the derivation and rea
 
 ## Sources and lock files
 
-A `package.toml` source becomes a fixed-output fetch named after its URL, so a bumped version with
+A `recipe.toml` source becomes a fixed-output fetch named after its URL, so a bumped version with
 a stale hash fails instead of reusing the old tarball. Archives are unpacked into the store once.
 
 - **Upstream lock files are neither copied nor hashed here.** `fetch.cargoVendor { source }` is a
@@ -191,21 +191,21 @@ processes and hand their environment and build context back to jib. A package na
 systems and edits their phases:
 
 ```toml
-[package]
-uses = [ "cmake" ]                   # the phases default to the build system's
+[build]
+systems = [ "cmake" ]                # the phases default to the build system's
 
-[package.cmake.defs]
+[build.cmake.defs]
 WITH_FOO = true                      # typed options, checked at evaluation
 
-[package.phases.after]
-"cmake.install" = [ "foo.gen" ]      # foo.gen is `gen` in foo.nu beside package.toml
+[build.after]
+"cmake.install" = [ "foo.gen" ]      # foo.gen is `gen` in foo.nu beside recipe.toml
 ```
 
 - **Dependencies contribute data and never behaviour.** Each output carries an `exports.json` of
   include, lib and pkg-config directories, environment and propagation. `prepare` turns the closure
   into search paths and the flags jig adds, and nothing a dependency ships runs in another build.
-- **Two dependency lists**, `buildDependencies` for the build machine, on `PATH`, and
-  `dependencies` for the target.
+- **Two dependency lists**, `tools` for the build machine, on `PATH`, and
+  `needs` for the target.
 - **Cross compiling belongs to the build system**, driven by one platform record: `--host` and
   `config.site`, a meson cross file, a cmake toolchain file, `CARGO_TARGET_*`, `GOARCH`. Tests run
   under qemu.

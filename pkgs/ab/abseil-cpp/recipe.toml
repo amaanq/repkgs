@@ -1,0 +1,22 @@
+[upstream]
+purl = "pkg:github/abseil/abseil-cpp"
+
+[[source]]
+key  = "default"
+url  = "https://github.com/abseil/abseil-cpp/releases/download/{tag}/abseil-cpp-{tag}.tar.gz"
+hash = "sha256-CEtLO4il9/jk+bFDDV0rXeX1OkirA0u6nxrSiWq0NPM="
+
+[pin]
+version = "20260817.0"
+date    = "2026-08-18"
+tag     = "20260817.0"
+
+[build]
+needs   = [ "googletest" ]
+systems = [ "cmake" ]
+
+[build.cmake.defs]
+ABSL_BUILD_TESTING           = true
+ABSL_PROPAGATE_CXX_STD       = true
+ABSL_USE_EXTERNAL_GOOGLETEST = true
+CMAKE_CXX_STANDARD           = "17"

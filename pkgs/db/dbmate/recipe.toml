@@ -1,0 +1,30 @@
+[upstream]
+purl = "pkg:github/amacneil/dbmate"
+
+[[source]]
+key  = "default"
+url  = "https://github.com/amacneil/dbmate/archive/refs/tags/{tag}.tar.gz"
+hash = "sha256-DOgDIBV0EJLpijvbHT4GF7vZRkyGmWCHtEPDcVozeSc="
+
+[pin]
+version = "2.35.1"
+tag     = "v2.35.1"
+date    = "2026-08-26"
+sys     = [ "sqlite" ]
+
+[locks]
+go = "."
+
+[build]
+systems = [ "go" ]
+tools   = [ "sqlite" ]
+
+[build.check]
+version = true
+
+[build.go]
+packages     = [ "." ]
+testPackages = [ "./pkg/dbutil/...", "./pkg/driver/sqlite/..." ]
+
+[build.targets]
+abi = [ "gnu", "apple" ]

@@ -1,6 +1,6 @@
 # Builder behaviour, one test per directory. Its test.nu runs under the bootstrap's nu with builder/
 # and lib/ on the include path and $env.fixtures naming the directory. A directory with a
-# package.toml or package.nix is first built as the out-of-tree package test-<name>, handed over as
+# recipe.toml or package.nix is first built as the out-of-tree package test-<name>, handed over as
 # $env.pkg and $env.debug, so each test needs only its own toolchain. `nix-build tests/builder -A
 # <name>` runs one and `repkgs test` all.
 {
@@ -30,10 +30,10 @@ let
   built =
     name:
     let
-      manifest = testDir name + "/package.toml";
+      manifest = testDir name + "/recipe.toml";
     in
     pathExists (testDir name + "/package.nix")
-    || pathExists manifest && fromTOML (readFile manifest) ? package;
+    || pathExists manifest && fromTOML (readFile manifest) ? build;
   # named test-<name>, since a bare `go` would replace the go that the go build system runs
   set = import ../../nix/set.nix {
     inherit

@@ -1,0 +1,18 @@
+[upstream]
+purl = "pkg:pypi/flit-core"
+
+[[source]]
+key  = "default"
+url  = "https://files.pythonhosted.org/packages/source/f/flit_core/flit_core-{version}.tar.gz"
+hash = "sha256-KfMVkTWDksIUkmKExGkfzm4UCxdGpQr7jmobNMJQF8A="
+
+[pin]
+version = "4.1.0"
+date    = "2026-09-16"
+
+[build]
+systems = [ "python" ]
+
+[build.python]
+backend = "flit_core"
+module  = "flit_core"

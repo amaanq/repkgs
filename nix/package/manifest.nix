@@ -1,27 +1,25 @@
-# A package described by its package.toml alone, no package.nix. Besides [upstream], [[source]]
-# and [pin] (nix/sources.nix) the file holds:
-#   from = "<package>"   that package's sources instead of its own, for a subproject of its tarball
-#   helpers = "python"   the interpreter also carries .env and .project (nix/python.nix)
-#   [package]           recipe fields, `name` defaults to the directory
-#   [vars]              named strings for {var:…}
-#   [when.<condition>]  merged on top where the condition holds, [unless.<condition>] where not
-# Conditions are `cross`, `native`, `os.<os>`, `cpu.<cpu>`, `libc.<libc>` and `binfmt.<binfmt>`,
-# applied in that order. Tables merge, lists append, anything else is replaced.
+# A package described by its recipe.toml and, where some of it depends on the platform or names
+# other packages, a recipe.nix. Besides [upstream], [[source]] and [pin] (nix/sources.nix) the
+# toml holds:
+#   sources-from = "<package>"  that package's sources instead of its own, for a subproject of
+#                               its tarball
+#   helpers = "python"          the interpreter also carries .env and .project (nix/python.nix)
+#   [build]                     recipe fields as plain data, `name` defaults to the directory
 #
-# Strings may name things: {pkg:<name>} and {tool:<name>} are a package of the target and the
-# build set, {src:<name>} a package's source, {source:<key>} one of this package's sources,
-# {file:<name>} a file beside package.toml, {platform.<path>} a platform fact (`march.0`),
-# {toolchain.sysroot} the sysroot, {pin.version} and {pin.tag} the pinned release, {var:<name>} a
-# var. A string that is only one of these is that value itself, a package, a source tree or a
-# path. "{null}" is null, which TOML cannot spell.
+# recipe.nix is a function of { platform, pkgs, tools, toolchain, pin, source, file, fetch, tree,
+# when } to a list of changes, each a table of the same fields merged over [build] in order.
+# Tables merge, lists append, anything else is replaced. `pkgs` and `tools` are the target and
+# build sets, `source <key>` one of this package's sources, `file <name>` a file beside the
+# recipe, `fetch.<producer>` a nix/fetch.nix producer, `when <cond> <change>` the change or
+# nothing, and `tree { dir, name, exclude, files }` a local tree beside the recipe without the
+# `exclude`d names, and with `files` only the files whose name is listed or, for an entry starting
+# with ".", ends in it.
 #
-# Two tables stand for values: { fetch = "<producer>", … } is that nix/fetch.nix producer called
-# with the other keys, { tree = "<dir>", name, exclude, files } a local tree beside package.toml
-# without the `exclude`d names, and with `files` only the files whose name is listed or, for an
-# entry starting with ".", ends in it.
-#
-# Entries of `dependencies` and `tests.dependencies` are target packages by name, entries of
-# `buildDependencies` build packages, and `patches` are files beside package.toml.
+# Field names differ from the recipe the build systems take: `systems` is `uses`, `tools`
+# `buildDependencies`, `needs` `dependencies`, `targets` `platforms`, `after`, `before`, `skip` and
+# `replace` the `phases` table (`phases` itself where it lists every phase), and `check` is
+# `tests`, false for `tests.run = false`. Entries of `needs` and `check.needs` are target packages
+# by name, of `tools` build packages, and `patches` are files beside the recipe.
 {
   dir,
   name,
@@ -44,26 +42,23 @@ let
     elem
     filter
     foldl'
-    head
     isAttrs
+    isBool
     isList
     isString
-    length
     mapAttrs
-    split
+    pathExists
+    removeAttrs
     ;
-  where = "${name}: package.toml";
+  where = "${name}: recipe.toml";
   known = [
     "upstream"
     "source"
     "pin"
     "watch"
     "locks"
-    "package"
-    "vars"
-    "when"
-    "unless"
-    "from"
+    "build"
+    "sources-from"
     "helpers"
   ];
   strays = filter (key: !elem key known) (attrNames table);
@@ -77,140 +72,54 @@ let
     else
       top;
 
-  facts = {
-    inherit (platform)
-      os
-      cpu
-      libc
-      binfmt
-      ;
+  renamed = {
+    systems = "uses";
+    tools = "buildDependencies";
+    needs = "dependencies";
+    targets = "platforms";
   };
-  inherit (builtins.fromJSON (builtins.readFile ../schema.json)) targets systems;
-  values = kind: builtins.catAttrs kind targets;
-  # the tables of one [when] or [unless] block whose condition matches `holds`
-  selected =
-    block: holds:
-    let
-      flag =
-        key:
-        if block ? ${key} && holds (if key == "cross" then platform.cross else !platform.cross) then
-          [ block.${key} ]
-        else
-          [ ];
-      keyed =
-        kind:
-        let
-          options = block.${kind} or { };
-          unknown = filter (value: !elem value (values kind)) (attrNames options);
-        in
-        if unknown != [ ] then
-          throw "${where}: no ${kind} ${concatStringsSep ", " unknown}"
-        else
-          map (value: options.${value}) (filter (value: holds (value == facts.${kind})) (attrNames options));
-      strayConditions = filter (
-        key:
-        !elem key [
-          "cross"
-          "native"
-          "os"
-          "cpu"
-          "libc"
-          "binfmt"
-        ]
-      ) (attrNames block);
-    in
-    if strayConditions != [ ] then
-      throw "${where}: no condition ${concatStringsSep ", " strayConditions}"
-    else
-      flag "native" ++ flag "cross" ++ keyed "os" ++ keyed "cpu" ++ keyed "libc" ++ keyed "binfmt";
-
-  layers =
-    selected (table.when or { }) (holds: holds) ++ selected (table.unless or { }) (holds: !holds);
-  merged =
-    foldl' merge
-      {
-        package = table.package or { };
-        vars = table.vars or { };
-      }
-      (
-        map (layer: {
-          package = removeAttrs layer [ "vars" ];
-          vars = layer.vars or { };
-        }) layers
-      );
-
-  lookup =
-    kind: key:
-    if kind == "pkg" then
-      pkgs.${key} or (throw "${where}: no package ${key}")
-    else if kind == "tool" then
-      buildPkgs.${key} or (throw "${where}: no package ${key}")
-    else if kind == "source" then
-      sources.fetch key
-    else if kind == "src" then
-      (pkgs.${key} or (throw "${where}: no package ${key}")).src
-    else if kind == "file" then
-      dir + "/${key}"
-    else if kind == "var" then
-      merged.vars.${key} or (throw "${where}: no var ${key}")
-    else
-      let
-        found =
-          builtins.foldl'
-            (
-              value: field:
-              if isAttrs value && value ? ${field} then
-                value.${field}
-              else if
-                isList value && builtins.match "[0-9]+" field != null && builtins.fromJSON field < length value
-              then
-                builtins.elemAt value (builtins.fromJSON field)
-              else
-                null
-            )
-            (
-              if kind == "toolchain" then
-                toolchain
-              else if kind == "pin" then
-                { inherit (sources) version tag; }
-              else
-                platform
-            )
-            (filter isString (split "[.]" key));
-      in
-      if found == null then throw "${where}: no ${kind} fact ${key}" else found;
-  pattern = "[{](pkg|tool|src|source|file|var):([^}]+)[}]|[{](platform|toolchain|pin)[.]([A-Za-z0-9.]+)[}]";
-  capture =
-    groups:
-    if head groups != null then
-      lookup (head groups) (builtins.elemAt groups 1)
-    else
-      lookup (builtins.elemAt groups 2) (builtins.elemAt groups 3);
-  expand =
-    text:
-    let
-      parts = split pattern text;
-    in
-    if text == "{null}" then
-      null
-    else if length parts == 3 && head parts == "" && builtins.elemAt parts 2 == "" then
-      capture (builtins.elemAt parts 1)
-    else
-      concatStringsSep "" (map (part: if isList part then toString (capture part) else part) parts);
-  deep =
+  phaseFields = {
+    after = "after";
+    before = "before";
+    skip = "remove";
+    replace = "replace";
+  };
+  checks =
     value:
-    if isString value then
-      expand value
-    else if isList value then
-      map deep value
-    else if isAttrs value && value ? fetch then
-      fetch.${value.fetch} (deep (removeAttrs value [ "fetch" ]))
-    else if isAttrs value && value ? tree then
-      tree value
-    else if isAttrs value then
-      mapAttrs (_: deep) value
+    if isBool value then
+      { run = value; }
     else
-      value;
+      removeAttrs value [ "needs" ] // (if value ? needs then { dependencies = value.needs; } else { });
+  internal =
+    change:
+    let
+      phased = filter (key: change ? ${key}) (attrNames phaseFields);
+      plain = removeAttrs change (attrNames renamed ++ attrNames phaseFields ++ [ "check" ]);
+    in
+    plain
+    // builtins.listToAttrs (
+      map (key: {
+        name = renamed.${key};
+        value = change.${key};
+      }) (filter (key: change ? ${key}) (attrNames renamed))
+    )
+    // (if change ? check then { tests = checks change.check; } else { })
+    // (
+      if phased == [ ] then
+        { }
+      else
+        {
+          phases =
+            (change.phases or { })
+            // builtins.listToAttrs (
+              map (key: {
+                name = phaseFields.${key};
+                value = change.${key};
+              }) phased
+            );
+        }
+    );
+
   tree =
     spec:
     let
@@ -226,7 +135,7 @@ let
         ) spec.files;
     in
     builtins.path {
-      path = dir + "/${spec.tree}";
+      path = dir + "/${spec.dir}";
       inherit (spec) name;
       filter =
         path: type:
@@ -235,11 +144,29 @@ let
         in
         !elem base exclude && (type == "directory" || !(spec ? files) || wanted base);
     };
+  changes =
+    if pathExists (dir + "/recipe.nix") then
+      import (dir + "/recipe.nix") {
+        inherit
+          platform
+          pkgs
+          toolchain
+          fetch
+          tree
+          ;
+        tools = buildPkgs;
+        pin = { inherit (sources) version tag; };
+        source = sources.fetch;
+        file = file: dir + "/${file}";
+        when = holds: change: if holds then change else { };
+      }
+    else
+      [ ];
+  fields = foldl' merge (internal (table.build or { })) (map internal changes);
 
   byName =
     set: entry:
     if isString entry then set.${entry} or (throw "${where}: no package ${entry}") else entry;
-  fields = deep merged.package;
   resolved =
     fields
     // {
@@ -265,6 +192,7 @@ let
         { }
     )
     // (if fields ? patches then { patches = map (file: dir + "/${file}") fields.patches; } else { });
+  inherit (builtins.fromJSON (builtins.readFile ../schema.json)) systems;
   # a build system's table is emptied where `uses` does not list the system
   made = package (
     resolved

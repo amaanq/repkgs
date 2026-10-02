@@ -1,0 +1,23 @@
+[upstream]
+frozen = "Info-ZIP, last release 2009"
+
+[[source]]
+key  = "default"
+url  = "https://downloads.sourceforge.net/infozip/zip30.tar.gz"
+hash = "sha256-10O+PGEw/qc1PXLB1RidFuy8oc3erFNh2sfphZtykkM="
+
+[pin]
+version = "3.0"
+
+[build]
+patches = [ "upstream-format-security.patch" ]
+phases  = [ "zip.build" ]
+
+[build.check]
+version = "-v"
+
+[build.install]
+"bin/zip" = "zip"
+
+[build.targets]
+posix = true

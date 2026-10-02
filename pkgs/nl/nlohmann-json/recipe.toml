@@ -1,0 +1,18 @@
+[upstream]
+purl = "pkg:github/nlohmann/json"
+
+[[source]]
+key  = "default"
+url  = "https://github.com/nlohmann/json/releases/download/{tag}/json.tar.xz"
+hash = "sha256-tOInM4YYi/cbHCWP2R0jlFzlaTN0ZVgHFMWagz9Wnvk="
+
+[pin]
+version = "3.12.0"
+tag     = "v3.12.0"
+
+[build]
+systems = [ "cmake" ]
+
+[build.cmake.defs]
+JSON_BuildTests      = false
+JSON_MultipleHeaders = true

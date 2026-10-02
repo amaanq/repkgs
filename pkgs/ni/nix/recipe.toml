@@ -1,0 +1,46 @@
+[upstream]
+purl = "pkg:github/NixOS/nix"
+
+[[source]]
+key  = "default"
+url  = "https://github.com/NixOS/nix/archive/refs/tags/{tag}.tar.gz"
+hash = "sha256-C/YEm/5IPiAMxQH5aHlkwgQMkLqK7NVsudEWdlzBZAA="
+
+[pin]
+version = "2.35.2"
+tag     = "2.35.2"
+date    = "2026-08-12"
+
+[build]
+check = false
+needs = [
+  "bzip2",
+  "curl",
+  "libarchive",
+  "openssl",
+  "sqlite",
+  "xz",
+  "zlib",
+  "zstd",
+  "bdw-gc",
+  "blake3",
+  "boost",
+  "libsodium",
+  "lowdown",
+  "brotli",
+  "nlohmann-json",
+  "libgit2",
+  "toml11",
+  "editline",
+  "mimalloc",
+]
+patches = [ "upstream-clang23-nodiscard.patch", "relocatable.patch" ]
+systems = [ "meson" ]
+tools = [ "bison", "cmake", "flex" ]
+
+[build.meson.defs]
+doc-gen            = false
+functional-tests   = false
+json-schema-checks = false
+"nix:mimalloc"     = "enabled"
+unit-tests         = false

@@ -6,10 +6,10 @@ def main [] {
   exit 2
 }
 
-# package.toml files and phase modules name their package by directory
+# recipes and phase modules name their package by directory
 def "main package-scripts" [...files: string]: nothing -> nothing {
   if ($env.REPKGS_NO_EVAL? | default "") == "1" { return }
-  let packaged = ($files | where $it =~ '^pkgs/[^/]+/[^/]+/(package\.toml|[^/]+\.nu)$')
+  let packaged = ($files | where $it =~ '^pkgs/[^/]+/[^/]+/(recipe\.(toml|nix)|[^/]+\.nu)$')
   if ($packaged | is-empty) { return }
   ^nu --no-config-file lints/package-scripts.nu ...$packaged
 }

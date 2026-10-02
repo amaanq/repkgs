@@ -1,0 +1,20 @@
+[upstream]
+purl = "pkg:pypi/cython"
+
+[[source]]
+key  = "default"
+url  = "https://files.pythonhosted.org/packages/source/c/cython/cython-{version}.tar.gz"
+hash = "sha256-FqxiQqEW/pHhqz3uhKYYlNHyC2FJvQJ3OR/iCYF6088="
+
+[pin]
+version = "3.3.0"
+date    = "2026-08-22"
+
+[build]
+bin     = [ "cython" ]
+needs   = [ "cpython" ]
+systems = [ "python" ]
+tools   = [ "python-setuptools" ]
+
+[build.python]
+module = "Cython"

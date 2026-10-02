@@ -1,0 +1,25 @@
+[upstream]
+purl = "pkg:gnu/bison"
+
+[[source]]
+key  = "default"
+url  = "https://ftp.gnu.org/gnu/bison/bison-{version}.tar.xz"
+hash = "sha256-qdirDBXUSQaXx0yN71wdM1mdBepiSSoKa20GdpLbKHA="
+
+[pin]
+version = "3.8.2"
+
+[build]
+bootstrapTools = true
+needs          = [ "m4" ]
+patches        = [ "relocatable.patch" ]
+systems        = [ "autotools" ]
+
+[build.autotools]
+makeFlags = [ "TESTSUITEFLAGS=-j$(NIX_BUILD_CORES) 1-763 765-776" ]
+
+[build.before]
+"autotools.test" = [ "bison.glr-dir" ]
+
+[build.check]
+separate = true

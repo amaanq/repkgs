@@ -23,7 +23,7 @@ pkgs.mkShell {
     (import ./nix/uptrack.nix { inherit pkgs; })
     # bsdtar, so uptrack's prefetch unpacks the way nix/sources.nix does
     pkgs.libarchive
-    # uptrack formats package.toml the way nuff does
+    # uptrack formats recipe.toml the way nuff does
     pkgs.taplo
   ]
   ++ pkgs.lib.optionals wild [

@@ -1,4 +1,4 @@
-# What each bootstrap recipe reads besides its stage: sources from the packages' package.toml,
+# What each bootstrap recipe reads besides its stage: sources from the packages' recipe.toml,
 # the C sources of the target-side runtime, patches
 {
   pkg,
@@ -29,8 +29,8 @@ in
       (pkg "llvm" + "/jig-absent-log.patch")
     ];
     targets =
-      (builtins.fromTOML (builtins.readFile (pkg "llvm" + "/package.toml")))
-      .package.cmake.defs.LLVM_TARGETS_TO_BUILD;
+      (builtins.fromTOML (builtins.readFile (pkg "llvm" + "/recipe.toml")))
+      .build.cmake.defs.LLVM_TARGETS_TO_BUILD;
   };
   cmake.src = source "cmake-bootstrap";
   compiler-rt.src = llvm;

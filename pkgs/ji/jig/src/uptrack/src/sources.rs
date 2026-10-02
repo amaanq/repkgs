@@ -1,4 +1,4 @@
-//! `package.toml`, one per package, validated into package records.
+//! `recipe.toml`, one per package, validated into package records.
 //!
 //! Humans write `[upstream]`, `[[source]].url`, `[watch]` and `[locks]`, the
 //! tool writes `hash` and `[pin]`.
@@ -73,31 +73,25 @@ impl Source {
 #[serde(deny_unknown_fields)]
 struct File {
    #[serde(default)]
-   upstream: Upstream,
+   upstream:      Upstream,
    #[serde(default)]
-   source:   Vec<Source>,
+   source:        Vec<Source>,
    #[serde(default)]
-   pin:      Map<String, Value>,
+   pin:           Map<String, Value>,
    #[serde(default)]
-   watch:    Watch,
+   watch:         Watch,
    #[serde(default)]
-   locks:    BTreeMap<String, String>,
-   // the build half of package.toml, nix/package/manifest.nix reads and checks it
-   #[serde(default, rename = "package")]
-   _package: Option<IgnoredAny>,
-   #[serde(default, rename = "vars")]
-   _vars:    Option<IgnoredAny>,
-   #[serde(default, rename = "when")]
-   _when:    Option<IgnoredAny>,
-   #[serde(default, rename = "unless")]
-   _unless:  Option<IgnoredAny>,
-   #[serde(default, rename = "from")]
-   _from:    Option<IgnoredAny>,
+   locks:         BTreeMap<String, String>,
+   // the build half of recipe.toml, nix/package/manifest.nix reads and checks it
+   #[serde(default, rename = "build")]
+   _build:        Option<IgnoredAny>,
+   #[serde(default, rename = "sources-from")]
+   _sources_from: Option<IgnoredAny>,
    #[serde(default, rename = "helpers")]
-   _helpers: Option<IgnoredAny>,
+   _helpers:      Option<IgnoredAny>,
 }
 
-/// A package as its package.toml describes it, what every stage passes on.
+/// A package as its recipe.toml describes it, what every stage passes on.
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Package {
    pub name:     String,
@@ -137,7 +131,7 @@ fn sources_files(root: &Path) -> io::Result<Vec<PathBuf>> {
             if !name.starts_with('.') && name != "target" && !name.starts_with("result") {
                pending.push(path);
             }
-         } else if name == "package.toml" {
+         } else if name == "recipe.toml" {
             found.push(path);
          }
       }
@@ -211,7 +205,7 @@ fn parse(file: &Path) -> io::Result<Option<Package>> {
    }))
 }
 
-/// Every package.toml under `root`, validated, as package records.
+/// Every recipe.toml under `root`, validated, as package records.
 pub fn discover(root: &Path) -> io::Result<Vec<Package>> {
    sources_files(root)?
       .iter()

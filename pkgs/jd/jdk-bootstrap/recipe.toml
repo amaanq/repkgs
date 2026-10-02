@@ -1,0 +1,33 @@
+[upstream]
+purl = "pkg:github/adoptium/temurin25-binaries"
+
+[[source]]
+key  = "x86_64-linux"
+url  = "https://github.com/adoptium/temurin25-binaries/releases/download/{path}/OpenJDK25U-jdk_x64_linux_hotspot_{file}.tar.gz"
+hash = "sha256-SUUM2/zU6yzZU5HP26VcaOZOeTVOnpOWH8BdNrK2m00="
+
+[[source]]
+key  = "aarch64-linux"
+url  = "https://github.com/adoptium/temurin25-binaries/releases/download/{path}/OpenJDK25U-jdk_aarch64_linux_hotspot_{file}.tar.gz"
+hash = "sha256-dyESeembVdBD65bEp3TswedOR55jpgSmtFbg9OiC/TE="
+
+[[source]]
+key  = "riscv64-linux"
+url  = "https://github.com/adoptium/temurin25-binaries/releases/download/{path}/OpenJDK25U-jdk_riscv64_linux_hotspot_{file}.tar.gz"
+hash = "sha256-j0YxRbvXEPicQowRpHoPrYiFLkDCj5ac2u0DAF0cVMI="
+
+[pin]
+version = "25.0.4.1+1"
+tag     = "jdk-25.0.4.1+1"
+path    = "jdk-25.0.4.1%2B1"
+file    = "25.0.4.1_1"
+
+[build]
+bin      = [ "java", "javac" ]
+exports  = false
+needs    = [ "zlib", "alsa-lib", "freetype" ]
+phases   = [ "jdk-bootstrap.headless" ]
+prebuilt = true
+
+[build.install]
+"." = [ "bin", "conf", "include", "jmods", "lib", "release" ]

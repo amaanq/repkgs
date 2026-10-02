@@ -1,0 +1,9 @@
+[build]
+systems = [ "go" ]
+version = "1"
+
+[build.check]
+version = "hello"
+
+[build.go]
+packages = [ "." ]

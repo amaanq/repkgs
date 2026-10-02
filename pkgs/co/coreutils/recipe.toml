@@ -1,0 +1,36 @@
+[upstream]
+purl = "pkg:gnu/coreutils"
+
+[[source]]
+key  = "default"
+url  = "https://ftp.gnu.org/gnu/coreutils/coreutils-{version}.tar.xz"
+hash = "sha256-Me7KhfG1FwcGTEXzLj/STDtkOyCIxdRFoD8WEZt8Oh4="
+
+[pin]
+version = "9.12"
+date    = "2026-09-14"
+
+[build]
+bin            = [ "ls", "cp", "install", "sort" ]
+bootstrapTools = true
+check          = false
+patches        = [ "relocatable.patch" ]
+systems        = [ "autotools" ]
+
+[build.autotools]
+flags = [
+  "--disable-acl",
+  "--disable-xattr",
+  "--disable-libcap",
+  "--without-selinux",
+  "--without-openssl",
+  "--without-libgmp",
+  "--enable-no-install-program=kill,uptime",
+  "--enable-single-binary=symlinks",
+]
+
+[build.env]
+FORCE_UNSAFE_CONFIGURE = "1"
+
+[build.targets]
+posix = true

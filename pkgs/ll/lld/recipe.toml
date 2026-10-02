@@ -1,0 +1,21 @@
+sources-from = "llvm"
+
+[build]
+bin     = [ "ld.lld" ]
+needs   = [ "llvm", "zlib", "zstd" ]
+skip    = [ "cmake.test" ]
+systems = [ "cmake" ]
+tools   = [ "cpython" ]
+
+[build.check]
+run     = false
+version = true
+
+[build.cmake]
+root = "lld"
+
+[build.cmake.defs]
+BUILD_SHARED_LIBS       = false
+LLVM_INCLUDE_TESTS      = false
+LLVM_LINK_LLVM_DYLIB    = true
+LLVM_PARALLEL_LINK_JOBS = 4

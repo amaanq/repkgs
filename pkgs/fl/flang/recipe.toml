@@ -1,0 +1,26 @@
+sources-from = "llvm"
+
+[build]
+bin     = [ "flang" ]
+needs   = [ "llvm", "zlib", "zstd", "clang", "mlir" ]
+skip    = [ "cmake.test" ]
+systems = [ "cmake" ]
+tools   = [ "cpython", "llvm" ]
+
+[build.check]
+run     = false
+version = true
+
+[build.cmake]
+root = "flang"
+
+[build.cmake.defs]
+BUILD_SHARED_LIBS       = false
+FLANG_INCLUDE_DOCS      = false
+FLANG_INCLUDE_TESTS     = false
+LLVM_INCLUDE_TESTS      = false
+LLVM_LINK_LLVM_DYLIB    = true
+LLVM_PARALLEL_LINK_JOBS = 4
+
+[build.targets]
+cross = false

@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 # For cpus upstream ships no binaries for, cross builds our own <pkg> here, uploads its bundled
 # output as a nar to the GitHub release bootstrap-<pkg>-<version> and adds a <cpu> source to
-# <pkg>-bootstrap's package.toml. That set then fetches it like any upstream tarball, as a fixed
+# <pkg>-bootstrap's recipe.toml. That set then fetches it like any upstream tarball, as a fixed
 # output with no tie to this machine's derivations.
 #   tools/upload-bootstrap.nu jdk [--cpus riscv64] [--repo Mic92/repkgs] [--store-path /nix/store/…]
 
@@ -13,7 +13,7 @@ def main [
 ]: nothing -> nothing {
   let root = ($env.CURRENT_FILE | path dirname | path dirname)
   for pkg in $pkgs {
-    let manifest = (glob $"($root)/pkgs/*/($pkg)-bootstrap/package.toml" | first)
+    let manifest = (glob $"($root)/pkgs/*/($pkg)-bootstrap/recipe.toml" | first)
     let version  = (^nix-instantiate --eval --strict --json $root -A $"($pkg).version" | from json)
     let tag      = $"bootstrap-($pkg)-($version)"
 

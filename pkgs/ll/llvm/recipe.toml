@@ -1,0 +1,43 @@
+[upstream]
+purl  = "pkg:github/llvm/llvm-project"
+allow = "==23.*"
+
+[[source]]
+key  = "default"
+url  = "https://github.com/llvm/llvm-project/releases/download/{tag}/llvm-project-{version}.src.tar.xz"
+hash = "sha256-iAcWcsfrEk2V9siWaMcUBzSBLcCh7oubhorrKmh/EBg="
+
+[pin]
+version = "23.1.1"
+tag     = "llvmorg-23.1.1"
+date    = "2025-12-16"
+
+[build]
+bin     = [ "llvm-config" ]
+check   = false
+needs   = [ "zlib", "zstd" ]
+patches = [ "upstream-x86-vastart-stack-probe.patch", "jig-absent-log.patch" ]
+systems = [ "cmake" ]
+tools   = [ "cpython" ]
+
+[build.cmake]
+root = "llvm"
+
+[build.cmake.defs]
+BUILD_SHARED_LIBS       = false
+LLVM_BUILD_LLVM_DYLIB   = true
+LLVM_ENABLE_BINDINGS    = false
+LLVM_ENABLE_LIBEDIT     = false
+LLVM_ENABLE_LIBPFM      = false
+LLVM_ENABLE_LIBXML2     = false
+LLVM_ENABLE_TERMINFO    = false
+LLVM_ENABLE_ZLIB        = "FORCE_ON"
+LLVM_ENABLE_ZSTD        = "FORCE_ON"
+LLVM_INCLUDE_BENCHMARKS = false
+LLVM_INCLUDE_DOCS       = false
+LLVM_INCLUDE_EXAMPLES   = false
+LLVM_INCLUDE_TESTS      = false
+LLVM_INSTALL_UTILS      = false
+LLVM_LINK_LLVM_DYLIB    = true
+LLVM_PARALLEL_LINK_JOBS = 4
+LLVM_TARGETS_TO_BUILD   = "X86;AArch64;RISCV;LoongArch;PowerPC;ARM;WebAssembly;BPF"

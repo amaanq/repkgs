@@ -1,0 +1,11 @@
+[build]
+needs   = [ "cpython" ]
+systems = [ "python" ]
+tools   = [ "python-setuptools" ]
+version = "0.3"
+
+[build.check]
+version = "tpy-hello"
+
+[build.python]
+module = "tpy"

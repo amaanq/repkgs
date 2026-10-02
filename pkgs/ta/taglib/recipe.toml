@@ -1,0 +1,21 @@
+[upstream]
+purl = "pkg:github/taglib/taglib"
+
+[[source]]
+key  = "default"
+url  = "https://github.com/taglib/taglib/archive/refs/tags/{tag}.tar.gz"
+hash = "sha256-8q7goHzzAfiqjy+l1gtSVhiLIuwzbcKa3qywtnj1f9s="
+
+[pin]
+version = "2.3.2"
+date    = "2026-09-05"
+tag     = "v2.3.2"
+
+[build]
+check   = false
+needs   = [ "zlib", "utf8cpp" ]
+patches = [ "relocatable.patch" ]
+systems = [ "cmake" ]
+
+[build.cmake.defs]
+WITH_ZLIB = true

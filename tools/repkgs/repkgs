@@ -121,7 +121,7 @@ def "main options" [
   }
 }
 
-# start a package directory whose package.toml comes from a purl and a url template (uptrack init)
+# start a package directory whose recipe.toml comes from a purl and a url template (uptrack init)
 def "main new" [
   name: string # attribute name
   purl: string # pkg:github/owner/repo, pkg:pypi/name, pkg:gnu/name and the like
@@ -133,11 +133,11 @@ def "main new" [
     rm -rf $dir
     fail $"uptrack init failed for ($purl), nothing written"
   }
-  let manifest = $"($dir)/package.toml"
-  if not ((open $manifest) | columns | any {|table| $table == package }) {
-    "\n[package]\nuses = [ \"autotools\" ]\n" | save --append $manifest
+  let manifest = $"($dir)/recipe.toml"
+  if not ((open $manifest) | columns | any {|table| $table == build }) {
+    "\n[build]\nsystems = [ \"autotools\" ]\n" | save --append $manifest
   }
-  print -e $"($dir): fill in the [package] table, then repkgs build ($name)"
+  print -e $"($dir): fill in the [build] table, then repkgs build ($name)"
 }
 
 # uptrack check, apply, lock, verify, rehash or list over the tree. The development shell has

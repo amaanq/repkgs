@@ -1,0 +1,28 @@
+sources-from = "llvm21"
+
+[build]
+bin     = [  ]
+check   = false
+needs   = [ "llvm21", "zlib", "zstd" ]
+patches = [  ]
+skip    = [ "cmake.test" ]
+systems = [ "cmake" ]
+tools   = [ "cpython" ]
+
+[build.cmake]
+root = "clang"
+
+[build.cmake.defs]
+BUILD_SHARED_LIBS                     = false
+CLANG_BUILD_EXAMPLES                  = false
+CLANG_BUILD_TOOLS                     = false
+CLANG_ENABLE_ARCMT                    = false
+CLANG_ENABLE_STATIC_ANALYZER          = false
+CLANG_INCLUDE_DOCS                    = false
+CLANG_INCLUDE_TESTS                   = false
+CLANG_LINK_CLANG_DYLIB                = true
+CLANG_TOOLING_BUILD_AST_INTROSPECTION = false
+LIBCLANG_BUILD_STATIC                 = false
+LLVM_INCLUDE_TESTS                    = false
+LLVM_LINK_LLVM_DYLIB                  = true
+LLVM_PARALLEL_LINK_JOBS               = 4

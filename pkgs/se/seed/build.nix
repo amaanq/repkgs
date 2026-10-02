@@ -1,7 +1,7 @@
 # The seed: the static musl programs for the build machine that the set needs before it can build
 # its own userland, built with nixpkgs. It runs on `system` and is built on `buildSystem`, and
 # static musl makes that a cross build either way. ./upload.nu builds `nar` per system, uploads it
-# and rewrites ./package.toml.
+# and rewrites ./recipe.toml.
 {
   nixpkgs ? import ../../../nix/nixpkgs.nix,
   system ? builtins.currentSystem,
@@ -21,12 +21,12 @@ let
   inherit (native) lib;
   triple = musl.stdenv.hostPlatform.config;
 
-  # a package.toml's pinned sources, fetched with nixpkgs, since the seed exists before jig does
+  # a recipe.toml's pinned sources, fetched with nixpkgs, since the seed exists before jig does
   source =
     name:
     let
       manifest = fromTOML (
-        builtins.readFile (../.. + "/${builtins.substring 0 2 name}/${name}/package.toml")
+        builtins.readFile (../.. + "/${builtins.substring 0 2 name}/${name}/recipe.toml")
       );
       inherit (manifest.pin) version;
       tag = manifest.pin.tag or version;

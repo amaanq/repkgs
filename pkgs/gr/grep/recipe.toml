@@ -1,0 +1,22 @@
+[upstream]
+purl = "pkg:gnu/grep"
+
+[[source]]
+key  = "default"
+url  = "https://ftp.gnu.org/gnu/grep/grep-{version}.tar.xz"
+hash = "sha256-9CQnJn6JSDzD1GR+4FLyTGfmejOh+QEKNsBN1Etypqk="
+
+[pin]
+version = "3.12"
+
+[build]
+bootstrapTools = true
+remove         = [ "bin/egrep", "bin/fgrep" ]
+systems        = [ "autotools" ]
+
+[build.autotools]
+flags     = [ "--disable-perl-regexp" ]
+makeFlags = [ "SHELL=$(CONFIG_SHELL)" ]
+
+[build.check]
+separate = true
