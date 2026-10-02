@@ -30,7 +30,7 @@ export def build []: nothing -> nothing {
 }
 
 export def install []: nothing -> nothing {
-  let c = (ctx)
+  let c      = (ctx)
   let staged = $"($c.build)/dest"
   with-env {DESTDIR: $staged} { x ninja -C $c.build install }
   ^cp -r $"($staged)/usr/." $c.out

@@ -12,7 +12,7 @@ export def configure []: nothing -> nothing {
        $"BUILD_CC=($env.CC_FOR_BUILD)" $"BUILD_CXX=($env.CXX_FOR_BUILD)"]
   } else { [] }
   let bundled = [giflib libjpeg lcms harfbuzz] | each {|library| $"--with-($library)=bundled" }
-  let system = [zlib libpng freetype] | each {|library| $"--with-($library)=system" }
+  let system  = [zlib libpng freetype] | each {|library| $"--with-($library)=system" }
   # jar --date rejects times before 1980-01-01T00:00:02Z, two seconds past the DOS epoch
   let reproducible = [--with-source-date=315532802 --with-hotspot-build-time=1980-01-01T00:00:02 --with-build-user=pkgs]
   # configure is a wrapper of its own that wants bash
@@ -33,7 +33,7 @@ export def build []: nothing -> nothing {
 }
 
 export def install []: nothing -> nothing {
-  let c = (ctx)
+  let c     = (ctx)
   let image = (glob build/*/images/jdk | first)
   mkdir $c.out
   for entry in [bin conf include jmods lib release] { cp -r $"($image)/($entry)" $c.out }

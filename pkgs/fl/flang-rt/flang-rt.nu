@@ -3,10 +3,10 @@ use core.nu *
 # A gfortran beside the runtime: jig itself, configured to drive flang with this runtime's paths.
 # "@" is jig's own prefix, so the configuration still holds once the output moves to the store
 export def driver []: nothing -> nothing {
-  let c = (ctx)
-  let cc = $env.TOOLCHAIN
+  let c      = (ctx)
+  let cc     = $env.TOOLCHAIN
   let inside = {|pattern| files --dirs $"($c.out)/($pattern)" | first | str replace $c.out "@" }
-  let flags = [
+  let flags  = [
     $"-B($cc)/bin" $"--target=($c.platform.clangTarget)" ($c.platform.march | first)
     $"--sysroot=($c.platform.sysroot)" $"-resource-dir=($c.platform.sysroot)/lib/clang"
     -rtlib=compiler-rt -fintrinsic-modules-path (do $inside "lib/clang/*/finclude/flang/*")

@@ -4,7 +4,7 @@ use core.nu *
 # tools in bin/ and config/icucross.{mk,inc}, so the installed native ICU can stand in
 export def cross-buildroot []: nothing -> nothing {
   let native = (tool icupkg | path dirname -n 2)
-  let root = $"($env.NIX_BUILD_TOP)/native-icu"
+  let root   = $"($env.NIX_BUILD_TOP)/native-icu"
   mkdir $"($root)/config" $"($root)/bin" $"($root)/lib"
   for program in (files --any $"($native)/bin/*") { ^ln -s $program $"($root)/bin/($program | path basename)" }
 

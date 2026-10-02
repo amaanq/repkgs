@@ -3,15 +3,15 @@ use msbuild.nu
 
 # PCbuild/python.props computes these from patchlevel.h with MSBuild property functions
 export def --env properties []: nothing -> nothing {
-  let c = (ctx)
+  let c       = (ctx)
   let version = $c.spec.version
-  let parts = ($version | parse -r '^(?<major>\d+)\.(?<minor>\d+)\.(?<micro>\d+)(?<stage>a|b|rc)?(?<serial>\d+)?$' | first)
-  let major = ($parts.major | into int)
-  let minor = ($parts.minor | into int)
-  let micro = ($parts.micro | into int)
-  let level = match $parts.stage { "a" => 10, "b" => 11, "rc" => 12, _ => 15 }
-  let serial = if ($parts.serial | is-empty) { 0 } else { $parts.serial | into int }
-  let hex = ($major * 0x1000000 + $minor * 0x10000 + $micro * 0x100 + $level * 0x10 + $serial)
+  let parts   = ($version | parse -r '^(?<major>\d+)\.(?<minor>\d+)\.(?<micro>\d+)(?<stage>a|b|rc)?(?<serial>\d+)?$' | first)
+  let major   = ($parts.major | into int)
+  let minor   = ($parts.minor | into int)
+  let micro   = ($parts.micro | into int)
+  let level   = match $parts.stage { "a" => 10, "b" => 11, "rc" => 12, _ => 15 }
+  let serial  = if ($parts.serial | is-empty) { 0 } else { $parts.serial | into int }
+  let hex     = ($major * 0x1000000 + $minor * 0x10000 + $micro * 0x100 + $level * 0x10 + $serial)
 
   let ours = {
     Configuration: Release
@@ -43,10 +43,10 @@ export def --env properties []: nothing -> nothing {
 # _freeze_module.vcxproj runs a _freeze_module.exe it builds for this machine. The build python's
 # Programs/_freeze_module.py writes the same headers, as PCbuild itself does for ARM64
 export def frozen-modules []: nothing -> nothing {
-  let c = (ctx)
+  let c       = (ctx)
   let pcbuild = $"($c.src)/PCbuild"
   let project = (msbuild evaluate $"($pcbuild)/_freeze_module.vcxproj" $c.spec.vcxproj.properties)
-  let frozen = ($project.items | where type in [None GetPath] and $it.meta.ModName? != null)
+  let frozen  = ($project.items | where type in [None GetPath] and $it.meta.ModName? != null)
   note freeze $"($frozen | length) modules with the build python"
   for item in $frozen {
     let header = (msbuild win-path $item.meta.OutFile $pcbuild)
@@ -57,10 +57,10 @@ export def frozen-modules []: nothing -> nothing {
 
 # what zlib-ng.vcxproj's _EnsureZlibH target generates, with an empty symbol prefix
 export def zlib-ng-headers []: nothing -> nothing {
-  let c = (ctx)
-  let given = $c.spec.vcxproj.properties
+  let c       = (ctx)
+  let given   = $c.spec.vcxproj.properties
   let project = (msbuild evaluate $"($c.src)/PCbuild/zlib-ng.vcxproj" $given)
-  let into = (msbuild win-path $project.props.GeneratedZlibNgDir $"($c.src)/PCbuild")
+  let into    = (msbuild win-path $project.props.GeneratedZlibNgDir $"($c.src)/PCbuild")
   mkdir $into
   for header in [zlib zlib-ng] {
     open --raw $"($given.zlibNgDir)/($header).h.in" | str replace -a "@ZLIB_SYMBOL_PREFIX@" "" | save -f $"($into)/($header).h"
@@ -69,7 +69,7 @@ export def zlib-ng-headers []: nothing -> nothing {
 
 # the tree PC/layout gives an installed python, import libraries in libs\ and the stdlib in Lib\
 export def windows-layout []: nothing -> nothing {
-  let c = (ctx)
+  let c   = (ctx)
   let out = $c.out
   mkdir $"($out)/libs"
   for import in (files $"($out)/lib/*.lib") { mv $import $"($out)/libs/" }
@@ -85,8 +85,8 @@ export def windows-layout []: nothing -> nothing {
 # the PEP 739 file names the paths of the python that generated it, under cross the build
 # machine's. These are where ours lands, relative like --relative-paths writes them
 export def build-details []: nothing -> nothing {
-  let out = (ctx).out
-  let file = (files $"($out)/lib/python3.*/build-details.json" | first)
+  let out    = (ctx).out
+  let file   = (files $"($out)/lib/python3.*/build-details.json" | first)
   let python = ($file | path dirname | path basename)
   open $file
   | reject libpython.static

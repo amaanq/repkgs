@@ -24,7 +24,7 @@ def this-machine [c: record, extra?: closure]: nothing -> record {
 def write-config [c: record, build: record, rust: closure, rest: record]: nothing -> nothing {
   drop-file-sums
   let stage0 = (tool rustc | path dirname -n 2)
-  let level = if $c.spec.debug { 1 } else { 0 }
+  let level  = if $c.spec.debug { 1 } else { 0 }
   {
     change-id: ignore
     profile: dist
@@ -52,10 +52,10 @@ export def --env configure []: nothing -> nothing {
   let c = (ctx)
   load-env ({PKG_CONFIG_ALLOW_CROSS: "1"} | merge (^jib system sys-env cargo | from json))
   let triple = $c.platform.rustTriple
-  let llvm = (dep-root llvm22 libLLVM)
+  let llvm   = (dep-root llvm22 libLLVM)
   # a cross llvm's bin/llvm-config is a target program, llvm puts one for this machine in host/
   let llvm_config = if $c.platform.cross { $"($llvm)/host/llvm-config" } else { $"($llvm)/bin/llvm-config" }
-  let own = {cc: (tool cc), cxx: (tool c++), linker: (tool cc), ar: (tool ar), ranlib: (tool ranlib), llvm-config: $llvm_config, crt-static: false}
+  let own         = {cc: (tool cc), cxx: (tool c++), linker: (tool cc), ar: (tool ar), ranlib: (tool ranlib), llvm-config: $llvm_config, crt-static: false}
   # rust#132802, optimized wasm builtins need a wasm C compiler
   let bare = ($freestanding | each {|triple| {$triple: {optimized-compiler-builtins: false, profiler: false}} } | into record)
 
@@ -84,7 +84,7 @@ export def install []: nothing -> nothing {
 }
 
 export def std-configure []: nothing -> nothing {
-  let c = (ctx)
+  let c   = (ctx)
   let own = {cc: (tool cc), cxx: (tool c++), linker: (tool cc), ar: (tool llvm-ar), ranlib: (tool llvm-ranlib), crt-static: false}
 
   write-config $c {
@@ -102,10 +102,10 @@ export def std-build []: nothing -> nothing { x python3 x.py build --stage 0 lib
 # x.py install has no stage 0 path, so std is copied out of the stage 0 build. bootstrap fills the
 # stage 0 sysroot from cargo's old target/deps layout only, which leaves just self-contained/ there
 export def std-install []: nothing -> nothing {
-  let c = (ctx)
+  let c      = (ctx)
   let triple = $c.platform.rustTriple
   let stage0 = $"($c.build)/(machine)"
-  let lib = $"($c.out)/lib/rustlib/($triple)/lib"
+  let lib    = $"($c.out)/lib/rustlib/($triple)/lib"
   mkdir ($lib | path dirname)
   cp -r $"($stage0)/stage0-sysroot/lib/rustlib/($triple)/lib" $lib
   for built in (files $"($stage0)/stage0-std/($triple)/dist/build/*/*/out/*.{rlib,rmeta,so}") { cp $built $"($lib)/" }

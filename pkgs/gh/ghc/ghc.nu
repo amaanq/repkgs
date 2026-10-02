@@ -28,8 +28,8 @@ def cache-key []: nothing -> string {
 }
 
 export def build []: nothing -> nothing {
-  let tree = $"((ctx).src)/_build"
-  let key = (cache-key)
+  let tree     = $"((ctx).src)/_build"
+  let key      = (cache-key)
   let restored = (^jib probe restore-dir $key $tree | complete).exit_code == 0
   note hadrian-cache (if $restored { "restored" } else { "cold" })
   hadrian binary-dist-dir

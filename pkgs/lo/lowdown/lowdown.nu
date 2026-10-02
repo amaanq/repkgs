@@ -1,7 +1,7 @@
 use core.nu *
 
 export def --env configure []: nothing -> nothing {
-  let c = (ctx)
+  let c      = (ctx)
   let suffix = if $c.platform.os == "macos" { "dylib" } else { "so" }
   [HAVE_SECCOMP_FILTER HAVE_SANDBOX_INIT HAVE_PLEDGE] | each {|feature| $"($feature)=0" } | append "" | str join "\n" | save configure.local
   # the script needs an echo that expands \n, which dash's does and bash's does not

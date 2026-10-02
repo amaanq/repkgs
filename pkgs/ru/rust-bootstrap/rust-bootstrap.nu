@@ -1,7 +1,7 @@
 use core.nu *
 
 export def install []: nothing -> nothing {
-  let c = (ctx)
+  let c       = (ctx)
   let rustlib = $"($c.out)/lib/rustlib"
   for component in ([.] | append ($env.components | split row " ")) {
     x sh $"($component)/install.sh" $"--prefix=($c.out)" --disable-ldconfig

@@ -30,8 +30,8 @@ def --wrapped with-tools [...command: string]: nothing -> string {
 }
 
 def elf-sources [tree: path, name: string, target: record]: nothing -> list<string> {
-  let build = $"($tree)/build-($name)"
-  let triple = $target.triple
+  let build   = $"($tree)/build-($name)"
+  let triple  = $target.triple
   let defines = [
     -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_ASM_COMPILER=clang
     # cmake's Windows-Clang platform module insists on a resource compiler
@@ -67,12 +67,12 @@ def apple-sources [tree: path, base: list<string>, target: record]: nothing -> l
 }
 
 export def files [entry: record]: nothing -> record {
-  let url = ($entry.sources | where key == default | first | get url)
+  let url     = ($entry.sources | where key == default | first | get url)
   let tarball = (^nix store prefetch-file --json $url | from json | get storePath)
-  let tree = (mktemp -d -t llvm-update.XXXX)
+  let tree    = (mktemp -d -t llvm-update.XXXX)
   ^tar -xf $tarball -C $tree --strip-components 1 --wildcards "*/compiler-rt" "*/cmake"
 
-  let elf = ($elf_targets | items {|name, target| {name: $name, sources: (elf-sources $tree $name $target)} })
+  let elf   = ($elf_targets | items {|name, target| {name: $name, sources: (elf-sources $tree $name $target)} })
   let apple = ($apple_targets | items {|name, target|
     let base = ($elf | where name == $target.base | first | get sources)
     {name: $name, sources: (apple-sources $tree $base $target)}

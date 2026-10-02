@@ -1,7 +1,7 @@
 use core.nu *
 
 export def build []: nothing -> nothing {
-  let c = (ctx)
+  let c   = (ctx)
   let lib = $"($c.out)/lib"
   mkdir $lib
   (x cc -shared -O2 -o $"($lib)/libgcc_s.so.1" $"($c.src)/gcc_s.c"

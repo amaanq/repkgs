@@ -9,8 +9,8 @@ export def --env configure-env []: nothing -> nothing {
 
 # -lncurses, -ltinfo and the .pc names resolve to the wide-character libraries
 export def narrow-names []: nothing -> nothing {
-  let c = (ctx)
-  let lib = $"($c.out)/lib"
+  let c     = (ctx)
+  let lib   = $"($c.out)/lib"
   let names = [ncurses form panel menu] | append (if $c.platform.os == "windows" { [] } else { [tinfo] })
   for name in $names {
     ^ln -sf (linklib $"($name)w") $"($lib)/(linklib $name)"

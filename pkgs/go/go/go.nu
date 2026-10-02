@@ -1,7 +1,7 @@
 use core.nu *
 
 export def build []: nothing -> nothing {
-  let c = (ctx)
+  let c      = (ctx)
   let target = $"($c.platform.osNames.go)_($c.platform.names.go)"
   load-env {
     GOROOT_BOOTSTRAP: (which go | get 0.path | path dirname | path dirname)

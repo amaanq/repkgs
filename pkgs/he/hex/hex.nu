@@ -1,7 +1,7 @@
 use core.nu *
 
 export def archive []: nothing -> nothing {
-  let c = (ctx)
+  let c        = (ctx)
   let archives = $"($c.out)/lib/archives"
   load-env {MIX_ENV: "prod", MIX_HOME: $"($c.build)/mix-home", MIX_ARCHIVES: $archives}
   x mix compile --no-deps-check

@@ -1,7 +1,7 @@
 use core.nu *
 
 export def build []: nothing -> nothing {
-  let c = (ctx)
+  let c      = (ctx)
   let flavor = ({x86_64: "_x64", aarch64: "_arm64"} | get -o $c.platform.cpu | default "")
   do {
     cd CPP/7zip/Bundles/Alone2

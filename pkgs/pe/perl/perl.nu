@@ -18,13 +18,13 @@ def self-exe [os: string]: nothing -> list<string> {
 def borrow-cross-diffs [version: string]: nothing -> nothing {
   let wanted = $"cnf/diffs/perl5-($version)"
   if ($wanted | path exists) { return }
-  let series = ($version | split row "." | first 2 | str join ".")
+  let series  = ($version | split row "." | first 2 | str join ".")
   let nearest = (ls cnf/diffs | get name | where ($it | path basename | str starts-with $"perl5-($series).") | sort --natural | last)
   cp -r $nearest $wanted
 }
 
 export def configure []: nothing -> nothing {
-  let c = (ctx)
+  let c   = (ctx)
   let out = $c.out
   cd $c.src
 
@@ -65,8 +65,8 @@ export def configure []: nothing -> nothing {
 # Config.pm, Config_heavy.pl and config.h keep the build's tool paths, sysroot and dependency
 # dirs. Configure records -Dprefix even with -Duserelocatableinc, so ours becomes `.../..` too
 export def scrub []: nothing -> nothing {
-  let out = (ctx).out
-  let arch = (files $"($out)/lib/perl5/5.*/*/Config_heavy.pl" | first | path dirname)
+  let out       = (ctx).out
+  let arch      = (files $"($out)/lib/perl5/5.*/*/Config_heavy.pl" | first | path dirname)
   let elsewhere = $"\(?:-I|-L|--sysroot=\)?/nix/store/\(?!($out | path basename)\)[^'\" ]+ ?"
   for record in [Config.pm Config_heavy.pl CORE/config.h] {
     edit $"($arch)/($record)" { tools-by-name | str replace -ar $elsewhere "" | str replace -a $out ".../.." }
