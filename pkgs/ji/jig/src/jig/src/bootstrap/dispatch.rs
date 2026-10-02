@@ -132,8 +132,12 @@ fn summary(log: &Path) {
    };
    let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
    for line in text.lines() {
-      let kind = line.split('\t').next().unwrap_or_default();
-      *kinds.entry(kind).or_default() += 1;
+      let Some(outcome) = line.split('\t').nth(1) else {
+         continue;
+      };
+      if outcome != "query" {
+         *kinds.entry(outcome).or_default() += 1;
+      }
    }
    let parts: Vec<String> = kinds
       .iter()
