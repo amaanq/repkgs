@@ -1,0 +1,59 @@
+from = "llvm"
+
+[package]
+patches           = [  ]
+uses              = [ "cmake" ]
+buildDependencies = [ "cpython" ]
+dependencies      = [  ]
+bin               = [ "gfortran" ]
+
+[package.platforms]
+os = [ "linux" ]
+
+[package.cmake]
+root = "runtimes"
+
+[package.cmake.defs]
+BUILD_SHARED_LIBS            = false
+CMAKE_Fortran_COMPILER       = "{tool:flang}/bin/flang"
+CMAKE_Fortran_COMPILER_WORKS = true
+CMAKE_Fortran_FLAGS          = "--target={platform.clangTarget} {platform.march.0} --sysroot={toolchain.sysroot}"
+FLANG_RT_INCLUDE_TESTS       = false
+LLVM_DEFAULT_TARGET_TRIPLE   = "{platform.gnuTriple}"
+LLVM_DIR                     = "{pkg:llvm}/lib/cmake/llvm"
+LLVM_ENABLE_RUNTIMES         = "flang-rt"
+LLVM_INCLUDE_TESTS           = false
+LLVM_LINK_LLVM_DYLIB         = true
+LLVM_PARALLEL_LINK_JOBS      = 4
+LLVM_TABLEGEN_EXE            = "{tool:llvm}/bin/llvm-tblgen"
+LLVM_TOOLS_BINARY_DIR        = "{tool:llvm}/bin"
+
+[package.phases]
+remove = [ "cmake.test" ]
+
+[package.phases.after]
+"cmake.install" = [ "flang-rt.driver", "flang-rt.hello" ]
+
+[package.tests]
+run = false
+
+[package.env]
+TOOLCHAIN = "{toolchain.outPath}"
+
+[when.native]
+buildDependencies = [ "{pkg:llvm}" ]
+
+[when.native.cmake.defs]
+LLVM_TABLEGEN_EXE     = "{pkg:llvm}/bin/llvm-tblgen"
+LLVM_TOOLS_BINARY_DIR = "{pkg:llvm}/bin"
+
+[when.cross]
+buildDependencies = [ "llvm" ]
+
+[when.os.macos.cmake.defs]
+LLVM_DEFAULT_TARGET_TRIPLE = "{platform.clangTarget}"
+
+[when.cpu.powerpc64le.cmake.defs]
+CMAKE_CXX_FLAGS        = "-mabi=ibmlongdouble"
+FOUND_LIBMF128         = false
+HAVE_LDBL_MANT_DIG_113 = false

@@ -130,7 +130,7 @@ pkgs.treefmt.withConfig {
         command = "${nu-typecheck}";
         includes = nuFiles;
       };
-      # the nu that package.nix assembles from package.nix, its modules and the build systems
+      # the nu a package assembles from package.toml, its modules and the build systems
       package-scripts = pkgs.lib.mkIf evaluates {
         command = "${pkgs.nushell}/bin/nu";
         options = [
@@ -138,7 +138,8 @@ pkgs.treefmt.withConfig {
           "lints/package-scripts.nu"
         ];
         includes = [
-          "pkgs/*/*/package.nix"
+          "pkgs/*/*/package.toml"
+          "pkgs/*/*/*.nu"
         ];
       };
       nu-ast-grep = {

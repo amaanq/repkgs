@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# Has nu parse the build script of each package.nix given (`pkg.script`, what the derivation
+# Has nu parse the build script of each given file's package (`pkg.script`, what the derivation
 # runs) before a build does: a module phase with the wrong signature, a misspelt command in an
 # inline phase. Instantiating puts the builder and module copies it `use`s into the store.
 def main [...files: path] {
