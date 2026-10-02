@@ -24,7 +24,6 @@ arguments through untouched, every other mode parses them and fails on an unknow
 | `jig header-key <context> <warning-policy> <compiler> <args…>`             | autoconf header probe key                      |
 | `jig reloc-fixup <directory> [--dest <store path>] [--deny <store path>]…` | post-link relocation                           |
 | `jig nix-store add-text\|add-drv\|fetchurls\|submit …`                     | builder RPC to the Nix daemon                  |
-| `jig identify <store path…>`                                               | content identity per store path, memoized in jigd |
 | `jig bootstrap <recipe>`                                                   | one toolchain stage from its structured attrs, see §13 |
 | `jig fetch <kind>`                                                         | one lock-file producer under builder-rpc-v0, see §14 |
 | `jig assemble`                                                             | lay a producer's collecting derivation out, see §14 |
@@ -574,10 +573,6 @@ That is `spec.install` and `spec.links`, `--keep-tree`, the `bin` check, `prune`
 `relativize`, the move into the store, the `tests.version` check from the store path and from a
 relocated copy under `env -i`, and the `jig:` cache summary. `--tests` writes the tests
 derivation's `result.json` instead.
-
-`identify` prints `{ "<path>": "<32 hex>" }` per argument, a blake3 over the sorted tree of
-relative path, kind and file content (or link target), or over the file when the path is one.
-The result is stored under `identity/v3/<path>` in jigd, so each store path is hashed once.
 
 `probe key <kind> <scripts…> [--extra <json>] [--no-out]` prints `probe/v4/<kind>/<hash>` over
 the scripts' contents, `extra`, the full store roots, jig's injected flags (`PKGS_CC`) and `$out`

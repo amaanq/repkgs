@@ -29,7 +29,6 @@ use jig::{
    },
    files::write_file,
    fixup,
-   identify,
    process::{
       self,
       diagnostic,
@@ -99,7 +98,6 @@ fn run(mode: Mode, name: &str, args: &[OsString], socket: &Path) -> Result<i32> 
          deny,
       } => fixup::run(&directory, dest.as_deref(), sdk.as_deref(), &deny)?,
       Mode::NixStore { operation } => nix_store::run(&operation)?,
-      Mode::Identify { roots } => identify::run(&roots, socket)?,
       Mode::Bootstrap { recipe } => bootstrap::dispatch::mode(&recipe)?,
       Mode::Fetch { kind } => fetch::dispatch::mode(&kind)?,
       Mode::Assemble => fetch::assemble::run_mode()?,
