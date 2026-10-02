@@ -2,6 +2,7 @@
 //! Cabal already owns GHC's implicit first token, which needs a jigd slot.
 //! Extra capabilities hold both grants, including the semaphore's idle spare.
 //! Closing their backing connections refunds both grants after the child exits.
+//! Without a reachable jigd the cabal token alone admits a capability.
 
 use std::{
    io::{
@@ -108,17 +109,17 @@ enum Pending {
 
 struct Grant {
    _cabal:  UnixStream,
-   _daemon: UnixStream,
+   _daemon: Option<UnixStream>,
 }
 
 pub struct Proxy<'semaphore> {
    semaphore: &'semaphore Sem,
    cabal:     PathBuf,
-   daemon:    PathBuf,
+   daemon:    Option<PathBuf>,
    build:     String,
    pending:   Option<Pending>,
    held:      Vec<Grant>,
-   _initial:  UnixStream,
+   _initial:  Option<UnixStream>,
 }
 
 impl<'semaphore> Proxy<'semaphore> {
@@ -128,12 +129,23 @@ impl<'semaphore> Proxy<'semaphore> {
       daemon: PathBuf,
       build: String,
    ) -> io::Result<Self> {
-      let initial = Request::open(&daemon, Provider::Daemon, &build)?.wait()?;
+      let initial = match Request::open(&daemon, Provider::Daemon, &build) {
+         Ok(request) => Some(request.wait()?),
+         Err(error)
+            if matches!(
+               error.kind(),
+               io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+            ) =>
+         {
+            None
+         },
+         Err(error) => return Err(error),
+      };
 
       Ok(Self {
          semaphore,
          cabal,
-         daemon,
+         daemon: initial.is_some().then_some(daemon),
          build,
          pending: None,
          held: Vec::new(),
@@ -161,20 +173,27 @@ impl<'semaphore> Proxy<'semaphore> {
 
       self.pending = match pending {
          Pending::Cabal(mut request) => {
-            if request.granted()? {
+            if !request.granted()? {
+               Some(Pending::Cabal(request))
+            } else if let Some(ref daemon) = self.daemon {
                Some(Pending::Daemon {
                   cabal:   request.stream,
-                  request: Request::open(&self.daemon, Provider::Daemon, &self.build)?,
+                  request: Request::open(daemon, Provider::Daemon, &self.build)?,
                })
             } else {
-               Some(Pending::Cabal(request))
+               self.held.push(Grant {
+                  _cabal:  request.stream,
+                  _daemon: None,
+               });
+               self.semaphore.post()?;
+               None
             }
          },
          Pending::Daemon { cabal, mut request } => {
             if request.granted()? {
                self.held.push(Grant {
                   _cabal:  cabal,
-                  _daemon: request.stream,
+                  _daemon: Some(request.stream),
                });
 
                self.semaphore.post()?;
