@@ -9,3 +9,12 @@ hash = "sha256-sMLQSB1+ux/ya/J22KGojlAxWhtPQdk22KdHy43zdyg="
 [pin]
 version = "3.19.3"
 tag     = "v3.19.3"
+
+[package]
+uses = [ "npm" ]
+# plain JavaScript with nothing to build, and the tests take minutes
+phases = [ "npm.install" ]
+bin    = [ "uglifyjs" ]
+
+[package.npm]
+deps = { fetch = "npmDeps", lockFile = "{file:package-lock.json}", source = "{source:default}" }

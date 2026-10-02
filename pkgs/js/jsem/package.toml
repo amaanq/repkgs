@@ -1,0 +1,18 @@
+[package]
+version = "1.0.0"
+source  = { exclude = [ "target" ], files = [ ".rs", "Cargo.toml", "Cargo.lock", "README.md" ], name = "jig-src", tree = "../../ji/jig/src" }
+uses    = [ "cargo" ]
+bin     = [ "jsem" ]
+
+[package.platforms]
+posix = true
+
+[package.cargo]
+flags = [ "-p", "jsem" ]
+tool  = "{tool:rust-bootstrap}"
+
+[package.tests]
+version = false
+
+[package.env]
+JIG_STORE_DIR = "/nix/store"

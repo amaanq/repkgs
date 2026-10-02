@@ -11,3 +11,17 @@ version = "9.18.2"
 tag     = "v9.18.2"
 date    = "2026-09-07"
 sys     = [ "libyaml" ]
+
+[package]
+uses         = [ "pyapp" ]
+dependencies = [ "cpython" ]
+
+[package.pyapp]
+check = [ "copier" ]
+deps  = { fetch = "pythonDeps", python = "{pkg:cpython}", sdist = [ "pydantic-core" ], source = "{source:default}" }
+
+[package.tests]
+version = true
+
+[package.env]
+SETUPTOOLS_SCM_PRETEND_VERSION = "{pin.version}"

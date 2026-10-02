@@ -1,0 +1,15 @@
+[package]
+version = "3.0.0"
+source  = { exclude = [ "target" ], name = "jigd-src", tree = "../jig/src" }
+uses    = [ "cargo" ]
+
+[package.platforms]
+posix = true
+
+[package.cargo]
+flags = [ "-p", "jigd" ]
+tool  = "{tool:rust-bootstrap}"
+
+# a daemon, it has no --version
+[package.tests]
+version = false

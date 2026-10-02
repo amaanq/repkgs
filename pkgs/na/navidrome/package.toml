@@ -14,3 +14,20 @@ sys     = [ "sqlite", "taglib" ]
 
 [locks]
 go = "."
+
+[package]
+uses = [ "go", "npm" ]
+# go's tests want a music library fixture set
+phases = [ "npm.build", "go.build", "go.install" ]
+
+[package.npm]
+root = "ui"
+deps = { fetch = "npmDeps", root = "ui", source = "{source:default}" }
+
+[package.go]
+tags = [ "netgo", "sqlite_fts5" ]
+ldflags = [
+  "-X github.com/navidrome/navidrome/consts.gitTag=v{pin.version}",
+  "-X github.com/navidrome/navidrome/consts.gitSha=nix",
+]
+packages = [ "." ]

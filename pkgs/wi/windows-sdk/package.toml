@@ -12,3 +12,12 @@ unpack = false
 [pin]
 version = "17.14.37628.2"
 pr      = "f8d58e41-102a-4347-a567-60d7235da3b5/469b3396a3493df91870ce13c52015a92283a2d1c6fd12e5f7e55669be8050ca"
+
+[package]
+source  = { arch = "{platform.cpu}", fetch = "windowsSdk", manifest = "{source:default}" }
+phases  = [  ]
+install = { "." = [ "crt", "sdk" ] }
+exports = false
+
+[package.platforms]
+cpu = [ "x86_64", "aarch64" ]
