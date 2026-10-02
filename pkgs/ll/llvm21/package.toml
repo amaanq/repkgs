@@ -39,9 +39,6 @@ LLVM_LINK_LLVM_DYLIB    = true
 LLVM_PARALLEL_LINK_JOBS = 4
 LLVM_TARGETS_TO_BUILD   = "all"
 
-[package.phases.after]
-"cmake.install" = [  ]
-
 [package.tests]
 run = false
 

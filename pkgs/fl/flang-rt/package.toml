@@ -1,10 +1,8 @@
 from = "llvm"
 
 [package]
-patches           = [  ]
 uses              = [ "cmake" ]
 buildDependencies = [ "cpython" ]
-dependencies      = [  ]
 bin               = [ "gfortran" ]
 
 [package.platforms]

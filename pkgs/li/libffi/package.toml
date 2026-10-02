@@ -13,9 +13,6 @@ tag     = "v3.8.0"
 [package]
 uses = [ "autotools" ]
 
-[package.autotools]
-flags = [  ]
-
 [when.os.macos.autotools]
 flags = [ "--disable-symvers" ]
 

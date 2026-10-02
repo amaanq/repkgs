@@ -14,8 +14,6 @@ date    = "2025-11-20"
 [package]
 phases = [ "ninja.build" ]
 
-[package.install]
-
 [when.native.install]
 "bin/ninja" = "../build/ninja"
 

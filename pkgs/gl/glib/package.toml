@@ -14,11 +14,10 @@ url   = "https://download.gnome.org/sources/glib/cache.json"
 regex = 'glib-([0-9]+\.[0-9]*[02468]\.[0-9]+)\.tar'
 
 [package]
-patches           = [ "relocatable.patch" ]
-uses              = [ "meson" ]
-buildDependencies = [  ]
-dependencies      = [ "pcre2", "libffi", "zlib", "cpython" ]
-bin               = [ "glib-compile-resources", "gdbus" ]
+patches      = [ "relocatable.patch" ]
+uses         = [ "meson" ]
+dependencies = [ "pcre2", "libffi", "zlib", "cpython" ]
+bin          = [ "glib-compile-resources", "gdbus" ]
 
 [package.meson.defs]
 documentation = false

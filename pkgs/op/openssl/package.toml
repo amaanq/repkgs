@@ -11,10 +11,10 @@ version = "3.6.3"
 tag     = "openssl-3.6.3"
 
 [package]
-remove            = [ "bin/c_rehash" ]
 patches           = [ "relocatable.patch" ]
 uses              = [ "make" ]
 buildDependencies = [ "perl" ]
+remove            = [ "bin/c_rehash" ]
 
 [package.make]
 configureFlags = [

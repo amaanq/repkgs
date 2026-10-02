@@ -10,9 +10,9 @@ hash = "sha256-9CQnJn6JSDzD1GR+4FLyTGfmejOh+QEKNsBN1Etypqk="
 version = "3.12"
 
 [package]
-remove         = [ "bin/egrep", "bin/fgrep" ]
 uses           = [ "autotools" ]
 bootstrapTools = true
+remove         = [ "bin/egrep", "bin/fgrep" ]
 
 [package.autotools]
 flags     = [ "--disable-perl-regexp" ]

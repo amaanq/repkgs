@@ -1,11 +1,16 @@
 [package]
 version = "1.0.0"
-source  = { exclude = [ "target" ], files = [ ".rs", "Cargo.toml", "Cargo.lock", "README.md" ], name = "jig-src", tree = "src" }
 uses    = [ "cargo" ]
 bin     = [ "jig" ]
 
 [package.platforms]
 posix = true
+
+[package.source]
+exclude = [ "target" ]
+files   = [ ".rs", "Cargo.toml", "Cargo.lock", "README.md" ]
+name    = "jig-src"
+tree    = "src"
 
 [package.cargo]
 flags = [ "-p", "jig" ]

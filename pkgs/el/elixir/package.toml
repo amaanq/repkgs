@@ -12,11 +12,10 @@ tag     = "v1.20.4"
 date    = "2026-08-28"
 
 [package]
-uses              = [ "make" ]
-buildDependencies = [  ]
-dependencies      = [ "erlang", "coreutils", "sed" ]
-bin               = [ "elixir", "elixirc", "mix", "iex" ]
-exports           = false
+uses         = [ "make" ]
+dependencies = [ "erlang", "coreutils", "sed" ]
+bin          = [ "elixir", "elixirc", "mix", "iex" ]
+exports      = false
 
 [package.make]
 testTarget = [ "test_stdlib" ]

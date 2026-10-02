@@ -10,11 +10,10 @@ hash = "sha256-qdirDBXUSQaXx0yN71wdM1mdBepiSSoKa20GdpLbKHA="
 version = "3.8.2"
 
 [package]
-patches           = [ "relocatable.patch" ]
-uses              = [ "autotools" ]
-buildDependencies = [  ]
-dependencies      = [ "m4" ]
-bootstrapTools    = true
+patches        = [ "relocatable.patch" ]
+uses           = [ "autotools" ]
+dependencies   = [ "m4" ]
+bootstrapTools = true
 
 [package.autotools]
 flags     = [ "M4={pkg:m4}/bin/m4" ]

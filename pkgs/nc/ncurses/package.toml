@@ -11,10 +11,9 @@ version = "6.6"
 date    = "2025-12-30"
 
 [package]
-patches           = [ "relocatable.patch" ]
-uses              = [ "autotools" ]
-buildDependencies = [  ]
-bin               = [ "tic", "tput", "infocmp" ]
+patches = [ "relocatable.patch" ]
+uses    = [ "autotools" ]
+bin     = [ "tic", "tput", "infocmp" ]
 
 [package.autotools]
 flags = [
@@ -39,6 +38,9 @@ flags = [
 run     = false
 version = "-V"
 
+[when.cross]
+buildDependencies = [ "ncurses" ]
+
 [when.os.windows.autotools]
 flags = [
   "--enable-term-driver",
@@ -46,9 +48,6 @@ flags = [
   "--with-tic-path={tool:ncurses}/bin/tic",
   "--with-infocmp-path={tool:ncurses}/bin/infocmp",
 ]
-
-[when.cross]
-buildDependencies = [ "ncurses" ]
 
 [unless.os.windows.autotools]
 flags = [ "--with-termlib" ]

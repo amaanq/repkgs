@@ -12,9 +12,8 @@ date    = "2026-03-17"
 tag     = "release-78.3"
 
 [package]
-patches           = [ "upstream-ssearch-snprintf-bound.patch" ]
-uses              = [ "autotools" ]
-buildDependencies = [  ]
+patches = [ "upstream-ssearch-snprintf-bound.patch" ]
+uses    = [ "autotools" ]
 
 [package.autotools]
 flags = [ "--disable-icu-config" ]
@@ -22,9 +21,6 @@ root  = "source"
 
 [package.phases.after]
 "autotools.install" = [ "icu.relative-prefix" ]
-
-[package.phases.before]
-"autotools.configure" = [  ]
 
 [when.cross]
 buildDependencies = [ "icu" ]

@@ -11,9 +11,8 @@ version = "10.2.3"
 date    = "2026-09-03"
 
 [package]
-uses              = [ "python" ]
-buildDependencies = [  ]
-dependencies      = [ "python-packaging", "python-setuptools", "python-vcs-versioning" ]
+uses         = [ "python" ]
+dependencies = [ "python-packaging", "python-setuptools", "python-vcs-versioning" ]
 
 [package.python]
 module = "setuptools_scm"

@@ -13,11 +13,10 @@ tag     = "1.98.1"
 sys     = [ "curl", "jemalloc", "libffi", "libgit2", "openssl", "xz", "zlib" ]
 
 [package]
-phases            = [ "rust.configure", "rust.build", "rust.install" ]
-buildDependencies = [  ]
-dependencies      = [ "llvm22" ]
-bin               = [ "rustc", "cargo" ]
-exports           = false
+phases       = [ "rust.configure", "rust.build", "rust.install" ]
+dependencies = [ "llvm22" ]
+bin          = [ "rustc", "cargo" ]
+exports      = false
 
 [package.tests]
 run     = false

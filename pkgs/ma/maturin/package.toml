@@ -13,11 +13,13 @@ date    = "2026-08-24"
 sys     = [ "openssl", "xz", "zstd" ]
 
 [package]
-install = { "lib/python3/site-packages/" = "{source:default}/maturin" }
-uses    = [ "cargo" ]
+uses = [ "cargo" ]
 
 [package.cargo]
 noDefaultFeatures = true
 
 [package.phases]
 remove = [ "cargo.test" ]
+
+[package.install]
+"lib/python3/site-packages/" = "{source:default}/maturin"

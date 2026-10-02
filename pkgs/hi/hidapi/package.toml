@@ -12,10 +12,7 @@ date    = "2025-05-18"
 tag     = "hidapi-0.15.0"
 
 [package]
-uses         = [ "cmake" ]
-dependencies = [  ]
-
-[package.cmake.defs]
+uses = [ "cmake" ]
 
 [when.os.linux]
 dependencies = [ "libusb" ]

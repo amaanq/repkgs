@@ -16,7 +16,6 @@ dependencies = [ "zlib" ]
 
 [package.make]
 configureFlags = [ "--enable-all", "--enable-column-metadata" ]
-flags          = [  ]
 
 [package.tests]
 run = false

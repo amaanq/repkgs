@@ -1,7 +1,6 @@
 from = "llvm"
 
 [package]
-patches           = [  ]
 uses              = [ "cmake" ]
 buildDependencies = [ "cpython", "llvm" ]
 dependencies      = [ "llvm", "zlib", "zstd", "clang", "mlir" ]
@@ -29,8 +28,6 @@ MLIR_TABLEGEN_EXE       = "{pkg:mlir}/bin/mlir-tblgen"
 
 [package.phases]
 remove = [ "cmake.test" ]
-
-[package.phases.after]
 
 [package.tests]
 run     = false

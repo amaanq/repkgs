@@ -14,8 +14,7 @@ uses              = [ "autotools" ]
 buildDependencies = [ "perl" ]
 
 [package.autotools]
-flags     = [ "--enable-threads", "CFLAGS=-O3 -fomit-frame-pointer -fstrict-aliasing" ]
-makeFlags = [  ]
+flags = [ "--enable-threads", "CFLAGS=-O3 -fomit-frame-pointer -fstrict-aliasing" ]
 
 [when.os.windows.autotools]
 flags     = [ "--with-combined-threads" ]

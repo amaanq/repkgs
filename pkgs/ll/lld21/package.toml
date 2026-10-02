@@ -1,7 +1,6 @@
 from = "llvm21"
 
 [package]
-patches           = [  ]
 uses              = [ "cmake" ]
 buildDependencies = [ "cpython" ]
 dependencies      = [ "llvm21", "zlib", "zstd" ]
@@ -21,8 +20,6 @@ LLVM_TOOLS_BINARY_DIR   = "{tool:llvm21}/bin"
 
 [package.phases]
 remove = [ "cmake.test" ]
-
-[package.phases.after]
 
 [package.tests]
 run     = false

@@ -12,10 +12,9 @@ date    = "2026-09-15"
 tag     = "v4.0.7"
 
 [package]
-uses              = [ "autotools" ]
-buildDependencies = [  ]
-dependencies      = [ "bash", "zlib", "openssl", "libyaml", "libffi" ]
-bin               = [ "ruby", "gem", "bundle", "irb", "rake" ]
+uses         = [ "autotools" ]
+dependencies = [ "bash", "zlib", "openssl", "libyaml", "libffi" ]
+bin          = [ "ruby", "gem", "bundle", "irb", "rake" ]
 
 [package.autotools]
 flags = [
@@ -30,9 +29,6 @@ flags = [
 
 [package.phases.after]
 "autotools.install" = [ "ruby.relocate-rbconfig" ]
-
-[package.phases.before]
-"autotools.install" = [  ]
 
 [package.tests]
 run = false

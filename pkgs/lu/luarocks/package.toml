@@ -11,11 +11,10 @@ version = "3.13.0"
 tag     = "v3.13.0"
 
 [package]
-patches           = [ "relocatable.patch" ]
-uses              = [ "make" ]
-buildDependencies = [  ]
-dependencies      = [ "lua", "unzip" ]
-bin               = [ "luarocks", "luarocks-admin" ]
+patches      = [ "relocatable.patch" ]
+uses         = [ "make" ]
+dependencies = [ "lua", "unzip" ]
+bin          = [ "luarocks", "luarocks-admin" ]
 
 [package.make]
 configureFlags = [ "--with-lua={pkg:lua}" ]

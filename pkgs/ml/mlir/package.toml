@@ -1,8 +1,6 @@
 from = "llvm"
 
 [package]
-install           = { "bin/" = "bin/mlir-tblgen" }
-patches           = [  ]
 uses              = [ "cmake" ]
 buildDependencies = [ "cpython" ]
 dependencies      = [ "llvm", "zlib", "zstd" ]
@@ -34,6 +32,9 @@ remove = [ "cmake.test" ]
 
 [package.tests]
 run = false
+
+[package.install]
+"bin/" = "bin/mlir-tblgen"
 
 [when.native]
 buildDependencies = [ "{pkg:llvm}" ]

@@ -11,10 +11,9 @@ version = "2.6.4"
 tag     = "v2.6.4"
 
 [package]
-uses              = [ "autotools" ]
-buildDependencies = [  ]
-dependencies      = [ "m4" ]
-bootstrapTools    = true
+uses           = [ "autotools" ]
+dependencies   = [ "m4" ]
+bootstrapTools = true
 
 [package.platforms]
 posix = true

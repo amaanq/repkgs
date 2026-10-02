@@ -12,9 +12,8 @@ tag     = "3.27.0"
 date    = "2026-02-27"
 
 [package]
-phases            = [ "rebar3.build" ]
-buildDependencies = [  ]
-dependencies      = [ "erlang" ]
+phases       = [ "rebar3.build" ]
+dependencies = [ "erlang" ]
 
 [when.native]
 buildDependencies = [ "{pkg:erlang}" ]

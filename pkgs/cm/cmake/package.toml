@@ -1,9 +1,8 @@
 from = "cmake-bootstrap"
 
 [package]
-uses         = [ "cmake" ]
-dependencies = [  ]
-bin          = [ "cmake", "ctest", "cpack" ]
+uses = [ "cmake" ]
+bin  = [ "cmake", "ctest", "cpack" ]
 
 [package.cmake]
 tool = "{tool:cmake-bootstrap}"

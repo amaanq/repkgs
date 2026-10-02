@@ -18,7 +18,12 @@ dependencies = [ "cpython" ]
 
 [package.pyapp]
 check = [ "copier" ]
-deps  = { fetch = "pythonDeps", python = "{pkg:cpython}", sdist = [ "pydantic-core" ], source = "{source:default}" }
+
+[package.pyapp.deps]
+fetch  = "pythonDeps"
+python = "{pkg:cpython}"
+sdist  = [ "pydantic-core" ]
+source = "{source:default}"
 
 [package.tests]
 version = true

@@ -17,17 +17,11 @@ uses    = [ "autotools" ]
 [package.autotools]
 flags = [ "--disable-agrep", "--enable-static" ]
 
-[package.phases.after]
-"autotools.install" = [  ]
-
-[package.phases.before]
-"autotools.test" = [  ]
+[when.native.phases.before]
+"autotools.test" = [ "tre.latin1" ]
 
 [when.os.windows.phases.after]
 "autotools.install" = [ "tre.posix-regex" ]
-
-[when.native.phases.before]
-"autotools.test" = [ "tre.latin1" ]
 
 [when.os.windows.env]
 SYSTRE = "{file:systre.c}"

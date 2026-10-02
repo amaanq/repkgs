@@ -11,13 +11,9 @@ version = "5.48"
 date    = "2026-06-07"
 
 [package]
-patches           = [ "relocatable.patch", "upstream-mingw-timespec.patch" ]
-uses              = [ "autotools" ]
-buildDependencies = [  ]
-dependencies      = [ "zlib", "bzip2", "xz", "zstd" ]
-
-[package.autotools]
-makeFlags = [  ]
+patches      = [ "relocatable.patch", "upstream-mingw-timespec.patch" ]
+uses         = [ "autotools" ]
+dependencies = [ "zlib", "bzip2", "xz", "zstd" ]
 
 [when.cross]
 buildDependencies = [ "file" ]

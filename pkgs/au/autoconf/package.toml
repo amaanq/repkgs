@@ -11,10 +11,9 @@ version = "2.73"
 date    = "2026-03-20"
 
 [package]
-patches           = [ "relocatable.patch" ]
-uses              = [ "autotools" ]
-buildDependencies = [  ]
-dependencies      = [ "m4", "perl", "bash" ]
+patches      = [ "relocatable.patch" ]
+uses         = [ "autotools" ]
+dependencies = [ "m4", "perl", "bash" ]
 
 [package.phases.after]
 "autotools.install" = [ "autoconf.retarget-tools" ]

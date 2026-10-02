@@ -15,8 +15,6 @@ date    = "2026-09-09"
 uses = [ "cargo" ]
 bin  = [ "formatelf", "auto-formatelf" ]
 
-[package.cargo]
-
 [package.links]
 "bin/auto-formatelf" = "formatelf"
 "bin/patchelf"       = "formatelf"
