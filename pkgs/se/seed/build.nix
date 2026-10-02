@@ -198,10 +198,17 @@ let
       };
 
   bsdtar = musl.libarchive;
-  # nu has no ln, chmod or readlink, and configure scripts want expr, tr and sed before any build
-  toybox = musl.toybox.overrideAttrs (_: {
-    configurePhase = "cp ${../../to/toybox/toybox.config} .config; chmod +w .config; make oldconfig </dev/null >/dev/null";
-  });
+  # nu has no ln, chmod or readlink, and configure scripts want expr, tr and sed before any build.
+  # defconfig leaves out toybox's pending commands, of which awk, diff, expr, gzip and tr are needed
+  toybox = musl.toybox.override {
+    extraConfig = ''
+      CONFIG_AWK=y
+      CONFIG_DIFF=y
+      CONFIG_EXPR=y
+      CONFIG_GZIP=y
+      CONFIG_TR=y
+    '';
+  };
   inherit (musl) dash;
   # what glibc and the GNU userland build with beyond toybox, a POSIX sh, make and the GNU text
   # tools their scripts assume. glibc ships intl/plural.y without its parser, hence bison and m4
