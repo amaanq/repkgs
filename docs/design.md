@@ -39,7 +39,7 @@ part of the platform and injected by jig, so no package carries `-march`.
 
 ## Evaluation
 
-A package is a function returning a small attrset, the *spec*. `nix/package.nix` checks it
+A package is a function returning a small attrset, the *spec*. `nix/package` checks it
 (unknown field, unknown or mistyped option → error) and makes one derivation whose builder is
 `jib build`, with a phase plan and structured JSON attributes. No
 `callPackage`/`mkDerivation`/module layers, no per-package fixpoint: 1000 packages evaluate in

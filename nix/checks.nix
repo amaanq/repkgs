@@ -25,7 +25,7 @@ let
     import ../default.nix {
       inherit system platform;
     };
-  # nix/package.nix decides `supported` per platform without forcing the derivation
+  # nix/package decides `supported` per platform without forcing the derivation
   supported = set: lib.filterAttrs (_: p: p.supported) set;
   prefixed = prefix: lib.mapAttrs' (n: v: lib.nameValuePair "${prefix}${n}" v);
   forPlatform = p: prefixed (if p == system then "pkg-" else "${p}-") (supported (setFor p));

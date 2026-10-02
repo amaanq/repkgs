@@ -19,7 +19,7 @@ Bootstrap can read it before jib exists, which avoids a schema-generation cycle.
 
 | File | Proposed responsibility |
 | --- | --- |
-| `nix/package.nix` | Thin entry point over schema validation and normalization, phase assembly and the final derivation constructor. Separate those responsibilities instead of one long expression. |
+| `nix/package` | Thin entry point over schema validation and normalization, phase assembly and the final derivation constructor. Separate those responsibilities instead of one long expression. |
 | `nix/set.nix` | Keep package discovery, the lazy package set, aliases, variants and build/target tool bindings. Read vocabularies from the schema instead of maintaining option tables. |
 | `nix/platforms.nix` | Thin loader over emitted CPU, OS, ABI and toolchain facts. Bind the selected build and target platforms in Nix, with store paths supplied by bootstrap. |
 | `nix/build-systems.nix` | Thin loader over system descriptors. Resolve symbolic tool and dependency defaults against the current sets and fetch adapters. |

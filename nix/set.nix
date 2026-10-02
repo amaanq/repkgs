@@ -136,7 +136,7 @@ let
     ];
   };
 
-  package = import ./package.nix {
+  package = import ./package {
     platform = plat;
     inherit lib;
     # `prebuilt = true` patches upstream ELFs with it (builder/implant.nu)

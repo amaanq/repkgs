@@ -1,7 +1,7 @@
 # Helpers for package.nix and nix/*.nix, injected as `lib` (and `on` on its own, it is everywhere).
 # Names say what comes out, one name per idea, data argument last. A function joins this file
 # when a third call site wants it; until then it is a `let` where it is used. Not for code that
-# runs once per package in nix/package.nix: a call costs thunks an inline `if` does not.
+# runs once per package in nix/package: a call costs thunks an inline `if` does not.
 let
   inherit (builtins)
     concatStringsSep

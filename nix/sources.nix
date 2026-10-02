@@ -69,7 +69,7 @@ let
     builtins.replaceStrings [ "~" ] [ "-" ] (
       if gh != null then "${builtins.elemAt gh 0}-${builtins.elemAt gh 1}" else builtins.baseNameOf base
     );
-  # `pin`: [pin] keys over the file's, `hashes`: source key -> hash (nix/package.nix, overrides)
+  # `pin`: [pin] keys over the file's, `hashes`: source key -> hash (nix/package, overrides)
   read =
     pin: hashes: file:
     let
@@ -156,7 +156,7 @@ let
       sys = pinned.sys or [ ];
       has = key: byKey ? ${key};
       default = fetch "default";
-      # the same file under another pin (nix/package.nix, for overrides)
+      # the same file under another pin (nix/package, for overrides)
       repin = pin: hashes: read pin hashes file;
     };
 in
