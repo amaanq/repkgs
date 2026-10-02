@@ -1,8 +1,8 @@
-# From the seed to a configured `cc` per platform:
-#   stage0  seed clang, musl    -> jig and a cc for the build machine
-#   stage1  seed clang, glibc   -> a cc to host cmake and llvm (clang+lld, all targets)
-#   stage2  our clang           -> compiler-rt, libc, libc++, cc and launch for every platform
-# Each derivation runs `jig bootstrap <recipe>` with structured attrs. Recipes live in
+# The seed grown into a configured `cc` for every platform, in three stages:
+#   stage0  the seed's clang on musl builds jig and a cc for this machine
+#   stage1  the seed's clang on glibc builds a cc that can host cmake and llvm (clang, lld, every target)
+#   stage2  that llvm builds compiler-rt, the libc, libc++, cc and launch per platform
+# Every derivation runs `jig bootstrap <recipe>` with structured attrs, recipes in
 # pkgs/ji/jig/src/jig/src/bootstrap/.
 {
   seed ? null,
@@ -11,28 +11,26 @@
 let
   platforms = import ../nix/platforms.nix;
   pkg = name: ../pkgs + "/${builtins.substring 0 2 name}/${name}";
-  buildPlatform = platforms.forSystem system "glibc";
-  # the vendor field says build, so configure sees a cross build even on the same cpu
-  buildTriple = builtins.replaceStrings [ "-unknown-" ] [ "-build-" ] buildPlatform.gnuTriple;
+  host = platforms.forSystem system "glibc";
+  # with "build" as the vendor, configure treats even a same-cpu build as a cross one
+  buildTriple = builtins.replaceStrings [ "-unknown-" ] [ "-build-" ] host.gnuTriple;
 
   seedBuild = import ../pkgs/se/seed {
     inherit system;
     buildSystem = system;
   };
-  # the seed's own package.toml is read without an unpacker: it is the unpacker
-  sourcesOf =
+  # the seed is the unpacker, so its own package.toml has to be read without one
+  readerFor =
     name:
-    (
-      if name == "seed" then
-        import ../nix/sources.nix { unpacker = null; }
-      else
-        import ../nix/sources.nix {
-          unpacker = seedPath;
-          inherit (seedBuild) jig;
-          inherit system;
-        }
-    )
-      (pkg name + "/package.toml");
+    if name == "seed" then
+      import ../nix/sources.nix { unpacker = null; }
+    else
+      import ../nix/sources.nix {
+        unpacker = seedPath;
+        inherit (seedBuild) jig;
+        inherit system;
+      };
+  sourcesOf = name: readerFor name (pkg name + "/package.toml");
   source = name: (sourcesOf name).default;
   seedPath =
     if seed == null then
@@ -53,43 +51,43 @@ let
   };
   chain = import ./chain.nix { inherit pkg; };
 
-  linuxChain =
+  glibcChain =
     platform: run: ccArgs:
     let
-      linux-headers = run [ ] "linux-headers" { };
+      headers = run [ ] "linux-headers" { };
       built = chain {
         inherit platform run ccArgs;
         libcRecipe = "glibc";
         libcArgs = {
-          linuxHeaders = linux-headers;
-          # C.UTF-8 is compiled by running the fresh localedef
-          locale = platform.clangTarget == buildPlatform.clangTarget;
+          linuxHeaders = headers;
+          # building C.UTF-8 runs the new localedef, which only works natively
+          locale = platform.clangTarget == host.clangTarget;
         };
-        linuxHeaders = linux-headers;
+        linuxHeaders = headers;
       };
     in
     built
     // {
       glibc = built.libc;
-      inherit linux-headers;
+      linux-headers = headers;
       launch = run [ built.cc ] "launch" { };
       dlaudit = run [ built.cc ] "dlaudit" { };
     };
 
-  # no jig yet. Linux headers install with musl's own tools here, so they come after libc
+  # before jig exists. The kernel headers install with musl's own tools, so they follow the libc
   stage0 =
     let
+      platform = platforms.forSystem system "musl";
       run = stage {
-        platform = platforms.forSystem system "musl";
+        inherit platform;
         suffix = "";
       };
       built = chain {
-        inherit run;
-        platform = platforms.forSystem system "musl";
+        inherit platform run;
         libcRecipe = "musl";
-        extraParts = [ linux-headers ];
+        extraParts = [ headers ];
       };
-      linux-headers = run [ ] "linux-headers" {
+      headers = run [ ] "linux-headers" {
         sysroot = run [ ] "sysroot" {
           parts = [ built.libc ];
           resource = built.compiler-rt;
@@ -99,7 +97,8 @@ let
     in
     built
     // {
-      inherit jig linux-headers;
+      inherit jig;
+      linux-headers = headers;
       musl = built.libc;
       cc = run [ jig ] "cc" {
         inherit (built) sysroot;
@@ -110,14 +109,14 @@ let
   stage1 =
     let
       run = stage {
-        platform = buildPlatform;
+        platform = host;
         tools = [
           stage0.jig
           stage0.cc
         ];
         suffix = "-boot";
       };
-      built = linuxChain buildPlatform run { prebuilt = stage0.jig; };
+      built = glibcChain host run { prebuilt = stage0.jig; };
       cmake = run [ built.cc ] "cmake" { inherit (built) sysroot; };
     in
     built
@@ -129,11 +128,12 @@ let
       ] "llvm" { inherit (built) sysroot; };
     };
 
-  # stage2. stage1's cc stays on PATH as the host compiler (HOSTCC, cc-build)
+  # stage1's cc stays on PATH as the compiler for this machine (HOSTCC, cc-build)
   stage2For =
     platform:
     {
-      sdk ? null, # windows-sdk needs the native set's 7zip, nix/set.nix passes it in
+      # the Windows SDK needs the native set's 7zip, so nix/set.nix fetches and passes it
+      sdk ? null,
     }:
     let
       run = stage {
@@ -148,28 +148,34 @@ let
       ccArgs = {
         prebuilt = stage0.jig;
       }
-      // (if platform == buildPlatform then { } else { native = nativeCc; });
-      withLaunch = built: built // { launch = run [ built.cc ] "launch" { }; };
-      byLibc = {
-        glibc = linuxChain platform run ccArgs;
-        msvc = withLaunch (chain {
-          inherit platform run ccArgs;
-          libcGiven = sdk;
-          extraParts = [ (run [ ] "vcruntime" { inherit sdk; }) ];
-        });
-        apple = chain {
-          inherit platform run ccArgs;
-          libcGiven = run [ ] "apple-sdk" { };
-        };
-        mingw = withLaunch (chain {
-          inherit platform run ccArgs;
-          libcRecipe = "mingw-w64";
-        });
-      };
+      // (if platform == host then { } else { native = nativeCc; });
+      launched = built: built // { launch = run [ built.cc ] "launch" { }; };
     in
-    byLibc.${platform.libc};
+    if platform.libc == "glibc" then
+      glibcChain platform run ccArgs
+    else if platform.libc == "msvc" then
+      launched (chain {
+        inherit platform run ccArgs;
+        libcGiven = sdk;
+        extraParts = [ (run [ ] "vcruntime" { inherit sdk; }) ];
+      })
+    else if platform.libc == "apple" then
+      chain {
+        inherit platform run ccArgs;
+        libcGiven = run [ ] "apple-sdk" { };
+      }
+    else if platform.libc == "mingw" then
+      launched (chain {
+        inherit platform run ccArgs;
+        libcRecipe = "mingw-w64";
+      })
+    else
+      throw "bootstrap: no stage2 for libc ${platform.libc}";
   toolchain = builtins.mapAttrs (_: stage2For) platforms.byName;
-  nativeCc = (toolchain.${buildPlatform.name} { }).cc;
+  nativeCc = (toolchain.${host.name} { }).cc;
+  linuxPlatforms = builtins.filter (platform: platform.os == "linux") (
+    builtins.attrValues platforms.byName
+  );
 in
 {
   seed = seedPath;
@@ -182,11 +188,11 @@ in
     source
     ;
   inherit (stage1) llvm;
-  # the linux toolchains by cpu (README)
+  # the Linux toolchains by cpu (README)
   stage2 = builtins.listToAttrs (
     map (platform: {
       name = platform.cpu;
       value = toolchain.${platform.name} { };
-    }) (builtins.filter (platform: platform.os == "linux") (builtins.attrValues platforms.byName))
+    }) linuxPlatforms
   );
 }
