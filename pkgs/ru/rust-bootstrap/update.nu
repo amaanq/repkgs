@@ -1,11 +1,9 @@
-# uptrack hook. rust N is built by exactly the compiler its src/stage0 names (N-1 usually), so
-# rust-bootstrap follows the tree's rust pin instead of upstream's latest release.
-
+# x.py accepts only the stage0 compiler its src/stage0 names, so this follows the rust pin
 export def resolve [pkg: record]: nothing -> table {
   let rust = (open ($pkg.dir | path dirname | path join rust package.toml)).pin.version
   let url = $"https://raw.githubusercontent.com/rust-lang/rust/($rust)/src/stage0"
-  let r = (^uptrack get $url --max-age 1day | from json)
-  if $r.status != 200 { error make {msg: $"GET ($url) → ($r.status)"} }
-  let v = ($r.body | lines | parse "compiler_version={v}" | get 0.v)
-  [{version: $v, date: null, prerelease: false}]
+  let reply = (^uptrack get $url --max-age 1day | from json)
+  if $reply.status != 200 { error make {msg: $"GET ($url) returned ($reply.status)"} }
+  let compiler = ($reply.body | lines | parse "compiler_version={version}" | get 0.version)
+  [{version: $compiler, date: null, prerelease: false}]
 }

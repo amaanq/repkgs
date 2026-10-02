@@ -1,9 +1,7 @@
-# uptrack hook. Temurin file names spell the tag jdk-25.0.4.1+1 as 25.0.4.1_1 and the URL path
-# wants + as %2B: neither is {version} nor {tag}, so the candidates carry both as extra pin keys
-
+# Temurin spells the tag jdk-25.0.4.1+1 as 25.0.4.1_1 in file names and with %2B in URL paths
 export def resolve [pkg: record]: nothing -> table {
-  ^uptrack versions $pkg.upstream.purl | from json | each {|c|
-    let v = ($c.tag | str replace "jdk-" "")
-    $c | merge {version: $v, path: ($c.tag | str replace "+" "%2B"), file: ($v | str replace -ar "[.+]" "_")}
+  ^uptrack versions $pkg.upstream.purl | from json | each {|release|
+    let version = ($release.tag | str replace "jdk-" "")
+    $release | merge {version: $version, path: ($release.tag | str replace "+" "%2B"), file: ($version | str replace -ar "[.+]" "_")}
   }
 }

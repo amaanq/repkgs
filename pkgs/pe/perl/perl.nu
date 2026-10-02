@@ -1,54 +1,76 @@
 use core.nu *
 
-# perl's Configure is its own script, perl-cross adds cross support on top.
-# -Duserelocatableinc: @INC is found relative to the perl binary, so the tree relocates
-export def configure []: nothing -> nothing {
-  let c = (ctx)
-  cd $c.src
-  "osvers=\"gnulinux\"\nmyuname=\"pkgs\"\nmyhostname=\"pkgs\"\ncf_by=\"pkgs\"\ncf_time=\"1970-01-01\"\n" | save -f config.over
-  let z = (dep-root zlib "Compress::Raw::Zlib links it")
-  $"BUILD_ZLIB = False\nINCLUDE = ($z)/include\nLIB = ($z)/lib\nOLD_ZLIB = False\nGZIP_OS_CODE = AUTO_DETECT\nUSE_ZLIB_NG = False\nZLIB_INCLUDE = ($z)/include\nZLIB_LIB = ($z)/lib\n" | save -f cpan/Compress-Raw-Zlib/config.in
-  # relocatable @INC starts from $^X, which is argv[0] unless perl can ask the OS. The Linux probe
-  # runs `ls -l /proc/self/exe` and looks for "/ls" (ours is .coreutils), the macOS one cannot run
-  let self_exe = (match $c.platform.os {
+def assignments [pairs: record, format: closure]: nothing -> string {
+  $pairs | items {|key, value| do $format $key $value } | each {|line| $"($line)\n" } | str join
+}
+
+# where perl looks for its own binary, the root of a relocatable @INC. Configure's Linux probe
+# greps `ls -l /proc/self/exe` for "/ls", which our coreutils multicall binary never shows
+def self-exe [os: string]: nothing -> list<string> {
+  match $os {
     "linux" => [-Dd_procselfexe=define '-Dprocselfexe="/proc/self/exe"']
     "macos" => [-Dusensgetexecutablepath=define]
     _ => []
-  })
-  # startperl/perlpath: the scripts perl installs name it by PATH, finish's launchers bind them
-  let common = [$"-Dprefix=($c.out)" -Dcc=cc -Uinstallusrbinperl -Dinstallstyle=lib/perl5 -Duserelocatableinc ...$self_exe
-    "-Dstartperl=#!/usr/bin/env perl" -Dperlpath=perl
-    $"-Dman1dir=($c.out)/share/man/man1" $"-Dman3dir=($c.out)/share/man/man3" "-Accflags=-D_GNU_SOURCE -fno-strict-aliasing"]
-  if $c.platform.cross {
-    x cp -r $"($env.PERL_CROSS)/." .
-    x patch -p1 -F0 -i $env.PERL_CROSS_PATCH
-    # perl-cross ships one patchset per perl release. A point release it does not know yet
-    # gets the previous one's
-    let want = $"cnf/diffs/perl5-($c.spec.version)"
-    if not ($want | path exists) {
-      let have = (ls cnf/diffs | get name | where $it =~ ($c.spec.version | str replace -r '\.\d+$' "" | str replace -a "." '\.') | sort --natural | last)
-      cp -r $have $want
-    }
-    # --sysroot: Errno_pm.PL and h2ph parse the target's C headers from there
-    x env AR=llvm-ar RANLIB=llvm-ranlib READELF=llvm-readelf OBJDUMP=llvm-objdump NM=llvm-nm $env.CONFIG_SHELL ./configure $"--target=($c.platform.gnuTriple)" --host-cc=cc-build $"--sysroot=($env.PERL_SYSROOT)" ...$common
-  } else {
-    x $env.CONFIG_SHELL ./Configure -des ...$common
   }
 }
 
-# Config.pm and friends record how perl was built: full paths to the seed's tools, the sysroot,
-# dependency dirs. Installed, those are store references to things not there at run time.
-# Tool paths become bare names, other foreign store paths are dropped
-export def scrub []: nothing -> nothing {
+# perl-cross carries one patchset per perl release, a newer point release reuses the last one
+def borrow-cross-diffs [version: string]: nothing -> nothing {
+  let wanted = $"cnf/diffs/perl5-($version)"
+  if ($wanted | path exists) { return }
+  let series = ($version | split row "." | first 2 | str join ".")
+  let nearest = (ls cnf/diffs | get name | where ($it | path basename | str starts-with $"perl5-($series).") | sort --natural | last)
+  cp -r $nearest $wanted
+}
+
+export def configure []: nothing -> nothing {
   let c = (ctx)
-  let arch = (files $"($c.out)/lib/perl5/5.*/*/Config_heavy.pl" | first | path dirname)
-  let foreign = $"\(?:-I|-L|--sysroot=\)?/nix/store/\(?!($c.out | path basename)\)[^'\" ]+ ?"
-  # -Duserelocatableinc made every path perl uses `.../..`. Configure still records the literal
-  # -Dprefix in config_args and initialinstalllocation (by design, "where it was first
-  # installed"): the same notation there
-  for f in [$"($arch)/Config.pm" $"($arch)/Config_heavy.pl" $"($arch)/CORE/config.h"] {
-    edit $f { tools-by-name | str replace -ar $foreign "" | str replace -a $c.out ".../.." }
+  let out = $c.out
+  cd $c.src
+
+  assignments {osvers: gnulinux, myuname: pkgs, myhostname: pkgs, cf_by: pkgs, cf_time: "1970-01-01"} {|key, value| $"($key)=\"($value)\"" }
+  | save -f config.over
+
+  let zlib = (dep-root zlib "Compress::Raw::Zlib links it")
+  assignments {
+    BUILD_ZLIB: False
+    INCLUDE: $"($zlib)/include"
+    LIB: $"($zlib)/lib"
+    OLD_ZLIB: False
+    GZIP_OS_CODE: AUTO_DETECT
+    USE_ZLIB_NG: False
+    ZLIB_INCLUDE: $"($zlib)/include"
+    ZLIB_LIB: $"($zlib)/lib"
+  } {|key, value| $"($key) = ($value)" }
+  | save -f cpan/Compress-Raw-Zlib/config.in
+
+  # installed scripts find perl on PATH, the launchers finish writes pin it
+  let flags = [
+    $"-Dprefix=($out)" -Dcc=cc -Uinstallusrbinperl -Dinstallstyle=lib/perl5 -Duserelocatableinc ...(self-exe $c.platform.os)
+    "-Dstartperl=#!/usr/bin/env perl" -Dperlpath=perl
+    $"-Dman1dir=($out)/share/man/man1" $"-Dman3dir=($out)/share/man/man3" "-Accflags=-D_GNU_SOURCE -fno-strict-aliasing"
+  ]
+  if not $c.platform.cross {
+    x $env.CONFIG_SHELL ./Configure -des ...$flags
+    return
   }
-  let left = (open --raw $"($arch)/Config_heavy.pl" | lines | where { $in =~ '/nix/store/' and $in !~ $c.out })
-  if ($left | is-not-empty) { error make {msg: $"Config_heavy.pl still names foreign store paths: ($left | first)"} }
+
+  x cp -r $"($env.PERL_CROSS)/." .
+  x patch -p1 -F0 -i $env.PERL_CROSS_PATCH
+  borrow-cross-diffs $c.spec.version
+  # Errno_pm.PL and h2ph read the target's C headers below --sysroot
+  x env AR=llvm-ar RANLIB=llvm-ranlib READELF=llvm-readelf OBJDUMP=llvm-objdump NM=llvm-nm $env.CONFIG_SHELL ./configure $"--target=($c.platform.gnuTriple)" --host-cc=cc-build $"--sysroot=($env.PERL_SYSROOT)" ...$flags
+}
+
+# Config.pm, Config_heavy.pl and config.h keep the build's tool paths, sysroot and dependency
+# dirs. Configure records -Dprefix even with -Duserelocatableinc, so ours becomes `.../..` too
+export def scrub []: nothing -> nothing {
+  let out = (ctx).out
+  let arch = (files $"($out)/lib/perl5/5.*/*/Config_heavy.pl" | first | path dirname)
+  let elsewhere = $"\(?:-I|-L|--sysroot=\)?/nix/store/\(?!($out | path basename)\)[^'\" ]+ ?"
+  for record in [Config.pm Config_heavy.pl CORE/config.h] {
+    edit $"($arch)/($record)" { tools-by-name | str replace -ar $elsewhere "" | str replace -a $out ".../.." }
+  }
+  let stale = (open --raw $"($arch)/Config_heavy.pl" | lines | where $it =~ '/nix/store/' and $it !~ $out)
+  if ($stale | is-not-empty) { error make {msg: $"Config_heavy.pl still names foreign store paths: ($stale | first)"} }
 }

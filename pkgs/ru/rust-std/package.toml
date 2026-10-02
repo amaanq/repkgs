@@ -1,7 +1,7 @@
 from = "rust"
 
 [package]
-phases            = [ "rust.stdConfigure", "rust.stdBuild", "rust.stdInstall" ]
+phases            = [ "rust.std-configure", "rust.std-build", "rust.std-install" ]
 buildDependencies = [ "rust", "cpython" ]
 dependencies      = [  ]
 bin               = [  ]

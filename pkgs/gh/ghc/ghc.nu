@@ -1,34 +1,39 @@
 use core.nu *
 
-def --wrapped hadrian [...args: string]: nothing -> nothing {
+def --wrapped hadrian [...targets: string]: nothing -> nothing {
   let c = (ctx)
   cd $c.src
-  let bin = (^cabal list-bin $"--project-dir=($c.src)/hadrian" ...(options cabal).flags exe:hadrian | str trim)
-  x $bin --directory $c.src $"-j($c.njobs)" --docs=none $"--flavour=release+no_profiled_libs+split_sections(if $c.spec.debug { '+debug_info' })" ...$args
+  let flavour = $"release+no_profiled_libs+split_sections(if $c.spec.debug { '+debug_info' })"
+  let program = (^cabal list-bin $"--project-dir=($c.src)/hadrian" ...(options cabal).flags exe:hadrian | str trim)
+  x $program --directory $c.src $"-j($c.njobs)" --docs=none $"--flavour=($flavour)" ...$targets
+}
+
+def linked [flag: string, dependency: string, headers: string]: nothing -> list<string> {
+  let root = (dep-root $dependency "ghc links it")
+  [$"--with-($flag)-includes=($root)/($headers)" $"--with-($flag)-libraries=($root)/lib"]
 }
 
 export def configure []: nothing -> nothing {
   let c = (ctx)
   cd $c.src
-  let libs = ([[flag dep inc]; [ffi libffi include] [gmp gmp include] [curses ncurses include/ncursesw]]
-    | each {|l| let r = (dep-root $l.dep "ghc links it"); [$"--with-($l.flag)-includes=($r)/($l.inc)" $"--with-($l.flag)-libraries=($r)/lib"] }
-    | flatten)
-  # no automake for autoreconf's aclocal, and AC_PATH_PROG only takes an absolute preset
-  x sh ./configure $"--prefix=($c.out)" --with-system-libffi ...$libs GHC=ghc $"AutoreconfCmd=(tool autoconf)" ...(^jib system ghc-toolchain | lines)
+  let libraries = [(linked ffi libffi include) (linked gmp gmp include) (linked curses ncurses include/ncursesw)] | flatten
+  # autoreconf would run aclocal, which needs automake, and AC_PATH_PROG keeps only absolute presets
+  x sh ./configure $"--prefix=($c.out)" --with-system-libffi ...$libraries GHC=ghc $"AutoreconfCmd=(tool autoconf)" ...(^jib system ghc-toolchain | lines)
 }
 
-# _build round-trips through jigd. Not keyed on $out, which changes with every recipe edit and
-# only matters from the bindist's configure on
-def key []: nothing -> string {
-  let a = (attrs)
-  ^jib probe key $"hadrian/($a.src | path basename)" ...$a.patches --no-out
+# leaves $out out of the key since it moves with every recipe edit, and _build never embeds it
+def cache-key []: nothing -> string {
+  let given = (attrs)
+  ^jib probe key $"hadrian/($given.src | path basename)" ...$given.patches --no-out
 }
 
 export def build []: nothing -> nothing {
-  let dir = $"((ctx).src)/_build"
-  note hadrian-cache (if (^jib probe restore-dir (key) $dir | complete).exit_code == 0 { "restored" } else { "cold" })
+  let tree = $"((ctx).src)/_build"
+  let key = (cache-key)
+  let restored = (^jib probe restore-dir $key $tree | complete).exit_code == 0
+  note hadrian-cache (if $restored { "restored" } else { "cold" })
   hadrian binary-dist-dir
-  ^jib probe store-dir (key) $dir
+  ^jib probe store-dir $key $tree
 }
 
 export def install []: nothing -> nothing {
