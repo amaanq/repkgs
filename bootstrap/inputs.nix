@@ -22,7 +22,7 @@ in
       filter = path: _: builtins.match "reloc.*" (baseNameOf path) != null;
     };
   };
-  dlaudit.dlaudit = pkg "dlaudit" + "/src/dlaudit.cc";
+  dlaudit.dlaudit = pkg "dlaudit" + "/src/dlaudit.c";
   llvm = {
     src = llvm;
     zstd = source "zstd";

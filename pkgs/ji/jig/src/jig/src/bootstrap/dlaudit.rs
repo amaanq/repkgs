@@ -19,23 +19,18 @@ impl Recipe for Dlaudit {
       "dlaudit"
    }
 
-   /// header-only C++ and -nostdlib++, so nothing but libc is in the audited
-   /// process.
    fn run(&self, stage: &Stage) -> io::Result<()> {
       let source = wanted(stage.dlaudit.as_deref(), "dlaudit")?;
       let lib = format!("{}/lib", stage.out());
       create_dir_all(&lib)?;
-      run("c++", &[
-         "-std=c++23",
+      run("cc", &[
+         "-std=c17",
          "-O2",
          "-Wall",
          "-Wextra",
          "-Werror",
-         "-fno-exceptions",
-         "-fno-rtti",
          "-shared",
          "-fPIC",
-         "-nostdlib++",
          "-o",
          &format!("{lib}/dlaudit.so"),
          source,
