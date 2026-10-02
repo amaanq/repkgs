@@ -14,47 +14,47 @@ let
   inherit (builtins)
     attrNames
     baseNameOf
-    concatLists
+    concatMap
     dirOf
     elem
+    elemAt
     filter
+    fromJSON
     fromTOML
     head
+    mapAttrs
     match
     pathExists
     readFile
+    replaceStrings
+    toJSON
     ;
-  norm = builtins.replaceStrings [ "_" "." ] [ "-" "-" ];
-  namedBuild = names: map (n: buildPkgs.${n}) names;
+  pypiName = replaceStrings [ "_" "." ] [ "-" "-" ];
   # per PyPI name: C libraries to link, build tools, config settings (builder/sys-libs.nu)
-  table = (builtins.fromJSON (readFile ../builder/sys-libs.json)).python;
+  known = (fromJSON (readFile ../builder/sys-libs.json)).python;
 
   # git sources: uv.lock has url?rev#sha and no content hash, so they are fetched here by commit
-  gitSources =
-    lock:
-    concatLists (
-      map (
-        p:
-        let
-          m = match "([^?#]+)(\\?[^#]*)?#(.*)" (p.source.git or "");
-        in
-        if p ? source.git then
-          [
-            {
-              inherit (p) name;
-              path = builtins.fetchGit {
-                url = head m;
-                rev = builtins.elemAt m 2;
-                allRefs = true;
-              };
-            }
-          ]
-        else
-          [ ]
-      ) (lock.package or [ ])
-    );
+  gitSources = concatMap (
+    locked:
+    let
+      parts = match "([^?#]+)(\\?[^#]*)?#(.*)" (locked.source.git or "");
+    in
+    if locked ? source.git then
+      [
+        {
+          inherit (locked) name;
+          path = builtins.fetchGit {
+            url = head parts;
+            rev = elemAt parts 2;
+            allRefs = true;
+          };
+        }
+      ]
+    else
+      [ ]
+  );
 
-  mk =
+  application =
     mode:
     {
       src, # the project (its pyproject.toml names it); with `lock`, only used for the name
@@ -73,20 +73,20 @@ let
       environ ? { }, # PEP 508 marker overrides, e.g. { platform_release = "6.6"; }
     }:
     let
-      pp = src + "/pyproject.toml";
+      manifest = src + "/pyproject.toml";
       pname =
         if name != null then
           name
-        else if pathExists pp then
-          norm (fromTOML (readFile pp)).project.name
+        else if pathExists manifest then
+          pypiName (fromTOML (readFile manifest)).project.name
         else
           baseNameOf src;
       source = builtins.path {
         path = src;
         name = "${pname}-src";
         filter =
-          p: _t:
-          !(elem (baseNameOf p) [
+          path: _type:
+          !(elem (baseNameOf path) [
             ".git"
             ".venv"
             "result"
@@ -94,9 +94,8 @@ let
             ".direnv"
           ]);
       };
-      lockFile = if lock == null then src + "/uv.lock" else lock;
-      lockData = fromTOML (readFile lockFile);
-      root =
+      lockData = fromTOML (readFile (if lock == null then src + "/uv.lock" else lock));
+      lockRoot =
         if lock == null then
           source
         else
@@ -104,57 +103,54 @@ let
             path = dirOf lock;
             name = "${pname}-lock";
           };
-      ovNames = attrNames overrides;
-      ov =
-        n: k: d:
-        overrides.${n}.${k} or d;
-      locked = filter (n: table ? ${n}) (map (p: p.name) (lockData.package or [ ]));
-      fromTable = k: concatLists (map (n: table.${n}.${k} or [ ]) locked);
-      tableSys = filter (n: pkgs ? ${n}) (
-        concatLists (map (n: if table.${n} ? pkg then [ table.${n}.pkg ] else [ ]) locked)
+      overridden = attrNames overrides;
+      fromOverrides = field: concatMap (entry: overrides.${entry}.${field} or [ ]) overridden;
+      lockedKnown = filter (entry: known ? ${entry}) (
+        map (locked: locked.name) (lockData.package or [ ])
+      );
+      fromKnown = field: concatMap (entry: known.${entry}.${field} or [ ]) lockedKnown;
+      knownLibraries = filter (library: pkgs ? ${library}) (
+        concatMap (entry: if known.${entry} ? pkg then [ known.${entry}.pkg ] else [ ]) lockedKnown
       );
     in
     package {
       name = if mode == "project" then pname else "${pname}-${mode}";
-      inherit source;
+      inherit source env;
       version = "0";
       uses = [ "pyapp" ];
       pyapp = {
         inherit mode check;
         deps = fetch.pythonDeps {
           inherit python extras prefer;
-          source = root;
+          source = lockRoot;
           groups = if mode == "project" then [ ] else groups;
-          sdist = filter (n: ov n "prefer" prefer == "sdist") ovNames;
-          git = gitSources lockData;
-          environ = builtins.toJSON environ;
+          sdist = filter (entry: overrides.${entry}.prefer or prefer == "sdist") overridden;
+          git = gitSources (lockData.package or [ ]);
+          environ = toJSON environ;
         };
-        overrides = builtins.mapAttrs (_n: o: {
-          env = o.env or { };
-          patches = map toString (o.patches or [ ]);
-          run = o.run or "";
-          configSettings = o.configSettings or { };
+        overrides = mapAttrs (_entry: override: {
+          env = override.env or { };
+          patches = map toString (override.patches or [ ]);
+          run = override.run or "";
+          configSettings = override.configSettings or { };
         }) overrides;
       };
-      sys = sys ++ tableSys ++ concatLists (map (n: ov n "sys" [ ]) ovNames);
-      buildDependencies = namedBuild (
-        tools
-        ++ filter (n: buildPkgs ? ${n}) (fromTable "tools")
-        ++ concatLists (map (n: ov n "tools" [ ]) ovNames)
+      sys = sys ++ knownLibraries ++ fromOverrides "sys";
+      buildDependencies = map (tool: buildPkgs.${tool}) (
+        tools ++ filter (tool: buildPkgs ? ${tool}) (fromKnown "tools") ++ fromOverrides "tools"
       );
       dependencies = [
         python
         pkgs.libgcc-shim
       ];
-      inherit env;
       tests.version = false;
       exports = false;
     };
 in
 {
-  env = args: mk "env" (if args ? src then args else args // { src = dirOf args.lock; });
+  env = args: application "env" (if args ? src then args else args // { src = dirOf args.lock; });
   project = args: {
-    package = mk "project" args;
-    devEnv = mk "dev" args;
+    package = application "project" args;
+    devEnv = application "dev" args;
   };
 }
