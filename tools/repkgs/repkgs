@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # The one command for working on the set. Each subcommand ends in nix-build, nix, uptrack, jigd or
-# treefmt, and `repkgs <command> --help` says which.
+# nuff, and `repkgs <command> --help` says which.
 use nix.nu *
 use dev.nu *
 
@@ -244,8 +244,8 @@ def --wrapped "main bootstrap" [...args: string]: nothing -> nothing {
   ^$"(root)/tools/upload-bootstrap.nu" ...$args
 }
 
-# format and lint the tree with treefmt
+# format and lint the tree with nuff (nuff.toml)
 def --wrapped "main fmt" [...args: string]: nothing -> nothing {
   cd (root)
-  ^treefmt ...$args
+  ^nuff ...$args
 }

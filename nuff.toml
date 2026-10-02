@@ -1,0 +1,73 @@
+[global]
+excludes = [
+  ".git/**",
+  ".jj/**",
+  "**/target/**",
+  "result*",
+  "flake.lock",
+  "pkgs/ll/llvm/*.txt",
+  "**/lock.json",
+]
+
+[formatter.nix]
+commands = [
+  { argv = [ "nixfmt" ], check_argv = [ "nixfmt", "--check" ] },
+  { argv = [ "statix", "check", "-c", "statix.toml" ], check_argv = [ "statix", "check", "-c", "statix.toml" ], per_file = true },
+  { argv = [ "deadnix", "--fail", "--edit" ], check_argv = [ "deadnix", "--fail" ] },
+]
+includes = [ "**/*.nix" ]
+mode = "files"
+
+# nu has no stable formatter, so lints/format.nu parses, type checks and lints instead
+[formatter.nu]
+command       = "nu"
+includes      = [ "**/*.nu", "tools/repkgs/repkgs", "tools/target-test" ]
+mode          = "files"
+options       = [ "--no-config-file", "lints/format.nu", "nu" ]
+check_options = [ "--no-config-file", "lints/format.nu", "nu" ]
+
+[formatter.toml]
+commands = [
+  { argv = [ "taplo", "format" ], check_argv = [ "taplo", "format", "--check" ] },
+  { argv = [ "nu", "--no-config-file", "lints/format.nu", "package-scripts" ], check_argv = [ "nu", "--no-config-file", "lints/format.nu", "package-scripts" ] },
+]
+includes = [ "**/*.toml" ]
+excludes = [ "locks/*.toml" ]
+mode = "files"
+# taplo logs every file it found at INFO
+env = { RUST_LOG = "warn" }
+
+# one sorted entry per line, so additions merge as text (.gitattributes merge=union)
+[formatter.locks]
+command  = "uptrack"
+includes = [ "locks/*.toml" ]
+mode     = "files"
+options  = [ "normalize" ]
+
+[formatter.python]
+commands = [
+  { argv = [ "ruff", "format" ], check_argv = [ "ruff", "format", "--check" ] },
+  { argv = [ "ruff", "check", "--fix" ], check_argv = [ "ruff", "check" ] },
+]
+includes = [ "**/*.py" ]
+mode = "files"
+
+[formatter.go]
+command  = "gofmt"
+includes = [ "**/*.go" ]
+mode     = "files"
+options  = [ "-w" ]
+
+[formatter.rust]
+command       = "rustfmt"
+includes      = [ "pkgs/*/*/src/**/*.rs" ]
+mode          = "files"
+options       = [ "--edition", "2024", "--config", "skip_children=true" ]
+check_options = [ "--edition", "2024", "--config", "skip_children=true", "--check" ]
+
+[formatter.c]
+command       = "clang-format"
+includes      = [ "pkgs/*/*/src/**/*.c", "pkgs/*/*/src/**/*.h" ]
+mode          = "files"
+options       = [ "-i" ]
+check_options = [ "--dry-run", "--Werror" ]

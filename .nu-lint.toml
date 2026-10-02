@@ -1,4 +1,4 @@
-# nu-lint settings. treefmt's `nu --ide-check` stays the parser and type checker of record, and
+# nu-lint settings. nuff's `nu --ide-check` stays the parser and type checker of record, and
 # nu-lint adds strict typing of every custom command plus idiom checks. Each rule turned off says why.
 [groups]
 type-safety = "error"

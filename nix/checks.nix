@@ -33,9 +33,15 @@ let
   checkout = builtins.path {
     path = ../.;
     name = "source";
-    filter = path: type: baseNameOf path != ".jj" && lib.cleanSourceFilter path type;
+    filter =
+      path: type:
+      !(builtins.elem (baseNameOf path) [
+        ".jj"
+        "target"
+      ])
+      && lib.cleanSourceFilter path type;
   };
-  formatter = import ../treefmt.nix {
+  formatter = import ./format.nix {
     pkgs = host;
     evaluates = false;
   };
@@ -48,9 +54,9 @@ lib.mergeAttrsList (map packagesFor platforms)
     ${(setFor system).jib}/bin/jib schema --check ${./schema.json}
     touch $out
   '';
-  treefmt = host.runCommand "treefmt-check" {
+  format = host.runCommand "format-check" {
     nativeBuildInputs = [ formatter ];
-  } "cp -r ${checkout} src && chmod -R u+w src && cd src && treefmt --ci --tree-root . && touch $out";
+  } "cp -r ${checkout} src && chmod -R u+w src && cd src && nuff --check && touch $out";
   inherit
     (import ../pkgs/se/seed {
       inherit system;

@@ -97,7 +97,7 @@ and records what the ecosystem's own lock cannot give Nix in `$UPTRACK_LOCKS/<ec
 - **luarocks**: a version and hash per rock, from luarocks' own solve.
 
 A table holds one sorted line per entry and merges as text (`merge=union` in .gitattributes),
-with `uptrack normalize` as the treefmt step restoring the order. Cargo and npm locks carry file
+with `uptrack normalize` as the nuff step restoring the order. Cargo and npm locks carry file
 hashes and need no table. `uptrack lock` runs the stage alone, and an entry already matching
 `[pin]` is skipped, so an interrupted run picks up where it stopped.
 

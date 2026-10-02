@@ -1,4 +1,4 @@
-# uptrack built by nixpkgs' rust for the development shell and treefmt, so a tree check does not
+# uptrack built by nixpkgs' rust for the development shell and nuff, so a tree check does not
 # start the package set. The set's own build is pkgs/up/uptrack.
 { pkgs }:
 pkgs.rustPlatform.buildRustPackage {

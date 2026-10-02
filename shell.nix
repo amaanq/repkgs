@@ -1,4 +1,4 @@
-# A development shell with treefmt (treefmt.nix), rom and what uptrack runs, from plain nixpkgs
+# A development shell with nuff (nix/format.nix), rom and what uptrack runs, from plain nixpkgs
 # (nix/nixpkgs.nix) and apart from the package set
 {
   pkgs ? import (import ./nix/nixpkgs.nix) { },
@@ -19,11 +19,11 @@ in
 pkgs.mkShell {
   packages = [
     rom
-    (import ./treefmt.nix { inherit pkgs; })
+    (import ./nix/format.nix { inherit pkgs; })
     (import ./nix/uptrack.nix { inherit pkgs; })
     # bsdtar, so uptrack's prefetch unpacks the way nix/sources.nix does
     pkgs.libarchive
-    # uptrack formats package.toml the way treefmt does
+    # uptrack formats package.toml the way nuff does
     pkgs.taplo
   ]
   ++ pkgs.lib.optionals wild [

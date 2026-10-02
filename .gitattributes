@@ -1,2 +1,2 @@
-# one entry per line, additions from two branches merge textually; `treefmt` normalises
+# one entry per line, additions from two branches merge textually; `nuff` normalises
 locks/*.toml merge=union

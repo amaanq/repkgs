@@ -20,7 +20,7 @@ $ repkgs log jq                       # the last build log
 $ repkgs info jq                      # version, platforms, build systems and features (--json)
 $ repkgs list --for riscv64-linux --unsupported   # what a platform lacks, and why
 $ repkgs options cmake                # every cmake.* option of [package], with defaults
-$ repkgs fmt                          # treefmt
+$ repkgs fmt                          # nuff, --check to only check
 ```
 
 ## When a build fails

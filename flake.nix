@@ -1,5 +1,5 @@
 # CI builds .#checks (nix/checks.nix) and .#packages holds the whole set. The set is default.nix
-# and takes no inputs, nixpkgs only serves treefmt, the shells and the seed build.
+# and takes no inputs, nixpkgs only serves the formatter, the shells and the seed build.
 {
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   inputs.rom = {
@@ -78,7 +78,9 @@
         // seedOutputs system
       );
       checks = forSystems (system: import ./nix/checks.nix { inherit system nixpkgs; });
-      formatter = forSystems (system: import ./treefmt.nix { pkgs = nixpkgs.legacyPackages.${system}; });
+      formatter = forSystems (
+        system: import ./nix/format.nix { pkgs = nixpkgs.legacyPackages.${system}; }
+      );
       devShells = forSystems (
         system:
         let
