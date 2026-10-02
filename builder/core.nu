@@ -40,7 +40,7 @@ export def --wrapped x [command: string, ...args: string]: nothing -> nothing {
   ^$command ...$args
 }
 
-# absolute path of a tool on PATH
+# where `name` resolves on PATH
 export def tool [name: string]: nothing -> path {
   let found = (which $name)
   if ($found | is-empty) { error make {msg: $"($name) not on PATH"} }
@@ -51,7 +51,7 @@ export def tool [name: string]: nothing -> path {
 # `shlib z` -> libz.so | libz.dylib | libz.dll, `shlib z 1` -> libz.so.1 | libz.1.dylib | libz-1.dll
 export def shlib [name: string, version?: string]: nothing -> string {
   let platform = (ctx).platform
-  let suffix = if $version == null { "" } else if $platform.binfmt == "coff" { $"-($version)" } else { $".($version)" }
+  let suffix   = if $version == null { "" } else if $platform.binfmt == "coff" { $"-($version)" } else { $".($version)" }
   if $platform.binfmt == "elf" {
     $"lib($name)($platform.ext.shared)($suffix)"
   } else {
@@ -68,16 +68,19 @@ export def linklib [name: string]: nothing -> string {
 # the derivation's structured attrs (nix/package `common`)
 export def attrs []: nothing -> record { open $env.NIX_ATTRS_JSON_FILE }
 
-# rewrite a text file in place, even one installed read-only: `edit $f { str replace a b }`
+# `edit $file { str replace a b }` rewrites a text file in place, read-only installed ones too
 export def edit [file: path, change: closure]: nothing -> nothing {
   let text = (open --raw $file | do $change)
   chmod u+w $file
   $text | save -f $file
 }
 
-# Build records (Config.pm, Makefile.global) name the tools configure found by store path. As
-# bare names they resolve to whatever is on PATH where the record is later used
-export def tools-by-name []: string -> string { $in | str replace -ar '/nix/store/[a-z0-9]{32}-[^/]+/bin/' "" }
+# configure records like Config.pm and Makefile.global spell tools as store paths. Reduced to their
+# names, they find whatever PATH holds wherever the record is read later
+export def tools-by-name []: string -> string {
+  let text = $in
+  $text | str replace --all --regex '/nix/store/[a-z0-9]{32}-[^/]+/bin/' ""
+}
 
 # by magic number: \x7fELF, and the two Mach-O ones (thin and fat)
 export def is-elf [file: path]: nothing -> bool { (open --raw $file | first 4) == 0x[7f 45 4c 46] }
