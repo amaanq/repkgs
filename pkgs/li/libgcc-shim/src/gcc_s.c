@@ -1,7 +1,6 @@
-// libgcc_s.so.1 for upstream-built binaries (rustc, node, ...) on our gcc-free runtime: the
-// _Unwind_* ABI comes from libunwind.a linked whole, versioned GCC_3.0.. by gcc_s.ver.
-// compiler-rt's builtins are hidden by design, so the few libgcc integer routines such binaries
-// import are here.
+// The libgcc_s.so.1 that upstream binaries such as rustc and node expect, on a runtime without gcc.
+// libunwind.a, linked whole and versioned by gcc_s.ver, provides the _Unwind_* ABI. compiler-rt
+// hides its builtins, so the few libgcc integer routines those binaries import live here.
 
 int __popcountdi2(long long value) {
    return __builtin_popcountll((unsigned long long)value);
