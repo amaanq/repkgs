@@ -7,8 +7,8 @@ if [ "$prefix" = NONE ] && [ -n "$PKGS_PREFIX" ]; then prefix=$PKGS_PREFIX; fi
 if [ "$cache_file" = /dev/null ] && [ -n "$PKGS_CONFIG_CACHE" ]; then cache_file=$PKGS_CONFIG_CACHE; fi
 if [ "$sbindir" = '${exec_prefix}/sbin' ]; then sbindir='${exec_prefix}/bin'; fi
 
-# $host is empty natively, where the build machine is a glibc Linux
-target_triple=${host:-$(uname -m)-unknown-linux-gnu}
+# $host is empty natively, where bootstrap/stage.nix may name the libc as site_libc
+target_triple=${host:-$(uname -m)-unknown-linux-${site_libc:-gnu}}
 target_cpu=${target_triple%%-*}
 case $target_triple in
   *-darwin*) target_os=macos ;;
