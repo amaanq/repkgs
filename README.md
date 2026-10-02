@@ -1,40 +1,38 @@
 # repkgs
 
-An experimental package set on stock Nix. It keeps the store and the language and changes what
-goes into a derivation. The *re-* is for relocatable, reproducible, and having another go at
-nixpkgs.
+A package set for unmodified Nix that keeps the store and the language and rethinks what a
+derivation holds. The *re-* stands for relocatable, reproducible and another try at nixpkgs.
 
-- **One toolchain.** A single LLVM (clang, lld, compiler-rt, libc++) targets every platform.
-  Cross compiling is `--argstr platform riscv64-linux`, not a second compiler.
-- **Relocatable outputs.** Binaries find their libraries relative to themselves. A store path
-  copied elsewhere still runs, and upstream prebuilt binaries get the same treatment.
-- **Nushell builders.** No bash, no setup hooks, no string-typed phases. A build system is a
-  small nu module with `configure`, `build`, `test` and `install` phases.
-- **A compile cache below Nix.** `cc`, `rustc`, `go` and configure probes are cached by content
-  on the host, across derivations. Change a recipe and the derivation rebuilds, but almost
-  nothing recompiles. The cache is a socket in the sandbox and not an input, so `.drv` hashes
-  are the same with or without it.
-- **Cheap evaluation.** A package is a small attribute set that gets its arguments by name, as
-  with `callPackage`. There are no overlays and no per-package fixpoints. Overrides are one
-  directory tree, out-of-tree packages one argument. The 175 packages repkgs shares with
-  nixpkgs instantiate in 0.4 s and 44 MB where nixpkgs needs 10 s and 570 MB.
-  [docs/eval.md](docs/eval.md) has the method, the [graphs](https://github.com/Mic92/repkgs/releases/tag/eval-2026-09-19)
-  and what the comparison does not show.
-- **Short bootstrap.** A small static seed reaches glibc in two stages. Rust, Go, Zig, GHC and
-  OpenJDK are then built from source, each starting from its upstream binary.
+- **One toolchain.** A single LLVM (clang, lld, compiler-rt, libc++) serves every platform, and
+  `--argstr platform riscv64-linux` cross compiles with it rather than with a second compiler.
+- **Relocatable outputs.** Binaries locate their libraries relative to themselves, so a store
+  path copied anywhere still runs. Upstream prebuilt binaries are treated the same way.
+- **Recipes are data.** A package is a `package.toml`, the source pin and the build description
+  in one file. Phase code that has to exist is nushell, run by jib, the builder, with no bash and
+  no setup hooks.
+- **A compile cache under Nix.** `cc`, `rustc`, `go` and configure probes are cached by content
+  on the machine and shared across derivations. Changing a recipe rebuilds its derivation while
+  almost nothing compiles again. The cache is a socket inside the sandbox rather than an input,
+  so a `.drv` hashes the same with or without it.
+- **Cheap evaluation.** No overlays and no fixpoint per package. Overrides are one tree,
+  out-of-tree packages one argument. The 175 packages shared with nixpkgs instantiate in 0.4 s and
+  44 MB against nixpkgs' 10 s and 570 MB, measured as described in [docs/eval.md](docs/eval.md).
+- **A short bootstrap.** A small static seed reaches glibc in two stages. Rust, Go, Zig, GHC and
+  OpenJDK then build from source, each starting from its upstream binary.
 
-[docs/design.md](docs/design.md) explains why for each of these. [docs/plan.md](docs/plan.md)
-is what comes next.
+[docs/design.md](docs/design.md) gives the reasons and [docs/plan.md](docs/plan.md) what comes
+next.
 
-## Try it
+## Trying it
 
-The daemon needs Nix master with [NixOS/nix#16459](https://github.com/NixOS/nix/pull/16459);
+The daemon needs Nix master with [NixOS/nix#16459](https://github.com/NixOS/nix/pull/16459), and
 [#16465](https://github.com/NixOS/nix/pull/16465) and
-[#16477](https://github.com/NixOS/nix/pull/16477) recommended (CA rebuilds after gc). [nix/nix](nix/nix/default.nix)
-builds it (`nix-build nix/nix`, flake `packages.x86_64-linux.nix`). On NixOS:
+[#16477](https://github.com/NixOS/nix/pull/16477) help CA rebuilds after a gc.
+[nix/nix](nix/nix/default.nix) builds such a Nix (`nix-build nix/nix`, or the flake's
+`packages.x86_64-linux.nix`). On NixOS:
 
 ```nix
-nix.package = inputs.repkgs.packages.${pkgs.system}.nix; # or: import "${repkgs}/nix/nix" { inherit pkgs; }
+nix.package = inputs.repkgs.packages.${pkgs.system}.nix; # or import "${repkgs}/nix/nix" { inherit pkgs; }
 nix.settings = {
   experimental-features = [ "nix-command" "ca-derivations" "dynamic-derivations" ];
   system-features = [ "builder-rpc-v0" "big-parallel" "kvm" "nixos-test" "benchmark" ];
@@ -45,19 +43,19 @@ Then:
 
 ```console
 $ nix-build -A jq                                   # for this machine
-$ nix-build -A jq --argstr platform aarch64-linux   # cross
-$ nix-build -A ripgrep -A fd -A deno -A pandoc      # cargo, prebuilt, haskell …
-$ nix-build bootstrap -A stage2.x86_64.cc           # just the toolchain
+$ nix-build -A jq --argstr platform aarch64-linux   # for another
+$ nix-build -A ripgrep -A fd -A deno -A pandoc      # cargo, prebuilt, haskell and more
+$ nix-build bootstrap -A stage2.x86_64.cc           # the toolchain alone
 ```
 
-The first build fetches the seed and builds the toolchain. Everything after that is incremental.
+The first build fetches the seed and builds the toolchain, and later ones are incremental.
 
-`repkgs` (on PATH with direnv) wraps the common tasks; [tools/repkgs/README.md](tools/repkgs/README.md)
-has all of them:
+`repkgs`, on PATH through direnv, covers the everyday tasks, all of them listed in
+[tools/repkgs/README.md](tools/repkgs/README.md):
 
 ```console
 $ repkgs build jq                        # through the compile cache (repkgs cache start)
-$ repkgs build --for aarch64-linux jq    # cross
+$ repkgs build --for aarch64-linux jq    # for another platform
 $ repkgs test jq                         # jq.tests
 $ repkgs dev jq                          # a failing build by hand, in a tree that stays
 $ repkgs info deno                       # version, build systems, platform support
@@ -65,159 +63,137 @@ $ repkgs info deno                       # version, build systems, platform supp
 
 ## Writing a package
 
-A package is a directory with two files:
+A package is a directory under `pkgs/<first two letters>/<name>/` holding a `package.toml`. Its
+`[upstream]`, `[[source]]` and `[pin]` tables say where the source comes from and are what
+uptrack keeps current. Its `[package]` table says how to build it:
 
-```
-pkgs/li/libpng/
-├── package.nix     how to build it
-└── package.toml    where it comes from: upstream id, URL template, pinned version and hash
-```
+```toml
+[upstream]
+purl = "pkg:github/pnggroup/libpng"
 
-```nix
-{ package, pkgs }:
-package {
-  name = "libpng";
-  uses = [ "cmake" ];
-  cmake.defs = { PNG_STATIC = false; PNG_TOOLS = true; };
-  dependencies = [ pkgs.zlib ];
-}
-```
+[[source]]
+key  = "default"
+url  = "https://downloads.sourceforge.net/libpng/libpng-{version}.tar.xz"
+hash = "sha256-…"
 
-`package.toml` supplies version and tarball. `uses` names the build system, and the build system
-brings its tools, its phases (configure, build, test, install) and its options. Options
-are things like `cmake.defs` above, `cargo.features` or `go.tags`, and every build system has
-`<name>.tool` to swap the program itself (`cargo.tool = buildPkgs.rust-bootstrap`).
-`repkgs options cmake` lists them. Their names and types are checked at evaluation time, so a typo is an error instead of an
-attribute nobody reads.
+[pin]
+version = "1.6.58"
 
-A package with build-time tools and its tests turned off, curl:
+[package]
+patches      = [ "upstream-cmake-install-pc-when-generated.patch" ]
+uses         = [ "cmake" ]
+dependencies = [ "zlib" ]
 
-```nix
-{ package, pkgs, buildPkgs }:
-package {
-  name = "curl";
-  uses = [ "cmake" ];
-  cmake.defs = { CURL_USE_OPENSSL = true; CURL_CA_PATH = "/etc/ssl/certs"; };
-  dependencies = [ pkgs.openssl pkgs.zlib pkgs.zstd ];   # linked, target platform
-  buildDependencies = [ buildPkgs.perl ];                # run during the build, build platform
-  tests.run = false;                                     # the suite wants python and minutes
-  # tests.dependencies = [ buildPkgs.perl ];             # tools only the suite needs
-}
+[package.cmake.defs]
+PNG_STATIC = false
+PNG_TOOLS  = true
 ```
 
-Dependencies are found through the ordinary search paths (`-I`, `-L`, pkg-config, cmake), so
-the package says nothing more about them. `patches = [ ./x.patch ]` are applied after unpacking.
-`bin = [ "rg" ]` names the executables when they differ from the package name.
+`uses` picks the build systems, which bring their tools, their phases (configure, build, test,
+install) and their options, such as `cmake.defs` above, `cargo.features` or `go.tags`. Every build
+system also has `<name>.tool` to swap the program itself. jib declares the options and
+nix/schema.json carries them, so a misspelt field or a wrong type fails evaluation.
+`repkgs options cmake` lists them.
+
+`dependencies` are linked and come from the target platform's set, `buildDependencies` run during
+the build and come from the build machine's. Both are found through the usual search paths (`-I`,
+`-L`, pkg-config, cmake) without further description. `patches` are files beside package.toml,
+applied after unpacking, and `bin = [ "rg" ]` names the programs when they are not the package's
+name.
+
+Strings may refer to things the file cannot spell: `{pkg:<name>}` and `{tool:<name>}` are packages
+of the target and build sets, `{source:<key>}` a source of this package, `{file:<name>}` a file
+beside it, `{platform.<fact>}` a fact about the target and `{pin.version}` the pinned version.
+`[when.<condition>]` and `[unless.<condition>]` tables merge on top where a condition such as
+`cross`, `os.windows` or `libc.musl` holds. nix/package/manifest.nix documents the whole format.
 
 Lock files need no translation. For Cargo, Go, npm, pnpm, Yarn, Bundler, Deno, Hex, Hackage and
-LuaRocks, the lock file in the source is turned into fixed-output fetches at build time, by a
-dynamic derivation, with the hashes the lock file already has. Where it has none (Go, Hackage,
-LuaRocks) they are kept in `locks/*.toml`.
+LuaRocks a dynamic derivation turns the lock file in the source into fixed-output fetches at build
+time, using the hashes the lock already carries. Go, Hackage and LuaRocks locks carry none, so
+those live in `locks/*.toml`.
 
-If a package needs something between or instead of those, `phases` edits the build system's
-list: `before.<phase>`, `after.<phase>`, `replace.<phase>` take a phase or a list, `remove` a
-list. A phase is one of a build system's or a piece of nu with a name. Inside the nu, `$c` holds
-the paths and facts of the build (`$c.out`, `$c.src`, `$c.build`, `$c.njobs`, `$c.platform`):
+When a build system's phases are not enough, `phases` edits its list with `before.<phase>`,
+`after.<phase>`, `replace.<phase>` (a phase or a list) and `remove` (a list), or spells the whole
+list out. A phase is a build system's or a function in a nu module beside package.toml, so
+`"rust.configure"` is `configure` in `rust.nu`. Its `ctx` holds the paths and facts of the build:
 
-```nix
-phases.after."autotools.install" = { name = "sh-alias"; run = ''^ln -s bash $"($c.out)/bin/sh"''; };
-phases.replace."autotools.configure" = "perl.configure";
-phases.remove = [ "cargo.test" ];
+```toml
+[package.phases]
+remove = [ "cargo.test" ]
+
+[package.phases.replace]
+"autotools.configure" = "perl.configure"
 ```
 
-`phases = [ … ]` spells the whole list out instead. With several build systems the edits apply
-to the first one's list.
+What is only data needs no phase: `install` copies files into the output and `remove` deletes
+paths from it once installed.
 
-Phases too long to keep inline can live in their own file: a phase `"rust.configure"` whose
-prefix is no build system is `rust.nu` next to package.nix. pkgs/ru/rust does this.
+Every build ends the same way. ELF outputs are made relocatable, and `bin/<name> --version` runs
+in an empty environment and must print the pinned version. A `dlopen` that finds nothing during
+that run fails the build unless `tests.dlopen = [ "libudev.so.1" ]` marks it optional, and the run
+repeats from a copy of the closure under another root. `tests.separate = true` moves the test
+phase into its own derivation.
 
-Every build ends the same way. ELF outputs are made relocatable. `bin/<name> --version` runs in
-an empty environment and has to print the pinned version. A `dlopen` that finds nothing during
-that run fails the build, unless `tests.dlopen = [ "libudev.so.1" ]` declares it optional.
-The run is repeated from a copy of the closure under another root. `tests.separate = true` puts
-the test phase in its own derivation.
+The compiler driver supplies hardening and `-O2 -g`, not `CFLAGS`. `cc.hardening.fortify = false`
+turns one off and `cc.cflags = [ "-DFOO" ]` (with `cxxflags` and `ldflags`) adds to every compile
+whatever the build system. Debug info goes to a separate `debug` output by build-id
+(`nix-build -A curl.debug`, then `gdb -iex "set debug-file-directory ./result-debug/lib/debug"`).
 
-Hardening and `-O2 -g` are compiler defaults, injected by the driver and not through `CFLAGS`.
-`cc.hardening.fortify = false` turns one off, `cc.cflags = [ "-DFOO" ]` (and `cxxflags`,
-`ldflags`) adds to every compile regardless of build system. Debug info lands in a separate
-`debug` output by build-id (`nix-build -A curl.debug`, then
-`gdb -iex "set debug-file-directory ./result-debug/lib/debug"`).
-
-Choices a user may want to make differently are `features`. The package declares them with a
-default and reads the chosen values back:
-
-```nix
-{ package, pkgs, features, on }:
-package {
-  name = "curl";
-  features = {
-    tls = { values = [ "openssl" "gnutls" "none" ]; default = "openssl"; doc = "TLS backend"; };
-    http3 = { default = false; };
-  };
-  dependencies = on (features.tls != "none") [ pkgs.${features.tls} ] ++ on features.http3 [ pkgs.ngtcp2 ];
-  cmake.defs.USE_NGTCP2 = features.http3;
-}
-```
-
-A feature has the type of its default. `values` lists what a string, or each element of a list,
-may be. To choose:
-`import ./. { features.tls = "gnutls"; }` sets it for every package that declares `tls`,
-`overrides.curl.features.http3 = true` for curl alone. `repkgs info curl` lists a package's
-features and their current values.
-
-A few fields are rarer. `prebuilt = true` takes an upstream binary and only makes it
-relocatable. `install."bin/deno" = "deno"` copies files with no phases at all.
-`completions.bash = [ "completions/foo.bash" ]` (and `zsh`, `fish`, `nu`) installs shell
-completions to their standard directories (`nu` to nushell's vendor autoload).
-`exports.propagate = [ pkgs.pcre2 ]` is for a library whose users must also see another, a
-`Requires:` line in its .pc file. `exports = false` marks toolchains and applications that
+Rarer fields: `prebuilt = true` takes upstream binaries and only makes them relocatable,
+`completions.bash = [ "completions/foo.bash" ]` (and `zsh`, `fish`, `nu`) installs completions
+where each shell looks, `exports.propagate` names a library that users of this one must see too,
+like a `Requires:` line in a .pc file, and `exports = false` marks toolchains and applications that
 nothing links against.
+
+An out-of-tree package passed through `packages` may still be a `package.nix` calling `package
+{ … }` with the same fields, and may declare `features` with a default that a user chooses through
+`import ./. { features.tls = "gnutls"; }` or `overrides.<pkg>.features` (nix/features.nix).
 
 ## Keeping it current
 
-`uptrack` (pkgs/up/uptrack, also `repkgs update …`) reads every `package.toml`, asks upstream
-for new versions, and rewrites pin and hash:
+`uptrack` (pkgs/ji/jig/src/uptrack, also `repkgs update …`) reads every `package.toml`, asks
+upstream for new versions and rewrites pin and hash:
 
 ```console
-$ uptrack check          # what is outdated
-$ uptrack apply zlib     # bump, prefetch, update the hash (--commit: one commit per bump)
+$ uptrack check          # what is out of date
+$ uptrack apply zlib     # bump, prefetch, rewrite the hash (--commit makes one commit per bump)
 $ uptrack lock fzf       # refresh locks/go.toml from its go.sum
 ```
 
-More in [docs/uptrack.md](docs/uptrack.md).
+[docs/uptrack.md](docs/uptrack.md) has the rest.
 
-## Repository layout
+## Layout
 
 ```
-pkgs/xx/<name>/   the packages, xx being the first two letters. Some hold more than
-                  package.nix: bootstrap.nu (a toolchain recipe), src/ (in-tree programs), patches
-bootstrap/        seed → stage0 (musl cc) → stage1 (llvm) → stage2 (cc, one per platform)
-nix/              evaluation. package.nix turns a spec into a derivation, build-systems.nix
-                  defines each `uses` entry, fetch.nix the lock-file fetchers
-builder/          build time. prepare, finish, and one nu module per build system
+pkgs/xx/<name>/   the packages, xx being the name's first two letters, with package.toml, phase
+                  modules (<name>.nu), patches and in-tree sources (src/)
+bootstrap/        seed, stage0 (musl cc), stage1 (llvm), stage2 (a cc per platform)
+nix/              evaluation: package/ turns a manifest into a derivation, build-systems.nix binds
+                  each `uses` entry, fetch.nix holds the lock-file fetchers
+builder/          the nu that phase modules import
 locks/            hashes that lock files lack (go.sum, hackage, luarocks)
-tests/builder/    tiny packages per language that check what builder/ does to them (`repkgs test`)
-docs/             design.md (why), uptrack.md, plan.md
-tools/repkgs/     the cli (its README.md is for changing it)
+tests/builder/    a small package per language checking what the builder does (`repkgs test`)
+docs/             design.md (why), jig.md, uptrack.md, plan.md
+tools/repkgs/     the command (its README.md is for changing it)
 ```
 
-The build tools live in this tree. **jig** (pkgs/ji/jig, Rust) is what `cc` and `rustc`
-resolve to inside a build. It provides the compiler driver, cache client and ELF fixup. **jib**
-(pkgs/ji/jig/src/jib, Rust) runs the build script's steps, from `prepare` through every build system
-to `finish`, and is on PATH in package builds only, so editing it leaves the toolchain alone. **jigd**
-(pkgs/ji/jigd, Rust) is the per-machine daemon behind the socket, holding the cache and the build
-slots. **launch** and **crt-interp** are the few hundred bytes that let scripts and ELF binaries
-run from any path. **uptrack** (nu) does the updates.
+The build tools live here too. **jig** (pkgs/ji/jig, Rust) is what `cc` and `rustc` resolve to in a
+build: the compiler driver, the cache client and the ELF fixup. **jib** (pkgs/ji/jig/src/jib, Rust)
+runs a build from `prepare` through every build system to `finish`. It is on PATH in package
+builds only, so editing it leaves the toolchain alone. **jigd** (pkgs/ji/jigd, Rust) is the daemon
+behind the socket, holding the cache and the build slots. **launch** and **crt-interp** are the few
+hundred bytes of C that let scripts and ELF binaries run from any path. **uptrack** (Rust) does
+the updates.
 
-Work on the wrapper and daemon with nixpkgs' Rust toolchain, without bootstrapping the package set.
-The Cargo config selects Wild through Clang. Both development shells provide the linker tools.
+The Rust tools build with nixpkgs' toolchain, without bootstrapping the set. The Cargo config links
+with Wild through Clang, and both development shells provide those.
 
 ```console
 $ nix develop .#rust --command cargo build --workspace --manifest-path pkgs/ji/jig/src/Cargo.toml
 $ nix develop .#rust --command cargo test --workspace --manifest-path pkgs/ji/jig/src/Cargo.toml
 ```
 
-To use the local daemon through the cache commands, build it and pass its executable.
+To try a local daemon through the cache commands, build it and pass its executable:
 
 ```console
 $ nix develop .#rust --command cargo build --release -p jigd --manifest-path pkgs/ji/jig/src/Cargo.toml
@@ -226,32 +202,25 @@ $ repkgs cache status
 $ repkgs cache stop
 ```
 
-## How the bootstrap goes
+## The bootstrap
 
 ```
-seed        static clang, lld, bsdtar, toybox, make …
-→ stage0    musl + libc++ + jig: a C/C++ compiler for the build machine
-→ stage1    glibc + libc++, cmake, then clang + lld for all targets: the set's compiler
-→ stage2    compiler-rt + libc + libc++: cc-<platform>, one per target, built by that clang
+seed        static clang, lld, bsdtar, toybox, make and the like
+→ stage0    musl, libc++ and jig, a C and C++ compiler for this machine
+→ stage1    glibc, libc++, cmake, then clang and lld for every target, the set's compiler
+→ stage2    compiler-rt, the libc and libc++, a cc-<platform> per target built by that clang
 → pkgs/*
-→ rust, go, zig, ghc, jdk: the upstream binary as <lang>-bootstrap, then built from source
+→ rust, go, zig, ghc, jdk from their upstream binary as <lang>-bootstrap, then from source
 ```
 
-The seed itself is reproducible from `pkgs/se/seed/build.nix`.
-
-`nix build .#bootstrap-llvm -L` builds the seed's LLVM, Clang and LLD through nixpkgs' minimal
-x86-64 bootstrap without Rust or Nushell build dependencies. [docs/bootstrap.md](docs/bootstrap.md)
-records the trust boundary of the source seed build.
-
-`nix build .#bootstrap-nushell -L` starts with mrustc-built Rust 1.90, builds successive Rust
-source releases with that Clang, then uses the final compiler to build static Nu.
-`.#bootstrap-mrustc` exposes the starting compiler, and `.#bootstrap-seed` assembles the
-reusable seed. The source dependency graph contains no downloaded Rust compiler.
-
-`nix build .#bootstrap-jig -L` builds the static Rust wrapper with that same source compiler.
-Normal builds use it for the bootstrap compiler cache and each configured toolchain.
-The first jig build needs the Rust chain. Later wrapper edits rebuild jig without rebuilding
-LLVM, Rust, or Nushell. The assembled seed also includes jig.
+`pkgs/se/seed/build.nix` reproduces the seed. `nix build .#bootstrap-llvm -L` builds its LLVM,
+Clang and LLD through nixpkgs' minimal x86-64 bootstrap with no Rust or nushell involved, and
+[docs/bootstrap.md](docs/bootstrap.md) records the trust boundary of that source build.
+`nix build .#bootstrap-nushell -L` starts from Rust 1.90 built by mrustc, builds the following Rust
+source releases with that Clang and then a static nu with the last of them. `.#bootstrap-mrustc`
+is the starting compiler and `.#bootstrap-seed` the assembled seed, and nowhere in that graph is a
+downloaded Rust compiler. `nix build .#bootstrap-jig -L` builds the static jig with the same
+compiler. The first jig build needs the whole Rust chain, later jig edits rebuild only jig.
 
 ## License
 
