@@ -1,26 +1,26 @@
-# Overrides: edit package specs from outside the tree (docs/design.md "Overrides"), and the same
-# verbs in-tree as `variant pkgs.llvm { cmake.defs.merge = { … }; }` in a package.nix.
+# Edits to package specs from outside the tree, passed as `overrides` (docs/design.md, Overrides):
 #
 #   import ./. { overrides = { jq.autotools.flags.append = [ "--x" ]; }; }
 #
-# A tree of <package>.<field>….<verb>. Verbs:
-#   set      replace the value (creates the field if missing)
-#   append   add to the end of a list        prepend  add to the front
-#   merge    // into an attrset               remove   drop list elements / attr names, or `true`: the field
-#   edit     on a package only: a function spec -> spec, applied after the other verbs
-#   features on a package only: { <feature> = value; }, no verbs (nix/features.nix)
-# One node applies as set, remove, merge, prepend/append: `merge`/`append`/`prepend` create a
-# missing field (or refill one `remove = true` dropped), and a list `remove` also filters what
-# merge/append/prepend add. In dependencies/buildDependencies a string names a package of the
-# final set, and remove matches by package name. `overrides` may be a list of trees: they are
-# merged first (set/edit: last wins, list verbs concatenate, `remove = true` beats element
-# removes), then applied once per package. Unknown package, remove of a missing field, a verb
-# argument of the wrong type, or a verb that does not fit the value's type is an error.
+# The tree is <package>.<field>….<verb>. On a field
+#   set       the value, created when missing
+#   append    list items at the end, prepend at the front
+#   merge     attributes, with //
+#   remove    list items or attribute names, or true for the field itself
+# and on a package
+#   edit      spec -> spec, run after everything else
+#   features  { <feature> = value; }, read by nix/features.nix
+# A node starts from set or the field, removes, merges, then prepends and appends. merge, append
+# and prepend create a missing field or refill one remove = true took, and an item remove also
+# drops what they add. Under dependencies and buildDependencies a string names a package of the
+# final set and remove compares package names. A list of trees joins into one first, where set
+# and edit keep the last, list verbs concatenate and remove = true beats item removes. Any path or
+# argument that does not fit is an error.
 let
   inherit (builtins)
     all
     attrNames
-    concatLists
+    concatMap
     concatStringsSep
     elem
     elemAt
@@ -33,7 +33,6 @@ let
     isString
     length
     mapAttrs
-    partition
     typeOf
     zipAttrsWith
     ;
@@ -44,184 +43,181 @@ let
     "merge"
     "remove"
   ];
-  isVerbNode = node: isAttrs node && node != { } && all (key: elem key verbs) (attrNames node);
-  union = foldl' (left: right: left // right) { };
-  identity = spec: spec;
+  isVerb = key: elem key verbs;
+  verbal = node: isAttrs node && node != { } && all isVerb (attrNames node);
+  # a key spelled like a verb whose value is itself a node is a field (phases.remove.set)
+  usedAsVerb = tree: key: isVerb key && !verbal tree.${key};
+  last = values: elemAt values (length values - 1);
+  same = spec: spec;
 
-  combine =
-    trees:
-    zipAttrsWith (
-      key: values:
-      # a field that happens to be called like a verb (phases.remove) holds verb nodes itself
-      if elem key verbs && all isVerbNode values then
-        combine values
-      else if key == "set" || key == "edit" then
-        elemAt values (length values - 1)
-      else if key == "features" || key == "merge" then
-        union values
-      else if key == "remove" && elem true values then
-        true
-      else if
-        elem key [
-          "append"
-          "prepend"
-          "remove"
-        ]
-      then
-        concatLists (
-          map (
-            value: if isList value then value else throw "overrides: ${key} takes a list, got a ${typeOf value}"
-          ) values
-        )
-      else if all isAttrs values then
-        combine values
-      else
-        throw "overrides: conflicting values at ${key}"
-    ) trees;
+  join = zipAttrsWith (
+    key: values:
+    if isVerb key && all verbal values then
+      join values
+    else if key == "set" || key == "edit" then
+      last values
+    else if key == "features" || key == "merge" then
+      foldl' (left: right: left // right) { } values
+    else if key == "remove" && elem true values then
+      true
+    else if key == "remove" || key == "append" || key == "prepend" then
+      concatMap (
+        value: if isList value then value else throw "overrides: ${key} takes a list, got a ${typeOf value}"
+      ) values
+    else if all isAttrs values then
+      join values
+    else
+      throw "overrides: conflicting values at ${key}"
+  );
 
-  # dependency lists: strings resolve in pkgs, remove matches by package name
-  nameOf = dependency: dependency.pname or dependency.name or (toString dependency);
+  packageName = dependency: dependency.pname or dependency.name or (toString dependency);
 
-  applyNode =
+  # one verb node against the field's value, as a run of stages over it
+  verbsOn =
     context: path: node: present: current:
     let
       fail = message: throw "overrides: ${context.package}.${concatStringsSep "." path}: ${message}";
-      dependencies =
+      packageList =
         length path == 1
         && elem (head path) [
           "dependencies"
           "buildDependencies"
         ];
-      resolve =
-        value:
-        if dependencies && isString value then
-          context.pkgs.${value} or (fail "no package named ${value}")
-        else
-          value;
-      argument =
+      given =
         verb: kind:
         let
           value = node.${verb};
+          named =
+            item:
+            if packageList && isString item then
+              context.pkgs.${item} or (fail "no package named ${item}")
+            else
+              item;
         in
         if kind == "list" && isList value then
-          map resolve value
+          map named value
         else if kind == "set" && isAttrs value then
           value
         else
           fail "${verb} takes a ${kind}, got a ${typeOf value}";
-      extends = node ? prepend || node ? append;
-      dropsSome = node ? remove && node.remove != true;
-      dropped =
-        if dropsSome then
-          map (entry: if dependencies && !isString entry then nameOf entry else entry) (
-            argument "remove" "list"
-          )
+      whole = node.remove or null == true;
+      some = node ? remove && !whole;
+      grows = node ? prepend || node ? append;
+      removed =
+        if some then
+          map (item: if packageList && !isString item then packageName item else item) (given "remove" "list")
         else
           [ ];
-      kept = entry: !(elem (if dependencies then nameOf entry else entry) dropped);
-      # the value the other verbs edit: set, else the field, else what merge/append imply
-      start =
+      kept = item: !elem (if packageList then packageName item else item) removed;
+
+      initial =
         if node ? set then
-          (if dependencies then argument "set" "list" else node.set)
-        else if present && (node.remove or null) != true then
+          (if packageList then given "set" "list" else node.set)
+        else if present && !whole then
           current
         else if node ? merge then
           { }
-        else if extends then
+        else if grows then
           [ ]
         else if node ? remove then
           (if present then null else fail "remove: no such field")
         else
           fail "no such field (use .set to create it)";
-      trimmed =
-        if !dropsSome then
-          start
-        else if isList start then
-          filter kept start
-        else if isAttrs start then
-          removeAttrs start dropped
+      drop =
+        value:
+        if !some then
+          value
+        else if isList value then
+          filter kept value
+        else if isAttrs value then
+          removeAttrs value removed
         else
-          fail "remove from a ${typeOf start}, expected a list or set";
-      merged =
+          fail "remove from a ${typeOf value}, expected a list or set";
+      combine =
+        value:
         if !(node ? merge) then
-          trimmed
-        else if isAttrs trimmed then
-          trimmed // removeAttrs (argument "merge" "set") dropped
+          value
+        else if isAttrs value then
+          value // removeAttrs (given "merge" "set") removed
         else
-          fail "merge into a ${typeOf trimmed}, expected a set";
+          fail "merge into a ${typeOf value}, expected a set";
+      extend =
+        value:
+        if !grows then
+          value
+        else if !isList value then
+          fail "append to a ${typeOf value}, expected a list"
+        else
+          filter kept (
+            (if node ? prepend then given "prepend" "list" else [ ])
+            ++ value
+            ++ (if node ? append then given "append" "list" else [ ])
+          );
     in
-    if !extends then
-      merged
-    else if !isList merged then
-      fail "append to a ${typeOf merged}, expected a list"
-    else
-      filter kept (
-        (if node ? prepend then argument "prepend" "list" else [ ])
-        ++ merged
-        ++ (if node ? append then argument "append" "list" else [ ])
-      );
+    foldl' (value: stage: stage value) initial [
+      drop
+      combine
+      extend
+    ];
 
-  # walk tree and spec together. Returns the edited value, or null with remove = true handled by the caller
-  walk =
+  # the tree and the spec side by side, a field whose node is { remove = true; } leaves the result
+  descend =
     context: path: tree: present: current:
     let
-      here = "overrides: ${context.package}.${concatStringsSep "." path}";
-      # a verb name whose value is not itself a node was meant as a verb (a field called `remove`
-      # is still reachable: phases.remove.set = [ … ])
-      split = partition (key: elem key verbs && !isVerbNode tree.${key}) (attrNames tree);
+      at = "overrides: ${context.package}.${concatStringsSep "." path}";
+      keys = attrNames tree;
+      verbKeys = filter (usedAsVerb tree) keys;
+      fieldKeys = filter (key: !usedAsVerb tree key) keys;
       base =
-        if present && isAttrs current then
+        if !present then
+          { }
+        else if isAttrs current then
           current
-        else if present then
-          throw "${here}: is a ${typeOf current}, cannot descend"
         else
-          { };
-      edited = mapAttrs (
-        key: subtree: walk context (path ++ [ key ]) subtree (base ? ${key}) (base.${key} or null)
+          throw "${at}: is a ${typeOf current}, cannot descend";
+      children = mapAttrs (
+        key: subtree: descend context (path ++ [ key ]) subtree (base ? ${key}) (base.${key} or null)
       ) tree;
-      gone = filter (key: tree.${key} == { remove = true; } && builtins.seq edited.${key} true) (
-        attrNames tree
-      );
+      vanished = filter (
+        key: tree.${key} == { remove = true; } && builtins.seq children.${key} true
+      ) keys;
     in
-    if isVerbNode tree then
-      applyNode context path tree present current
+    if verbal tree then
+      verbsOn context path tree present current
     else if !isAttrs tree then
-      throw "${here}: expected a verb (${concatStringsSep " " verbs}), got a ${typeOf tree}"
+      throw "${at}: expected a verb (${concatStringsSep " " verbs}), got a ${typeOf tree}"
     else if tree ? edit then
-      throw "${here}.edit: edit goes on the package, not a field"
-    else if split.right != [ ] then
-      throw "${here}: mixes verbs (${toString split.right}) with fields (${toString split.wrong})"
+      throw "${at}.edit: edit goes on the package, not a field"
+    else if verbKeys != [ ] then
+      throw "${at}: mixes verbs (${toString verbKeys}) with fields (${toString fieldKeys})"
     else
-      removeAttrs (base // edited) gone;
+      removeAttrs (base // children) vanished;
 
-  # one package's subtree applied to its spec (also what `variant` in package.nix files uses)
   applyOne =
     pkgs: name: node: spec:
     if !isAttrs node then
       throw "overrides: ${name}: expected { <field>… }, got a ${typeOf node}"
-    else if !isFunction (node.edit or identity) then
+    else if !isFunction (node.edit or same) then
       throw "overrides: ${name}.edit: expected a function spec -> spec, got a ${typeOf node.edit}"
     else
-      (node.edit or identity) (
-        walk {
+      (node.edit or same) (
+        descend {
           package = name;
           inherit pkgs;
         } [ ] (removeAttrs node [ "edit" ]) true spec
       );
 in
 {
-  merge = trees: if isList trees then combine trees else trees;
+  merge = trees: if isList trees then join trees else trees;
   inherit applyOne;
-  # from the user's tree, where `<pkg>.features` is plain values that nix/set.nix resolved
-  # before the spec existed
+  # nix/set.nix resolved `<package>.features` before the spec existed
   apply =
     pkgs: tree: name: spec:
     if !(tree ? ${name}) then
       spec
-    else if !isAttrs tree.${name} then
-      applyOne pkgs name tree.${name} spec
+    else if isAttrs tree.${name} then
+      applyOne pkgs name (removeAttrs tree.${name} [ "features" ]) spec
     else
-      applyOne pkgs name (removeAttrs tree.${name} [ "features" ]) spec;
-  # packages the tree names that the set lacks
+      applyOne pkgs name tree.${name} spec;
   unknown = pkgs: tree: filter (name: !(pkgs ? ${name})) (attrNames tree);
 }
