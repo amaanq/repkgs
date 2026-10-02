@@ -5,37 +5,39 @@
 }:
 package {
   name = "autoconf";
-  uses = [ "autotools" ];
   patches = [ ./relocatable.patch ];
+  uses = [ "autotools" ];
   phases.before."autotools.configure" = [
     {
-      name = "man-uptodate"; # no help2man
-      run = ''^touch ...(files $"($c.src)/man/*.1")'';
+      # keeps make from regenerating them with help2man
+      name = "man-uptodate";
+      run = ''
+        files $"($c.src)/man/*.1" | each {|page| ^touch $page } | ignore
+      '';
+    }
+  ];
+  phases.after."autotools.install" = [
+    {
+      # the installed scripts name m4, perl and bash by the build machine's paths
+      name = "retarget";
+      run = ''
+        let swaps = ([m4 perl bash] | each {|name|
+          {built: (tool $name), runs: $"(dep-root $name 'the scripts run it')/bin/($name)"}
+        })
+        for script in (glob $"($c.out)/bin/*") {
+          edit $script {|| let text = $in; $swaps | reduce --fold $text {|swap, edited| $edited | str replace --all $swap.built $swap.runs } }
+        }
+      '';
     }
   ];
   buildDependencies = [
     buildPkgs.m4
     buildPkgs.perl
   ];
-  # autoconf, autom4te… are perl and sh scripts that exec m4. configure records whichever it finds
-  # on PATH, the build machine's when cross: name the target's after install
   dependencies = [
     pkgs.m4
     pkgs.perl
     pkgs.bash
   ];
-  phases.after."autotools.install" = [
-    {
-      name = "retarget";
-      run = ''
-        let map = ([m4 perl bash] | each {|t| {from: (tool $t), to: $"(dep-root $t 'the scripts run it')/bin/($t)"} })
-        for f in (glob $"($c.out)/bin/*") {
-          edit $f {|| let t = $in; $map | reduce --fold $t {|m, acc| $acc | str replace -a $m.from $m.to } }
-        }
-      '';
-    }
-  ];
-  # 555/557 pass in 20 min. AS_DIRNAME and AC_FUNC_GETGROUPS probe host behaviour (toybox
-  # dirname corner cases, no supplementary groups in the sandbox)
   tests.run = false;
 }

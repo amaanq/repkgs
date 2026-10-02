@@ -12,7 +12,7 @@ package {
     ABSL_BUILD_TESTING = true;
     ABSL_USE_EXTERNAL_GOOGLETEST = true;
   };
-  # time_test loads named zones. The bazel build points TZDIR at the bundled copy, cmake does not
-  env.TZDIR = "${sources.fetch "default"}/absl/time/internal/cctz/testdata/zoneinfo";
   dependencies = [ pkgs.googletest ];
+  # cctz's tests load zones from $TZDIR, and the tarball carries the ones they expect
+  env.TZDIR = "${sources.fetch "default"}/absl/time/internal/cctz/testdata/zoneinfo";
 }

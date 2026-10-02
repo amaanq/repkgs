@@ -1,8 +1,8 @@
 { package, pkgs }:
 package {
   name = "acl";
+  platforms.os = [ "linux" ];
   uses = [ "autotools" ];
   dependencies = [ pkgs.attr ];
-  tests.run = false; # want users bin and daemon in /etc/passwd
-  platforms.os = [ "linux" ];
+  tests.run = false;
 }

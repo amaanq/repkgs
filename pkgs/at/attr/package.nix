@@ -1,13 +1,13 @@
 { package }:
 package {
   name = "attr";
+  platforms.os = [ "linux" ];
+  patches = [ ./relocatable.patch ];
   uses = [ "autotools" ];
-  patches = [ ./relocatable.patch ]; # xattr.conf relative to libattr
-  tests.run = false; # set user.* xattrs, the sandbox's build directory refuses them
   bin = [
     "getfattr"
     "setfattr"
     "attr"
   ];
-  platforms.os = [ "linux" ];
+  tests.run = false;
 }

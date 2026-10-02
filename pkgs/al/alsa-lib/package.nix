@@ -2,9 +2,8 @@
 package {
   name = "alsa-lib";
   platforms.os = [ "linux" ];
-  uses = [ "autotools" ];
-  # plugins are the system's
   patches = [ ./relocatable.patch ];
+  uses = [ "autotools" ];
   autotools.flags = [
     "--with-plugindir=/usr/lib/alsa-lib"
     "--disable-python"
