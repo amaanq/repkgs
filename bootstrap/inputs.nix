@@ -10,10 +10,7 @@ let
 in
 {
   jig.prebuilt = prebuiltJig;
-  launch = {
-    launch = pkg "launch" + "/src/launch.cc";
-    json_hpp = source "nlohmann-json";
-  };
+  launch.launch = pkg "launch" + "/src/launch.c";
   cc = {
     crt_interp = pkg "crt-interp" + "/src/crt_interp.c";
     reloc = builtins.path {

@@ -188,8 +188,6 @@ pub struct Stage {
    pub crt_interp:    Option<String>,
    #[serde(default)]
    pub reloc:         Option<String>,
-   #[serde(default, rename = "json_hpp")]
-   pub json_hpp:      Option<String>,
    #[serde(default)]
    pub launch:        Option<String>,
    #[serde(default)]
