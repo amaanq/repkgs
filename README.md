@@ -15,8 +15,8 @@ derivation holds. The *re-* stands for relocatable, reproducible and another try
   almost nothing compiles again. The cache is a socket inside the sandbox rather than an input,
   so a `.drv` hashes the same with or without it.
 - **Cheap evaluation.** No overlays and no fixpoint per package. Overrides are one tree,
-  out-of-tree packages one argument. The 175 packages shared with nixpkgs instantiate in 0.4 s and
-  44 MB against nixpkgs' 10 s and 570 MB, measured as described in [docs/eval.md](docs/eval.md).
+  out-of-tree packages one argument. A package shared with nixpkgs adds about a third of the memory
+  and a fifth of the time to evaluation that it does there ([docs/eval.md](docs/eval.md)).
 - **A short bootstrap.** A small static seed reaches glibc in two stages. Rust, Go, Zig, GHC and
   OpenJDK then build from source, each starting from its upstream binary.
 

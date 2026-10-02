@@ -17,8 +17,8 @@ this stack. Later upstream changes may be borrowed by hand per package.
 
 ## Goals
 
-1. **Cheap evaluation**, at most 0.2 ms and 10 KB per package where nixpkgs spends 2.6 ms and
-   135 KB, measured on the packages both sets have ([eval.md](eval.md)).
+1. **Cheap evaluation**, a package costing a fraction of what it costs in nixpkgs, as bench/eval.nu
+   measures on the packages both sets have ([eval.md](eval.md)).
 2. **Relocatable outputs.** No output holds its own store path, so every derivation can be
    content-addressed, early cut-off happens by default and a closure runs from any directory.
 3. **Rust builders with Nushell phases.** Structured data, real errors, and a seed of a few static binaries.
