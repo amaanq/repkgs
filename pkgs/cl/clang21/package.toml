@@ -1,6 +1,7 @@
 from = "llvm21"
 
 [package]
+install           = { "bin/" = "bin/clang-tblgen{platform.ext.exe}" }
 patches           = [  ]
 uses              = [ "cmake" ]
 buildDependencies = [ "cpython" ]
@@ -30,9 +31,6 @@ LLVM_TOOLS_BINARY_DIR                 = "{tool:llvm21}/bin"
 
 [package.phases]
 remove = [ "cmake.test" ]
-
-[package.phases.after]
-"cmake.install" = [ "clang21.keep-tblgen" ]
 
 [package.tests]
 run = false

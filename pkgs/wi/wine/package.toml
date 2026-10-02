@@ -14,6 +14,7 @@ url   = "https://dl.winehq.org/wine/source/"
 regex = '([0-9]+\.0)/'
 
 [package]
+remove            = [ "lib/wine/x86_64-unix/wine-preloader" ]
 uses              = [ "autotools" ]
 buildDependencies = [ "flex", "bison" ]
 
@@ -51,9 +52,6 @@ flags = [
   "--without-unwind",
 ]
 installFlags = [ "prefix=$(out)" ]
-
-[package.phases.after]
-"autotools.install" = [ "wine.drop-preloader" ]
 
 [package.tests]
 version = "wine --version"

@@ -11,6 +11,7 @@ version = "3.6.3"
 tag     = "openssl-3.6.3"
 
 [package]
+remove            = [ "bin/c_rehash" ]
 patches           = [ "relocatable.patch" ]
 uses              = [ "make" ]
 buildDependencies = [ "perl" ]
@@ -26,9 +27,6 @@ configureFlags = [
 configureScript = "Configure"
 installFlags = [ "OPENSSLDIR=$(prefix)/etc/ssl" ]
 installTarget = [ "install_sw", "install_ssldirs", "install_man_docs" ]
-
-[package.phases.after]
-"make.install" = [ "openssl.drop-rehash" ]
 
 [package.tests]
 run     = false

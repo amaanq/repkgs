@@ -23,5 +23,5 @@ LIBUV_BUILD_TESTS = false
 [package.phases.after]
 "cmake.install" = [  ]
 
-[when.libc.msvc.phases.after]
-"cmake.install" = [ "libuv.drop-static" ]
+[when.libc.msvc]
+remove = [ "lib/libuv.lib", "lib/pkgconfig/libuv-static.pc" ]

@@ -1,6 +1,7 @@
 from = "llvm"
 
 [package]
+install           = { "bin/" = "bin/mlir-tblgen" }
 patches           = [  ]
 uses              = [ "cmake" ]
 buildDependencies = [ "cpython" ]
@@ -30,9 +31,6 @@ MLIR_LINK_MLIR_DYLIB           = false
 
 [package.phases]
 remove = [ "cmake.test" ]
-
-[package.phases.after]
-"cmake.install" = [ "mlir.keep-tblgen" ]
 
 [package.tests]
 run = false
