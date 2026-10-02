@@ -29,7 +29,11 @@ use jig::{
    },
    tree::note,
 };
-use serde::Deserialize;
+use serde::{
+   Deserialize,
+   Serialize,
+   Serializer,
+};
 
 use crate::{
    attrs::{
@@ -40,7 +44,6 @@ use crate::{
    prepare::succeed,
    schema::{
       Field,
-      Literal,
       OptionType,
       PackagePath,
       Type,
@@ -107,9 +110,12 @@ impl TryFrom<String> for Mode {
    }
 }
 
-impl From<Mode> for Literal {
-   fn from(value: Mode) -> Self {
-      Self::String(value.name().to_owned())
+impl Serialize for Mode {
+   fn serialize<Encoder>(&self, serializer: Encoder) -> Result<Encoder::Ok, Encoder::Error>
+   where
+      Encoder: Serializer,
+   {
+      serializer.serialize_str(self.name())
    }
 }
 
@@ -122,11 +128,14 @@ impl OptionType for Mode {
 }
 
 record! {
+   #[derive(Default)]
    Override {
-      patches ("patches"): Vec<String>,
-      env ("env"): BTreeMap<String, String>,
-      run ("run"): String,
-      config_settings ("configSettings"): BTreeMap<String, String>,
+      required {
+         patches ("patches"): Vec<String>,
+         env ("env"): BTreeMap<String, String>,
+         run ("run"): String,
+         config_settings ("configSettings"): BTreeMap<String, String>,
+      }
    }
 }
 
@@ -161,8 +170,8 @@ impl System for Pyapp {
       "pyapp"
    }
 
-   fn options(&self) -> Option<Vec<Field>> {
-      Some(Options::schema(self.name()))
+   fn options(&self) -> io::Result<Vec<Field>> {
+      Options::schema(self.name())
    }
 
    /// PYTHONPATH is the application's site-packages, filling up during the

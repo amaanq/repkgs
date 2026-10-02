@@ -7,15 +7,21 @@ use serde::{
    Deserialize,
    Deserializer,
    Serialize,
+   Serializer,
    de::{
+      Error as _,
       MapAccess,
       Visitor,
       value::MapAccessDeserializer,
    },
 };
 
-#[derive(Clone, Copy, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "lowercase")]
+use crate::schema::{
+   OptionType,
+   Type,
+};
+
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
 pub enum Hardening {
    Format,
@@ -27,7 +33,6 @@ pub enum Hardening {
    StrictOverflow,
    TrivialAutoVarInit,
    ZeroCallUsedRegs,
-   #[serde(rename = "libcxxhardening")]
    Libcxx,
    Relro,
    BindNow,
@@ -51,9 +56,17 @@ pub enum Line {
    Link,
 }
 
+#[derive(Serialize)]
+#[serde(untagged)]
 pub enum Choice {
    All(bool),
    Flags(BTreeMap<Hardening, bool>),
+}
+
+impl OptionType for Choice {
+   fn kind() -> Type {
+      Type::union(vec![Type::Boolean, BTreeMap::<Hardening, bool>::kind()])
+   }
 }
 
 impl<'de> Deserialize<'de> for Choice {
@@ -90,6 +103,36 @@ impl<'de> Deserialize<'de> for Choice {
    }
 }
 
+impl Serialize for Hardening {
+   fn serialize<Encoder>(&self, serializer: Encoder) -> Result<Encoder::Ok, Encoder::Error>
+   where
+      Encoder: Serializer,
+   {
+      serializer.serialize_str(self.name())
+   }
+}
+
+impl<'de> Deserialize<'de> for Hardening {
+   fn deserialize<Decoder>(deserializer: Decoder) -> Result<Self, Decoder::Error>
+   where
+      Decoder: Deserializer<'de>,
+   {
+      let name = String::deserialize(deserializer)?;
+      Self::ALL
+         .into_iter()
+         .find(|flag| flag.name() == name)
+         .ok_or_else(|| Decoder::Error::custom(format!("unknown hardening flag {name}")))
+   }
+}
+
+impl OptionType for Hardening {
+   fn kind() -> Type {
+      Type::Enum {
+         values: Self::ALL.map(|flag| flag.name().to_owned()).to_vec(),
+      }
+   }
+}
+
 impl Hardening {
    pub const ALL: [Self; 15] = [
       Self::Format,
@@ -108,6 +151,26 @@ impl Hardening {
       Self::NoExecStack,
       Self::AsNeeded,
    ];
+
+   const fn name(self) -> &'static str {
+      match self {
+         Self::Format => "format",
+         Self::Fortify => "fortify",
+         Self::Noplt => "noplt",
+         Self::StackClashProtection => "stackclashprotection",
+         Self::StackProtector => "stackprotector",
+         Self::StrictFlexArrays => "strictflexarrays",
+         Self::StrictOverflow => "strictoverflow",
+         Self::TrivialAutoVarInit => "trivialautovarinit",
+         Self::ZeroCallUsedRegs => "zerocallusedregs",
+         Self::Libcxx => "libcxxhardening",
+         Self::Relro => "relro",
+         Self::BindNow => "bindnow",
+         Self::Relr => "relr",
+         Self::NoExecStack => "noexecstack",
+         Self::AsNeeded => "asneeded",
+      }
+   }
 
    const fn line(self) -> Line {
       match self {

@@ -53,8 +53,8 @@ impl System for Deno {
       "deno"
    }
 
-   fn options(&self) -> Option<Vec<Field>> {
-      Some(Options::schema(self.name()))
+   fn options(&self) -> io::Result<Vec<Field>> {
+      Options::schema(self.name())
    }
 
    /// deno adds gen/ and `*_cache_v2` next to npm/ and remote/, so `DENO_DIR`

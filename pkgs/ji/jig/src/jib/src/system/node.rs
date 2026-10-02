@@ -131,12 +131,12 @@ macro_rules! managers {
                $manager.name()
             }
 
-            fn options(&self) -> Option<Vec<Field>> {
-               Some(if matches!($manager, Manager::Bun) {
+            fn options(&self) -> io::Result<Vec<Field>> {
+               if matches!($manager, Manager::Bun) {
                   BunOptions::schema(self.name())
                } else {
                   Options::schema(self.name())
-               })
+               }
             }
 
             fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {

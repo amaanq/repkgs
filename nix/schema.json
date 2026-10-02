@@ -16,6 +16,841 @@
     "noexecstack",
     "asneeded"
   ],
+  "recipe": [
+    {
+      "name": "name",
+      "type": {
+        "kind": "string"
+      },
+      "default": null,
+      "required": true,
+      "doc": "attribute and output name"
+    },
+    {
+      "name": "version",
+      "type": {
+        "kind": "string"
+      },
+      "default": null,
+      "doc": "upstream version, by default from sources.toml"
+    },
+    {
+      "name": "features",
+      "type": {
+        "kind": "map",
+        "value": {
+          "kind": "record",
+          "fields": {
+            "default": {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "boolean"
+                },
+                {
+                  "kind": "string"
+                },
+                {
+                  "kind": "integer"
+                },
+                {
+                  "kind": "list",
+                  "element": {
+                    "kind": "string"
+                  }
+                }
+              ]
+            },
+            "doc": {
+              "kind": "string"
+            },
+            "values": {
+              "kind": "list",
+              "element": {
+                "kind": "union",
+                "variants": [
+                  {
+                    "kind": "boolean"
+                  },
+                  {
+                    "kind": "string"
+                  },
+                  {
+                    "kind": "integer"
+                  }
+                ]
+              }
+            }
+          },
+          "optional": [
+            "values",
+            "doc"
+          ]
+        }
+      },
+      "default": null,
+      "doc": "declared features, a default and the values it may take"
+    },
+    {
+      "name": "platforms",
+      "type": {
+        "kind": "record",
+        "fields": {
+          "abi": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "cpu": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "cross": {
+            "kind": "boolean"
+          },
+          "libc": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "os": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "posix": {
+            "kind": "boolean"
+          }
+        },
+        "optional": [
+          "cpu",
+          "os",
+          "abi",
+          "libc",
+          "posix",
+          "cross"
+        ]
+      },
+      "default": null,
+      "doc": "where the package builds, every listed key must admit the platform"
+    },
+    {
+      "name": "source",
+      "type": {
+        "kind": "union",
+        "variants": [
+          {
+            "kind": "string"
+          },
+          {
+            "kind": "path"
+          },
+          {
+            "kind": "package"
+          }
+        ]
+      },
+      "default": null,
+      "doc": "a sources.toml key, a path or a derivation, by default the platform's tarball"
+    },
+    {
+      "name": "patches",
+      "type": {
+        "kind": "list",
+        "element": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "path"
+            },
+            {
+              "kind": "package"
+            }
+          ]
+        }
+      },
+      "default": null,
+      "doc": "applied with -p1 before the first phase"
+    },
+    {
+      "name": "uses",
+      "type": {
+        "kind": "list",
+        "element": {
+          "kind": "enum",
+          "values": [
+            "autotools",
+            "bun",
+            "bundler",
+            "cabal",
+            "cargo",
+            "cmake",
+            "deno",
+            "go",
+            "luarocks",
+            "make",
+            "meson",
+            "mix",
+            "npm",
+            "pnpm",
+            "pyapp",
+            "python",
+            "rebar3",
+            "vcxproj",
+            "yarn"
+          ]
+        }
+      },
+      "default": null,
+      "doc": "build systems, each set up before the phases"
+    },
+    {
+      "name": "phases",
+      "type": {
+        "kind": "union",
+        "variants": [
+          {
+            "kind": "list",
+            "element": {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "string"
+                },
+                {
+                  "kind": "record",
+                  "fields": {
+                    "name": {
+                      "kind": "string"
+                    },
+                    "run": {
+                      "kind": "string"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "kind": "record",
+            "fields": {
+              "after": {
+                "kind": "map",
+                "value": {
+                  "kind": "union",
+                  "variants": [
+                    {
+                      "kind": "string"
+                    },
+                    {
+                      "kind": "record",
+                      "fields": {
+                        "name": {
+                          "kind": "string"
+                        },
+                        "run": {
+                          "kind": "string"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "list",
+                      "element": {
+                        "kind": "union",
+                        "variants": [
+                          {
+                            "kind": "string"
+                          },
+                          {
+                            "kind": "record",
+                            "fields": {
+                              "name": {
+                                "kind": "string"
+                              },
+                              "run": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "before": {
+                "kind": "map",
+                "value": {
+                  "kind": "union",
+                  "variants": [
+                    {
+                      "kind": "string"
+                    },
+                    {
+                      "kind": "record",
+                      "fields": {
+                        "name": {
+                          "kind": "string"
+                        },
+                        "run": {
+                          "kind": "string"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "list",
+                      "element": {
+                        "kind": "union",
+                        "variants": [
+                          {
+                            "kind": "string"
+                          },
+                          {
+                            "kind": "record",
+                            "fields": {
+                              "name": {
+                                "kind": "string"
+                              },
+                              "run": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "remove": {
+                "kind": "list",
+                "element": {
+                  "kind": "string"
+                }
+              },
+              "replace": {
+                "kind": "map",
+                "value": {
+                  "kind": "union",
+                  "variants": [
+                    {
+                      "kind": "string"
+                    },
+                    {
+                      "kind": "record",
+                      "fields": {
+                        "name": {
+                          "kind": "string"
+                        },
+                        "run": {
+                          "kind": "string"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "list",
+                      "element": {
+                        "kind": "union",
+                        "variants": [
+                          {
+                            "kind": "string"
+                          },
+                          {
+                            "kind": "record",
+                            "fields": {
+                              "name": {
+                                "kind": "string"
+                              },
+                              "run": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "optional": [
+              "before",
+              "after",
+              "replace",
+              "remove"
+            ]
+          }
+        ]
+      },
+      "default": null,
+      "doc": "the phase list, or before, after, replace and remove edits to the first build system's"
+    },
+    {
+      "name": "buildDependencies",
+      "type": {
+        "kind": "list",
+        "element": {
+          "kind": "package"
+        }
+      },
+      "default": null,
+      "doc": "packages for the build machine, on PATH"
+    },
+    {
+      "name": "dependencies",
+      "type": {
+        "kind": "list",
+        "element": {
+          "kind": "package"
+        }
+      },
+      "default": null,
+      "doc": "packages for the target, linked against"
+    },
+    {
+      "name": "sys",
+      "type": {
+        "kind": "union",
+        "variants": [
+          {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          {
+            "kind": "null"
+          }
+        ]
+      },
+      "default": null,
+      "doc": "libraries the lock files may link, by default [pin] sys from sources.toml"
+    },
+    {
+      "name": "bin",
+      "type": {
+        "kind": "list",
+        "element": {
+          "kind": "string"
+        }
+      },
+      "default": null,
+      "doc": "programs the version check runs"
+    },
+    {
+      "name": "tests",
+      "type": {
+        "kind": "record",
+        "fields": {
+          "dependencies": {
+            "kind": "list",
+            "element": {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "package"
+                },
+                {
+                  "kind": "string"
+                }
+              ]
+            }
+          },
+          "dlopen": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "parallel": {
+            "kind": "boolean"
+          },
+          "run": {
+            "kind": "boolean"
+          },
+          "separate": {
+            "kind": "boolean"
+          },
+          "version": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "boolean"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          }
+        },
+        "optional": [
+          "run",
+          "separate",
+          "parallel",
+          "version",
+          "dlopen",
+          "dependencies"
+        ]
+      },
+      "default": null,
+      "doc": "whether and how the test phases run"
+    },
+    {
+      "name": "exports",
+      "type": {
+        "kind": "union",
+        "variants": [
+          {
+            "kind": "boolean"
+          },
+          {
+            "kind": "record",
+            "fields": {
+              "aclocalDirs": {
+                "kind": "list",
+                "element": {
+                  "kind": "string"
+                }
+              },
+              "dllDirs": {
+                "kind": "list",
+                "element": {
+                  "kind": "string"
+                }
+              },
+              "env": {
+                "kind": "map",
+                "value": {
+                  "kind": "string"
+                }
+              },
+              "includeDirs": {
+                "kind": "list",
+                "element": {
+                  "kind": "string"
+                }
+              },
+              "libDirs": {
+                "kind": "list",
+                "element": {
+                  "kind": "string"
+                }
+              },
+              "libs": {
+                "kind": "list",
+                "element": {
+                  "kind": "string"
+                }
+              },
+              "name": {
+                "kind": "string"
+              },
+              "pkgconfigDirs": {
+                "kind": "list",
+                "element": {
+                  "kind": "string"
+                }
+              },
+              "propagate": {
+                "kind": "list",
+                "element": {
+                  "kind": "string"
+                }
+              }
+            },
+            "optional": [
+              "name",
+              "includeDirs",
+              "libDirs",
+              "libs",
+              "pkgconfigDirs",
+              "aclocalDirs",
+              "env",
+              "propagate",
+              "dllDirs"
+            ]
+          }
+        ]
+      },
+      "default": null,
+      "doc": "what dependents see, false for nothing"
+    },
+    {
+      "name": "env",
+      "type": {
+        "kind": "map",
+        "value": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "path"
+            },
+            {
+              "kind": "package"
+            }
+          ]
+        }
+      },
+      "default": null,
+      "doc": "environment for every phase"
+    },
+    {
+      "name": "root",
+      "type": {
+        "kind": "string"
+      },
+      "default": null,
+      "doc": "directory below the source the project lives in"
+    },
+    {
+      "name": "cc",
+      "type": {
+        "kind": "record",
+        "fields": {
+          "cflags": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "cxxflags": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "hardening": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "boolean"
+              },
+              {
+                "kind": "map",
+                "key": {
+                  "kind": "enum",
+                  "values": [
+                    "format",
+                    "fortify",
+                    "noplt",
+                    "stackclashprotection",
+                    "stackprotector",
+                    "strictflexarrays",
+                    "strictoverflow",
+                    "trivialautovarinit",
+                    "zerocallusedregs",
+                    "libcxxhardening",
+                    "relro",
+                    "bindnow",
+                    "relr",
+                    "noexecstack",
+                    "asneeded"
+                  ]
+                },
+                "value": {
+                  "kind": "boolean"
+                }
+              }
+            ]
+          },
+          "ldflags": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          }
+        },
+        "optional": [
+          "hardening",
+          "cflags",
+          "cxxflags",
+          "ldflags"
+        ]
+      },
+      "default": null,
+      "doc": "extra compiler flags and hardening"
+    },
+    {
+      "name": "bootstrapTools",
+      "type": {
+        "kind": "boolean"
+      },
+      "default": null,
+      "doc": "build with the seed's tools instead of the set's base tools"
+    },
+    {
+      "name": "prebuilt",
+      "type": {
+        "kind": "union",
+        "variants": [
+          {
+            "kind": "boolean"
+          },
+          {
+            "kind": "enum",
+            "values": [
+              "ldso"
+            ]
+          }
+        ]
+      },
+      "default": null,
+      "doc": "upstream binaries, implanted with our interpreter (true) or run via launch (ldso)"
+    },
+    {
+      "name": "debug",
+      "type": {
+        "kind": "boolean"
+      },
+      "default": null,
+      "doc": "split DWARF into the debug output"
+    },
+    {
+      "name": "install",
+      "type": {
+        "kind": "map",
+        "value": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "path"
+            },
+            {
+              "kind": "package"
+            },
+            {
+              "kind": "list",
+              "element": {
+                "kind": "union",
+                "variants": [
+                  {
+                    "kind": "string"
+                  },
+                  {
+                    "kind": "path"
+                  },
+                  {
+                    "kind": "package"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "default": null,
+      "doc": "output path -> files copied there"
+    },
+    {
+      "name": "links",
+      "type": {
+        "kind": "map",
+        "value": {
+          "kind": "string"
+        }
+      },
+      "default": null,
+      "doc": "output path -> symlink target"
+    },
+    {
+      "name": "completions",
+      "type": {
+        "kind": "record",
+        "fields": {
+          "bash": {
+            "kind": "list",
+            "element": {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "string"
+                },
+                {
+                  "kind": "path"
+                },
+                {
+                  "kind": "package"
+                }
+              ]
+            }
+          },
+          "fish": {
+            "kind": "list",
+            "element": {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "string"
+                },
+                {
+                  "kind": "path"
+                },
+                {
+                  "kind": "package"
+                }
+              ]
+            }
+          },
+          "nu": {
+            "kind": "list",
+            "element": {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "string"
+                },
+                {
+                  "kind": "path"
+                },
+                {
+                  "kind": "package"
+                }
+              ]
+            }
+          },
+          "zsh": {
+            "kind": "list",
+            "element": {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "string"
+                },
+                {
+                  "kind": "path"
+                },
+                {
+                  "kind": "package"
+                }
+              ]
+            }
+          }
+        },
+        "optional": [
+          "bash",
+          "zsh",
+          "fish",
+          "nu"
+        ]
+      },
+      "default": null,
+      "doc": "shell completion files, installed where each shell looks"
+    }
+  ],
   "systems": {
     "autotools": [
       {
@@ -391,15 +1226,10 @@
           "kind": "union",
           "variants": [
             {
-              "kind": "union",
-              "variants": [
-                {
-                  "kind": "package"
-                },
-                {
-                  "kind": "string"
-                }
-              ]
+              "kind": "package"
+            },
+            {
+              "kind": "string"
             },
             {
               "kind": "null"
@@ -672,15 +1502,10 @@
           "kind": "union",
           "variants": [
             {
-              "kind": "union",
-              "variants": [
-                {
-                  "kind": "package"
-                },
-                {
-                  "kind": "string"
-                }
-              ]
+              "kind": "package"
+            },
+            {
+              "kind": "string"
             },
             {
               "kind": "null"
@@ -1339,6 +2164,14 @@
         "name": "install",
         "type": {
           "kind": "map",
+          "key": {
+            "kind": "enum",
+            "values": [
+              "Application",
+              "DynamicLibrary",
+              "StaticLibrary"
+            ]
+          },
           "value": {
             "kind": "string"
           }

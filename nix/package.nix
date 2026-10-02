@@ -51,31 +51,6 @@ let
     path = ../builder;
     name = "build";
   };
-  reserved = [
-    "name"
-    "features"
-    "platforms"
-    "version"
-    "source"
-    "patches"
-    "uses"
-    "phases"
-    "buildDependencies"
-    "dependencies"
-    "sys"
-    "bin"
-    "tests"
-    "exports"
-    "env"
-    "root"
-    "cc"
-    "bootstrapTools"
-    "prebuilt"
-    "debug"
-    "install"
-    "links"
-    "completions"
-  ];
 
   # the part of every derivation that is the same across the set: built once
   setCommon = {
@@ -203,86 +178,28 @@ let
   uses = args.uses or [ ];
   fail = msg: throw "${name}: ${msg}";
 
-  unknownUses = filter (u: !(buildSystems ? ${u})) uses;
-  # fields whose sub-keys are a fixed vocabulary: a typo there is as silent as one at top level
-  subFields = {
-    tests = [
-      "run"
-      "separate"
-      "parallel"
-      "version"
-      "dlopen"
-      "dependencies"
-    ];
-    cc = [
-      "cflags"
-      "cxxflags"
-      "ldflags"
-      "hardening"
-    ];
-    "cc.hardening" = schema.hardening;
-    completions = attrNames completionDirs;
-  };
-  subKeys =
-    prefix: set:
-    if isAttrs set then
-      concatMap (
-        k:
-        let
-          path = "${prefix}.${k}";
-        in
-        if !(elem k subFields.${prefix}) then
-          [ path ]
-        else if subFields ? ${path} then
-          subKeys path set.${k}
-        else
-          [ ]
-      ) (attrNames set)
-    else
-      [ ];
   # `<bs> = on cond { … }` for a build system used on some platforms only leaves { } on the others
-  unknownFields =
-    filter (k: args.${k} != { }) (attrNames (removeAttrs args (reserved ++ uses)))
-    ++ (if args ? tests then subKeys "tests" args.tests else [ ])
-    ++ (if args ? cc then subKeys "cc" args.cc else [ ])
-    ++ (if args ? completions then subKeys "completions" args.completions else [ ]);
-  badHardening =
-    let
-      choice = args.cc.hardening or null;
-    in
-    if choice == null || builtins.isBool choice then
-      [ ]
-    else if isAttrs choice then
-      map (key: "cc.hardening.${key} must be a boolean") (
-        filter (key: !(builtins.isBool choice.${key})) (attrNames choice)
-      )
-    else
-      [ "cc.hardening must be a boolean or an attribute set of booleans" ];
+  badFields = schema.validateRecipe {
+    value = removeAttrs args (
+      uses ++ filter (k: !(elem k schema.recipeFields) && args.${k} == { }) (attrNames args)
+    );
+    mode = "keys";
+  };
   badOptions = concatMap (
     system:
-    if schema.options ? ${system} then
-      buildSystems.${system}.validate {
-        value = args.${system} or { };
-        recursive = false;
-      }
-    else
-      let
-        declared = buildSystems.${system}.options;
-      in
-      concatMap (
-        key:
-        let
-          got = builtins.typeOf args.${system}.${key};
-          want = declared.${key}.type;
-        in
-        if !(declared ? ${key}) then
-          [ "unknown option ${system}.${key} (have: ${toString (attrNames declared)})" ]
-        else if !(elem got want) then
-          [ "option ${system}.${key} is a ${got}, expected ${join " or " want}" ]
-        else
-          [ ]
-      ) (attrNames (args.${system} or { }))
-  ) (filter (system: buildSystems ? ${system}) uses);
+    buildSystems.${system}.validate {
+      value = args.${system} or { };
+      mode = "keys";
+    }
+  ) uses;
+  # fully checked only where read, since an interpolated string forces its dependency
+  valid = builtins.mapAttrs (
+    field: value:
+    let
+      errors = schema.checkField "deep" field value;
+    in
+    if !(elem field schema.recipeFields) || errors == [ ] then value else fail (join "; " errors)
+  ) args;
   # a library among the build tools or a tool among the libraries: natively both platforms
   # coincide and nothing would notice, so it is checked here
   wrongPlatform =
@@ -309,7 +226,7 @@ let
     in
     if isString s && !hasContext s then s else null;
   noTarball = sourceKey != null && !(sources.has sourceKey);
-  src = if sourceKey != null then sources.fetch sourceKey else args.source;
+  src = if sourceKey != null then sources.fetch sourceKey else valid.source;
   unsupportedDeps = filter (d: !(d.supported or true)) (
     common.dependencies
     ++ (args.buildDependencies or [ ])
@@ -337,60 +254,21 @@ let
     else
       null;
   supported = unsupportedReason == null;
-  unknownPlatformKeys = attrNames (
-    removeAttrs (args.platforms or { }) [
-      "cpu"
-      "os"
-      "abi"
-      "libc"
-      "posix"
-      "cross"
-    ]
-  );
-
-  # the declaration's shape. Values from outside are checked where they are resolved (nix/features.nix)
-  badFeatures =
-    if args ? features then
-      filter (
-        n:
-        let
-          d = args.features.${n};
-          t = builtins.typeOf d.default;
-        in
-        !(
-          isAttrs d
-          && d ? default
-          &&
-            removeAttrs d [
-              "default"
-              "values"
-              "doc"
-            ] == { }
-          && elem t [
-            "bool"
-            "string"
-            "list"
-            "int"
-          ]
-          && (
-            !(d ? values)
-            || isList d.values && all (v: elem v d.values) (if t == "list" then d.default else [ d.default ])
-          )
-        )
-      ) (attrNames args.features)
-    else
-      [ ];
+  # the shape is the schema's, values from outside are checked where they are resolved (nix/features.nix)
+  badFeatures = filter (
+    n:
+    let
+      d = args.features.${n};
+    in
+    d ? values && !all (v: elem v d.values) (if isList d.default then d.default else [ d.default ])
+  ) (attrNames (args.features or { }));
   checks =
-    if badFeatures != [ ] then
-      fail "features ${toString badFeatures}: want { default (bool, string, list or int), values? (a list the default is from), doc? }"
-    else if unknownUses != [ ] then
-      fail "unknown build systems ${toString unknownUses} (have: ${toString (attrNames buildSystems)})"
-    else if unknownFields != [ ] || unknownPlatformKeys != [ ] then
-      fail "unknown fields ${toString (unknownFields ++ map (k: "platforms.${k}") unknownPlatformKeys)}"
+    if badFields != [ ] then
+      fail (join "; " badFields)
+    else if badFeatures != [ ] then
+      fail "features ${toString badFeatures}: the default is not among the values"
     else if badOptions != [ ] then
       fail (join "; " badOptions)
-    else if badHardening != [ ] then
-      fail (join ", " badHardening)
     else if wrongPlatform != [ ] then
       fail (join "; " wrongPlatform)
     else
@@ -400,18 +278,18 @@ let
   # `phases` is the whole list, or edits to the first build system's list (README):
   # { before.<phase> = [..]; after.<phase> = [..]; replace.<phase> = phase | [..]; remove = [..]; }
   phases =
-    if (args.phases or [ ]) == [ ] then
+    if (valid.phases or [ ]) == [ ] then
       if length uses == 1 then
         buildSystems.${head uses}.phases
       else if uses == [ ] && (args ? install || args ? links) then
         [ ]
       else
         fail "'phases' is required with more than one build system (a list, or edits to the first one's)"
-    else if isList args.phases then
-      args.phases
+    else if isList valid.phases then
+      valid.phases
     else
       let
-        e = args.phases;
+        e = valid.phases;
         known = buildSystems.${head uses}.phases;
         # an edit gated off with `on cond [ … ]` names a phase of the other platform's build system
         nonEmpty = set: filter (n: set.${n} != [ ]) (attrNames set);
@@ -461,11 +339,11 @@ let
   # tests.separate: the build derivation skips *.test and keeps its tree in output `tree`;
   # `<pkg>.tests` restores it and runs only the test phases: a test failure fails that derivation,
   # not the package, and a retry does not rebuild
-  separate = args.tests.separate or false;
-  testsRun = args.tests.run or true;
+  separate = valid.tests.separate or false;
+  testsRun = valid.tests.run or true;
   # tools only the suite runs. With tests.separate they stay off the build derivation, which is
   # how the base tools test with perl (built with them) without a cycle
-  testDeps = if testsRun then args.tests.dependencies or [ ] else [ ];
+  testDeps = if testsRun then valid.tests.dependencies or [ ] else [ ];
 
   # a phase as a plan step for jib: a build system's verb runs in jib, anything else is nu text,
   # inline or a package module's command. A prefix that is neither: nix reports "path …/<bs>.nu
@@ -545,14 +423,14 @@ let
   # [pin] sys of sources.toml. null: no sources.toml, dependencies are all by hand
   sys = args.sys or (if sources == null then null else sources.sys);
   spec =
-    removeAttrs args [
+    removeAttrs valid [
       "source"
       "patches"
       "buildDependencies"
       "dependencies"
       "bootstrapTools"
     ]
-    // (if args ? tests then { tests = removeAttrs args.tests [ "dependencies" ]; } else { })
+    // (if args ? tests then { tests = removeAttrs valid.tests [ "dependencies" ]; } else { })
     // listToAttrs (
       map (u: {
         name = u;
@@ -596,7 +474,7 @@ let
         toolchain
         jib
       ]
-      ++ (args.buildDependencies or [ ])
+      ++ (valid.buildDependencies or [ ])
       ++ tests
       ++ (
         if
@@ -615,7 +493,7 @@ let
     inherit src;
     probeInputs = [ tree ] ++ map storeModule modules;
     inherit (args) version;
-    patches = args.patches or [ ];
+    patches = valid.patches or [ ];
     inherit spec plan;
     buildDependencies = buildDeps {
       tests = if separate then [ ] else testDeps;
@@ -624,7 +502,7 @@ let
     # [pin] sys: libraries the lock files can link (builder/sys-libs.json). Those the set lacks
     # here are left to the locked package (vendored copy or feature off)
     dependencies =
-      (args.dependencies or [ ])
+      (valid.dependencies or [ ])
       ++ map (n: pkgs.${n}) (filter (n: pkgs.${n}.supported or false) (if sys == null then [ ] else sys))
       ++ concatMap (u: buildSystems.${u}.dependencies) uses;
   };

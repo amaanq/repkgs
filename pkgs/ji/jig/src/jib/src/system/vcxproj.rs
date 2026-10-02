@@ -36,7 +36,11 @@ use crate::{
       Attrs,
       Ctx,
    },
-   schema::Field,
+   schema::{
+      Field,
+      OptionType,
+      Type,
+   },
    system::{
       command::{
          run,
@@ -71,6 +75,16 @@ enum ConfigurationType {
    Application,
    DynamicLibrary,
    StaticLibrary,
+}
+
+impl OptionType for ConfigurationType {
+   fn kind() -> Type {
+      Type::Enum {
+         values: [Self::Application, Self::DynamicLibrary, Self::StaticLibrary]
+            .map(|kind| kind.to_string())
+            .to_vec(),
+      }
+   }
 }
 
 impl FromStr for ConfigurationType {
@@ -128,8 +142,8 @@ impl System for Vcxproj {
       "vcxproj"
    }
 
-   fn options(&self) -> Option<Vec<Field>> {
-      Some(Options::schema(self.name()))
+   fn options(&self) -> io::Result<Vec<Field>> {
+      Options::schema(self.name())
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {

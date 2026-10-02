@@ -56,9 +56,7 @@ use crate::{
 pub trait System: Sync {
    fn name(&self) -> &'static str;
 
-   fn options(&self) -> Option<Vec<Field>> {
-      None
-   }
+   fn options(&self) -> io::Result<Vec<Field>>;
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
       let options: Root = ctx.options(self.name())?;
@@ -82,14 +80,10 @@ const SYSTEMS: &[&dyn System] = &[
    &Rebar3, &Mix, &Luarocks, &Deno, &Pyapp, &Bundler, &Vcxproj,
 ];
 
-pub fn schemas() -> BTreeMap<String, Vec<Field>> {
+pub fn schemas() -> io::Result<BTreeMap<String, Vec<Field>>> {
    SYSTEMS
       .iter()
-      .filter_map(|system| {
-         system
-            .options()
-            .map(|fields| (system.name().to_owned(), fields))
-      })
+      .map(|system| Ok((system.name().to_owned(), system.options()?)))
       .collect()
 }
 

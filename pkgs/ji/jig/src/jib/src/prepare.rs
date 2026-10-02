@@ -116,13 +116,13 @@ pub fn prepare(source: Source<'_>) -> io::Result<Prepared> {
    let cross = flag(&platform, "cross");
    let transparent = flag(&platform, "transparent");
    let restored = matches!(source, Source::Archive(_));
-   if !restored && spec.tests.run && cross && !transparent {
+   if !restored && spec.tests.run.unwrap_or(true) && cross && !transparent {
       note(
          "untested",
          &format!("{}: no binfmt on this builder", text(&platform, "name")),
       );
    }
-   let tests_run = restored || (spec.tests.run && (!cross || transparent));
+   let tests_run = restored || (spec.tests.run.unwrap_or(true) && (!cross || transparent));
    let roots = env
       .get("JIG_STORE_ROOTS")
       .and_then(Value::as_str)

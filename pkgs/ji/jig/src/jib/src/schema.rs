@@ -21,10 +21,12 @@ use serde::{
    Deserialize,
    Serialize,
 };
+use serde_json::Value;
 
 use crate::{
    attrs::Def,
    hardening::Hardening,
+   recipe::recipe,
    system::dispatch::schemas,
 };
 
@@ -38,50 +40,69 @@ pub enum Type {
    Path,
    Package,
    Null,
-   List { element: Box<Self> },
-   Map { value: Box<Self> },
-   Union { variants: Vec<Self> },
-   Enum { values: Vec<String> },
-   Record { fields: BTreeMap<String, Self> },
+   List {
+      element: Box<Self>,
+   },
+   Map {
+      #[serde(default, skip_serializing_if = "Option::is_none")]
+      key:   Option<Box<Self>>,
+      value: Box<Self>,
+   },
+   Union {
+      variants: Vec<Self>,
+   },
+   Enum {
+      values: Vec<String>,
+   },
+   Record {
+      fields:   BTreeMap<String, Self>,
+      #[serde(default, skip_serializing_if = "Vec::is_empty")]
+      optional: Vec<String>,
+   },
 }
 
-#[derive(Deserialize, Eq, PartialEq, Serialize)]
-#[serde(untagged)]
-#[non_exhaustive]
-pub enum Literal {
-   Boolean(bool),
-   String(String),
-   Integer(i64),
-   List(Vec<Self>),
-   Map(BTreeMap<String, Self>),
-   Null,
-}
+impl Type {
+   pub fn list(element: Self) -> Self {
+      Self::List {
+         element: Box::new(element),
+      }
+   }
 
-impl From<bool> for Literal {
-   fn from(value: bool) -> Self {
-      Self::Boolean(value)
+   pub fn map(value: Self) -> Self {
+      Self::Map {
+         key:   None,
+         value: Box::new(value),
+      }
+   }
+
+   pub fn union(variants: Vec<Self>) -> Self {
+      Self::Union {
+         variants: variants
+            .into_iter()
+            .flat_map(|variant| {
+               if let Self::Union { variants: nested } = variant {
+                  nested
+               } else {
+                  vec![variant]
+               }
+            })
+            .collect(),
+      }
+   }
+
+   pub fn record(required: Vec<(&str, Self)>, optional: Vec<(&str, Self)>) -> Self {
+      Self::Record {
+         optional: optional.iter().map(|field| field.0.to_owned()).collect(),
+         fields:   required
+            .into_iter()
+            .chain(optional)
+            .map(|field| (field.0.to_owned(), field.1))
+            .collect(),
+      }
    }
 }
 
-impl From<String> for Literal {
-   fn from(value: String) -> Self {
-      Self::String(value)
-   }
-}
-
-impl From<PathBuf> for Literal {
-   fn from(value: PathBuf) -> Self {
-      Self::String(value.to_string_lossy().into_owned())
-   }
-}
-
-impl<Item: Into<Self>> From<Option<Item>> for Literal {
-   fn from(value: Option<Item>) -> Self {
-      value.map_or(Self::Null, Into::into)
-   }
-}
-
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct PackagePath(String);
 
@@ -105,40 +126,7 @@ impl Deref for PackagePath {
    }
 }
 
-impl From<PackagePath> for Literal {
-   fn from(value: PackagePath) -> Self {
-      Self::String(value.0)
-   }
-}
-
-impl<Item: Into<Self>> From<Vec<Item>> for Literal {
-   fn from(value: Vec<Item>) -> Self {
-      Self::List(value.into_iter().map(Into::into).collect())
-   }
-}
-
-impl<Key: Display, Item: Into<Self>> From<BTreeMap<Key, Item>> for Literal {
-   fn from(value: BTreeMap<Key, Item>) -> Self {
-      Self::Map(
-         value
-            .into_iter()
-            .map(|(name, item)| (name.to_string(), item.into()))
-            .collect(),
-      )
-   }
-}
-
-impl From<Def> for Literal {
-   fn from(value: Def) -> Self {
-      match value {
-         Def::Flag(flag) => Self::Boolean(flag),
-         Def::Text(text) => Self::String(text),
-         Def::Number(number) => Self::Integer(number),
-      }
-   }
-}
-
-pub trait OptionType: Into<Literal> {
+pub trait OptionType {
    fn kind() -> Type;
 }
 
@@ -156,39 +144,34 @@ impl OptionType for String {
 
 impl OptionType for PackagePath {
    fn kind() -> Type {
-      Type::Union {
-         variants: vec![Type::Package, Type::String],
-      }
+      Type::union(vec![Type::Package, Type::String])
    }
 }
 
 impl OptionType for PathBuf {
    fn kind() -> Type {
-      Type::Union {
-         variants: vec![Type::String, Type::Path, Type::Package],
-      }
+      Type::union(vec![Type::String, Type::Path, Type::Package])
    }
 }
 
 impl<Item: OptionType> OptionType for Option<Item> {
    fn kind() -> Type {
-      Type::Union {
-         variants: vec![Item::kind(), Type::Null],
-      }
+      Type::union(vec![Item::kind(), Type::Null])
    }
 }
 
 impl<Item: OptionType> OptionType for Vec<Item> {
    fn kind() -> Type {
-      Type::List {
-         element: Box::new(Item::kind()),
-      }
+      Type::list(Item::kind())
    }
 }
 
-impl<Key: Display, Item: OptionType> OptionType for BTreeMap<Key, Item> {
+impl<Key: OptionType, Item: OptionType> OptionType for BTreeMap<Key, Item> {
    fn kind() -> Type {
+      let key = Key::kind();
+
       Type::Map {
+         key:   (key != Type::String).then(|| Box::new(key)),
          value: Box::new(Item::kind()),
       }
    }
@@ -196,15 +179,13 @@ impl<Key: Display, Item: OptionType> OptionType for BTreeMap<Key, Item> {
 
 impl OptionType for Def {
    fn kind() -> Type {
-      Type::Union {
-         variants: vec![
-            Type::Boolean,
-            Type::String,
-            Type::Integer,
-            Type::Path,
-            Type::Package,
-         ],
-      }
+      Type::union(vec![
+         Type::Boolean,
+         Type::String,
+         Type::Integer,
+         Type::Path,
+         Type::Package,
+      ])
    }
 }
 
@@ -216,11 +197,12 @@ pub struct Field {
    name:     String,
    #[serde(rename = "type")]
    kind:     Type,
-   default:  Literal,
+   default:  Value,
    #[serde(default, skip_serializing_if = "is_false")]
    required: bool,
    doc:      String,
-   system:   String,
+   #[serde(default, skip_serializing_if = "Option::is_none")]
+   system:   Option<String>,
 }
 
 #[expect(
@@ -232,46 +214,57 @@ const fn is_false(value: &bool) -> bool {
 }
 
 impl Field {
-   pub fn new<Value>(name: &str, default: Option<Value>, doc: &str, system: &str) -> Self
+   pub fn new<Kind>(name: &str, default: Option<Kind>, doc: &str, system: &str) -> io::Result<Self>
    where
-      Value: OptionType,
+      Kind: OptionType + Serialize,
    {
-      Self {
+      Ok(Self {
          name:     name.to_owned(),
-         kind:     Value::kind(),
+         kind:     Kind::kind(),
          required: default.is_none(),
-         default:  default.map_or(Literal::Null, Into::into),
+         default:  serde_json::to_value(default)?,
          doc:      doc.to_owned(),
-         system:   system.to_owned(),
+         system:   Some(system.to_owned()),
+      })
+   }
+
+   /// A common recipe field, which no build system owns.
+   pub fn common(name: &str, kind: Type, required: bool, doc: &str) -> Self {
+      Self {
+         name: name.to_owned(),
+         kind,
+         default: Value::Null,
+         required,
+         doc: doc.to_owned(),
+         system: None,
       }
    }
 }
 
+/// A closed record nested in an option. Fields listed under `optional` may be
+/// absent and are `Option`s in Rust.
 macro_rules! record {
-   ($name:ident {
-      $($field:ident ($spelling:literal): $kind:ty),* $(,)?
+   ($(#[$meta:meta])* $vis:vis $name:ident {
+      $(required { $($field:ident ($spelling:literal): $kind:ty),* $(,)? })?
+      $(optional { $($ofield:ident ($ospelling:literal): $okind:ty),* $(,)? })?
    }) => {
-      #[derive(Default, serde::Deserialize)]
+      $(#[$meta])*
+      #[derive(serde::Deserialize, serde::Serialize)]
       #[serde(deny_unknown_fields)]
-      struct $name {
-         $(#[serde(rename = $spelling)] $field: $kind),*
+      $vis struct $name {
+         $($(#[serde(rename = $spelling)] pub $field: $kind,)*)?
+         $($(
+            #[serde(rename = $ospelling, default, skip_serializing_if = "Option::is_none")]
+            pub $ofield: Option<$okind>,
+         )*)?
       }
 
       impl crate::schema::OptionType for $name {
          fn kind() -> crate::schema::Type {
-            crate::schema::Type::Record {
-               fields: [$((
-                  $spelling.to_owned(),
-                  <$kind as crate::schema::OptionType>::kind(),
-               )),*]
-               .into(),
-            }
-         }
-      }
-
-      impl From<$name> for crate::schema::Literal {
-         fn from(value: $name) -> Self {
-            Self::Map([$(($spelling.to_owned(), value.$field.into())),*].into())
+            crate::schema::Type::record(
+               vec![$($(($spelling, <$kind as crate::schema::OptionType>::kind())),*)?],
+               vec![$($(($ospelling, <$okind as crate::schema::OptionType>::kind())),*)?],
+            )
          }
       }
    };
@@ -294,13 +287,13 @@ macro_rules! options {
       }
 
       impl $name {
-         fn schema(system: &str) -> Vec<crate::schema::Field> {
-            vec![$(crate::schema::Field::new::<$kind>(
+         fn schema(system: &str) -> std::io::Result<Vec<crate::schema::Field>> {
+            Ok(vec![$(crate::schema::Field::new::<$kind>(
                $spelling,
                options!(@default $($default)?),
                $doc,
                system,
-            )),*]
+            )?),*])
          }
       }
    };
@@ -310,13 +303,16 @@ macro_rules! options {
 #[serde(deny_unknown_fields)]
 struct Schema {
    hardening: Vec<Hardening>,
+   recipe:    Vec<Field>,
    systems:   BTreeMap<String, Vec<Field>>,
 }
 
 pub fn run(check: Option<&Path>) -> io::Result<()> {
+   let systems = schemas()?;
    let current = Schema {
       hardening: Hardening::ALL.to_vec(),
-      systems:   schemas(),
+      recipe: recipe(systems.keys().cloned().collect()),
+      systems,
    };
 
    if let Some(path) = check {

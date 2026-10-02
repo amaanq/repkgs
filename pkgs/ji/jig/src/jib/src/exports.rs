@@ -34,29 +34,21 @@ use crate::attrs::Extensions;
 
 const CPUS: [&str; 5] = ["x86_64", "aarch64", "riscv64", "loongarch64", "powerpc64le"];
 
-#[derive(Default, Deserialize, Serialize)]
-#[serde(default, rename_all = "camelCase")]
-struct Stored {
-   #[serde(skip_serializing_if = "Option::is_none")]
-   name:           Option<String>,
-   #[serde(skip_serializing_if = "Option::is_none")]
-   include_dirs:   Option<Vec<String>>,
-   #[serde(skip_serializing_if = "Option::is_none")]
-   lib_dirs:       Option<Vec<String>>,
-   #[serde(skip_serializing_if = "Option::is_none")]
-   libs:           Option<Vec<String>>,
-   #[serde(skip_serializing_if = "Option::is_none")]
-   pkgconfig_dirs: Option<Vec<String>>,
-   #[serde(skip_serializing_if = "Option::is_none")]
-   aclocal_dirs:   Option<Vec<String>>,
-   #[serde(skip_serializing_if = "Option::is_none")]
-   env:            Option<BTreeMap<String, String>>,
-   #[serde(skip_serializing_if = "Option::is_none")]
-   propagate:      Option<Vec<String>>,
-   #[serde(skip_serializing_if = "Option::is_none")]
-   dll_dirs:       Option<Vec<String>>,
-   #[serde(flatten)]
-   extra:          BTreeMap<String, Value>,
+record! {
+   #[derive(Default)]
+   pub Stored {
+      optional {
+         name ("name"): String,
+         include_dirs ("includeDirs"): Vec<String>,
+         lib_dirs ("libDirs"): Vec<String>,
+         libs ("libs"): Vec<String>,
+         pkgconfig_dirs ("pkgconfigDirs"): Vec<String>,
+         aclocal_dirs ("aclocalDirs"): Vec<String>,
+         env ("env"): BTreeMap<String, String>,
+         propagate ("propagate"): Vec<String>,
+         dll_dirs ("dllDirs"): Vec<String>,
+      }
+   }
 }
 
 #[derive(Deserialize, Serialize)]

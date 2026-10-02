@@ -52,8 +52,8 @@ impl System for Luarocks {
       "luarocks"
    }
 
-   fn options(&self) -> Option<Vec<Field>> {
-      Some(Options::schema(self.name()))
+   fn options(&self) -> io::Result<Vec<Field>> {
+      Options::schema(self.name())
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {

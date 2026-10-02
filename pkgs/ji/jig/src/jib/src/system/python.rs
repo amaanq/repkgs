@@ -74,8 +74,8 @@ impl System for Python {
       "python"
    }
 
-   fn options(&self) -> Option<Vec<Field>> {
-      Some(Options::schema(self.name()))
+   fn options(&self) -> io::Result<Vec<Field>> {
+      Options::schema(self.name())
    }
 
    /// the source tree comes last so a backend can build itself before any of

@@ -1,18 +1,39 @@
+# Checks run at three depths. "outer" forces only the value, "keys" walks records and maps but
+# leaves strings, paths and packages unforced, since forcing an interpolated dependency instantiates
+# it and a support query must not, and "deep" runs where the value is read
 let
+  inherit (builtins)
+    any
+    attrNames
+    concatMap
+    concatStringsSep
+    elem
+    filter
+    genList
+    head
+    isAttrs
+    isString
+    length
+    listToAttrs
+    mapAttrs
+    removeAttrs
+    typeOf
+    ;
   data = builtins.fromJSON (builtins.readFile ./schema.json);
-  fields = builtins.mapAttrs (
-    _: rows:
-    builtins.listToAttrs (
+  byName =
+    rows:
+    listToAttrs (
       map (row: {
         inherit (row) name;
         value = row;
       }) rows
-    )
-  ) data.systems;
+    );
+  fields = mapAttrs (_: byName) data.systems;
+  recipe = byName data.recipe;
   nixTypes =
     descriptor:
     if descriptor.kind == "union" then
-      builtins.concatMap nixTypes descriptor.variants
+      concatMap nixTypes descriptor.variants
     else
       [
         {
@@ -29,93 +50,110 @@ let
         }
         .${descriptor.kind}
       ];
+  stringy =
+    descriptor:
+    elem descriptor.kind [
+      "string"
+      "path"
+      "package"
+    ]
+    || descriptor.kind == "union" && any stringy descriptor.variants;
   matches =
     descriptor: value:
     if descriptor.kind == "union" then
-      builtins.any (variant: matches variant value) descriptor.variants
+      any (variant: matches variant value) descriptor.variants
     else if descriptor.kind == "package" then
-      builtins.isAttrs value && value ? outPath
+      isAttrs value && value ? outPath
     else if descriptor.kind == "enum" then
-      builtins.elem value descriptor.values
+      elem value descriptor.values
     else
-      builtins.elem (builtins.typeOf value) (nixTypes descriptor);
+      elem (typeOf value) (nixTypes descriptor);
   describe =
     descriptor:
     if descriptor.kind == "union" then
-      builtins.concatStringsSep " or " (map describe descriptor.variants)
+      concatStringsSep " or " (map describe descriptor.variants)
     else if descriptor.kind == "package" then
       "package"
     else if descriptor.kind == "enum" then
-      "one of ${builtins.concatStringsSep " " descriptor.values}"
+      "one of ${concatStringsSep " " descriptor.values}"
     else
-      builtins.head (nixTypes descriptor);
-  checkValue =
-    recursive: path: descriptor: value:
+      head (nixTypes descriptor);
+  unknown = path: names: "unknown ${path} (have ${concatStringsSep " " names})";
+  check =
+    mode: path: descriptor: value:
     let
-      expected = describe descriptor;
-      actual = if builtins.isString value then ''"${value}"'' else builtins.typeOf value;
+      deeper = mode != "outer";
+      shown = if isString value then ''"${value}"'' else typeOf value;
     in
-    if !(matches descriptor value) then
-      [ "option ${path} is ${actual}, expected ${expected}" ]
-    else if recursive && descriptor.kind == "union" then
-      checkValue true path (builtins.head (
-        builtins.filter (variant: matches variant value) descriptor.variants
-      )) value
-    else if recursive && descriptor.kind == "list" then
-      builtins.concatLists (
-        builtins.genList (
-          index: checkValue true "${path}[${toString index}]" descriptor.element (builtins.elemAt value index)
-        ) (builtins.length value)
-      )
-    else if recursive && descriptor.kind == "map" then
-      builtins.concatMap (name: checkValue true "${path}.${name}" descriptor.value value.${name}) (
-        builtins.attrNames value
-      )
-    else if recursive && descriptor.kind == "record" then
-      builtins.concatMap (
+    if mode == "keys" && stringy descriptor then
+      [ ]
+    else if !(matches descriptor value) then
+      [ "${path} is ${shown}, expected ${describe descriptor}" ]
+    else if deeper && descriptor.kind == "union" then
+      check mode path (head (filter (variant: matches variant value) descriptor.variants)) value
+    else if deeper && descriptor.kind == "list" then
+      if mode == "keys" && stringy descriptor.element then
+        [ ]
+      else
+        concatMap (
+          index: check mode "${path}[${toString index}]" descriptor.element (builtins.elemAt value index)
+        ) (genList (index: index) (length value))
+    else if deeper && descriptor.kind == "map" then
+      concatMap (
         name:
-        if descriptor.fields ? ${name} then
-          checkValue true "${path}.${name}" descriptor.fields.${name} value.${name}
+        if descriptor ? key && !(matches descriptor.key name) then
+          [ "${path}.${name} is not ${describe descriptor.key}" ]
         else
-          [
-            "unknown option ${path}.${name} (have ${builtins.concatStringsSep " " (builtins.attrNames descriptor.fields)})"
-          ]
-      ) (builtins.attrNames value)
-      ++ map (name: "option ${path}.${name} is missing") (
-        builtins.attrNames (removeAttrs descriptor.fields (builtins.attrNames value))
-      )
+          check mode "${path}.${name}" descriptor.value value.${name}
+      ) (attrNames value)
+    else if deeper && descriptor.kind == "record" then
+      record mode "${path}." descriptor.fields (descriptor.optional or [ ]) value
     else
       [ ];
+  record =
+    mode: prefix: declared: optional: value:
+    concatMap (
+      name:
+      if declared ? ${name} then
+        check mode "${prefix}${name}" declared.${name} value.${name}
+      else
+        [ (unknown "${prefix}${name}" (attrNames declared)) ]
+    ) (attrNames value)
+    ++ map (name: "${prefix}${name} is missing") (
+      filter (name: !(elem name optional)) (attrNames (removeAttrs declared (attrNames value)))
+    );
 in
 {
   inherit (data) hardening;
-  options = builtins.mapAttrs (
+  recipeFields = attrNames recipe;
+  options = mapAttrs (
     _: declared:
-    builtins.mapAttrs (_: field: {
+    mapAttrs (_: field: {
       type = nixTypes field.type;
       inherit (field) default doc;
     }) declared
   ) fields;
+  # a recipe's record leaves out what `lock.deps` fills in, so no option is required there
   validate =
     {
       system,
       value,
-      recursive ? true,
+      mode ? "deep",
       extra ? { },
     }:
     let
-      declared = fields.${system} // builtins.mapAttrs (_: type: { inherit type; }) extra;
+      declared = mapAttrs (_: field: field.type) fields.${system} // extra;
     in
-    if !builtins.isAttrs value then
-      [ "option ${system} is ${builtins.typeOf value}, expected set" ]
+    if !isAttrs value then
+      [ "${system} is ${typeOf value}, expected set" ]
     else
-      builtins.concatMap (
-        name:
-        if !(declared ? ${name}) then
-          [
-            "unknown option ${system}.${name} (have ${builtins.concatStringsSep " " (builtins.attrNames declared)})"
-          ]
-        else
-          checkValue recursive "${system}.${name}" declared.${name}.type value.${name}
-      ) (builtins.attrNames value);
+      record mode "${system}." declared (attrNames declared) value;
+  validateRecipe =
+    { value, mode }:
+    record mode "" (mapAttrs (_: field: field.type) recipe) (filter (
+      name: !(recipe.${name}.required or false)
+    ) (attrNames recipe)) value;
+  checkField =
+    mode: name: value:
+    check mode name recipe.${name}.type value;
 }

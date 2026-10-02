@@ -92,8 +92,8 @@ impl System for Cabal {
       "cabal"
    }
 
-   fn options(&self) -> Option<Vec<Field>> {
-      Some(Options::schema(self.name()))
+   fn options(&self) -> io::Result<Vec<Field>> {
+      Options::schema(self.name())
    }
 
    /// cabal writes its index cache into a noindex repository's directory, so

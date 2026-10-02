@@ -60,8 +60,8 @@ impl System for Go {
       "go"
    }
 
-   fn options(&self) -> Option<Vec<Field>> {
-      Some(Options::schema(self.name()))
+   fn options(&self) -> io::Result<Vec<Field>> {
+      Options::schema(self.name())
    }
 
    /// compile, asm and link take a host-wide jigd slot like cc and rustc do.

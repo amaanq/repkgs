@@ -70,12 +70,12 @@ macro_rules! tools {
                $tool.name()
             }
 
-            fn options(&self) -> Option<Vec<Field>> {
-               Some(if matches!($tool, Tool::Mix) {
+            fn options(&self) -> io::Result<Vec<Field>> {
+               if matches!($tool, Tool::Mix) {
                   MixOptions::schema(self.name())
                } else {
                   Options::schema(self.name())
-               })
+               }
             }
 
             fn setup(&self, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<Env> {

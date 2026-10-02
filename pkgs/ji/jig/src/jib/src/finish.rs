@@ -50,6 +50,7 @@ use crate::{
       Attrs,
       Ctx,
       Spec,
+      VersionCheck,
       build_top,
       flag,
       text,
@@ -324,14 +325,14 @@ fn version_check(spec: &Spec, ctx: &Ctx, top: &str, exe: &str) -> io::Result<()>
    let platform = &ctx.platform;
    let dest = Path::new(&ctx.dest);
    let bins = bins(spec, dest, exe);
-   let line = if spec.tests.version.is_null() {
-      Value::Bool(!bins.is_empty())
-   } else {
-      spec.tests.version.clone()
-   };
+   let line = spec
+      .tests
+      .version
+      .clone()
+      .unwrap_or(VersionCheck::Enabled(!bins.is_empty()));
    let emulator = words(platform, "emulator");
 
-   if line == Value::Bool(false)
+   if line == VersionCheck::Enabled(false)
       || (flag(platform, "cross")
          && !ctx.tests_run
          && (text(platform, "os") != "windows" || emulator.is_empty()))
@@ -339,10 +340,10 @@ fn version_check(spec: &Spec, ctx: &Ctx, top: &str, exe: &str) -> io::Result<()>
       return Ok(());
    }
 
-   let given: Vec<String> = line.as_str().map_or_else(
-      || vec!["--version".to_owned()],
-      |command| command.split(' ').map(str::to_owned).collect(),
-   );
+   let given: Vec<String> = match line {
+      VersionCheck::Enabled(_) => vec!["--version".to_owned()],
+      VersionCheck::Command(ref command) => command.split(' ').map(str::to_owned).collect(),
+   };
    let command: Vec<String> = if given.first().is_some_and(|first| bins.contains(first)) {
       given
    } else {
@@ -386,7 +387,7 @@ fn version_check(spec: &Spec, ctx: &Ctx, top: &str, exe: &str) -> io::Result<()>
       top,
       prefix,
       audit,
-      allowed: &spec.tests.dlopen,
+      allowed: spec.tests.dlopen.as_deref().unwrap_or_default(),
    };
    probe.run(dest)?;
    probe.relocated(ctx)?;

@@ -74,8 +74,8 @@ impl System for Make {
       "make"
    }
 
-   fn options(&self) -> Option<Vec<Field>> {
-      Some(Options::schema(self.name()))
+   fn options(&self) -> io::Result<Vec<Field>> {
+      Options::schema(self.name())
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {

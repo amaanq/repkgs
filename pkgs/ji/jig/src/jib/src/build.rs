@@ -130,7 +130,7 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
       let wanted = if tests {
          step.test
       } else {
-         !step.test || (spec.tests.run && !attrs.plan.separate && ctx.tests_run)
+         !step.test || (spec.tests.run.unwrap_or(true) && !attrs.plan.separate && ctx.tests_run)
       };
       if wanted {
          phase(&attrs, &mut ctx, index, socket)?;

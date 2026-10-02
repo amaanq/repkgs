@@ -33,6 +33,11 @@ use crate::{
       Choice,
       Hardening,
    },
+   schema::{
+      OptionType,
+      PackagePath,
+      Type,
+   },
 };
 
 #[derive(Deserialize)]
@@ -226,43 +231,42 @@ pub struct Names {
    pub meson: String,
 }
 
-#[derive(Deserialize)]
-pub struct Tests {
-   #[serde(default = "enabled")]
-   pub run:      bool,
-   #[serde(default = "enabled")]
-   pub parallel: bool,
-   #[serde(default)]
-   pub version:  Value,
-   #[serde(default)]
-   pub dlopen:   Vec<String>,
-}
-
-impl Default for Tests {
-   fn default() -> Self {
-      Self {
-         run:      true,
-         parallel: true,
-         version:  Value::Null,
-         dlopen:   Vec::new(),
+record! {
+   #[derive(Default)]
+   pub Tests {
+      optional {
+         run ("run"): bool,
+         separate ("separate"): bool,
+         parallel ("parallel"): bool,
+         version ("version"): VersionCheck,
+         dlopen ("dlopen"): Vec<String>,
+         dependencies ("dependencies"): Vec<PackagePath>,
       }
    }
 }
 
-const fn enabled() -> bool {
-   true
+#[derive(Clone, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum VersionCheck {
+   Enabled(bool),
+   Command(String),
 }
 
-#[derive(Deserialize, Default)]
-pub struct Cc {
-   #[serde(default)]
-   pub hardening: Option<Choice>,
-   #[serde(default)]
-   pub cflags:    Vec<String>,
-   #[serde(default)]
-   pub cxxflags:  Vec<String>,
-   #[serde(default)]
-   pub ldflags:   Vec<String>,
+impl OptionType for VersionCheck {
+   fn kind() -> Type {
+      Type::union(vec![Type::Boolean, Type::String])
+   }
+}
+
+record! {
+   pub Cc {
+      optional {
+         hardening ("hardening"): Choice,
+         cflags ("cflags"): Vec<String>,
+         cxxflags ("cxxflags"): Vec<String>,
+         ldflags ("ldflags"): Vec<String>,
+      }
+   }
 }
 
 impl Spec {
@@ -336,7 +340,7 @@ impl Ctx {
    }
 
    pub fn test_jobs(&self) -> io::Result<usize> {
-      Ok(if self.spec()?.tests.parallel {
+      Ok(if self.spec()?.tests.parallel.unwrap_or(true) {
          self.njobs
       } else {
          1

@@ -262,15 +262,15 @@ fn package_cc(
       .map(str::to_owned),
    );
    cflags.extend(harden(Line::Compile));
-   cflags.extend(given(|found| &found.cflags));
+   cflags.extend(given(|found| found.cflags.as_deref().unwrap_or_default()));
    let mut cxxflags = harden(Line::Cxx);
-   cxxflags.extend(given(|found| &found.cxxflags));
+   cxxflags.extend(given(|found| found.cxxflags.as_deref().unwrap_or_default()));
    let mut ldflags: Vec<String> = dirs(deps, |dep| &dep.lib_dirs)
       .into_iter()
       .map(|dir| format!("-L{dir}"))
       .collect();
    ldflags.extend(harden(Line::Link));
-   ldflags.extend(given(|found| &found.ldflags));
+   ldflags.extend(given(|found| found.ldflags.as_deref().unwrap_or_default()));
    let cc_path = find_tool(bins, "cc").ok_or_else(|| io::Error::other("cc not on PATH"))?;
    let root = canonicalize(&cc_path)?
       .parent()

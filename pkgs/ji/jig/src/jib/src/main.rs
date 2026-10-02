@@ -15,6 +15,7 @@ mod implant;
 mod launchers;
 mod prepare;
 mod probe;
+mod recipe;
 mod site;
 mod system;
 
