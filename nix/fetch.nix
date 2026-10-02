@@ -7,7 +7,6 @@
 # and verifies per file, nothing is hashed by us, no lock file is copied into this repo. Needs
 # `dynamic-derivations ca-derivations` on the daemon. Python source trees are explicit store
 # inputs from nix/python.nix. Registry artifacts require hashes from the lock.
-#
 {
   jig,
   seed,
@@ -16,12 +15,19 @@
   sevenzip ? null,
 }:
 let
-  dynamic' =
-    drvName: kind: env:
+  inherit (builtins) concatStringsSep outputOf;
+  # nix names a text-CA output after its derivation minus ".drv": one suffix per stage
+  produce =
+    {
+      name,
+      kind,
+      stages,
+    }:
+    environment:
     let
       producer = derivation (
         {
-          name = drvName;
+          name = "${name}${concatStringsSep "" (builtins.genList (_: ".drv") stages)}";
           inherit system seed jig;
           builder = "${jig}/bin/jig";
           args = [
@@ -34,29 +40,31 @@ let
           outputHashMode = "text";
           outputHashAlgo = "sha256";
         }
-        // env
+        // environment
       );
+      first = outputOf producer.outPath "out";
     in
-    builtins.outputOf producer.outPath "out";
-  # nix names a text-CA output after its derivation minus ".drv": one suffix per stage
-  dynamic = name: dynamic' "${name}.drv";
-
-  # for producers that end in a second producer stage rather than the collecting derivation
-  twoStage =
-    name: kind: env:
-    builtins.outputOf (dynamic' "${name}.drv.drv" kind env) "out";
-
+    # a producer that ends in a second producer stage rather than the collecting derivation
+    if stages == 1 then first else outputOf first "out";
+  fromSource =
+    producer:
+    {
+      source,
+      root ? ".",
+    }:
+    produce producer { inherit source root; };
+  optionalLock = lockFile: if lockFile == null then "" else lockFile;
 in
 {
   # Cargo.lock -> a directory cargo accepts as [source.vendored-sources] (crates unpacked, with
   # .cargo-checksum.json). jig's cargo system points CARGO_HOME's config at it.
   cargoVendor =
-    {
-      source,
-    }:
-    dynamic "cargo-vendor" "cargo" {
-      inherit source;
-    };
+    { source }:
+    produce {
+      name = "cargo-vendor";
+      kind = "cargo";
+      stages = 1;
+    } { inherit source; };
 
   # package-lock.json (v2/v3) -> { package-lock.json } with every `resolved` rewritten to
   # file:<store path>; jib's npm system swaps it in and `npm ci --offline` verifies integrity itself.
@@ -67,44 +75,53 @@ in
       root ? ".",
       lockFile ? null,
     }:
-    dynamic "npm-deps" "npm" {
-      inherit source root;
-      lockFile = if lockFile == null then "" else lockFile;
-    };
+    produce
+      {
+        name = "npm-deps";
+        kind = "npm";
+        stages = 1;
+      }
+      {
+        inherit source root;
+        lockFile = optionalLock lockFile;
+      };
 
   # pnpm-lock.yaml (v9) -> registry/<url path>, a file:// registry jib's pnpm system installs from offline.
-  pnpmDeps =
-    {
-      source,
-      root ? ".",
-    }:
-    dynamic "pnpm-deps" "pnpm" { inherit source root; };
+  pnpmDeps = fromSource {
+    name = "pnpm-deps";
+    kind = "pnpm";
+    stages = 1;
+  };
 
   # yarn.lock (classic v1) -> a yarn offline mirror directory. jib's yarn system installs --offline from it.
-  yarnDeps =
-    {
-      source,
-      root ? ".",
-    }:
-    dynamic "yarn-deps" "yarn" { inherit source root; };
+  yarnDeps = fromSource {
+    name = "yarn-deps";
+    kind = "yarn";
+    stages = 1;
+  };
 
   # bun.lock -> { p/<name>@<version>/ (unpacked), index.json }; jib's bun system links them into
   # $BUN_INSTALL_CACHE_DIR under the names bun expects.
-  bunDeps =
-    {
-      source,
-      root ? ".",
-    }:
-    dynamic "bun-deps" "bun" { inherit source root; };
+  bunDeps = fromSource {
+    name = "bun-deps";
+    kind = "bun";
+    stages = 1;
+  };
 
   # deno.lock (v4+) -> a $DENO_DIR (npm/ and remote/ caches) for `deno … --cached-only`; jsr
   # hashes pin metadata that pins the files, hence two stages (`jig fetch deno`, then `deno-files`).
-  denoDeps =
-    {
-      source,
-      root ? ".",
-    }:
-    twoStage "deno-deps" "deno" { inherit source root; };
+  denoDeps = fromSource {
+    name = "deno-deps";
+    kind = "deno";
+    stages = 2;
+  };
+
+  # mix.lock or rebar.lock -> packages/hexpm/<name>-<version>.tar
+  hexDeps = fromSource {
+    name = "hex-deps";
+    kind = "hex";
+    stages = 1;
+  };
 
   # uv.lock -> { dist/, vendor/, plan.json }: one artefact per package of the project's runtime
   # closure, installed by jib
@@ -120,21 +137,27 @@ in
       git ? [ ], # { name, path } for the lock's git sources, fetched by the caller (nix/python.nix)
       environ ? "{}", # JSON PEP 508 marker environment overrides
     }:
-    twoStage "python-deps" "pypi" {
-      inherit
-        source
-        root
-        cpu
-        prefer
-        environ
-        ;
-      sysLibs = ../builder/sys-libs.json;
-      pythonVersion = python.version;
-      extras = builtins.concatStringsSep "," extras;
-      groups = builtins.concatStringsSep "," groups;
-      sdist = builtins.concatStringsSep "," sdist;
-      git = builtins.concatStringsSep "\n" (map (g: "${g.name}=${g.path}") git);
-    };
+    produce
+      {
+        name = "python-deps";
+        kind = "pypi";
+        stages = 2;
+      }
+      {
+        inherit
+          source
+          root
+          cpu
+          prefer
+          environ
+          ;
+        sysLibs = ../builder/sys-libs.json;
+        pythonVersion = python.version;
+        extras = concatStringsSep "," extras;
+        groups = concatStringsSep "," groups;
+        sdist = concatStringsSep "," sdist;
+        git = concatStringsSep "\n" (map (entry: "${entry.name}=${entry.path}") git);
+      };
 
   # Gemfile.lock (with a CHECKSUMS section, Bundler >= 2.6) -> { vendor/cache/*.gem, Gemfile.lock }
   # for `bundle install --local` (jib's bundler system). `lockFile`: for upstreams that commit none.
@@ -144,30 +167,44 @@ in
       root ? ".",
       lockFile ? null,
     }:
-    dynamic "gems" "gems" {
-      inherit source root;
-      lockFile = if lockFile == null then "" else lockFile;
-      gemPlatform = "${cpu}-linux";
-    };
-
-  # mix.lock or rebar.lock -> packages/hexpm/<name>-<version>.tar
-  hexDeps =
-    {
-      source,
-      root ? ".",
-    }:
-    dynamic "hex-deps" "hex" { inherit source root; };
+    produce
+      {
+        name = "gems";
+        kind = "gems";
+        stages = 1;
+      }
+      {
+        inherit source root;
+        lockFile = optionalLock lockFile;
+        gemPlatform = "${cpu}-linux";
+      };
 
   # go.sum -> a GOPROXY=file:// tree (jib's go system builds -mod=mod against it, offline). go.sum's
   # h1: hashes are not file hashes, so .mod/.zip sha256s come from `locks` (this repo's
   # locks/go.toml, filled by `uptrack lock`); only this package's subset lands in the output, so
   # unrelated table edits rebuild nothing.
+  goModules =
+    {
+      source,
+      root ? ".",
+      locks ? ../locks/go.toml,
+    }:
+    produce {
+      name = "go-modules";
+      kind = "go";
+      stages = 1;
+    } { inherit source root locks; };
+
   # locks/hackage.toml, the Haskell version set -> one file+noindex repository for all cabal packages
   hackageSet =
     {
       locks ? ../locks/hackage.toml,
     }:
-    dynamic "hackage-set" "hackage" { inherit locks; };
+    produce {
+      name = "hackage-set";
+      kind = "hackage";
+      stages = 1;
+    } { inherit locks; };
 
   # locks/luarocks.toml -> a rocks server directory (.src.rock files + manifest) for jib's luarocks system
   luaRocksSet =
@@ -175,20 +212,16 @@ in
       lua,
       locks ? ../locks/luarocks.toml,
     }:
-    dynamic "luarocks-set" "luarocks" {
-      inherit locks;
-      luaVersion = lua.version;
-    };
-
-  goModules =
-    {
-      source,
-      root ? ".",
-      locks ? ../locks/go.toml,
-    }:
-    dynamic "go-modules" "go" {
-      inherit source root locks;
-    };
+    produce
+      {
+        name = "luarocks-set";
+        kind = "luarocks";
+        stages = 1;
+      }
+      {
+        inherit locks;
+        luaVersion = lua.version;
+      };
 
   empty = builtins.path {
     path = ./empty;
@@ -200,9 +233,15 @@ in
   # license terms), so CI keeps it out of the public cache.
   windowsSdk =
     { manifest, arch }:
-    dynamic "windows-sdk-${arch}" "winsdk" {
-      inherit manifest arch;
-      sevenzip = "${sevenzip}";
-      sevenzip_drv = sevenzip.drvPath;
-    };
+    produce
+      {
+        name = "windows-sdk-${arch}";
+        kind = "winsdk";
+        stages = 1;
+      }
+      {
+        inherit manifest arch;
+        sevenzip = "${sevenzip}";
+        sevenzip_drv = sevenzip.drvPath;
+      };
 }
