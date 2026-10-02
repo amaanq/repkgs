@@ -10,3 +10,14 @@ hash = "sha256-+va3wHlAfVtl3aK6+DVkN/EgpiMxwAGUyNywaWiKTJQ="
 version = "3.27.0"
 tag     = "3.27.0"
 date    = "2026-02-27"
+
+[package]
+phases            = [ "rebar3.build" ]
+buildDependencies = [  ]
+dependencies      = [ "erlang" ]
+
+[when.native]
+buildDependencies = [ "{pkg:erlang}" ]
+
+[when.cross]
+buildDependencies = [ "erlang" ]

@@ -8,3 +8,16 @@ hash = "sha256-10O+PGEw/qc1PXLB1RidFuy8oc3erFNh2sfphZtykkM="
 
 [pin]
 version = "3.0"
+
+[package]
+patches = [ "upstream-format-security.patch" ]
+phases  = [ "zip.build" ]
+
+[package.platforms]
+posix = true
+
+[package.tests]
+version = "-v"
+
+[package.install]
+"bin/zip" = "zip"

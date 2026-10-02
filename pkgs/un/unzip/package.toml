@@ -8,3 +8,18 @@ hash = "sha256-qLgZcx1BdkPe8Y/hb6nqaVSvtt3KWbxkTNKVHyQAPGw="
 
 [pin]
 version = "6.0"
+
+[package]
+phases = [ "unzip.build" ]
+
+[package.platforms]
+posix = true
+
+[package.tests]
+version = "-v"
+
+[package.install]
+"bin/" = [ "unzip", "funzip", "unzipsfx" ]
+
+[package.links]
+"bin/zipinfo" = "unzip"

@@ -10,3 +10,18 @@ hash = "sha256-Y9Nph2LkT1qnOYTW3WCumWWwORnI4P7HxzBjUlGaL7M="
 version = "1.52.1"
 date    = "2026-03-06"
 tag     = "v1.52.1"
+
+[package]
+uses = [ "cmake" ]
+
+[package.cmake]
+tool = "{tool:cmake-bootstrap}"
+
+[package.cmake.defs]
+LIBUV_BUILD_TESTS = false
+
+[package.phases.after]
+"cmake.install" = [  ]
+
+[when.libc.msvc.phases.after]
+"cmake.install" = [ "libuv.drop-static" ]

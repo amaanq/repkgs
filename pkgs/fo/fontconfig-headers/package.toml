@@ -13,3 +13,9 @@ hash = "sha256-MoAUBweqSqp6qlYfH9D5rP8HFqZJS/Wsf78WUy2JP00="
 
 [pin]
 version = "2.17.1"
+
+[package]
+phases = [ "fontconfig-headers.header" ]
+
+[package.install]
+"include/fontconfig/" = "fontconfig/{fontconfig,fcfreetype,fcprivate}.h"

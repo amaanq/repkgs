@@ -48,3 +48,29 @@ hash = "sha256-qfK/yM+XJqg5XkrJ+5Jdp17eM/b/tQ4YxeFX1VUuTRk="
 
 [pin]
 version = "1.97.1"
+
+[package]
+source       = "rustc-riscv64"
+phases       = [ "rust-bootstrap.install" ]
+dependencies = [ "zlib", "libgcc-shim" ]
+bin          = [ "rustc", "cargo" ]
+exports      = false
+prebuilt     = "ldso"
+
+[package.tests]
+version = "-V"
+
+[package.env]
+components = "{source:cargo-riscv64} {source:rust-std-riscv64}"
+
+[when.native]
+source = "rustc-x86_64"
+
+[when.native.env]
+components = "{source:cargo-x86_64} {source:rust-std-x86_64}"
+
+[when.cpu.aarch64]
+source = "rustc-aarch64"
+
+[when.cpu.aarch64.env]
+components = "{source:cargo-aarch64} {source:rust-std-aarch64}"

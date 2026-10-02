@@ -1,0 +1,10 @@
+[package]
+version = "1"
+source  = "{file:src}"
+phases  = [ "libgcc-shim.build" ]
+
+[package.platforms]
+os = [ "linux" ]
+
+[package.exports]
+libs = [  ]

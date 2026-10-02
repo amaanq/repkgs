@@ -9,3 +9,25 @@ hash = "sha256-7KJziDTTBECLAFv6YbBiRuc4rOKo0e7oNX421xDS2QQ="
 [pin]
 version = "3.13.0"
 tag     = "v3.13.0"
+
+[package]
+patches           = [ "relocatable.patch" ]
+uses              = [ "make" ]
+buildDependencies = [  ]
+dependencies      = [ "lua", "unzip" ]
+bin               = [ "luarocks", "luarocks-admin" ]
+
+[package.make]
+configureFlags = [ "--with-lua={pkg:lua}" ]
+
+[package.phases.after]
+"make.install" = [ "luarocks.use-cc" ]
+
+[package.tests]
+run = false
+
+[when.native]
+buildDependencies = [ "{pkg:unzip}" ]
+
+[when.cross]
+buildDependencies = [ "unzip" ]

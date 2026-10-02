@@ -10,3 +10,38 @@ hash = "sha256-2iG4H3UV+BZvqXtz73tDYjNgWRs1+UmB5bGf6ftHjTI="
 version = "4.0.7"
 date    = "2026-09-15"
 tag     = "v4.0.7"
+
+[package]
+uses              = [ "autotools" ]
+buildDependencies = [  ]
+dependencies      = [ "bash", "zlib", "openssl", "libyaml", "libffi" ]
+bin               = [ "ruby", "gem", "bundle", "irb", "rake" ]
+
+[package.autotools]
+flags = [
+  "--enable-load-relative",
+  "--disable-install-doc",
+  "--sysconfdir=/etc",
+  "--enable-shared",
+  "--with-out-ext=win32,win32ole,readline,gdbm,dbm",
+  "--without-git",
+  "--without-baseruby",
+]
+
+[package.phases.after]
+"autotools.install" = [ "ruby.relocate-rbconfig" ]
+
+[package.phases.before]
+"autotools.install" = [  ]
+
+[package.tests]
+run = false
+
+[when.cross]
+buildDependencies = [ "ruby" ]
+
+[when.cross.autotools]
+flags = [ "--with-baseruby=ruby" ]
+
+[when.cross.phases.before]
+"autotools.install" = [ "ruby.restore-shebangs" ]

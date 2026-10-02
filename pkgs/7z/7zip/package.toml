@@ -10,3 +10,13 @@ hash = "sha256-HuiF/kKfkNA14P/YTrCds7QDXXEKmilME9Z3c/Ft0DE="
 version = "26.03"
 date    = "2026-09-04"
 tag     = "26.03"
+
+[package]
+phases = [ "sevenzip.build" ]
+bin    = [ "7zz" ]
+
+[package.platforms]
+posix = true
+
+[package.tests]
+version = "7zz --help"

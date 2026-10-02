@@ -10,3 +10,16 @@ hash = "sha256-HLkzKXmhE2QVyFrxO6N7nwPnrNgTt2ONiLS5AAzDD28="
 version = "0.0~git20260722.27a549cc"
 # git rev-list --count initial-commit..<rev>, what --version prints
 position = 2484
+
+[package]
+phases            = [ "gn.build" ]
+buildDependencies = [ "cpython", "ninja" ]
+
+[package.platforms]
+posix = true
+
+[package.tests]
+version = false
+
+[package.install]
+"bin/gn" = "../build/gn"

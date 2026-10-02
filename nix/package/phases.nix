@@ -26,7 +26,7 @@ let
     match
     tail
     ;
-  pattern = "([a-z][a-z0-9]*)\\.([a-zA-Z][a-zA-Z-]*)";
+  pattern = "([a-z][a-z0-9-]*)\\.([a-zA-Z][a-zA-Z0-9-]*)";
   edits = [
     "before"
     "after"

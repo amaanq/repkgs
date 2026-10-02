@@ -8,3 +8,27 @@ hash = "sha256-qdirDBXUSQaXx0yN71wdM1mdBepiSSoKa20GdpLbKHA="
 
 [pin]
 version = "3.8.2"
+
+[package]
+patches           = [ "relocatable.patch" ]
+uses              = [ "autotools" ]
+buildDependencies = [  ]
+dependencies      = [ "m4" ]
+bootstrapTools    = true
+
+[package.autotools]
+flags     = [ "M4={pkg:m4}/bin/m4" ]
+makeFlags = [ "TESTSUITEFLAGS=-j$(NIX_BUILD_CORES) 1-763 765-776" ]
+
+[package.phases.before]
+"autotools.test" = [ "bison.glr-dir" ]
+
+[package.tests]
+dependencies = [ "{tool:perl}" ]
+separate     = true
+
+[when.native]
+buildDependencies = [ "{pkg:m4}" ]
+
+[when.cross]
+buildDependencies = [ "m4" ]

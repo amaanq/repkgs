@@ -8,3 +8,13 @@ hash = "sha256-r3NLW/7vnou1yL39OYdcXXJhiuGU27HudDdZcDLEAtI="
 
 [pin]
 version = "1.27.1"
+
+[package]
+source            = "default"
+phases            = [ "go.build" ]
+buildDependencies = [ "go-bootstrap" ]
+bin               = [ "go", "gofmt" ]
+exports           = false
+
+[package.tests]
+version = "version"

@@ -10,3 +10,8 @@ hash = "sha256-1xiv8FWX8fk9WBoJXCUfgFN9lo7ClMVUBYb1mmr6u9U="
 version = "2.5.1"
 tag     = "v2.5.1"
 date    = "2026-07-09"
+
+[package]
+phases            = [ "hex.archive" ]
+buildDependencies = [ "elixir" ]
+bin               = [  ]

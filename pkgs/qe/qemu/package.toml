@@ -12,3 +12,12 @@ version = "11.1.1"
 [watch]
 url   = "https://download.qemu.org/"
 regex = 'qemu-([0-9]+\.[0-9]+\.[0-9]+)\.tar\.xz'
+
+[package]
+phases            = [ "qemu.configure", "qemu.build", "qemu.install" ]
+buildDependencies = [ "cpython", "ninja" ]
+dependencies      = [ "glib", "zlib" ]
+bin               = [ "qemu-aarch64", "qemu-loongarch64", "qemu-ppc64le", "qemu-riscv64", "qemu-x86_64" ]
+
+[package.tests]
+run = false
