@@ -1,78 +1,67 @@
 # uptrack
 
-The update tool for this tree and others. Designed after reading nixpkgs-update, nix-update,
-llm-agents.nix's updater, Renovate, and the distro tools (Debian uscan, Fedora Anitya, Arch
-nvchecker, Homebrew livecheck, Guix refresh).
+The updater for this tree and any other that keeps its pins in `package.toml`. It lives in the jig
+workspace (`pkgs/ji/jig/src/uptrack`) and is on PATH in the development shell and through
+`repkgs update`.
 
-## Lessons taken
+## Principles
 
-- Machine-written state lives in a data file next to the package and Nix only reads it
-  (llm-agents). Never edit Nix source (nixpkgs-update's regex rewriters and skip lists are the
-  cost of doing so).
-- Where versions come from is inferred from the source identity, configuration is the exception
-  (nix-update, livecheck, guix refresh).
-- Separate "list releases" from "compare versions" (Renovate's datasource and versioning axes).
-  Renovate's third axis, file managers, is unnecessary when we own the metadata format.
-- Keep a persistent dashboard and libyear, not only PRs (Renovate). Put build evidence in the PR
-  (nixpkgs-update). Use OSV by purl for advisories instead of NVD/CPE guessing. Treat Repology as
-  a second opinion, not the driver.
-- Dynamic derivations already removed vendor hashes, so nothing of nixpkgs-update's fake-hash
-  rebuilds or nix-update's `cargoHash` handling is needed.
-- Some packages need code. In llm-agents 34 of 186 have an `update.py` (median 80 lines) for
-  reasons no schema covers: APT indexes with GPG, a second pin read from inside the new source,
-  lock files below the root, lockfile surgery. Code must be a first-class part of the pipeline.
-- At scale the expensive part is polling. It must be one batched, cached pass that never runs
-  per-package code.
+- **Machines write data, never Nix.** The tool owns the hashes and `[pin]` of a TOML file, and Nix
+  only reads that file. Rewriting Nix source with regexes is what forces skip lists elsewhere.
+- **The source names its own feed.** A package's purl chooses where releases are listed and how
+  versions compare, and configuration is for exceptions.
+- **Listing releases and comparing versions are separate concerns**, one a datasource and the
+  other a versioning scheme.
+- **Lock files need no handling.** Dynamic derivations fetch what a lock names with the lock's own
+  hashes, so there are no vendor hashes to guess or rebuild for. Only ecosystems whose locks carry
+  no file hashes get a table here.
+- **Some packages need code**, for a second pin read out of the new source or files generated from
+  it. Hooks are part of the pipeline, not a way around it.
+- **Polling is the expensive part at scale**, so it is one cached pass that never runs a package's
+  own code.
 
-## Metadata: `package.toml`
+## `package.toml`
 
-One file per package. Humans write `[upstream]`, `[[source]].url`, `[watch]`, `[locks]`. The
-tool writes `hash` and `[pin]`. Nix reads it with `fromTOML`.
+People write `[upstream]`, the `url` of each `[[source]]`, `[watch]` and `[locks]`. uptrack writes
+each `hash` and `[pin]`. Nix reads the file with `fromTOML`, and the `[package]` half describing the
+build is the package set's business (README.md) and ignored here.
 
 ```toml
 [upstream]
-purl = "pkg:github/sharkdp/fd"     # identity; picks datasource and default versioning
-# versioning = "semver"|"pep440"|"calver"|"loose"   allow = ">=10,<11"
-# prerelease = false   every = "30d" (minimum release age)   group = "llvm"
-# cpe = "cpe:2.3:a:haxx:curl"      only for NVD lookups where OSV has no coverage (C projects)
-# frozen = "last release 2009"     instead of purl: dead upstream, never polled
-# relocks = ["hackage"]            applying this package re-solves every [locks] of that ecosystem
+purl = "pkg:github/sharkdp/fd"     # the identity, which picks the datasource and versioning
+# versioning = "semver" | "pep440" | "calver" | "loose"
+# allow = ">=10,<11"               versions outside are never candidates
+# prerelease = false
+# every = "30d"                    a release must be this old
+# group = "llvm"
+# cpe = "cpe:2.3:a:haxx:curl"      for NVD where OSV does not know the project
+# frozen = "last release 2009"     instead of a purl, for a dead upstream nobody polls
+# relocks = ["hackage"]            applying this re-solves that ecosystem's whole lock table
 
 [[source]]
-key = "default"                    # free-form: default, x86_64-linux, docs…
-url = "https://github.com/sharkdp/fd/archive/refs/tags/v{version}.tar.gz"  # the canonical one, nix/mirrors.nix adds fallbacks by prefix
-hash = "sha256-…"                  # tool; NAR hash of the unpacked tree (--strip-components 1), fetch+unpack is one FOD
-# unpack = false                   # keep the file as is (single files); hash is then the flat sha256
-# frozen = "distro build"          # this url does not follow [pin]: no {placeholder} needed, rehash keeps its hash
+key  = "default"                   # any name, default, x86_64-linux, docs and so on
+url  = "https://github.com/sharkdp/fd/archive/refs/tags/v{version}.tar.gz"
+hash = "sha256-…"                  # the NAR hash of the unpacked tree, top directory stripped
+# unpack = false                   keep the file whole, the hash is then its flat sha256
+# frozen = "distro build"          a url that ignores [pin], which rehash leaves alone
 
-[pin]                              # tool
+[pin]
 version = "10.5.0"
-date = "2025-05-18"                # release date: libyear, `every`
-sys = ["jemalloc"]                 # our libraries the lock files in the source can link (builder/sys-libs.json). nix/package.nix adds those the set has as dependencies
-# file = "25.0.4.1_1"              # anything else a resolve hook returned. Every key here is a {key} in urls
+date    = "2025-05-18"             # the release date, for `every`
+sys     = ["jemalloc"]             # libraries of the set the source's lock files may link
+# file = "25.0.4.1_1"              anything else a resolve hook returned, a {file} placeholder in urls
 
-[watch]                            # optional; default is the purl's datasource
-# url = "…/LATEST"  regex = "([0-9.]+)"   |  feed = "…/releases.atom"  |  purl = "pkg:npm/x"
+[watch]                            # optional, the purl's datasource otherwise
+# url = "…/LATEST"  regex = "([0-9.]+)"   or   feed = "…/releases.atom"   or   purl = "pkg:npm/x"
 
-[locks]                            # dependency hashes to record in the repo-wide locks/<eco>.toml
-# go = "."                         # dir in the source holding go.sum (`uptrack lock`, and on apply)
+[locks]
+# go = "."                         where in the source go.sum lives
 ```
 
-`package.nix` keeps behaviour only:
-
-```nix
-{ package, fetch, sources, ... }:
-package {
-  name = "fd";
-  inherit (sources) version;
-  source = fetch.pinned sources "default";
-  uses = [ "cargo" ];
-  cargo.deps = fetch.cargoVendor { inherit source; };
-}
-```
-
-TOML rather than JSON for comments and stable diffs. One file rather than attributes in Nix so
-that listing a whole tree is a glob, and so the same file works in repos without Nix.
+URLs name the canonical host, and nix/mirrors.nix adds fallbacks by prefix. Every `[pin]` key fills
+a `{key}` placeholder, along with `{version_}`, `{major}` and `{minor}` derived from the version.
+TOML keeps comments and diffs small, and a single file per package makes a whole tree one glob,
+usable without Nix too.
 
 ## Pipeline
 
@@ -80,89 +69,79 @@ that listing a whole tree is a glob, and so the same file works in repos without
 discover → resolve → decide → apply → verify
 ```
 
-**discover** globs `package.toml`, validates (unknown keys are errors that list the known ones).
+**discover** globs `package.toml` and validates it. An unknown key is an error that lists the
+known ones, and a manifest with no upstream, source, pin or locks describes a build only and is
+skipped.
 
-**resolve** is the only stage that talks to upstreams, and it only evaluates watches. Purls are
-grouped by host: GitHub gets one GraphQL query per 100 repositories, registries their JSON
-endpoints, `[watch] url` a conditional GET. The cache under `$XDG_CACHE_HOME/uptrack` keeps
-etag, last-modified, body hash and last seen version per URL, so a 304 or an unchanged body means
-"no change" without parsing. Per-host token buckets and `every`-aware polling keep it inside rate
-limits. Output per package: current, candidate, changed. `uptrack check --all` on an unchanged
-world is a few hundred 304s.
+**resolve** alone talks to upstreams and only evaluates watches. Each datasource lists releases
+for a purl (github, gitlab, pypi, crates, npm, hackage, gnu, `generic` listings with `?url=`, and
+two vendor feeds, `visualstudio` for the Visual Studio release manifest and `applesdk` for the macOS
+software update catalog). HTTP goes through a cache under `$XDG_CACHE_HOME/uptrack` keeping etag,
+last-modified and body per URL, so a run over an unchanged world is conditional requests answered
+with 304.
 
-**decide** is pure: metadata + candidates + flags → a plan entry `{name, from, to, date, reason,
-sources, locks:[{file, resolver, why}], pins, advisories, provenance}` or `{name, skip}`. The plan
-JSON is the interface for CI, reviewers and LLMs. `apply` consumes it unchanged or edited.
+**decide** is a pure function from the manifest, the candidates and the flags to a plan entry, the
+new version with its sources, pins and lock work, or a reason to skip. `check --json` prints the
+plan, and `apply --plan` takes one back, edited or not.
 
-**apply**, only for changed entries: substitute `{version}` into source URLs, prefetch with
-`nix store prefetch-file`, write `hash` and `[pin]`, then the **lock** stage for packages with
-`[locks]`: fetch the pinned source through the tree (`nix-build -A {name}.src`) and record what
-the ecosystem's own lock cannot give Nix in a tree-wide table, `$UPTRACK_LOCKS/<eco>.toml`
-(default `<root>/locks/`; another tree points `fetch.goModules { locks = ./its/go.toml; }` at its
-own). Today that is `go`: go.sum's `h1:` is a dirhash, so `[go]` maps `module@version` to the
-proxy's `.mod`/`.zip` sha256. Hackage and LuaRocks have no upstream lock file, so Cabal and
-LuaRocks solve their dependency sets. Hackage keys each entry by `name-version`, retaining
-several releases when packages need different versions. Its fields hold the tarball hash,
-Cabal revision and revision hash. LuaRocks keeps a version and hash per package.
-The table is one sorted line per entry and `merge=union` in
-.gitattributes, so parallel additions merge textually; `treefmt` re-normalises. Cargo and npm
-locks carry file hashes already and need nothing. `uptrack lock [pkg…]` runs the stage alone.
-Entries already matching `[pin]` are no-ops, so runs resume.
+**apply** substitutes the new pin into every URL, prefetches, writes `hash` and `[pin]`, and runs
+the lock stage for packages with `[locks]`. That stage fetches the pinned source through the tree
+and records what the ecosystem's own lock cannot give Nix in `$UPTRACK_LOCKS/<eco>.toml`
+(`<root>/locks/` by default, and another tree passes its own table to the fetcher):
 
-**verify** builds through a tree adapter (`nix-build -A {name}` here) and appends evidence to the
-plan entry: the `version:` line our build prints, closure size delta, test result.
+- **go**: go.sum's `h1:` is a directory hash, so the table maps `module@version` to the sha256 of
+  the proxy's `.mod` and `.zip`.
+- **hackage**: there is no upstream lock, so cabal solves the set. Entries are keyed
+  `name-version`, keeping several releases where packages disagree, with the tarball hash, the
+  Cabal revision and its hash.
+- **luarocks**: a version and hash per rock, from luarocks' own solve.
 
-## Custom stages
+A table holds one sorted line per entry and merges as text (`merge=union` in .gitattributes),
+with `uptrack normalize` as the treefmt step restoring the order. Cargo and npm locks carry file
+hashes and need no table. `uptrack lock` runs the stage alone, and an entry already matching
+`[pin]` is skipped, so an interrupted run picks up where it stopped.
 
-Without an `update.nu` a package needs nothing beyond `package.toml`: versions come from the
-purl's datasource (github, gitlab, pypi, cargo, npm, hackage, gnu, `generic` with `?url=`, and
-two vendor feeds: `visualstudio` for the VS release manifest, `applesdk` for the macOS software
-update catalog), every `[[source]].url` gets `{version}` and the other `[pin]` keys substituted and prefetched, missing
-lock files are detected and generated, verify builds it. That is the path for most packages.
-`pkgs/xx/<name>/update.nu` exists only to replace a stage. It is a nu module exporting any of:
+**verify** builds through the tree (`nix-build -A <name>` here) and records what the build printed
+as its version.
+
+## Hooks
+
+Most packages need nothing beyond `package.toml`. Where a stage needs code,
+`pkgs/xx/<name>/update.nu` exports a replacement:
 
 ```nu
-export def resolve [pkg: record]: nothing -> table                 # → [{version tag? date? prerelease url? sha256? …}], extra keys land in [pin]
-export def files   [entry: record]: nothing -> record              # → {relative path: content}, written after the pin
-export def verify  [entry: record]: nothing -> record              # → {verified log? ...} instead of nix-build
+export def resolve [pkg: record]: nothing -> table    # [{version tag? date? prerelease …}], extra keys land in [pin]
+export def files   [entry: record]: nothing -> record # {relative path: content}, written after the pin
+export def verify  [entry: record]: nothing -> record # instead of nix-build
 ```
 
-uptrack runs the hook in a fresh `nu` with its own directory on PATH, so `^uptrack versions <purl>`
-and `^uptrack get <url> --max-age 1day` serve it, hands the record over as JSON in
-`$env.UPTRACK_ARG` and reads JSON from stdout;
-stderr is shown. Hooks never write files themselves and only run after the watch fired, so the
-skim stays cheap. Anything else exported is an error. `uptrack list` shows which stages a
-package overrides. Examples: `pkgs/ll/llvm/update.nu` exports `files` to regenerate the per-cpu
-compiler-rt source lists from the new tarball, `pkgs/ru/rust-bootstrap/update.nu` exports
-`resolve` so the bootstrap compiler is the one rust's `src/stage0` names, not the newest.
+A hook runs in a fresh `nu` with uptrack's directory on PATH, so `^uptrack versions <purl>` and
+`^uptrack get <url> --max-age 1day` serve it through the same cache. It gets its record as JSON in
+`$env.UPTRACK_ARG`, answers in JSON on stdout and shows stderr. Hooks write no files themselves and
+run only after a watch fired, and any other export is an error. `uptrack list` shows which stages a
+package replaces.
 
-## Reports
+The tree's hooks show the range. llvm's `files` regenerates the per-cpu compiler-rt source lists
+from the new tarball. rust-bootstrap's `resolve` follows the compiler rust's `src/stage0` names, and
+llvm21's the LLVM major zig's `Findllvm.cmake` expects. jdk-bootstrap's adds the spellings of the
+tag that Temurin's file names and URLs use.
 
-- `dashboard`: pending, held by `allow`, too young for `every`, failing verify, advisories.
-  `sync-github` upserts it as one pinned issue plus a PR per entry or group, idempotent by branch
-  name.
-- `report --libyear | --stale 90d` from `[pin].date`.
-- `report --advisories`: OSV batch query by purl@version for current and candidate. purl and CPE
-  do not map onto each other, so C projects without registry coverage add an optional `cpe`
-  (vendor:product) for NVD's match API. The report flags packages where neither source knows the
-  identity.
-- `report --repology`: where other distros are ahead although our datasource says current. The
-  fix is usually the purl.
-
-## CLI
+## Commands
 
 ```
 uptrack list [names]                     parse and validate every package.toml
-uptrack check [names] [--json]           poll upstreams, print pending updates and problems (exit 10 if pending)
-uptrack apply [names] [--plan f]         write hash + [pin] (+ hook files, locks) for pending updates
+uptrack check [names] [--json]           resolve and decide, exit 10 when updates are pending
+uptrack apply [names] [--plan f]         write hash, [pin], hook files and locks for pending updates
               [--commit]                 one commit per update, `name: 1.2 -> 1.3` (jj, else git)
-uptrack verify [names]                   nix-build at the current pin
-uptrack rehash [names]                   re-prefetch at the current pin, after editing a url
+uptrack verify [names]                   build at the current pin
+uptrack rehash [names]                   prefetch again at the current pin, after a url edit
 uptrack lock [names] [--prune]           fill locks/<eco>.toml for packages with [locks]
-uptrack init <dir> <purl> <url-template> new package.toml, pinned to upstream's newest
+uptrack init <dir> <purl> <url-template> a new package.toml pinned to the newest release
+uptrack normalize                        rewrite locks/<eco>.toml in normal form
+uptrack versions <purl>                  a datasource's candidates as JSON, for hooks
+uptrack get <url> [--max-age d]          a cached GET as JSON, for hooks
 ```
 
-The `uptrack` crate in `pkgs/ji/jig/src/`: purl, version comparison, datasources (github,
-gitlab, pypi, crates, npm, hackage, gnu, generic listing, visualstudio, applesdk), cached http,
-the pipeline, locks (go, hackage, luarocks), CLI. It shares jig's unpack and the lock side of
-sys-libs.json with the builder. Not built: advisory/libyear reports, grouped updates.
+uptrack shares jig's unpacking, so a prefetched hash matches what the set fetches, and the lock
+side of builder/sys-libs.json with the builder. Not built yet are a dashboard of pending and held
+updates, libyear and advisory reports (OSV by purl, NVD where `cpe` is set), and grouped updates.
