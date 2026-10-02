@@ -46,9 +46,9 @@ struct Pick {
 /// for C modules.
 fn solve(src: &Path) -> io::Result<Vec<Pick>> {
    let built = nix::succeed("nix-build", [
-      root().as_os_str(),
+      root().join("nix/set.nix").as_os_str(),
       OsStr::new("-A"),
-      OsStr::new("luarocks"),
+      OsStr::new("pkgs.luarocks"),
       OsStr::new("-A"),
       OsStr::new("toolchain"),
       OsStr::new("--no-out-link"),
