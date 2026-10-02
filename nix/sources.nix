@@ -7,33 +7,73 @@
   system ? null,
 }:
 let
-  fetchurl = import <nix/fetchurl.nix>;
-  mirrors = import ./mirrors.nix;
   inherit (builtins)
     attrNames
-    filter
+    attrValues
+    baseNameOf
     concatMap
-    substring
+    elemAt
+    filter
+    fromTOML
+    groupBy
+    head
+    length
+    listToAttrs
+    mapAttrs
+    match
+    readFile
+    replaceStrings
     stringLength
+    substring
     ;
-  hasPrefix = p: s: substring 0 (stringLength p) s == p;
-  # the url itself, then the same path on every mirror of its prefix (nix/mirrors.nix). Mirrors
-  # are indexed by host so most urls cost one lookup, not a scan
-  byHost = builtins.groupBy (p: builtins.elemAt (builtins.match "https://([^/]*)/.*" p) 0) (
-    attrNames mirrors
-  );
-  withMirrors =
+  fetchurl = import <nix/fetchurl.nix>;
+  mirrors = import ./mirrors.nix;
+  hostOf =
     url:
     let
-      host = builtins.match "https://([^/]*)/.*" url;
-      prefixes = if host == null then [ ] else byHost.${builtins.elemAt host 0} or [ ];
+      found = match "https://([^/]*)/.*" url;
     in
-    [ url ]
-    ++ concatMap (p: map (m: m + substring (stringLength p) (-1) url) mirrors.${p}) (
-      filter (p: hasPrefix p url) prefixes
+    if found == null then null else head found;
+  startsWith = prefix: text: substring 0 (stringLength prefix) text == prefix;
+  # the url itself, then the same path on every mirror of its prefix (nix/mirrors.nix). Mirrors
+  # are indexed by host so most urls cost one lookup, not a scan
+  prefixesByHost = groupBy hostOf (attrNames mirrors);
+  alternatives =
+    url:
+    let
+      host = hostOf url;
+      prefixes = filter (prefix: startsWith prefix url) (
+        if host == null then [ ] else prefixesByHost.${host} or [ ]
+      );
+      rest = prefix: substring (stringLength prefix) (-1) url;
+    in
+    [ url ] ++ concatMap (prefix: map (mirror: mirror + rest prefix) mirrors.${prefix}) prefixes;
+
+  # "llvm-project-21.1.8.src" from …/llvm-project-21.1.8.src.tar.xz, "fd-v10.5.0" for github tag archives
+  # strip one extension, and a ".tar" before it
+  withoutExtension =
+    name:
+    let
+      parts = match "((.*)\\.tar|(.*))\\.[a-z0-9]+" name;
+    in
+    if parts == null then
+      name
+    else if elemAt parts 1 != null then
+      elemAt parts 1
+    else
+      elemAt parts 2;
+  downloadName =
+    url:
+    let
+      stem = withoutExtension url;
+      github = match "https://github.com/[^/]+/([^/]+)/archive/refs/tags/(.*)" stem;
+    in
+    replaceStrings [ "~" ] [ "-" ] (
+      if github != null then "${elemAt github 0}-${elemAt github 1}" else baseNameOf stem
     );
+
   # what every fetch-and-unpack derivation shares
-  fetchCommon = {
+  unpacking = {
     inherit system unpacker;
     builder = "${jig}/bin/jig";
     args = [ "unpack" ];
@@ -47,106 +87,86 @@ let
       "no_proxy"
     ];
   };
-  # "llvm-project-21.1.8.src" from …/llvm-project-21.1.8.src.tar.xz, "fd-v10.5.0" for github tag archives
-  # strip one extension, and a ".tar" before it
-  stripExt =
-    name:
-    let
-      m = builtins.match "((.*)\\.tar|(.*))\\.[a-z0-9]+" name;
-    in
-    if m == null then
-      name
-    else if builtins.elemAt m 1 != null then
-      builtins.elemAt m 1
-    else
-      builtins.elemAt m 2;
-  urlName =
-    url:
-    let
-      base = stripExt url;
-      gh = builtins.match "https://github.com/[^/]+/([^/]+)/archive/refs/tags/(.*)" base;
-    in
-    builtins.replaceStrings [ "~" ] [ "-" ] (
-      if gh != null then "${builtins.elemAt gh 0}-${builtins.elemAt gh 1}" else builtins.baseNameOf base
-    );
+
   # `pin`: [pin] keys over the file's, `hashes`: source key -> hash (nix/package, overrides)
   read =
     pin: hashes: file:
     let
-      t = builtins.fromTOML (builtins.readFile file);
-      pinned = if pin == { } then t.pin or { } else (t.pin or { }) // pin;
+      table = fromTOML (readFile file);
+      pinned = (table.pin or { }) // pin;
       version = pinned.version or "";
       tag = pinned.tag or version;
       # every [pin] key is a {key} placeholder, plus three spellings derived from the version.
       # Nearly every url uses {version} and {tag} only: the full table is built for the rest
-      expandAll =
+      placeholders =
         let
-          mm = builtins.match "([^.]*)\\.?([^.]*).*" version;
-          vars = {
-            tag = version;
-            version_ = builtins.replaceStrings [ "." ] [ "_" ] version;
-            major = builtins.elemAt mm 0;
-            minor = builtins.elemAt mm 1;
-          }
-          // pinned;
+          parts = match "([^.]*)\\.?([^.]*).*" version;
         in
-        builtins.replaceStrings (map (k: "{${k}}") (builtins.attrNames vars)) (
-          map toString (builtins.attrValues vars)
-        );
+        {
+          tag = version;
+          version_ = replaceStrings [ "." ] [ "_" ] version;
+          major = elemAt parts 0;
+          minor = elemAt parts 1;
+        }
+        // pinned;
       expand =
-        u:
+        template:
         let
-          quick = builtins.replaceStrings [ "{version}" "{tag}" ] [ version tag ] u;
+          common = replaceStrings [ "{version}" "{tag}" ] [ version tag ] template;
         in
-        if builtins.match ".*[{].*" quick == null then quick else expandAll quick;
-      sources = t.source or [ ];
-      # one `default` source is the common case: no table
-      byKey =
-        let
-          plain =
-            if builtins.length sources == 1 && (builtins.head sources).key == "default" then
-              { default = builtins.head sources; }
-            else
-              builtins.listToAttrs (
-                map (s: {
-                  name = s.key;
-                  value = s;
-                }) sources
-              );
-        in
-        if hashes == { } then
-          plain
+        if match ".*[{].*" common == null then
+          common
         else
-          builtins.mapAttrs (k: s: if hashes ? ${k} then s // { hash = hashes.${k}; } else s) plain;
+          replaceStrings (map (key: "{${key}}") (attrNames placeholders)) (map toString (
+            attrValues placeholders
+          )) common;
+      listed = table.source or [ ];
+      # one `default` source is the common case: no table
+      keyed =
+        if length listed == 1 && (head listed).key == "default" then
+          { default = head listed; }
+        else
+          listToAttrs (
+            map (source: {
+              name = source.key;
+              value = source;
+            }) listed
+          );
+      byKey =
+        if hashes == { } then
+          keyed
+        else
+          mapAttrs (
+            key: source: source // (if hashes ? ${key} then { hash = hashes.${key}; } else { })
+          ) keyed;
       fetch =
         key:
         let
-          s = byKey.${key} or (throw "${toString file}: no source '${key}'");
-          url = expand s.url;
-          # a fixed-output path is found by (name, hash): with a constant name a bumped url whose
-          # hash was not updated silently reuses the old download, so the name follows the url
-          name = s.name or (urlName url);
-          isNar = builtins.match ".*\\.nar(\\.[a-z0-9]+)?" url != null;
+          source = byKey.${key} or (throw "${toString file}: no source '${key}'");
+          url = expand source.url;
+          nar = match ".*\\.nar(\\.[a-z0-9]+)?" url != null;
         in
         # `hash` is the NAR hash of what lands in the store: for archives the unpacked tree (single
         # top-level directory stripped, u+w; jig's unpack, shared with uptrack so the hashes agree), fetched and
         # unpacked by one fixed-output derivation running `jig unpack` (rustls with built-in roots)
         # and the seed's bsdtar, so builds copy a directory instead of decompressing every time.
         # `unpack = false` and .nar urls (the seed itself) go through builtin:fetchurl.
-        if !(s.unpack or true) || isNar then
+        if !(source.unpack or true) || nar then
           fetchurl {
             inherit url;
-            name = s.name or (builtins.baseNameOf url);
-            inherit (s) hash;
-            unpack = isNar;
+            name = source.name or (baseNameOf url);
+            inherit (source) hash;
+            unpack = nar;
           }
         else
           derivation (
-            fetchCommon
+            unpacking
             // {
-              inherit name;
-              urls = withMirrors url;
-              outputHash = s.hash;
+              # a fixed-output path is found by (name, hash): with a constant name a bumped url whose
+              # hash was not updated silently reuses the old download, so the name follows the url
+              name = source.name or (downloadName url);
+              urls = alternatives url;
+              outputHash = source.hash;
             }
           );
     in
