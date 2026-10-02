@@ -1,10 +1,11 @@
-# core.nu fix-shebangs: interpreters from PATH, arguments kept, --undo restores the original
+# fix-shebangs (core.nu) points interpreters at PATH, keeps their arguments, and --undo restores
+# what it changed
 use core.nu *
 use checks.nu *
 
 let dir = (mktemp -d)
 $env.NIX_BUILD_TOP = (mktemp -d)
-let cases = {
+let scripts = {
   env: "#!/usr/bin/env sh\necho"
   args: "#! /usr/bin/env sh -e\necho"
   abs: "#!/usr/local/bin/nu --stdin\n1"
@@ -13,22 +14,28 @@ let cases = {
   stub: "#!/bin/sh\nexec ruby -x \"$0\"\n#!/usr/bin/env nu\n1"
   missing: "#!/usr/bin/nonexistent\n"
 }
-for c in ($cases | transpose name text) { $c.text | save -f $"($dir)/($c.name)"; ^chmod +x $"($dir)/($c.name)" }
-let sh = (which sh | get 0.path); let nubin = (which nu | where type == external | get 0.path)
+for script in ($scripts | transpose name text) {
+  $script.text | save -f $"($dir)/($script.name)"
+  ^chmod +x $"($dir)/($script.name)"
+}
+let sh      = (which sh | get 0.path)
+let nushell = (which nu | where type == external | get 0.path)
+let now     = {|name| open --raw $"($dir)/($name)" }
+
 fix-shebangs $dir
-let got = {|n| open --raw $"($dir)/($n)" }
-assert "env" ((do $got env) == $"#!($sh)\necho")
-assert "escript: no extra line" ((do $got abs | lines | length) == 2)
-assert "arguments kept" ((do $got args | lines | first) == $"#!($sh) -e")
-assert "absolute" ((do $got abs | lines | first) == $"#!($nubin) --stdin")
-assert "/bin/sh stays" ((do $got sh) == $cases.sh)
-assert "absolute only on the first line" ((do $got body) == $cases.body)
-assert "env on any line" ((do $got stub | lines | get 2) == $"#!($nubin)")
-assert "not on PATH: untouched" ((do $got missing) == $cases.missing)
+expect "env finds sh on PATH"                         ((do $now env) == $"#!($sh)\necho")
+expect "no line is added to an escript-style header"  ((do $now abs | lines | length) == 2)
+expect "interpreter arguments survive"                ((do $now args | lines | first) == $"#!($sh) -e")
+expect "an absolute interpreter moves to PATH's"      ((do $now abs | lines | first) == $"#!($nushell) --stdin")
+expect "/bin/sh is left alone"                        ((do $now sh) == $scripts.sh)
+expect "absolute paths change on the first line only" ((do $now body) == $scripts.body)
+expect "an env line counts anywhere"                  ((do $now stub | lines | get 2) == $"#!($nushell)")
+expect "an interpreter missing from PATH stays"       ((do $now missing) == $scripts.missing)
 ^sh $"($dir)/args"
-# written by a build system after prepare (pyapp entry points): not prepare's to undo
+
+# a build system writes these after prepare (pyapp entry points), so undo must not touch them
 $"#!($sh)\nimport sys" | save -f $"($dir)/generated"
 fix-shebangs $dir --undo
-for n in [env args abs stub] { assert $"undo ($n)" ((do $got $n) == ($cases | get $n)) }
-assert "generated stays" ((do $got generated) == $"#!($sh)\nimport sys")
-done
+for name in [env args abs stub] { expect $"undo restores ($name)" ((do $now $name) == ($scripts | get $name)) }
+expect "undo leaves a later script alone" ((do $now generated) == $"#!($sh)\nimport sys")
+pass

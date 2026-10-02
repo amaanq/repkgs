@@ -1,3 +1,3 @@
 use checks.nu *
-has-debug bin/hello
-done
+split-debug bin/hello
+pass

@@ -1,9 +1,9 @@
-# jib syslibs over the lock files next to this script, what uptrack writes into [pin] sys.
-# The build-time side (check, env, go tags, gem flags) is jib's syslibs too and runs in every
-# cargo, go, python and gems package build
+# jib syslibs over the lock files beside this script, which is what uptrack records as [pin] sys.
+# The build-time half (check, env, go tags, gem flags) runs in every cargo, go, python and gems build
 use checks.nu *
 
-let dir = $env.fixtures
-assert "wanted: union over Cargo.lock, go.sum, Gemfile.lock" ((^jib syslibs wanted --tables $env.SYS_LIBS $dir | from json) == [libyaml openssl sqlite])
-assert "wanted-for: one ecosystem" ((^jib syslibs wanted-for --tables $env.SYS_LIBS cargo openssl-sys libsqlite3-sys serde | from json) == [openssl sqlite])
-done
+let wanted = (^jib syslibs wanted --tables $env.SYS_LIBS $env.fixtures | from json)
+expect "wanted merges Cargo.lock, go.sum and Gemfile.lock" ($wanted == [libyaml openssl sqlite])
+let cargo = (^jib syslibs wanted-for --tables $env.SYS_LIBS cargo openssl-sys libsqlite3-sys serde | from json)
+expect "wanted-for reads one ecosystem" ($cargo == [openssl sqlite])
+pass

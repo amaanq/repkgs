@@ -1,3 +1,3 @@
 use checks.nu *
-has-debug bin/test-cargo
-done
+split-debug bin/test-cargo
+pass

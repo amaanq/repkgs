@@ -1,13 +1,12 @@
-# The time zone database is the machine's: libc reads /usr/share/zoneinfo, then /etc/zoneinfo
-# (NixOS), never its own prefix (pkgs/gl/glibc/glibc-tzdir-etc-zoneinfo.patch). The sandbox has
-# neither, so check the paths compiled into the libc the binary loads, and one real lookup via TZDIR
+# libc reads time zones from /usr/share/zoneinfo and then /etc/zoneinfo for NixOS, never from its
+# own prefix (pkgs/gl/glibc/glibc-tzdir-etc-zoneinfo.patch). The sandbox has neither, so this reads
+# the paths compiled into the libc and does one real lookup through TZDIR
 use checks.nu *
 use glob.nu [files]
 
-let tz = $"($env.pkg)/bin/tz"
-# the sandbox only holds the closure, so the one libc.so.6 in the store is the binary's
-let libc = (files /nix/store/*-sysroot-*/lib/libc.so.6 | first)
-let dirs = (open --raw $libc | decode utf-8 | split row "\u{0}" | where { $in =~ zoneinfo })
-assert $"zoneinfo directories are the system's: ($dirs)" (($dirs | sort) == ["/etc/zoneinfo/%s" "/usr/share/zoneinfo"])
-assert "reads a zone file" ((with-env {TZDIR: $"($env.fixtures)/zoneinfo", TZ: "Test/Zone"} { ^$tz }) == "TST")
-done
+# the sandbox holds only the closure, so the store's one libc.so.6 is the program's
+let libc     = (files /nix/store/*-sysroot-*/lib/libc.so.6 | first)
+let compiled = (open --raw $libc | decode utf-8 | split row "\u{0}" | where $it =~ zoneinfo | sort)
+expect $"libc looks in the system's zoneinfo directories, not ($compiled)" ($compiled == ["/etc/zoneinfo/%s" "/usr/share/zoneinfo"])
+expect "a zone file resolves"                                              ((with-env {TZDIR: $"($env.fixtures)/zoneinfo", TZ: "Test/Zone"} { ^$"($env.pkg)/bin/tz" }) == "TST")
+pass
