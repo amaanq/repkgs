@@ -1,298 +1,245 @@
-# CONFIG_SITE for every autoconf configure (builder/prepare.nu, bootstrap/run.nu). Answers that are
-# facts of our platforms (Linux >= 5.10 glibc or musl, macOS >= 14, clang/lld, LP64 little endian), not of any
-# package: mostly AC_RUN_IFELSE probes, which cannot run when cross compiling and would otherwise
-# fall back to pessimistic guesses (gnulib then builds replacement functions). Package-specific
-# probe results are cached separately per (script, toolchain, deps) by jig, see builder/core.nu.
-# configure sources this as sh. $host is set when --host was given (cross); natively it is empty and
-# the build machine is the host.
+# Read by every configure the set runs (CONFIG_SITE from nix/package and bootstrap/stage.nix).
+# The answers depend on the target alone. Most stand in for AC_RUN_IFELSE checks, which a cross
+# build cannot run and autoconf would replace with its worst-case guess.
 
-# builder/systems/autotools.nu: build paths kept out of configure's recorded argv
-test "$prefix" = NONE && prefix=${PKGS_PREFIX:-NONE}
-test "$cache_file" = /dev/null && cache_file=${PKGS_CONFIG_CACHE:-/dev/null}
-# our layout has no sbin/ (finish.nu layout-check)
-test "$sbindir" = '${exec_prefix}/sbin' && sbindir='${exec_prefix}/bin'
+# jib's autotools system passes the output and its probe cache when configure got neither
+if [ "$prefix" = NONE ] && [ -n "$PKGS_PREFIX" ]; then prefix=$PKGS_PREFIX; fi
+if [ "$cache_file" = /dev/null ] && [ -n "$PKGS_CONFIG_CACHE" ]; then cache_file=$PKGS_CONFIG_CACHE; fi
+if [ "$sbindir" = '${exec_prefix}/sbin' ]; then sbindir='${exec_prefix}/bin'; fi
 
-case "${host:-$(uname -m)}" in
-  x86_64*) site_cpu=x86_64 ;;
-  aarch64*) site_cpu=aarch64 ;;
-  riscv64*) site_cpu=riscv64 ;;
-  loongarch64*) site_cpu=loongarch64 ;;
-  powerpc64le* | ppc64le*) site_cpu=powerpc64le ;;
-  *) site_cpu=unknown ;;
+# $host is empty natively, where the build machine is a glibc Linux
+target_triple=${host:-$(uname -m)-unknown-linux-gnu}
+target_cpu=${target_triple%%-*}
+case $target_triple in
+  *-darwin*) target_os=macos ;;
+  *-mingw* | *-windows*) target_os=windows ;;
+  *) target_os=linux ;;
 esac
-case "${host:-linux}" in
-  *windows* | *mingw*) site_os=windows ;;
-  *darwin*) site_os=macos ;;
-  *musl*) site_os=linux site_libc=musl ;;
-  *) site_os=linux site_libc=${site_libc:-glibc} ;; # bootstrap/default.nix sets it for stage0's native musl
+case $target_triple in
+  *-musl*) target_libc=musl ;;
+  *) target_libc=glibc ;;
 esac
 
-if test "$site_os" != windows; then
-# measured the same on glibc, musl and macOS 14 (aarch64-darwin config.cache of coreutils,
-# findutils, diffutils, grep, sed, gawk, m4, bison, bash, flex, git)
-
-# libc functions that exist and work
-ac_cv_func_malloc_0_nonnull=yes
-ac_cv_func_realloc_0_nonnull=yes
-ac_cv_func_calloc_0_nonnull=yes
-ac_cv_func_mmap_fixed_mapped=yes
-ac_cv_func_strnlen_working=yes
-ac_cv_func_fork=yes
-ac_cv_func_fork_works=yes
-ac_cv_func_vfork=yes
-ac_cv_func_vfork_works=yes
-ac_cv_func_chown_works=yes
-ac_cv_func_getgroups_works=yes
-ac_cv_func_strcoll_works=yes
-ac_cv_func_strtod=yes
-ac_cv_func_closedir_void=no
-ac_cv_func_getpgrp_void=yes
-ac_cv_func_obstack=no
-
-# types on LP64
-ac_cv_c_bigendian=no
-ac_cv_c_char_unsigned=no
-ac_cv_sizeof_char=1
-ac_cv_sizeof_short=2
-ac_cv_sizeof_int=4
-ac_cv_sizeof_long=8
-ac_cv_sizeof_long_long=8
-ac_cv_sizeof_void_p=8
-ac_cv_sizeof_size_t=8
-ac_cv_sizeof_wchar_t=4
-ac_cv_sizeof_double=8
-ac_cv_type_uid_t=yes
-
-# gnulib run-time probes (m4/*.m4 "guessing" branches)
-gl_cv_func_getcwd_null=yes
-gl_cv_func_getcwd_path_max=yes
-gl_cv_func_chown_slash_works=yes
-gl_cv_func_chown_ctime_works=yes
-gl_cv_func_fchownat_nofollow_works=yes
-gl_cv_func_fcntl_f_dupfd_works=yes
-gl_cv_func_fdopendir_works=yes
-gl_cv_func_fpurge_works=no
-gl_cv_func_frexp_works=yes
-gl_cv_func_frexpl_works=yes
-gl_cv_func_fstatat_zero_flag=yes
-gl_cv_func_ftello_works=yes
-gl_cv_func_isnanl_works=yes
-gl_cv_func_ldexpl_works=yes
-gl_cv_func_link_works=yes
-gl_cv_func_linkat_slash=yes
-gl_cv_func_lstat_dereferences_slashed_symlink=yes
-gl_cv_func_malloc_0_nonnull=1
-gl_cv_func_memchr_works=yes
-gl_cv_func_mkdir_trailing_slash_works=yes
-gl_cv_func_mkdir_trailing_dot_works=yes
-gl_cv_func_mkfifo_works=yes
-gl_cv_func_mknod_works=yes
-gl_cv_func_open_slash=yes
-gl_cv_func_perror_works=yes
-gl_cv_func_readlink_trailing_slash=yes
-gl_cv_func_readlink_truncate=yes
-gl_cv_func_rename_slash_dst_works=yes
-gl_cv_func_rename_slash_src_works=yes
-gl_cv_func_rename_link_works=yes
-gl_cv_func_rename_dest_works=yes
-gl_cv_func_rmdir_works=yes
-gl_cv_func_select_detects_ebadf=yes
-gl_cv_func_setenv_works=yes
-gl_cv_func_signbit=yes
-gl_cv_func_signbit_builtins=yes
-gl_cv_func_sleep_works=yes
-gl_cv_func_snprintf_usable=yes
-gl_cv_func_snprintf_retval_c99=yes
-gl_cv_func_snprintf_size1=yes
-gl_cv_func_snprintf_truncation_c99=yes
-gl_cv_func_snprintf_directive_n=no
-gl_cv_func_printf_sizes_c99=yes
-gl_cv_func_printf_long_double=yes
-gl_cv_func_printf_infinite=yes
-gl_cv_func_printf_infinite_long_double=yes
-gl_cv_func_printf_directive_f=yes
-gl_cv_func_printf_directive_n=no
-gl_cv_func_printf_directive_ls=yes
-gl_cv_func_printf_directive_lc=yes
-gl_cv_func_printf_positions=yes
-gl_cv_func_printf_flag_grouping=yes
-gl_cv_func_printf_flag_leftadjust=yes
-gl_cv_func_printf_flag_zero=yes
-gl_cv_func_printf_precision=yes
-gl_cv_func_vsnprintf_usable=yes
-gl_cv_func_vsnprintf_zerosize_c99=yes
-gl_cv_func_stat_file_slash=yes
-gl_cv_func_strndup_works=yes
-gl_cv_func_strstr_works_always=yes
-gl_cv_func_strtod_works=yes
-gl_cv_func_strtold_works=yes
-gl_cv_func_symlink_works=yes
-gl_cv_func_symlinkat_works=yes
-gl_cv_func_ungetc_works=yes
-gl_cv_func_unlink_honors_slashes=yes
-gl_cv_func_unsetenv_works=yes
-gl_cv_func_working_mkstemp=yes
-gl_cv_func_working_utimes=yes
-gl_cv_func_dup2_works=yes
-gl_cv_func_itold_works=yes
-gl_cv_func_posix_spawn_works=yes
-gl_cv_func_pthread_sigmask_macro=no
-gl_cv_struct_dirent_d_ino=yes
-gl_cv_double_slash_root=no
-gl_cv_func_strcasecmp_works=yes
-
-# package configure.ac run probes
-ac_cv_iconv_omits_bom=no # git
-ac_cv_fread_reads_directories=yes # git
-ac_cv_snprintf_returns_bogus=no # git
-ac_cv_func_regcomp=yes # krb5 runs a regcomp program
-ac_cv_printf_positional=yes # krb5: %1$s
-krb5_cv_attr_constructor_destructor=yes,yes # clang
-
-# libtool: the toolchain is fixed
-lt_cv_deplibs_check_method=pass_all
-fi # posix
-
-if test "$site_os" = linux; then
-# linux only: differs on macOS, or not probed there
-ac_cv_func_working_mktime=yes
-ac_cv_func_fnmatch_works=yes
-ac_cv_func_fnmatch_gnu=yes
-ac_cv_func_lstat_dereferences_slashed_symlink=yes
-ac_cv_func_lstat_empty_string_bug=no
-ac_cv_func_stat_empty_string_bug=no
-ac_cv_func_memcmp_working=yes
-ac_cv_func_setpgrp_void=yes
-ac_cv_func_setvbuf_reversed=no
-ac_cv_func_utime_null=yes
-ac_cv_have_decl_sys_siglist=no
-ac_cv_file__dev_zero=yes
-ac_cv_file__dev_urandom=yes
-ac_cv_file__dev_random=yes
-ac_cv_file__dev_ptmx=yes
-ac_cv_file__dev_ptc=no
-ac_cv_c_littleendian=yes
-ac_cv_c_stack_direction=-1
-ac_cv_sizeof_ssize_t=8
-ac_cv_sizeof_off_t=8
-ac_cv_sizeof_pid_t=4
-ac_cv_sizeof_time_t=8
-ac_cv_sizeof_float=4
-gl_cv_func_getcwd_abort_bug=no
-gl_cv_func_fflush_stdin=yes
-gl_cv_func_gettimeofday_clobber=no
-gl_cv_func_realpath_works=yes
-gl_cv_func_printf_sizes_c23=yes
-gl_cv_func_printf_directive_a=yes
-gl_cv_func_printf_directive_b=yes
-gl_cv_func_printf_enomem=yes
-gl_cv_func_stat_dir_slash=yes
-gl_cv_func_strerror_0_works=yes
-gl_cv_func_strerror_r_works=yes
-gl_cv_func_strstr_linear=yes
-gl_cv_func_tzset_clobber=no
-gl_cv_func_utimensat_works=yes
-gl_cv_func_futimens_works=yes
-gl_cv_func_wcwidth_works=yes
-gl_cv_func_working_getdelim=yes
-gl_cv_func_working_getline=yes
-gl_cv_func_working_mktime=yes
-gl_cv_func_working_strerror=yes
-gl_cv_func_posix_spawnp_secure_exec=yes
-gl_cv_have_proc_uptime=yes
-gl_cv_C_locale_sans_EILSEQ=yes
-lt_cv_sys_max_cmd_len=1572864
-lt_cv_shlibpath_overrides_runpath=yes
-fi # linux
-
-if test "$site_libc" = glibc; then
-# glibc >= 2.39 declares these as asm redirects to the _np symbols: AC_CHECK_FUNCS' link test
-# fails, and gnulib's fallback then compiles to _np calling itself
-ac_cv_func_posix_spawn_file_actions_addchdir=yes
-ac_cv_func_posix_spawn_file_actions_addfchdir=yes
-fi
-
-if test "$site_os" = macos; then
-# where libSystem differs from the linux answers above
-ac_cv_func_working_mktime=no
-ac_cv_have_decl_sys_siglist=yes
-gl_cv_func_fflush_stdin=no
-gl_cv_func_realpath_works=no
-gl_cv_func_printf_sizes_c23=no
-gl_cv_func_printf_directive_a=no
-gl_cv_func_printf_directive_b=no
-gl_cv_func_printf_enomem=no
-gl_cv_func_strerror_0_works=no
-gl_cv_func_strstr_linear=no
-gl_cv_func_utimensat_works=no
-gl_cv_func_futimens_works=no
-gl_cv_func_wcwidth_works=no
-gl_cv_func_working_getdelim=no
-gl_cv_func_working_mktime=no
-gl_cv_func_posix_spawnp_secure_exec=no
-lt_cv_sys_max_cmd_len=786432
-fi # macos values
-
-if test "$site_os" = windows; then
-# inline in winpthreads' pthread.h
-gl_cv_func_pthread_mutex_timedlock_in_LIBMULTITHREAD=yes
-gl_cv_func_strcasecmp_works=yes
-fi # windows
-
-# tools by name: configure substitutes their build PATH location into what gets installed
-# (python _sysconfigdata, ruby rbconfig.rb), a build machine reference
+MKDIR_P='mkdir -p'
 ac_cv_path_mkdir=mkdir
 ac_cv_path_GREP=grep
-ac_cv_path_EGREP="grep -E"
-ac_cv_path_FGREP="grep -F"
+ac_cv_path_EGREP='grep -E'
+ac_cv_path_FGREP='grep -F'
 ac_cv_path_SED=sed
-MKDIR_P="mkdir -p"
 
-if test "$site_os" = macos; then
-# libtool greps stderr for this probe and ld64.lld prints a deprecation note: "no" would take the
-# ld -r -keep_private_externs path, which lld does not implement
-lt_cv_apple_cc_single_mod=yes
-fi
+gl_cv_cc_float_expbit0='word 0 bit 23'
+gl_cv_cc_double_expbit0='word 1 bit 20'
+gl_cv_header_float_h_isoc23=no
+gl_cv_func_strcasecmp_works=yes
 
-# per cpu: long double format, unaligned access, what -march in nix/platforms.nix guarantees
-case "$site_cpu" in
-  x86_64)
-    ac_cv_sizeof_long_double=16          # x87 80-bit in 16 bytes
+case $target_cpu in
+  x86_64 | aarch64 | riscv64 | loongarch64 | powerpc64le)
+    ac_cv_sizeof_long_double=16
     ac_cv_type_long_double_wider=yes
-    gl_cv_cc_long_double_expbit0='word 2 bit 0'
-    ac_cv_unaligned_access=yes
-    ax_cv_have_sse2_ext=yes ax_cv_have_sse3_ext=yes ax_cv_have_ssse3_ext=yes ax_cv_have_sse41_ext=yes
-    ax_cv_have_sse42_ext=yes ax_cv_have_avx_ext=yes ax_cv_have_avx2_ext=yes   # x86-64-v3
-    ;;
-  aarch64)
-    ac_cv_sizeof_long_double=16          # IEEE binary128
-    ac_cv_type_long_double_wider=yes
-    gl_cv_cc_long_double_expbit0='word 3 bit 16'
-    ac_cv_unaligned_access=yes
-    ;;
-  riscv64)
-    ac_cv_sizeof_long_double=16          # IEEE binary128 (soft)
-    ac_cv_type_long_double_wider=yes
-    gl_cv_cc_long_double_expbit0='word 3 bit 16'
-    ac_cv_unaligned_access=no            # legal but may trap to firmware emulation: treat as no
-    ;;
-  loongarch64)
-    ac_cv_sizeof_long_double=16          # IEEE binary128 (soft)
-    ac_cv_type_long_double_wider=yes
-    gl_cv_cc_long_double_expbit0='word 3 bit 16'
-    ac_cv_unaligned_access=yes           # LA464 handles it in hardware
-    ;;
-  powerpc64le)
-    ac_cv_sizeof_long_double=16          # IEEE binary128 (--with-long-double-format=ieee, POWER9 hw)
-    ac_cv_type_long_double_wider=yes
-    gl_cv_cc_long_double_expbit0='word 3 bit 16'
-    ac_cv_unaligned_access=yes
     ;;
 esac
-# clang's <float.h> has no C23 *_IS_IEC_60559 and gnulib's probe does not look for them, so its
-# own tests fail to compile. Have gnulib generate its replacement header
-gl_cv_header_float_h_isoc23=no
-# all of them: little endian IEEE double/float
-gl_cv_cc_double_expbit0='word 1 bit 20'
-gl_cv_cc_float_expbit0='word 0 bit 23'
-unset site_cpu site_os
+
+case $target_cpu in
+  x86_64)
+    gl_cv_cc_long_double_expbit0='word 2 bit 0'
+    ax_cv_have_sse2_ext=yes
+    ax_cv_have_sse3_ext=yes
+    ax_cv_have_ssse3_ext=yes
+    ax_cv_have_sse41_ext=yes
+    ax_cv_have_sse42_ext=yes
+    ax_cv_have_avx_ext=yes
+    ax_cv_have_avx2_ext=yes
+    ;;
+  aarch64 | riscv64 | loongarch64 | powerpc64le) gl_cv_cc_long_double_expbit0='word 3 bit 16' ;;
+esac
+
+case $target_cpu in
+  riscv64) ac_cv_unaligned_access=no ;;
+  x86_64 | aarch64 | loongarch64 | powerpc64le) ac_cv_unaligned_access=yes ;;
+esac
+
+if [ "$target_os" = windows ]; then
+  gl_cv_func_pthread_mutex_timedlock_in_LIBMULTITHREAD=yes
+else
+  ac_cv_sizeof_char=1
+  ac_cv_sizeof_short=2
+  ac_cv_sizeof_int=4
+  ac_cv_sizeof_long=8
+  ac_cv_sizeof_long_long=8
+  ac_cv_sizeof_size_t=8
+  ac_cv_sizeof_void_p=8
+  ac_cv_sizeof_double=8
+  ac_cv_sizeof_wchar_t=4
+  ac_cv_c_bigendian=no
+  ac_cv_c_char_unsigned=no
+  ac_cv_type_uid_t=yes
+
+  ac_cv_func_fork=yes
+  ac_cv_func_fork_works=yes
+  ac_cv_func_vfork=yes
+  ac_cv_func_vfork_works=yes
+  ac_cv_func_calloc_0_nonnull=yes
+  ac_cv_func_malloc_0_nonnull=yes
+  ac_cv_func_realloc_0_nonnull=yes
+  gl_cv_func_malloc_0_nonnull=1
+  ac_cv_func_chown_works=yes
+  ac_cv_func_closedir_void=no
+  ac_cv_func_getgroups_works=yes
+  ac_cv_func_getpgrp_void=yes
+  ac_cv_func_mmap_fixed_mapped=yes
+  ac_cv_func_obstack=no
+  ac_cv_func_regcomp=yes
+  ac_cv_func_strcoll_works=yes
+  ac_cv_func_strnlen_working=yes
+  ac_cv_func_strtod=yes
+  ac_cv_fread_reads_directories=yes
+  ac_cv_iconv_omits_bom=no
+  ac_cv_printf_positional=yes
+  ac_cv_snprintf_returns_bogus=no
+  krb5_cv_attr_constructor_destructor=yes,yes
+  lt_cv_deplibs_check_method=pass_all
+
+  gl_cv_double_slash_root=no
+  gl_cv_struct_dirent_d_ino=yes
+  gl_cv_func_chown_ctime_works=yes
+  gl_cv_func_chown_slash_works=yes
+  gl_cv_func_fchownat_nofollow_works=yes
+  gl_cv_func_dup2_works=yes
+  gl_cv_func_fcntl_f_dupfd_works=yes
+  gl_cv_func_fdopendir_works=yes
+  gl_cv_func_fpurge_works=no
+  gl_cv_func_fstatat_zero_flag=yes
+  gl_cv_func_ftello_works=yes
+  gl_cv_func_getcwd_null=yes
+  gl_cv_func_getcwd_path_max=yes
+  gl_cv_func_link_works=yes
+  gl_cv_func_linkat_slash=yes
+  gl_cv_func_lstat_dereferences_slashed_symlink=yes
+  gl_cv_func_memchr_works=yes
+  gl_cv_func_mkdir_trailing_dot_works=yes
+  gl_cv_func_mkdir_trailing_slash_works=yes
+  gl_cv_func_mkfifo_works=yes
+  gl_cv_func_mknod_works=yes
+  gl_cv_func_open_slash=yes
+  gl_cv_func_perror_works=yes
+  gl_cv_func_posix_spawn_works=yes
+  gl_cv_func_pthread_sigmask_macro=no
+  gl_cv_func_readlink_trailing_slash=yes
+  gl_cv_func_readlink_truncate=yes
+  gl_cv_func_rename_dest_works=yes
+  gl_cv_func_rename_link_works=yes
+  gl_cv_func_rename_slash_dst_works=yes
+  gl_cv_func_rename_slash_src_works=yes
+  gl_cv_func_rmdir_works=yes
+  gl_cv_func_select_detects_ebadf=yes
+  gl_cv_func_setenv_works=yes
+  gl_cv_func_unsetenv_works=yes
+  gl_cv_func_sleep_works=yes
+  gl_cv_func_stat_file_slash=yes
+  gl_cv_func_strndup_works=yes
+  gl_cv_func_strstr_works_always=yes
+  gl_cv_func_symlink_works=yes
+  gl_cv_func_symlinkat_works=yes
+  gl_cv_func_ungetc_works=yes
+  gl_cv_func_unlink_honors_slashes=yes
+  gl_cv_func_working_mkstemp=yes
+  gl_cv_func_working_utimes=yes
+
+  gl_cv_func_frexp_works=yes
+  gl_cv_func_frexpl_works=yes
+  gl_cv_func_isnanl_works=yes
+  gl_cv_func_itold_works=yes
+  gl_cv_func_ldexpl_works=yes
+  gl_cv_func_signbit=yes
+  gl_cv_func_signbit_builtins=yes
+  gl_cv_func_strtod_works=yes
+  gl_cv_func_strtold_works=yes
+
+  gl_cv_func_printf_sizes_c99=yes
+  gl_cv_func_printf_long_double=yes
+  gl_cv_func_printf_infinite=yes
+  gl_cv_func_printf_infinite_long_double=yes
+  gl_cv_func_printf_directive_f=yes
+  gl_cv_func_printf_directive_lc=yes
+  gl_cv_func_printf_directive_ls=yes
+  gl_cv_func_printf_directive_n=no
+  gl_cv_func_printf_positions=yes
+  gl_cv_func_printf_flag_grouping=yes
+  gl_cv_func_printf_flag_leftadjust=yes
+  gl_cv_func_printf_flag_zero=yes
+  gl_cv_func_printf_precision=yes
+  gl_cv_func_snprintf_usable=yes
+  gl_cv_func_snprintf_directive_n=no
+  gl_cv_func_snprintf_retval_c99=yes
+  gl_cv_func_snprintf_size1=yes
+  gl_cv_func_snprintf_truncation_c99=yes
+  gl_cv_func_vsnprintf_usable=yes
+  gl_cv_func_vsnprintf_zerosize_c99=yes
+
+  case $target_os in
+    macos) answer=no ;;
+    *) answer=yes ;;
+  esac
+  for check in \
+    ac_cv_func_working_mktime gl_cv_func_working_mktime gl_cv_func_fflush_stdin \
+    gl_cv_func_futimens_works gl_cv_func_utimensat_works gl_cv_func_realpath_works \
+    gl_cv_func_posix_spawnp_secure_exec gl_cv_func_printf_directive_a \
+    gl_cv_func_printf_directive_b gl_cv_func_printf_enomem gl_cv_func_printf_sizes_c23 \
+    gl_cv_func_strerror_0_works gl_cv_func_strstr_linear gl_cv_func_wcwidth_works \
+    gl_cv_func_working_getdelim
+  do
+    eval "$check=$answer"
+  done
+  unset check answer
+  case $target_os in
+    macos)
+      ac_cv_have_decl_sys_siglist=yes
+      lt_cv_sys_max_cmd_len=786432
+      lt_cv_apple_cc_single_mod=yes
+      ;;
+    *)
+      ac_cv_have_decl_sys_siglist=no
+      lt_cv_sys_max_cmd_len=1572864
+      ;;
+  esac
+fi
+
+if [ "$target_os" = linux ]; then
+  ac_cv_c_littleendian=yes
+  ac_cv_c_stack_direction=-1
+  ac_cv_sizeof_float=4
+  ac_cv_sizeof_off_t=8
+  ac_cv_sizeof_pid_t=4
+  ac_cv_sizeof_ssize_t=8
+  ac_cv_sizeof_time_t=8
+  ac_cv_file__dev_ptc=no
+  ac_cv_file__dev_ptmx=yes
+  ac_cv_file__dev_random=yes
+  ac_cv_file__dev_urandom=yes
+  ac_cv_file__dev_zero=yes
+  ac_cv_func_fnmatch_gnu=yes
+  ac_cv_func_fnmatch_works=yes
+  ac_cv_func_lstat_dereferences_slashed_symlink=yes
+  ac_cv_func_lstat_empty_string_bug=no
+  ac_cv_func_stat_empty_string_bug=no
+  ac_cv_func_memcmp_working=yes
+  ac_cv_func_setpgrp_void=yes
+  ac_cv_func_setvbuf_reversed=no
+  ac_cv_func_utime_null=yes
+  gl_cv_C_locale_sans_EILSEQ=yes
+  gl_cv_func_getcwd_abort_bug=no
+  gl_cv_func_gettimeofday_clobber=no
+  gl_cv_func_tzset_clobber=no
+  gl_cv_func_stat_dir_slash=yes
+  gl_cv_func_strerror_r_works=yes
+  gl_cv_func_working_strerror=yes
+  gl_cv_func_working_getline=yes
+  gl_cv_have_proc_uptime=yes
+  lt_cv_shlibpath_overrides_runpath=yes
+  if [ "$target_libc" = glibc ]; then
+    ac_cv_func_posix_spawn_file_actions_addchdir=yes
+    ac_cv_func_posix_spawn_file_actions_addfchdir=yes
+  fi
+fi
+
+unset target_triple target_cpu target_os target_libc
