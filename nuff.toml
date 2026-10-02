@@ -1,13 +1,5 @@
 [global]
-excludes = [
-  ".git/**",
-  ".jj/**",
-  "**/target/**",
-  "result*",
-  "flake.lock",
-  "pkgs/ll/llvm/*.txt",
-  "**/lock.json",
-]
+excludes = [ ".git/**", ".jj/**", "**/target/**", "result*", "flake.lock", "**/lock.json" ]
 
 [formatter.nix]
 commands = [

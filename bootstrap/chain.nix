@@ -22,7 +22,13 @@ let
       resource = compiler-rt;
     };
   builtinsList =
-    pkg "llvm" + "/builtins-${if platform.os == "linux" then platform.cpu else platform.name}.txt";
+    let
+      target = if platform.os == "linux" then platform.cpu else platform.name;
+      files = (builtins.fromTOML (builtins.readFile (pkg "llvm" + "/builtins.toml"))).${target};
+    in
+    builtins.toFile "builtins-${target}.txt" (
+      builtins.concatStringsSep "" (map (file: file + "\n") files)
+    );
   compiler-rt = run [ ] "compiler-rt" (
     {
       libcHeaders = libcRun { headersOnly = "1"; };

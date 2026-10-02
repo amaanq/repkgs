@@ -200,7 +200,7 @@ impl Recipe for CompilerRt {
    }
 
    /// compiler-rt without cmake, the builtins from the per-target file list
-   /// (pkgs/ll/llvm/builtins-*.txt, written by its update.nu) with the flags
+   /// (pkgs/ll/llvm/builtins.toml, written by its update.nu) with the flags
    /// cmake would use, laid out as a clang resource dir. No
    /// -`DCOMPILER_RT_HAS_FLOAT16` on ppc, clang has no _Float16 there.
    fn run(&self, stage: &Stage) -> io::Result<()> {
