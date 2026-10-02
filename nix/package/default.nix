@@ -131,9 +131,12 @@ let
       else
         edited
     )
-    // lib.on (edited ? completions) {
-      install = completions edited.completions // (edited.install or { });
-    };
+    // (
+      if edited ? completions then
+        { install = completions edited.completions // (edited.install or { }); }
+      else
+        { }
+    );
   inherit (args) name;
   uses = args.uses or [ ];
   fail = message: throw "${name}: ${message}";
@@ -267,7 +270,7 @@ let
       "dependencies"
       "bootstrapTools"
     ]
-    // lib.on (args ? tests) { tests = removeAttrs valid.tests [ "dependencies" ]; }
+    // (if args ? tests then { tests = removeAttrs valid.tests [ "dependencies" ]; } else { })
     // listToAttrs (
       map (system: {
         name = system;
@@ -280,7 +283,7 @@ let
       phases = phases.list;
     }
     # resolved values, for phases: `(ctx).spec.features.tls`
-    // lib.on (features != { }) { inherit features; };
+    // (if features == { } then { } else { inherit features; });
   runsNu =
     any (step: step.kind == "nu") phases.steps
     || any (override: (override.run or "") != "") (attrValues (args.pyapp.overrides or { }));
@@ -295,8 +298,8 @@ let
       ]
       ++ (valid.buildDependencies or [ ])
       ++ tests
-      ++ lib.on runsNu [ nu ]
-      ++ lib.on (prebuilt == true) relocTools
+      ++ (if runsNu then [ nu ] else [ ])
+      ++ (if prebuilt == true then relocTools else [ ])
       ++ concatMap (system: buildSystems.${system}.tools spec ++ before buildSystems.${system}.stack) uses
     )
     ++ base;
@@ -327,7 +330,7 @@ let
         "out"
         "debug"
       ]
-      ++ lib.on separate [ "tree" ];
+      ++ (if separate then [ "tree" ] else [ ]);
       args = [ "build" ];
     }
   );
@@ -383,5 +386,5 @@ drv
     unsupportedReason
     ;
 }
-// lib.on separate { tests = testsDrv; }
+// (if separate then { tests = testsDrv; } else { })
 // (if supported then { } else refused)
