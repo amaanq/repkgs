@@ -192,6 +192,82 @@
         "system": "bun"
       }
     ],
+    "bundler": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "bundler"
+      },
+      {
+        "name": "deps",
+        "type": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "package"
+            },
+            {
+              "kind": "string"
+            }
+          ]
+        },
+        "default": null,
+        "required": true,
+        "doc": "the locked dependencies, fetched (fetch.gems) from the package's own lock file",
+        "system": "bundler"
+      },
+      {
+        "name": "without",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [
+          "development",
+          "test"
+        ],
+        "doc": "Gemfile groups to leave out",
+        "system": "bundler"
+      },
+      {
+        "name": "test",
+        "type": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "list",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        },
+        "default": null,
+        "doc": "command run under `bundle exec` as the test (null runs none, test gems are usually in `without`)",
+        "system": "bundler"
+      },
+      {
+        "name": "flags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "extra arguments for bundle install",
+        "system": "bundler"
+      }
+    ],
     "cargo": [
       {
         "name": "root",
@@ -370,6 +446,82 @@
         "default": [],
         "doc": "ctest -E regexes",
         "system": "cmake"
+      }
+    ],
+    "deno": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "deno"
+      },
+      {
+        "name": "deps",
+        "type": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "package"
+            },
+            {
+              "kind": "string"
+            }
+          ]
+        },
+        "default": null,
+        "required": true,
+        "doc": "the locked dependencies, fetched (fetch.denoDeps) from the package's own lock file",
+        "system": "deno"
+      },
+      {
+        "name": "entry",
+        "type": {
+          "kind": "map",
+          "value": {
+            "kind": "string"
+          }
+        },
+        "default": {},
+        "doc": "bin name -> module path, each becomes bin/<name> running `deno run` on it",
+        "system": "deno"
+      },
+      {
+        "name": "permissions",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [
+          "-A"
+        ],
+        "doc": "permission flags for run and test",
+        "system": "deno"
+      },
+      {
+        "name": "check",
+        "type": {
+          "kind": "boolean"
+        },
+        "default": true,
+        "doc": "deno check the entry points",
+        "system": "deno"
+      },
+      {
+        "name": "flags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "extra arguments for deno run and deno test",
+        "system": "deno"
       }
     ],
     "go": [
@@ -671,6 +823,59 @@
         "system": "meson"
       }
     ],
+    "mix": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "mix"
+      },
+      {
+        "name": "deps",
+        "type": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "package"
+            },
+            {
+              "kind": "string"
+            }
+          ]
+        },
+        "default": null,
+        "required": true,
+        "doc": "the locked dependencies, fetched (fetch.hexDeps) from the package's own lock file",
+        "system": "mix"
+      },
+      {
+        "name": "flags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "extra arguments for mix compile",
+        "system": "mix"
+      },
+      {
+        "name": "escript",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "escripts `mix escript.build` writes, installed into bin/. Empty means a mix release",
+        "system": "mix"
+      }
+    ],
     "npm": [
       {
         "name": "root",
@@ -785,6 +990,47 @@
         "default": [],
         "doc": "extra arguments for the package manager's install",
         "system": "pnpm"
+      }
+    ],
+    "rebar3": [
+      {
+        "name": "root",
+        "type": {
+          "kind": "string"
+        },
+        "default": ".",
+        "doc": "directory below the source the project lives in (monorepos, build/cmake)",
+        "system": "rebar3"
+      },
+      {
+        "name": "deps",
+        "type": {
+          "kind": "union",
+          "variants": [
+            {
+              "kind": "package"
+            },
+            {
+              "kind": "string"
+            }
+          ]
+        },
+        "default": null,
+        "required": true,
+        "doc": "the locked dependencies, fetched (fetch.hexDeps) from the package's own lock file",
+        "system": "rebar3"
+      },
+      {
+        "name": "flags",
+        "type": {
+          "kind": "list",
+          "element": {
+            "kind": "string"
+          }
+        },
+        "default": [],
+        "doc": "extra arguments for rebar3 compile",
+        "system": "rebar3"
       }
     ],
     "yarn": [

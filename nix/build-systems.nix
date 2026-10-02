@@ -297,25 +297,12 @@ builtins.mapAttrs
       tool = buildPkgs.ruby;
       tools = [ sh ];
       lock.deps = fetch.gems;
-      options = {
-        deps = deps false "fetch.gems";
-        without = strs [ "development" "test" ] "Gemfile groups to leave out";
-        test =
-          opt [ "list" "null" ] null
-            "command run under `bundle exec` as the test (null: none, test gems are usually in `without`)";
-        flags = flags "bundle install";
-      };
+      options = schema.options.bundler;
     };
     deno = {
       tool = buildPkgs.deno;
       lock.deps = fetch.denoDeps;
-      options = {
-        deps = deps false "fetch.denoDeps";
-        entry = attrs { } "bin name -> module path: each becomes bin/<name> running `deno run` on it";
-        permissions = strs [ "-A" ] "permission flags for run and test";
-        check = bool true "deno check the entry points";
-        flags = flags "deno run and deno test";
-      };
+      options = schema.options.deno;
     };
     bun = {
       tool = buildPkgs.bun;
@@ -349,11 +336,7 @@ builtins.mapAttrs
       ];
       lock.deps = fetch.hexDeps;
       dependencies = [ pkgs.erlang ]; # escripts say #!/usr/bin/env escript, releases exec erl
-      options = {
-        deps = deps false "fetch.hexDeps";
-        escript = strs [ ] "escripts `mix escript.build` writes, installed into bin/. Empty: a mix release";
-        flags = flags "mix compile";
-      };
+      options = schema.options.mix;
     };
     rebar3 = {
       # no test phase by default: eunit/ct deps live in the test profile, outside rebar.lock
@@ -367,10 +350,7 @@ builtins.mapAttrs
       ];
       lock.deps = fetch.hexDeps;
       dependencies = [ pkgs.erlang ];
-      options = {
-        deps = deps false "fetch.hexDeps";
-        flags = flags "rebar3 compile";
-      };
+      options = schema.options.rebar3;
     };
     npm = {
       tool = buildPkgs.nodejs;

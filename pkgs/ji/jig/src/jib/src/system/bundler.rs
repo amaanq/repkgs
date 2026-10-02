@@ -26,7 +26,6 @@ use jig::{
       shebangs,
    },
 };
-use serde::Deserialize;
 
 use crate::{
    attrs::{
@@ -34,6 +33,10 @@ use crate::{
       Ctx,
    },
    prepare::succeed,
+   schema::{
+      Field,
+      PackagePath,
+   },
    system::{
       command::{
          Env,
@@ -47,15 +50,19 @@ use crate::{
    },
 };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   root:    String,
-   deps:    String,
-   without: Vec<String>,
-   #[serde(default)]
-   test:    Option<Vec<String>>,
-   flags:   Vec<String>,
+options! {
+   Options {
+      root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      deps ("deps"): PackagePath
+         => "the locked dependencies, fetched (fetch.gems) from the package's own lock file",
+      without ("without"): Vec<String> = vec!["development".to_owned(), "test".to_owned()]
+         => "Gemfile groups to leave out",
+      test ("test"): Option<Vec<String>> = None
+         => "command run under `bundle exec` as the test (null runs none, test gems are usually in `without`)",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "extra arguments for bundle install",
+   }
 }
 
 fn app_dir(ctx: &Ctx) -> io::Result<String> {
@@ -67,6 +74,10 @@ pub struct Bundler;
 impl System for Bundler {
    fn name(&self) -> &'static str {
       "bundler"
+   }
+
+   fn options(&self) -> Option<Vec<Field>> {
+      Some(Options::schema(self.name()))
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {

@@ -20,7 +20,6 @@ use jig::{
    store::on_path,
    tree::note,
 };
-use serde::Deserialize;
 
 use crate::{
    attrs::{
@@ -29,6 +28,10 @@ use crate::{
    },
    launchers::entries::write,
    probe,
+   schema::{
+      Field,
+      PackagePath,
+   },
    system::{
       command::{
          Env,
@@ -67,6 +70,14 @@ macro_rules! tools {
                $tool.name()
             }
 
+            fn options(&self) -> Option<Vec<Field>> {
+               Some(if matches!($tool, Tool::Mix) {
+                  MixOptions::schema(self.name())
+               } else {
+                  Options::schema(self.name())
+               })
+            }
+
             fn setup(&self, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<Env> {
                setup($tool, ctx, attrs, socket)
             }
@@ -84,13 +95,43 @@ tools! {
    Mix => Tool::Mix,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   deps:    String,
-   #[serde(default)]
-   escript: Vec<String>,
-   flags:   Vec<String>,
+options! {
+   Options {
+      _root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      deps ("deps"): PackagePath
+         => "the locked dependencies, fetched (fetch.hexDeps) from the package's own lock file",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "extra arguments for rebar3 compile",
+   }
+}
+
+options! {
+   MixOptions {
+      _root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      deps ("deps"): PackagePath
+         => "the locked dependencies, fetched (fetch.hexDeps) from the package's own lock file",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "extra arguments for mix compile",
+      escript ("escript"): Vec<String> = Vec::new()
+         => "escripts `mix escript.build` writes, installed into bin/. Empty means a mix release",
+   }
+}
+
+/// mix's `escript` is the one option rebar3 lacks.
+fn options(tool: Tool, ctx: &Ctx) -> io::Result<(Options, Vec<String>)> {
+   if !matches!(tool, Tool::Mix) {
+      return Ok((ctx.options(tool.name())?, Vec::new()));
+   }
+
+   let mix: MixOptions = ctx.options("mix")?;
+   let common = Options {
+      _root: mix._root,
+      deps:  mix.deps,
+      flags: mix.flags,
+   };
+   Ok((common, mix.escript))
 }
 
 fn sorted_names(dir: &str) -> io::Result<Vec<String>> {
@@ -145,7 +186,7 @@ fn install_escript(ctx: &Ctx, file: &str) -> io::Result<()> {
 }
 
 fn deps_key(tool: Tool, options: &Options, socket: &Path) -> io::Result<String> {
-   let set = Path::new(&options.deps)
+   let set = Path::new(&*options.deps)
       .file_name()
       .map(|name| name.to_string_lossy().into_owned())
       .unwrap_or_default();
@@ -257,7 +298,7 @@ fn checkout_name(tar: &str) -> &str {
 /// wants deps/ the way `mix deps.get` leaves it, with a .hex manifest that
 /// `Hex.SCM.lock_status` accepts. Compiled deps round-trip through jigd.
 fn setup(tool: Tool, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<Env> {
-   let options: Options = ctx.options(tool.name())?;
+   let (options, _escripts) = options(tool, ctx)?;
    let vars = env(tool, ctx, attrs)?;
    let packages = format!("{}/packages/hexpm", options.deps);
    let (compiled, kind) = match tool {
@@ -305,7 +346,7 @@ fn setup(tool: Tool, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<Env>
 }
 
 fn phase(tool: Tool, ctx: &Ctx, verb: &str, socket: &Path) -> io::Result<()> {
-   let options: Options = ctx.options(tool.name())?;
+   let (options, escripts) = options(tool, ctx)?;
    match (tool, verb) {
       (Tool::Rebar3, "build") => {
          let mut args = vec!["compile"];
@@ -331,15 +372,15 @@ fn phase(tool: Tool, ctx: &Ctx, verb: &str, socket: &Path) -> io::Result<()> {
          run("mix", &args, &[])
       },
       (Tool::Mix, "test") => run("mix", &["test", "--no-deps-check"], &[]),
-      (Tool::Mix, "install") => mix_install(ctx, &options),
+      (Tool::Mix, "install") => mix_install(ctx, &escripts),
       _ => Err(unknown(tool.name(), verb)),
    }
 }
 
-fn mix_install(ctx: &Ctx, options: &Options) -> io::Result<()> {
-   if !options.escript.is_empty() {
+fn mix_install(ctx: &Ctx, escripts: &[String]) -> io::Result<()> {
+   if !escripts.is_empty() {
       run("mix", &["escript.build", "--no-deps-check"], &[])?;
-      for escript in &options.escript {
+      for escript in escripts {
          install_escript(ctx, escript)?;
       }
       return Ok(());

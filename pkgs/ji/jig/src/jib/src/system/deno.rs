@@ -6,8 +6,6 @@ use std::{
    process::Command,
 };
 
-use serde::Deserialize;
-
 use crate::{
    attrs::{
       Attrs,
@@ -15,6 +13,10 @@ use crate::{
    },
    launchers::entries::write,
    prepare::succeed,
+   schema::{
+      Field,
+      PackagePath,
+   },
    system::{
       command::{
          Env,
@@ -27,15 +29,21 @@ use crate::{
    },
 };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   root:        String,
-   deps:        String,
-   entry:       BTreeMap<String, String>,
-   permissions: Vec<String>,
-   check:       bool,
-   flags:       Vec<String>,
+options! {
+   Options {
+      root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      deps ("deps"): PackagePath
+         => "the locked dependencies, fetched (fetch.denoDeps) from the package's own lock file",
+      entry ("entry"): BTreeMap<String, String> = BTreeMap::new()
+         => "bin name -> module path, each becomes bin/<name> running `deno run` on it",
+      permissions ("permissions"): Vec<String> = vec!["-A".to_owned()]
+         => "permission flags for run and test",
+      check ("check"): bool = true
+         => "deno check the entry points",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "extra arguments for deno run and deno test",
+   }
 }
 
 pub struct Deno;
@@ -43,6 +51,10 @@ pub struct Deno;
 impl System for Deno {
    fn name(&self) -> &'static str {
       "deno"
+   }
+
+   fn options(&self) -> Option<Vec<Field>> {
+      Some(Options::schema(self.name()))
    }
 
    /// deno adds gen/ and `*_cache_v2` next to npm/ and remote/, so `DENO_DIR`
