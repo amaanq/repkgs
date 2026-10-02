@@ -1,5 +1,5 @@
-# nixbot builds .#checks (nix/checks.nix), .#packages is the whole set. The package set itself is
-# default.nix and takes no inputs; nixpkgs is what treefmt and the seed build already use.
+# CI builds .#checks (nix/checks.nix) and .#packages holds the whole set. The set is default.nix
+# and takes no inputs, nixpkgs only serves treefmt, the shells and the seed build.
 {
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   inputs.rom = {
@@ -19,64 +19,78 @@
       ...
     }:
     let
-      # aarch64-linux once its seed nar is uploaded (pkgs/se/seed/upload.nu)
-      systems = [ "x86_64-linux" ];
-      each = f: nixpkgs.lib.genAttrs systems f;
-    in
-    {
-      packages = each (
+      inherit (nixpkgs) lib;
+      # aarch64-linux joins once its seed nar is uploaded (pkgs/se/seed/upload.nu)
+      forSystems = lib.genAttrs [ "x86_64-linux" ];
+
+      seedOutputs =
         system:
         let
-          bootstrap = import ./pkgs/se/seed {
+          seed = import ./pkgs/se/seed {
             inherit system;
             buildSystem = system;
           };
+          stages = lib.mapAttrs' (
+            version: lib.nameValuePair "bootstrap-rust-${builtins.replaceStrings [ "." ] [ "_" ] version}"
+          ) seed.rustStages;
         in
-        (import ./default.nix { inherit system; })
-        // {
-          nix = import ./nix/nix { pkgs = nixpkgs.legacyPackages.${system}; };
-          bootstrap-llvm = bootstrap.llvm;
-          bootstrap-jig = bootstrap.jig;
-          bootstrap-jib = bootstrap.jib;
-          bootstrap-rust-stage0 = bootstrap.stage0;
-          bootstrap-rust = bootstrap.rust;
-          bootstrap-nushell = bootstrap.nu;
-          bootstrap-mrustc = bootstrap.mrustc;
-          bootstrap-seed = bootstrap.seed;
+        {
+          bootstrap-llvm = seed.llvm;
+          bootstrap-jig = seed.jig;
+          bootstrap-jib = seed.jib;
+          bootstrap-rust-stage0 = seed.stage0;
+          bootstrap-rust = seed.rust;
+          bootstrap-nushell = seed.nu;
+          bootstrap-mrustc = seed.mrustc;
+          bootstrap-seed = seed.seed;
         }
-        // nixpkgs.lib.mapAttrs' (
-          version: compiler:
-          nixpkgs.lib.nameValuePair "bootstrap-rust-${builtins.replaceStrings [ "." ] [ "_" ] version}" compiler
-        ) bootstrap.rustStages
-      );
-      checks = each (system: import ./nix/checks.nix { inherit system nixpkgs; });
-      formatter = each (system: import ./treefmt.nix { pkgs = nixpkgs.legacyPackages.${system}; });
-      devShells = each (system: {
-        default = import ./shell.nix {
-          pkgs = nixpkgs.legacyPackages.${system};
-          rom = rom.packages.${system}.default;
-        };
-        rust =
-          let
-            pkgs = nixpkgs.legacyPackages.${system};
-            hasWild =
-              pkgs.stdenv.hostPlatform.isLinux
-              && (pkgs.stdenv.hostPlatform.isx86_64 || pkgs.stdenv.hostPlatform.isAarch64);
-          in
-          pkgs.mkShell {
-            packages = [
-              pkgs.cargo
-              pkgs.rustc
-              pkgs.clippy
-              pkgs.taplo
-              pkgs.nixfmt
-              fenix.packages.${system}.latest.rustfmt
-            ]
-            ++ pkgs.lib.optionals hasWild [
+        // stages;
+
+      rustShell =
+        pkgs:
+        let
+          host = pkgs.stdenv.hostPlatform;
+          wild = host.isLinux && (host.isx86_64 || host.isAarch64);
+        in
+        pkgs.mkShell {
+          packages =
+            (with pkgs; [
+              cargo
+              rustc
+              clippy
+              taplo
+              nixfmt
+            ])
+            ++ [ fenix.packages.${host.system}.latest.rustfmt ]
+            ++ lib.optionals wild [
               pkgs.wild
               pkgs.clang
             ];
+        };
+    in
+    {
+      packages = forSystems (
+        system:
+        import ./default.nix { inherit system; }
+        // {
+          nix = import ./nix/nix { pkgs = nixpkgs.legacyPackages.${system}; };
+        }
+        // seedOutputs system
+      );
+      checks = forSystems (system: import ./nix/checks.nix { inherit system nixpkgs; });
+      formatter = forSystems (system: import ./treefmt.nix { pkgs = nixpkgs.legacyPackages.${system}; });
+      devShells = forSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = import ./shell.nix {
+            inherit pkgs;
+            rom = rom.packages.${system}.default;
           };
-      });
+          rust = rustShell pkgs;
+        }
+      );
     };
 }
