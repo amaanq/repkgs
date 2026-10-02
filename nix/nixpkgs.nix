@@ -1,5 +1,5 @@
-# the nixpkgs the flake locks, for the non-flake entry points (shell.nix, nix/checks.nix,
-# pkgs/se/seed/build.nix): their tools and the seed's nu must match what the tree is written for
+# flake.lock's nixpkgs for the entry points without flakes (shell.nix, nix/checks.nix and
+# pkgs/se/seed/build.nix), so their tools and the seed's nu are the ones the tree expects
 let
   inherit ((builtins.fromJSON (builtins.readFile ../flake.lock)).nodes.nixpkgs) locked;
 in

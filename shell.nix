@@ -1,5 +1,5 @@
-# Development shell: `treefmt` (treefmt.nix) and what uptrack shells out to. Not part of the
-# package set. Plain nixpkgs (nix/nixpkgs.nix).
+# A development shell with treefmt (treefmt.nix), rom and what uptrack runs, from plain nixpkgs
+# (nix/nixpkgs.nix) and apart from the package set
 {
   pkgs ? import (import ./nix/nixpkgs.nix) { },
   rom ?
@@ -13,19 +13,20 @@
     pkgs.callPackage (source + "/nix/package.nix") { },
 }:
 let
-  hasWild =
-    pkgs.stdenv.hostPlatform.isLinux
-    && (pkgs.stdenv.hostPlatform.isx86_64 || pkgs.stdenv.hostPlatform.isAarch64);
+  host = pkgs.stdenv.hostPlatform;
+  wild = host.isLinux && (host.isx86_64 || host.isAarch64);
 in
 pkgs.mkShell {
   packages = [
     rom
     (import ./treefmt.nix { inherit pkgs; })
     (import ./nix/uptrack.nix { inherit pkgs; })
-    pkgs.libarchive # bsdtar, uptrack's prefetch unpacks like nix/sources.nix does
-    pkgs.taplo # uptrack writes package.toml the way treefmt formats it
+    # bsdtar, so uptrack's prefetch unpacks the way nix/sources.nix does
+    pkgs.libarchive
+    # uptrack formats package.toml the way treefmt does
+    pkgs.taplo
   ]
-  ++ pkgs.lib.optionals hasWild [
+  ++ pkgs.lib.optionals wild [
     pkgs.wild
     pkgs.clang
   ];
