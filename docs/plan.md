@@ -14,105 +14,100 @@ The dependency boundary and rebuild commands are in [bootstrap.md](bootstrap.md)
 
 ## Compilers still taken as upstream binaries
 
-Rule: an upstream binary is only ever `<x>-bootstrap`, a build dependency of `<x>` built from
-source (go, rust, zig, jdk are done this way). Left:
+An upstream binary may only ever be `<x>-bootstrap`, a build dependency of an `<x>` built from
+source, as go, rust, zig and jdk already are. These remain:
 
-- **bun**: zig + our clang/lld + cmake, vendored WebKit/JSC with our toolchain, its own JS
-  parts through `fetch.bunDeps`. About an hour of build.
-- **deno**: cargo. The weight is `rusty_v8`: build v8 with gn/ninja and our clang rather than
-  take the prebuilt static lib. `denort` comes out of the same build (`deno compile`).
-- **node**: swap the remaining bundled deps for ours where configure allows.
+- **bun**, through zig, our clang and lld and cmake, with its vendored WebKit and JavaScriptCore
+  built by our toolchain and its JavaScript parts through `fetch.bunDeps`. Around an hour to build.
+- **deno**, a cargo build whose weight is `rusty_v8`, which should build v8 with gn, ninja and our
+  clang instead of taking the prebuilt static library. `denort` falls out of the same build.
+- **node**, by replacing the remaining bundled dependencies with ours wherever configure allows.
 
-Until then these are build tools only, never linked into outputs, pinned per cpu. riscv64: bun,
-deno and node have no upstream binary and do not cross-build yet (`repkgs bootstrap <x>`
-uploads ours once they do); `ghc-bootstrap` is Debian's package until upstream ships a bindist
-or hadrian can build a compiler for another machine.
+Until then they serve as build tools only, pinned per cpu and never linked into an output. On
+riscv64 bun, deno and node have no upstream binary and do not cross build yet (`repkgs bootstrap
+<x>` uploads ours once they do), and `ghc-bootstrap` is Debian's package until upstream ships a
+bindist or hadrian can build a compiler for another machine.
 
 ## Platforms
 
-- **Seed**: loongarch64 and powerpc64le end to end (backends are in). The seed built from this
-  set's own static packages instead of nixpkgs, as a fixed point in CI.
-- **Windows**: `.exe`/`.dll` install names, the cargo and go targets, wine as the test
-  emulator. autotools stays `unsupported` there.
-- **FreeBSD / NetBSD**: ELF and clang upstream, so crt_interp, `$ORIGIN` and launchers carry
-  over. libc from the release's `base.txz` first, from `src.txz` later. No user-mode emulator:
-  tests need a VM job.
-- **macOS**: our own libc++ with `@rpath` install names, script launchers for Mach-O, pruning
-  the SDK of libraries this set builds itself, a darwin builder hop for tests.
-- **wasm32-wasi** as one more cross platform: wasi-libc instead of glibc, no launcher.
+- **The seed** on loongarch64 and powerpc64le end to end, whose backends are already in, and built
+  from this set's own static packages rather than nixpkgs, checked as a fixed point in CI.
+- **Windows**: `.exe` and `.dll` install names, the cargo and go targets, and wine as the test
+  emulator. autotools stays unsupported there.
+- **FreeBSD and NetBSD** use ELF and clang upstream, so crt_interp, `$ORIGIN` and the launchers
+  carry over. The libc comes from a release's `base.txz` first and its `src.txz` later. Without a
+  user-mode emulator, tests need a VM.
+- **macOS**: our own libc++ with `@rpath` install names, launchers for Mach-O scripts, an SDK
+  pruned of the libraries this set builds, and a hop to a darwin builder for tests.
+- **wasm32-wasi** as another cross platform, with wasi-libc for glibc and no launcher.
 
 ## Ecosystems
 
-Each is an interpreter package, a build system module, one lock-file producer, and a
-`locks/<registry>.toml` only where the upstream lock has no usable hash. In rough order of value
-per effort:
+An ecosystem is an interpreter package, a build system, a lock-file producer and, only where the
+upstream lock has no usable hash, a `locks/<registry>.toml`. Roughly by value for the effort:
 
-| ecosystem | status / shape |
+| ecosystem | where it stands |
 |---|---|
-| Perl CPAN | perl is in. `cpanfile.snapshot` has no hashes → `locks/cpan.toml` |
-| JVM (gradle, maven) | jdk is in. gradle `verification-metadata.xml` / maven → offline `~/.m2`. gradle is the hard part |
-| .NET | prebuilt SDK → source-build later. `packages.lock.json` sha512 → NuGet offline feed |
-| PHP | php from C. `composer.lock` shasums often empty → `locks/packagist.toml` |
-| OCaml | from C. opam locks have no hashes → locks table, dune builds |
-| R | from C and Fortran (flang). `renv.lock` has hashes |
-| luajit | `HOST_CC=cc-build` + `CROSS=` for cross |
+| Perl CPAN | perl is in, and `cpanfile.snapshot` has no hashes, so `locks/cpan.toml` |
+| JVM (gradle, maven) | jdk is in. gradle's `verification-metadata.xml` or maven into an offline `~/.m2`, with gradle the hard part |
+| .NET | a prebuilt SDK, built from source later, and `packages.lock.json`'s sha512 into an offline NuGet feed |
+| PHP | php from C, and `composer.lock` often lacks shasums, so `locks/packagist.toml` |
+| OCaml | from C, opam locks without hashes into a table, dune builds |
+| R | from C and Fortran through flang, and `renv.lock` has hashes |
+| luajit | `HOST_CC=cc-build` and `CROSS=` for cross builds |
 
-Not planned: Swift (own LLVM fork), Dart/Flutter, Julia, Nim, Crystal, D. Yarn berry stays out:
-its checksum is over a zip yarn repacks, not the registry tarball.
+Swift (its own LLVM fork), Dart and Flutter, Julia, Nim, Crystal and D are not planned. Yarn berry
+stays out because its checksum covers a zip yarn repacks, not the registry tarball.
 
 **Native dependencies for JS locks.** sys-libs.json covers cargo, go, python, gems. node-gyp
-addons (`sharp` → libvips, `better-sqlite3`, `canvas` → cairo/pango) need the same table for
-npm/pnpm/bun, and `uptrack check` should warn when a lock names a library the set lacks.
+addons (`sharp` with libvips, `better-sqlite3`, `canvas` with cairo and pango) need the same table
+for npm, pnpm and bun, and `uptrack check` should warn when a lock names a library the set lacks.
 
 ## Infrastructure
 
-- **CI**: nixbot on both build platforms plus the cross targets, harmonia cache with
-  realisations, `repkgs repro` as a job.
-- **uptrack**: reports, `sync-github`.
-- **builder/ blast radius**: every package hashes the whole `builder/` tree, so an edit to a
-  helper two packages use (ghc-bindist.nu, node-common.nu, beam.nu) rebuilds llvm. Import
-  those per package through a filtered path like package modules, keep only the framework
-  (core, prepare, finish, implant) in the tree every script sees.
-- **llvm install size**: `install` copies the ~200 component archives libLLVM.so was linked
-  from (llvm 807 MB of .a next to a 57 MB .so, llvm21 with all targets more). Nothing links them but zig's
-  lld (no dylib there). `LLVM_DISTRIBUTION_COMPONENTS` + `install-distribution` installs a
-  named list and writes LLVMExports.cmake to match. With the next world rebuild.
+- **CI**: builds on both build platforms and every cross target, a harmonia cache with
+  realisations, and `repkgs repro` as a job.
+- **uptrack**: the reports and the GitHub sync docs/uptrack.md lists as not built.
+- **builder/ reach**: every package's script hashes the whole `builder/` tree, so an edit to any
+  module there rebuilds everything down to llvm. Only what every script imports should live there.
+- **llvm install size**: `install` copies the roughly 200 component archives libLLVM.so was linked
+  from, 807 MB of .a beside a 57 MB .so and more for llvm21 with every target, and only zig's lld
+  links them. `LLVM_DISTRIBUTION_COMPONENTS` with `install-distribution` installs a named list and
+  writes a matching LLVMExports.cmake. Due with the next full rebuild.
 
-## jig follow-ups
+## jig
 
 - Measure cold builds and cache replay with the Rust wrapper. Its request keys keep exact
   arguments and compiler paths, so the C++ wrapper's benchmark results do not carry over.
-- Teach the link shapes that still log as `linked`/`uncacheable` (libtool relinks, `@rsp`,
-  multi-source lines). Cache bin and proc-macro crates in rustc mode. rustc keys must not change
-  when only the vendor store path does. A recurring `compiled-error` on identical rebuilds means
-  an unstable conftest key.
+- Link shapes that still log as `linked` or `uncacheable` (libtool relinks, `@rsp` files, lines
+  with several sources), bin and proc-macro crates in rustc mode, and rustc keys that change when
+  only the vendor store path does. A recurring `compiled-error` across identical rebuilds points
+  at an unstable conftest key.
 - Hash link inputs in parallel if llvm-sized links show up in profiles.
-- **Zig cache**: zig has no cache protocol, only `zig-cache` dirs with prefix-stripped paths,
-  so they are portable between sandboxes. Round-trip `ZIG_GLOBAL_CACHE_DIR` through jigd as one
-  tree (key: zig binary + source tree), first for zig's own stage3, then for a zig build system.
 
-## Builder follow-ups
+## Builder
 
-- **.pyc in python outputs**: see what pip/meson installs write (`__pycache__` with source
-  paths and mtimes) and pick one: delete, or recompile with `--invalidation-mode unchecked-hash`.
-- **windows: cmake `MSVC`**: cmake sets `MSVC` only for cl-style drivers. Our cc is the GNU-style
-  clang targeting msvc, so projects that key windows specifics on `if(MSVC)` (xz manifests,
-  jsoncpp static suffix, libcpuid masm) take the wrong branch. Either a clang-cl personality for
-  cmake builds on windows or `CMAKE_C_SIMULATE_ID`; those packages are linux/macos until then.
-- **config.sub refresh**: old autotools tarballs reject riscv64/loongarch64 triples. Copy a
-  current config.sub/config.guess in `autotools.configure` when cross, once a package needs it.
-- **toolchain references**: `reloc-fixup --deny` the `cc` wrapper for native builds too, after
-  checking which outputs record their compiler (python sysconfig, perl Config.pm) and how
-  those should read instead.
-- **debug through collectors**: a dyn-drv collector (cargo, cabal packages) forwards `out`
-  only, the inner build's `debug` output is dropped.
-- **tests/builder**: cargo, cmake, python with a C extension, npm, cabal.
-- **rust cross**: std for the target triple from our llvm, cargo's linker per target.
-- `dep-root --optional` and a lint for dep-root names missing from dependencies, uptrack lock
-  validation at update time, `repkgs fetch-plan` (what a build would download), `repkgs debug
-  <pkg>` (gdb with debug-file-directory on the package's debug output).
+- **.pyc files in python outputs**: find what pip and meson installs write (`__pycache__` with
+  source paths and mtimes) and either delete them or compile again with `--invalidation-mode
+  unchecked-hash`.
+- **cmake's `MSVC` on windows**: cmake sets `MSVC` for cl-style drivers only, and our cc is a
+  GNU-style clang targeting msvc, so projects branching on `if(MSVC)` (xz's manifests, jsoncpp's
+  static suffix, libcpuid's masm) go the wrong way. A clang-cl personality for cmake builds on
+  windows or `CMAKE_C_SIMULATE_ID` would fix it, and until then those packages are for linux and
+  macos.
+- **config.sub**: old autotools tarballs reject riscv64 and loongarch64 triples, so a cross
+  `autotools.configure` should copy current config.sub and config.guess in once a package needs it.
+- **toolchain references**: `reloc-fixup --deny` the `cc` wrapper in native builds too, after
+  finding which outputs record their compiler (python's sysconfig, perl's Config.pm) and deciding
+  what those should say instead.
+- **debug through collectors**: a dynamic-derivation collector (cargo and cabal packages) forwards
+  `out` only, so the inner build's `debug` output is lost.
+- **rust cross**: std for the target triple from our llvm, and cargo's linker per target.
+- `dep-root --optional` and a lint for dep-root names missing from dependencies, lock validation
+  in uptrack at update time, `repkgs fetch-plan` for what a build would download and `repkgs debug
+  <pkg>` for gdb pointed at the package's debug output.
 
 ## Known test gaps
 
-- m4: gnulib `test-float-h.c` does not compile with clang in gnu23 mode (C23 `*_IS_IEC_60559`),
-  and `test-posix_spawn-chdir` once spun in the sandbox.
+- m4: gnulib's `test-float-h.c` does not compile with clang in gnu23 mode (C23
+  `*_IS_IEC_60559`), and `test-posix_spawn-chdir` once spun forever in the sandbox.
