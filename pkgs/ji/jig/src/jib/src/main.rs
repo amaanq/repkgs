@@ -18,6 +18,7 @@ mod probe;
 mod recipe;
 mod site;
 mod system;
+mod targets;
 
 use std::{
    collections::BTreeMap,

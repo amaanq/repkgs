@@ -28,6 +28,10 @@ use crate::{
    hardening::Hardening,
    recipe::recipe,
    system::dispatch::schemas,
+   targets::{
+      Facts,
+      targets,
+   },
 };
 
 #[derive(Deserialize, Eq, PartialEq, Serialize)]
@@ -341,6 +345,7 @@ struct Schema {
    hardening: Vec<Hardening>,
    recipe:    Vec<Field>,
    systems:   BTreeMap<String, Descriptor>,
+   targets:   Vec<Facts>,
 }
 
 pub fn run(check: Option<&Path>) -> io::Result<()> {
@@ -349,6 +354,7 @@ pub fn run(check: Option<&Path>) -> io::Result<()> {
       hardening: Hardening::ALL.to_vec(),
       recipe: recipe(systems.keys().cloned().collect()),
       systems,
+      targets: targets(),
    };
 
    if let Some(path) = check {

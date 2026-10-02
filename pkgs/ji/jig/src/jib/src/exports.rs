@@ -30,9 +30,10 @@ use serde_json::{
    Value,
 };
 
-use crate::attrs::Extensions;
-
-const CPUS: [&str; 5] = ["x86_64", "aarch64", "riscv64", "loongarch64", "powerpc64le"];
+use crate::{
+   attrs::Extensions,
+   targets::Cpu,
+};
 
 record! {
    #[derive(Default)]
@@ -91,7 +92,7 @@ fn package_name(root: &Path) -> String {
       .map(|name| name.to_string_lossy().into_owned())
       .unwrap_or_default();
    let name = base.get(33..).unwrap_or_default();
-   for cpu in CPUS {
+   for cpu in Cpu::ALL.map(Cpu::name) {
       let marker = format!("-{cpu}-");
       if let Some(position) = name.rfind(&marker) {
          let tail = &name[position + marker.len()..];

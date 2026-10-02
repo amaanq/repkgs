@@ -2389,5 +2389,694 @@
         }
       ]
     }
-  }
+  },
+  "targets": [
+    {
+      "name": "x86_64-linux",
+      "cpu": "x86_64",
+      "os": "linux",
+      "libc": "glibc",
+      "abi": "gnu",
+      "posix": true,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "elf",
+      "ext": {
+        "exe": "",
+        "shared": ".so",
+        "static": ".a",
+        "import": null
+      },
+      "names": {
+        "kernel": "x86",
+        "go": "amd64",
+        "rust": "x86_64",
+        "meson": "x86_64",
+        "qemu": "x86_64",
+        "gyp": "x64",
+        "clang": "x86_64",
+        "openssl": "linux-x86_64"
+      },
+      "osNames": {
+        "cmake": "Linux",
+        "meson": "linux",
+        "mesonKernel": "linux",
+        "go": "linux",
+        "gyp": "linux",
+        "uname": "Linux"
+      },
+      "march": [
+        "-march=x86-64-v3",
+        "-fcf-protection=full"
+      ],
+      "hardening": {},
+      "clangTarget": "x86_64-unknown-linux-gnu",
+      "gnuTriple": "x86_64-unknown-linux-gnu",
+      "rustTriple": "x86_64-unknown-linux-gnu",
+      "opensslTarget": "linux-x86_64",
+      "interp": "ld-linux-x86-64.so.2"
+    },
+    {
+      "name": "aarch64-linux",
+      "cpu": "aarch64",
+      "os": "linux",
+      "libc": "glibc",
+      "abi": "gnu",
+      "posix": true,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "elf",
+      "ext": {
+        "exe": "",
+        "shared": ".so",
+        "static": ".a",
+        "import": null
+      },
+      "names": {
+        "kernel": "arm64",
+        "go": "arm64",
+        "rust": "aarch64",
+        "meson": "aarch64",
+        "qemu": "aarch64",
+        "gyp": "arm64",
+        "clang": "arm64",
+        "openssl": "linux-aarch64"
+      },
+      "osNames": {
+        "cmake": "Linux",
+        "meson": "linux",
+        "mesonKernel": "linux",
+        "go": "linux",
+        "gyp": "linux",
+        "uname": "Linux"
+      },
+      "march": [
+        "-march=armv8.2-a+lse",
+        "-mbranch-protection=standard"
+      ],
+      "hardening": {},
+      "clangTarget": "aarch64-unknown-linux-gnu",
+      "gnuTriple": "aarch64-unknown-linux-gnu",
+      "rustTriple": "aarch64-unknown-linux-gnu",
+      "opensslTarget": "linux-aarch64",
+      "interp": "ld-linux-aarch64.so.1"
+    },
+    {
+      "name": "riscv64-linux",
+      "cpu": "riscv64",
+      "os": "linux",
+      "libc": "glibc",
+      "abi": "gnu",
+      "posix": true,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "elf",
+      "ext": {
+        "exe": "",
+        "shared": ".so",
+        "static": ".a",
+        "import": null
+      },
+      "names": {
+        "kernel": "riscv",
+        "go": "riscv64",
+        "rust": "riscv64gc",
+        "meson": "riscv64",
+        "qemu": "riscv64",
+        "gyp": "riscv64",
+        "clang": "riscv64",
+        "openssl": "riscv64"
+      },
+      "osNames": {
+        "cmake": "Linux",
+        "meson": "linux",
+        "mesonKernel": "linux",
+        "go": "linux",
+        "gyp": "linux",
+        "uname": "Linux"
+      },
+      "march": [
+        "-march=rv64gc",
+        "-mabi=lp64d",
+        "-mno-relax"
+      ],
+      "hardening": {
+        "zerocallusedregs": false
+      },
+      "clangTarget": "riscv64-unknown-linux-gnu",
+      "gnuTriple": "riscv64-unknown-linux-gnu",
+      "rustTriple": "riscv64gc-unknown-linux-gnu",
+      "opensslTarget": "linux64-riscv64",
+      "interp": "ld-linux-riscv64-lp64d.so.1"
+    },
+    {
+      "name": "loongarch64-linux",
+      "cpu": "loongarch64",
+      "os": "linux",
+      "libc": "glibc",
+      "abi": "gnu",
+      "posix": true,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "elf",
+      "ext": {
+        "exe": "",
+        "shared": ".so",
+        "static": ".a",
+        "import": null
+      },
+      "names": {
+        "kernel": "loongarch",
+        "go": "loong64",
+        "rust": "loongarch64",
+        "meson": "loongarch64",
+        "qemu": "loongarch64",
+        "gyp": "loong64",
+        "clang": "loongarch64",
+        "openssl": "loongarch64"
+      },
+      "osNames": {
+        "cmake": "Linux",
+        "meson": "linux",
+        "mesonKernel": "linux",
+        "go": "linux",
+        "gyp": "linux",
+        "uname": "Linux"
+      },
+      "march": [
+        "-march=loongarch64",
+        "-mabi=lp64d"
+      ],
+      "hardening": {
+        "zerocallusedregs": false
+      },
+      "clangTarget": "loongarch64-unknown-linux-gnu",
+      "gnuTriple": "loongarch64-unknown-linux-gnu",
+      "rustTriple": "loongarch64-unknown-linux-gnu",
+      "opensslTarget": "linux64-loongarch64",
+      "interp": "ld-linux-loongarch-lp64d.so.1"
+    },
+    {
+      "name": "powerpc64le-linux",
+      "cpu": "powerpc64le",
+      "os": "linux",
+      "libc": "glibc",
+      "abi": "gnu",
+      "posix": true,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "elf",
+      "ext": {
+        "exe": "",
+        "shared": ".so",
+        "static": ".a",
+        "import": null
+      },
+      "names": {
+        "kernel": "powerpc",
+        "go": "ppc64le",
+        "rust": "powerpc64le",
+        "meson": "ppc64",
+        "qemu": "ppc64le",
+        "gyp": "ppc64",
+        "clang": "powerpc64le",
+        "openssl": "linux-ppc64le"
+      },
+      "osNames": {
+        "cmake": "Linux",
+        "meson": "linux",
+        "mesonKernel": "linux",
+        "go": "linux",
+        "gyp": "linux",
+        "uname": "Linux"
+      },
+      "march": [
+        "-mcpu=power9",
+        "-mabi=ieeelongdouble",
+        "-Wno-unsupported-abi"
+      ],
+      "hardening": {
+        "zerocallusedregs": false
+      },
+      "clangTarget": "powerpc64le-unknown-linux-gnu",
+      "gnuTriple": "powerpc64le-unknown-linux-gnu",
+      "rustTriple": "powerpc64le-unknown-linux-gnu",
+      "opensslTarget": "linux-ppc64le",
+      "interp": "ld64.so.2"
+    },
+    {
+      "name": "x86_64-linux",
+      "cpu": "x86_64",
+      "os": "linux",
+      "libc": "musl",
+      "abi": "musl",
+      "posix": true,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "elf",
+      "ext": {
+        "exe": "",
+        "shared": ".so",
+        "static": ".a",
+        "import": null
+      },
+      "names": {
+        "kernel": "x86",
+        "go": "amd64",
+        "rust": "x86_64",
+        "meson": "x86_64",
+        "qemu": "x86_64",
+        "gyp": "x64",
+        "clang": "x86_64",
+        "openssl": "linux-x86_64"
+      },
+      "osNames": {
+        "cmake": "Linux",
+        "meson": "linux",
+        "mesonKernel": "linux",
+        "go": "linux",
+        "gyp": "linux",
+        "uname": "Linux"
+      },
+      "march": [
+        "-march=x86-64-v3",
+        "-fcf-protection=full"
+      ],
+      "hardening": {},
+      "clangTarget": "x86_64-unknown-linux-musl",
+      "gnuTriple": "x86_64-unknown-linux-musl",
+      "rustTriple": "x86_64-unknown-linux-musl",
+      "opensslTarget": "linux-x86_64",
+      "interp": "ld-musl-x86_64.so.1"
+    },
+    {
+      "name": "aarch64-linux",
+      "cpu": "aarch64",
+      "os": "linux",
+      "libc": "musl",
+      "abi": "musl",
+      "posix": true,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "elf",
+      "ext": {
+        "exe": "",
+        "shared": ".so",
+        "static": ".a",
+        "import": null
+      },
+      "names": {
+        "kernel": "arm64",
+        "go": "arm64",
+        "rust": "aarch64",
+        "meson": "aarch64",
+        "qemu": "aarch64",
+        "gyp": "arm64",
+        "clang": "arm64",
+        "openssl": "linux-aarch64"
+      },
+      "osNames": {
+        "cmake": "Linux",
+        "meson": "linux",
+        "mesonKernel": "linux",
+        "go": "linux",
+        "gyp": "linux",
+        "uname": "Linux"
+      },
+      "march": [
+        "-march=armv8.2-a+lse",
+        "-mbranch-protection=standard"
+      ],
+      "hardening": {},
+      "clangTarget": "aarch64-unknown-linux-musl",
+      "gnuTriple": "aarch64-unknown-linux-musl",
+      "rustTriple": "aarch64-unknown-linux-musl",
+      "opensslTarget": "linux-aarch64",
+      "interp": "ld-musl-aarch64.so.1"
+    },
+    {
+      "name": "riscv64-linux",
+      "cpu": "riscv64",
+      "os": "linux",
+      "libc": "musl",
+      "abi": "musl",
+      "posix": true,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "elf",
+      "ext": {
+        "exe": "",
+        "shared": ".so",
+        "static": ".a",
+        "import": null
+      },
+      "names": {
+        "kernel": "riscv",
+        "go": "riscv64",
+        "rust": "riscv64gc",
+        "meson": "riscv64",
+        "qemu": "riscv64",
+        "gyp": "riscv64",
+        "clang": "riscv64",
+        "openssl": "riscv64"
+      },
+      "osNames": {
+        "cmake": "Linux",
+        "meson": "linux",
+        "mesonKernel": "linux",
+        "go": "linux",
+        "gyp": "linux",
+        "uname": "Linux"
+      },
+      "march": [
+        "-march=rv64gc",
+        "-mabi=lp64d",
+        "-mno-relax"
+      ],
+      "hardening": {
+        "zerocallusedregs": false
+      },
+      "clangTarget": "riscv64-unknown-linux-musl",
+      "gnuTriple": "riscv64-unknown-linux-musl",
+      "rustTriple": "riscv64gc-unknown-linux-musl",
+      "opensslTarget": "linux64-riscv64",
+      "interp": "ld-musl-riscv64.so.1"
+    },
+    {
+      "name": "loongarch64-linux",
+      "cpu": "loongarch64",
+      "os": "linux",
+      "libc": "musl",
+      "abi": "musl",
+      "posix": true,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "elf",
+      "ext": {
+        "exe": "",
+        "shared": ".so",
+        "static": ".a",
+        "import": null
+      },
+      "names": {
+        "kernel": "loongarch",
+        "go": "loong64",
+        "rust": "loongarch64",
+        "meson": "loongarch64",
+        "qemu": "loongarch64",
+        "gyp": "loong64",
+        "clang": "loongarch64",
+        "openssl": "loongarch64"
+      },
+      "osNames": {
+        "cmake": "Linux",
+        "meson": "linux",
+        "mesonKernel": "linux",
+        "go": "linux",
+        "gyp": "linux",
+        "uname": "Linux"
+      },
+      "march": [
+        "-march=loongarch64",
+        "-mabi=lp64d"
+      ],
+      "hardening": {
+        "zerocallusedregs": false
+      },
+      "clangTarget": "loongarch64-unknown-linux-musl",
+      "gnuTriple": "loongarch64-unknown-linux-musl",
+      "rustTriple": "loongarch64-unknown-linux-musl",
+      "opensslTarget": "linux64-loongarch64",
+      "interp": "ld-musl-loongarch64.so.1"
+    },
+    {
+      "name": "powerpc64le-linux",
+      "cpu": "powerpc64le",
+      "os": "linux",
+      "libc": "musl",
+      "abi": "musl",
+      "posix": true,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "elf",
+      "ext": {
+        "exe": "",
+        "shared": ".so",
+        "static": ".a",
+        "import": null
+      },
+      "names": {
+        "kernel": "powerpc",
+        "go": "ppc64le",
+        "rust": "powerpc64le",
+        "meson": "ppc64",
+        "qemu": "ppc64le",
+        "gyp": "ppc64",
+        "clang": "powerpc64le",
+        "openssl": "linux-ppc64le"
+      },
+      "osNames": {
+        "cmake": "Linux",
+        "meson": "linux",
+        "mesonKernel": "linux",
+        "go": "linux",
+        "gyp": "linux",
+        "uname": "Linux"
+      },
+      "march": [
+        "-mcpu=power9",
+        "-mabi=ieeelongdouble",
+        "-Wno-unsupported-abi"
+      ],
+      "hardening": {
+        "zerocallusedregs": false
+      },
+      "clangTarget": "powerpc64le-unknown-linux-musl",
+      "gnuTriple": "powerpc64le-unknown-linux-musl",
+      "rustTriple": "powerpc64le-unknown-linux-musl",
+      "opensslTarget": "linux-ppc64le",
+      "interp": "ld-musl-powerpc64le.so.1"
+    },
+    {
+      "name": "x86_64-windows-msvc",
+      "cpu": "x86_64",
+      "os": "windows",
+      "libc": "msvc",
+      "abi": "msvc",
+      "posix": false,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "coff",
+      "ext": {
+        "exe": ".exe",
+        "shared": ".dll",
+        "static": ".lib",
+        "import": ".lib"
+      },
+      "names": {
+        "kernel": "x86",
+        "go": "amd64",
+        "rust": "x86_64",
+        "meson": "x86_64",
+        "qemu": "x86_64",
+        "gyp": "x64",
+        "clang": "x86_64",
+        "openssl": "linux-x86_64"
+      },
+      "osNames": {
+        "cmake": "Windows",
+        "meson": "windows",
+        "mesonKernel": "nt",
+        "go": "windows",
+        "gyp": "win",
+        "uname": "Windows_NT"
+      },
+      "march": [
+        "-march=x86-64-v3"
+      ],
+      "hardening": {},
+      "clangTarget": "x86_64-pc-windows-msvc",
+      "gnuTriple": "x86_64-pc-windows-msvc",
+      "rustTriple": "x86_64-pc-windows-msvc",
+      "opensslTarget": "VC-WIN64A",
+      "interp": ""
+    },
+    {
+      "name": "aarch64-windows-msvc",
+      "cpu": "aarch64",
+      "os": "windows",
+      "libc": "msvc",
+      "abi": "msvc",
+      "posix": false,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "coff",
+      "ext": {
+        "exe": ".exe",
+        "shared": ".dll",
+        "static": ".lib",
+        "import": ".lib"
+      },
+      "names": {
+        "kernel": "arm64",
+        "go": "arm64",
+        "rust": "aarch64",
+        "meson": "aarch64",
+        "qemu": "aarch64",
+        "gyp": "arm64",
+        "clang": "arm64",
+        "openssl": "linux-aarch64"
+      },
+      "osNames": {
+        "cmake": "Windows",
+        "meson": "windows",
+        "mesonKernel": "nt",
+        "go": "windows",
+        "gyp": "win",
+        "uname": "Windows_NT"
+      },
+      "march": [
+        "-march=armv8.2-a+lse"
+      ],
+      "hardening": {},
+      "clangTarget": "aarch64-pc-windows-msvc",
+      "gnuTriple": "aarch64-pc-windows-msvc",
+      "rustTriple": "aarch64-pc-windows-msvc",
+      "opensslTarget": "VC-WIN64-CLANGASM-ARM",
+      "interp": ""
+    },
+    {
+      "name": "x86_64-windows-gnu",
+      "cpu": "x86_64",
+      "os": "windows",
+      "libc": "mingw",
+      "abi": "gnu",
+      "posix": false,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "coff",
+      "ext": {
+        "exe": ".exe",
+        "shared": ".dll",
+        "static": ".a",
+        "import": ".dll.a"
+      },
+      "names": {
+        "kernel": "x86",
+        "go": "amd64",
+        "rust": "x86_64",
+        "meson": "x86_64",
+        "qemu": "x86_64",
+        "gyp": "x64",
+        "clang": "x86_64",
+        "openssl": "linux-x86_64"
+      },
+      "osNames": {
+        "cmake": "Windows",
+        "meson": "windows",
+        "mesonKernel": "nt",
+        "go": "windows",
+        "gyp": "win",
+        "uname": "Windows_NT"
+      },
+      "march": [
+        "-march=x86-64-v3"
+      ],
+      "hardening": {},
+      "clangTarget": "x86_64-w64-mingw32",
+      "gnuTriple": "x86_64-w64-mingw32",
+      "rustTriple": "x86_64-pc-windows-gnullvm",
+      "opensslTarget": "mingw64",
+      "interp": ""
+    },
+    {
+      "name": "aarch64-windows-gnu",
+      "cpu": "aarch64",
+      "os": "windows",
+      "libc": "mingw",
+      "abi": "gnu",
+      "posix": false,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "coff",
+      "ext": {
+        "exe": ".exe",
+        "shared": ".dll",
+        "static": ".a",
+        "import": ".dll.a"
+      },
+      "names": {
+        "kernel": "arm64",
+        "go": "arm64",
+        "rust": "aarch64",
+        "meson": "aarch64",
+        "qemu": "aarch64",
+        "gyp": "arm64",
+        "clang": "arm64",
+        "openssl": "linux-aarch64"
+      },
+      "osNames": {
+        "cmake": "Windows",
+        "meson": "windows",
+        "mesonKernel": "nt",
+        "go": "windows",
+        "gyp": "win",
+        "uname": "Windows_NT"
+      },
+      "march": [
+        "-march=armv8.2-a+lse"
+      ],
+      "hardening": {},
+      "clangTarget": "aarch64-w64-mingw32",
+      "gnuTriple": "aarch64-w64-mingw32",
+      "rustTriple": "aarch64-pc-windows-gnullvm",
+      "opensslTarget": "mingwarm64",
+      "interp": ""
+    },
+    {
+      "name": "aarch64-macos",
+      "cpu": "aarch64",
+      "os": "macos",
+      "libc": "apple",
+      "abi": "apple",
+      "posix": true,
+      "bits": 64,
+      "endian": "little",
+      "binfmt": "macho",
+      "ext": {
+        "exe": "",
+        "shared": ".dylib",
+        "static": ".a",
+        "import": null
+      },
+      "names": {
+        "kernel": "arm64",
+        "go": "arm64",
+        "rust": "aarch64",
+        "meson": "aarch64",
+        "qemu": "aarch64",
+        "gyp": "arm64",
+        "clang": "arm64",
+        "openssl": "linux-aarch64"
+      },
+      "osNames": {
+        "cmake": "Darwin",
+        "meson": "darwin",
+        "mesonKernel": "xnu",
+        "go": "darwin",
+        "gyp": "mac",
+        "uname": "Darwin"
+      },
+      "march": [
+        "-mcpu=apple-m1"
+      ],
+      "hardening": {},
+      "clangTarget": "arm64-apple-macos14.0",
+      "gnuTriple": "aarch64-apple-darwin",
+      "rustTriple": "aarch64-apple-darwin",
+      "opensslTarget": "darwin64-arm64",
+      "interp": "",
+      "minos": "14.0"
+    }
+  ]
 }
