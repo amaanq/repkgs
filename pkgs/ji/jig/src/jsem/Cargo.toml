@@ -11,11 +11,11 @@ readme.workspace       = true
 rust-version.workspace = true
 
 [dependencies]
-color-eyre  = { workspace = true }
-eyre        = { workspace = true }
-jig         = { workspace = true }
-libc        = "0.2"
-rustix      = { features = [ "process" ], workspace = true }
+color-eyre = { workspace = true }
+eyre       = { workspace = true }
+jig        = { workspace = true }
+libc       = "0.2"
+rustix     = { features = [ "process" ], workspace = true }
 
 [lints]
 workspace = true
