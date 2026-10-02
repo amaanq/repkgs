@@ -49,7 +49,7 @@ use crate::{
 };
 
 options! {
-   Options ("cargo") {
+   Options {
       root ("root"): String = ".".to_owned()
          => "directory below the source the project lives in (monorepos, build/cmake)",
       features ("features"): Vec<String> = Vec::new()
@@ -75,7 +75,7 @@ impl System for Cargo {
    }
 
    fn options(&self) -> Option<Vec<Field>> {
-      Some(Options::schema())
+      Some(Options::schema(self.name()))
    }
 
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {

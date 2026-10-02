@@ -50,7 +50,6 @@ let
     pkgs.libgcc-shim
   ];
   nodeTools = [ buildPkgs.libgcc-shim ]; # the same addons while building (builder/node-common.nu)
-  script = optStr "build" "package.json script `build` runs (null: none)";
 in
 builtins.mapAttrs
   (
@@ -261,11 +260,7 @@ builtins.mapAttrs
       ++ nodeTools;
       lock.deps = fetch.pnpmDeps;
       dependencies = nodeDeps;
-      options = {
-        inherit script;
-        deps = deps true "fetch.pnpmDeps";
-        flags = flags "pnpm install";
-      };
+      options = schema.options.pnpm;
     };
     pyapp = {
       # binary wheels carry upstream-linked .so files: finish implants interp/RUNPATH like for any
@@ -327,14 +322,7 @@ builtins.mapAttrs
       tools = [ sh ] ++ nodeTools;
       lock.deps = fetch.bunDeps;
       dependencies = nodeDeps;
-      options = {
-        inherit script;
-        deps = deps false "fetch.bunDeps";
-        flags = flags "bun install";
-        compile =
-          attrs { }
-            "bin name -> entry module: `bun build --compile` single executables instead of installing the tree";
-      };
+      options = schema.options.bun;
     };
     yarn = {
       tool = buildPkgs.yarn;
@@ -345,11 +333,7 @@ builtins.mapAttrs
       ++ nodeTools;
       lock.deps = fetch.yarnDeps;
       dependencies = nodeDeps;
-      options = {
-        inherit script;
-        deps = deps true "fetch.yarnDeps";
-        flags = flags "yarn install";
-      };
+      options = schema.options.yarn;
     };
     mix = {
       # no test phase by default: MIX_ENV=test deps are outside the prod lock subset
@@ -393,10 +377,6 @@ builtins.mapAttrs
       tools = [ sh ] ++ nodeTools;
       lock.deps = fetch.npmDeps;
       dependencies = nodeDeps;
-      options = {
-        inherit script;
-        deps = deps true "fetch.npmDeps";
-        flags = flags "npm ci";
-      };
+      options = schema.options.npm;
     };
   }

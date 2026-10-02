@@ -28,6 +28,10 @@ use crate::{
       Ctx,
    },
    prepare::succeed,
+   schema::{
+      Field,
+      PackagePath,
+   },
    system::{
       command::{
          Env,
@@ -59,15 +63,48 @@ impl Manager {
    }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Options {
-   #[serde(default)]
-   script:  Option<String>,
-   deps:    String,
-   flags:   Vec<String>,
-   #[serde(default)]
-   compile: BTreeMap<String, String>,
+options! {
+   Options {
+      _root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      script ("script"): Option<String> = Some("build".to_owned())
+         => "package.json script the build phase runs (null runs none)",
+      deps ("deps"): PackagePath
+         => "the locked dependencies, fetched from the package's own lock file",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "extra arguments for the package manager's install",
+   }
+}
+
+options! {
+   BunOptions {
+      _root ("root"): String = ".".to_owned()
+         => "directory below the source the project lives in (monorepos, build/cmake)",
+      script ("script"): Option<String> = Some("build".to_owned())
+         => "package.json script the build phase runs (null runs none)",
+      deps ("deps"): PackagePath
+         => "the locked dependencies, fetched from the package's own lock file",
+      flags ("flags"): Vec<String> = Vec::new()
+         => "extra arguments for bun install",
+      compile ("compile"): BTreeMap<String, String> = BTreeMap::new()
+         => "bin name -> entry module, `bun build --compile` single executables instead of installing the tree",
+   }
+}
+
+/// bun's `compile` is the one option the other managers lack.
+fn options(manager: Manager, ctx: &Ctx) -> io::Result<(Options, BTreeMap<String, String>)> {
+   if !matches!(manager, Manager::Bun) {
+      return Ok((ctx.options(manager.name())?, BTreeMap::new()));
+   }
+
+   let bun: BunOptions = ctx.options("bun")?;
+   let common = Options {
+      _root:  bun._root,
+      script: bun.script,
+      deps:   bun.deps,
+      flags:  bun.flags,
+   };
+   Ok((common, bun.compile))
 }
 
 #[derive(Deserialize)]
@@ -92,6 +129,14 @@ macro_rules! managers {
          impl System for $name {
             fn name(&self) -> &'static str {
                $manager.name()
+            }
+
+            fn options(&self) -> Option<Vec<Field>> {
+               Some(if matches!($manager, Manager::Bun) {
+                  BunOptions::schema(self.name())
+               } else {
+                  Options::schema(self.name())
+               })
             }
 
             fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
@@ -215,7 +260,7 @@ fn manager_env(manager: Manager, ctx: &Ctx, options: &Options) -> Vec<(String, S
       Manager::Yarn => {
          text(&[
             ("YARN_CACHE_FOLDER", format!("{}/yarn-cache", ctx.build)),
-            ("YARN_YARN_OFFLINE_MIRROR", options.deps.clone()),
+            ("YARN_YARN_OFFLINE_MIRROR", options.deps.to_string()),
             ("YARN_ENABLE_PROGRESS_BARS", "false".to_owned()),
             ("YARN_DISABLE_SELF_UPDATE_CHECK", "true".to_owned()),
          ])
@@ -237,7 +282,7 @@ fn manager_env(manager: Manager, ctx: &Ctx, options: &Options) -> Vec<(String, S
 /// the prebuilt .node addons in `node_modules/.bin` (rollup, esbuild) want
 /// `libgcc_s.so.1` findable.
 fn setup(manager: Manager, ctx: &Ctx, attrs: &Attrs) -> io::Result<Env> {
-   let options: Options = ctx.options(manager.name())?;
+   let (options, _compile) = options(manager, ctx)?;
    let vars = manager_env(manager, ctx, &options);
    let env_vars: Vec<(&str, &str)> = vars
       .iter()
@@ -270,7 +315,7 @@ fn setup(manager: Manager, ctx: &Ctx, attrs: &Attrs) -> io::Result<Env> {
 }
 
 fn phase(manager: Manager, ctx: &Ctx, verb: &str) -> io::Result<()> {
-   let options: Options = ctx.options(manager.name())?;
+   let (options, compile) = options(manager, ctx)?;
    let name = manager.name();
    match verb {
       "build" => {
@@ -291,12 +336,17 @@ fn phase(manager: Manager, ctx: &Ctx, verb: &str) -> io::Result<()> {
          }
          run(name, &args, &[])
       },
-      "install" => install(manager, ctx, &options),
+      "install" => install(manager, ctx, &options, &compile),
       _ => Err(unknown(name, verb)),
    }
 }
 
-fn install(manager: Manager, ctx: &Ctx, options: &Options) -> io::Result<()> {
+fn install(
+   manager: Manager,
+   ctx: &Ctx,
+   options: &Options,
+   compile: &BTreeMap<String, String>,
+) -> io::Result<()> {
    match manager {
       Manager::Npm => {
          run("npm", &["prune", "--omit=dev", "--ignore-scripts"], &[])?;
@@ -318,10 +368,10 @@ fn install(manager: Manager, ctx: &Ctx, options: &Options) -> io::Result<()> {
          run("yarn", &args, &[])?;
       },
       Manager::Bun => {
-         if !options.compile.is_empty() {
+         if !compile.is_empty() {
             let bin = format!("{}/bin", ctx.out);
             create_dir_all(&bin)?;
-            for (exe, entry) in &options.compile {
+            for (exe, entry) in compile {
                let outfile = format!("{bin}/{exe}");
                run(
                   "bun",

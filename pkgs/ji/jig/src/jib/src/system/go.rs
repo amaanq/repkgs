@@ -31,7 +31,7 @@ use crate::{
 };
 
 options! {
-   Options ("go") {
+   Options {
       root ("root"): String = ".".to_owned()
          => "directory below the source the project lives in (monorepos, build/cmake)",
       tags ("tags"): Vec<String> = Vec::new()
@@ -61,7 +61,7 @@ impl System for Go {
    }
 
    fn options(&self) -> Option<Vec<Field>> {
-      Some(Options::schema())
+      Some(Options::schema(self.name()))
    }
 
    /// compile, asm and link take a host-wide jigd slot like cc and rustc do.

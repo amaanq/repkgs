@@ -1,5 +1,10 @@
 use std::{
    collections::BTreeMap,
+   fmt::{
+      self,
+      Display,
+      Formatter,
+   },
    fs::read_to_string,
    io::{
       self,
@@ -77,6 +82,12 @@ impl<Item: Into<Self>> From<Option<Item>> for Literal {
 #[derive(Deserialize)]
 #[serde(transparent)]
 pub struct PackagePath(String);
+
+impl Display for PackagePath {
+   fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+      f.write_str(&self.0)
+   }
+}
 
 impl Deref for PackagePath {
    type Target = str;
@@ -189,52 +200,69 @@ impl OptionType for Def {
    }
 }
 
+/// A required option has no default of its own, Nix supplies it from a lock or
+/// a fetcher.
 #[derive(Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Field {
-   name:    String,
+   name:     String,
    #[serde(rename = "type")]
-   kind:    Type,
-   default: Literal,
-   doc:     String,
-   system:  String,
+   kind:     Type,
+   default:  Literal,
+   #[serde(default, skip_serializing_if = "is_false")]
+   required: bool,
+   doc:      String,
+   system:   String,
+}
+
+#[expect(
+   clippy::trivially_copy_pass_by_ref,
+   reason = "serde passes the field by reference"
+)]
+const fn is_false(value: &bool) -> bool {
+   !*value
 }
 
 impl Field {
-   pub fn new<Value>(name: &str, default: Value, doc: &str, system: &str) -> Self
+   pub fn new<Value>(name: &str, default: Option<Value>, doc: &str, system: &str) -> Self
    where
       Value: OptionType,
    {
       Self {
-         name:    name.to_owned(),
-         kind:    Value::kind(),
-         default: default.into(),
-         doc:     doc.to_owned(),
-         system:  system.to_owned(),
+         name:     name.to_owned(),
+         kind:     Value::kind(),
+         required: default.is_none(),
+         default:  default.map_or(Literal::Null, Into::into),
+         doc:      doc.to_owned(),
+         system:   system.to_owned(),
       }
    }
 }
 
 macro_rules! options {
-   ($name:ident ($system:literal) {
-      $($field:ident ($spelling:literal): $kind:ty = $default:expr => $doc:literal),* $(,)?
+   (@default) => {
+      None
+   };
+   (@default $default:expr) => {
+      Some($default)
+   };
+   ($name:ident {
+      $($field:ident ($spelling:literal): $kind:ty $(= $default:expr)? => $doc:literal),* $(,)?
    }) => {
       #[derive(serde::Deserialize)]
-      #[serde(default, deny_unknown_fields)]
+      #[serde(deny_unknown_fields)]
       struct $name {
          $(#[serde(rename = $spelling)] $field: $kind),*
       }
 
-      impl Default for $name {
-         fn default() -> Self {
-            Self { $($field: $default),* }
-         }
-      }
-
       impl $name {
-         fn schema() -> Vec<crate::schema::Field> {
-            let defaults = Self::default();
-            vec![$(crate::schema::Field::new($spelling, defaults.$field, $doc, $system)),*]
+         fn schema(system: &str) -> Vec<crate::schema::Field> {
+            vec![$(crate::schema::Field::new::<$kind>(
+               $spelling,
+               options!(@default $($default)?),
+               $doc,
+               system,
+            )),*]
          }
       }
    };

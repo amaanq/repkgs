@@ -36,7 +36,7 @@ use crate::{
 };
 
 options! {
-   Options ("make") {
+   Options {
       root ("root"): String = ".".to_owned()
          => "directory below the source the project lives in (monorepos, build/cmake)",
       flags ("flags"): Vec<String> = Vec::new()
@@ -75,7 +75,7 @@ impl System for Make {
    }
 
    fn options(&self) -> Option<Vec<Field>> {
-      Some(Options::schema())
+      Some(Options::schema(self.name()))
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
