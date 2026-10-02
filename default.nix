@@ -1,22 +1,17 @@
-# The package set for one platform.
-#   nix-build -A zlib                                  build machine's platform
-#   nix-build -A zlib --argstr platform riscv64-linux  cross (tools still run on the build machine)
-#
-# Every directory pkgs/<name>/ with a package.nix becomes attribute <name>. A package.nix is
-#   { package, pkgs, ... }: package { name = "<name>"; ... dependencies = [ pkgs.zlib ]; }
-# and may take any of: package variant pkgs buildPkgs platform fetch sources toolchain.
+# One platform's package set, from pkgs/<xx>/<name>/package.toml:
+#   nix-build -A zlib                                  for this machine
+#   nix-build -A zlib --argstr platform riscv64-linux  for another, tools still built here
 {
   system ? builtins.currentSystem,
   platform ? system,
   seed ? null,
   rustToolchain ? null,
   buildTools ? { },
-  # one tree or a list of them: { zlib.autotools.flags.append = [ … ]; } (nix/overrides.nix)
+  # a tree or a list of trees, { zlib.autotools.flags.append = [ … ]; } (nix/overrides.nix)
   overrides ? { },
-  # out-of-tree packages: name -> directory with package.nix (+ package.toml), called like
-  # in-tree ones. A name that exists in the tree is replaced
+  # name -> directory with a package.toml or package.nix, replacing an in-tree name it shares
   packages ? { },
-  # set-wide feature values, for every package that declares the name (nix/features.nix)
+  # feature values for every package declaring the name (nix/features.nix)
   features ? { },
 }:
 (import ./nix/set.nix {

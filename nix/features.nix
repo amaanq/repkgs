@@ -1,17 +1,13 @@
-# A package's `features`: knobs its package.nix declares and reads back as values.
+# Choices a package offers, declared as its `features` and read back as values:
 #
 #   features = {
 #     tls = { values = [ "openssl" "gnutls" "none" ]; default = "openssl"; doc = "TLS backend"; };
 #     http3 = { default = false; };
-#     codecs = { default = [ "opus" ]; doc = "…"; };
 #   };
-#   dependencies = on (features.tls != "none") [ pkgs.${features.tls} ];
 #
-# The type is the default's (bool, string, list, int), `values` limits a string or a list's
-# elements to a set. Resolved once per package as default <- set-wide `features` argument (only
-# names the package declares) <- `overrides.<pkg>.features`. A name the package does not declare
-# or a value of another type is an error. The result is in the derivation (drv hash) and on it as
-# `.features`.
+# A feature has its default's type, and `values` bounds a string or each item of a list. The set's
+# `features` argument fills the names a package declares, then `overrides.<pkg>.features` wins.
+# The result goes into the derivation and onto it as `.features`.
 let
   inherit (builtins)
     all
@@ -22,36 +18,37 @@ let
     mapAttrs
     typeOf
     ;
-  accepted =
+  checked =
     package: declared:
     mapAttrs (
       feature: value:
       let
-        declaration = declared.${feature};
-        chosen = if isList value then value else [ value ];
+        spec = declared.${feature};
+        wanted = typeOf spec.default;
       in
-      if typeOf value != typeOf declaration.default then
-        throw "${package}: feature ${feature} wants a ${typeOf declaration.default}, got a ${typeOf value}"
-      else if declaration ? values && !all (entry: elem entry declaration.values) chosen then
-        throw "${package}: feature ${feature} = ${toString value}, not among ${toString declaration.values}"
+      if typeOf value != wanted then
+        throw "${package}: feature ${feature} wants a ${wanted}, got a ${typeOf value}"
+      else if
+        spec ? values && !all (item: elem item spec.values) (if isList value then value else [ value ])
+      then
+        throw "${package}: feature ${feature} = ${toString value}, not among ${toString spec.values}"
       else
         value
     );
 in
 {
-  # declared: the package's `features` field ({} when absent). setWide: the set's. local:
-  # overrides.<pkg>.features
   resolve =
-    package: declared: setWide: local:
+    package: declared: everywhere: here:
     let
-      undeclared = attrNames (removeAttrs local (attrNames declared));
+      strays = attrNames (removeAttrs here (attrNames declared));
+      defaults = mapAttrs (_: spec: spec.default) declared;
     in
-    if declared == { } && local == { } then
+    if declared == { } && here == { } then
       { }
-    else if undeclared != [ ] then
-      throw "${package}: unknown features ${toString undeclared} (has: ${toString (attrNames declared)})"
+    else if strays != [ ] then
+      throw "${package}: unknown features ${toString strays} (has: ${toString (attrNames declared)})"
     else
-      mapAttrs (_: declaration: declaration.default) declared
-      // accepted package declared (intersectAttrs declared setWide)
-      // accepted package declared local;
+      defaults
+      // checked package declared (intersectAttrs declared everywhere)
+      // checked package declared here;
 }
