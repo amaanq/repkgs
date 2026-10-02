@@ -1,43 +1,64 @@
 #!/usr/bin/env nu
-# Run cross-built packages on a real machine via .github/workflows/target-test.yaml:
+# Runs cross-built packages on a real machine through .github/workflows/target-test.yaml:
 #   tools/target-test x86_64-windows-gnu jq curl zstd
-# builds them, packs the closure, uploads it as a release asset, dispatches the workflow with
-# `bin/<x> --version` per package (or tests.version), and follows the run.
+# It builds them, packs the closure as a release asset, starts the workflow with one version check
+# per package and follows the run.
 const REPO = "Mic92/repkgs"
-const RUNNER = {
-  x86_64-windows-gnu: windows-latest, x86_64-windows-msvc: windows-latest, aarch64-windows-msvc: windows-11-arm
-  aarch64-macos: macos-latest, x86_64-macos: macos-13, aarch64-linux: ubuntu-24.04-arm, aarch64-linux-musl: ubuntu-24.04-arm
+const RUNNERS = {
+  x86_64-windows-gnu: windows-latest
+  x86_64-windows-msvc: windows-latest
+  aarch64-windows-msvc: windows-11-arm
+  aarch64-macos: macos-latest
+  x86_64-macos: macos-13
+  aarch64-linux: ubuntu-24.04-arm
+  aarch64-linux-musl: ubuntu-24.04-arm
 }
 
-# --remote: build and pack on that host (repo rsynced to /scratch/$USER/<basename>), $NIX_BUILD for
-# its nix-build command line
+# the command that checks one package, the way jib finish checks versions: the spec's `bin`, else
+# bin/<name> when the build made one, and a plain listing for a library
+def version-check [platform: string, attr: string, out: string, here: closure]: nothing -> string {
+  let exe = if $platform =~ windows { ".exe" } else { "" }
+  let query = $"with import ./. { platform = \"($platform)\"; }; { version = ($attr).version; check = ($attr).spec.tests.version or true; bin = ($attr).spec.bin or []; }"
+  let spec = (^nix-instantiate --eval --json --strict -E $query | from json)
+  let own = (do $here $"test -e ($out)/bin/($attr)($exe)" | complete).exit_code == 0
+  let bin = if ($spec.bin | is-empty) and $own { [$attr] } else { $spec.bin }
+  if $spec.check == false or ($bin | is-empty) { return $"ls ($out)" }
+
+  let words = if $spec.check == true { [($bin | first) --version] } else { $spec.check | split row " " }
+  let words = if $words.0 in $bin { $words } else { [($bin | first) ...$words] }
+  let release = ($spec.version | str replace -r '-r[0-9]+$' '')
+  $"($out)/bin/($words.0)($exe) ($words | skip 1 | str join ' ') | grep -F ($release)"
+}
+
+# --remote builds and packs on that host, with the repo rsynced to /scratch/$USER/<basename> and
+# $NIX_BUILD as its nix-build command
 def main [platform: string, --remote (-r): string, ...attrs: string] {
-  let runner = ($RUNNER | get $platform)
-  let on = {|cmd: string| if $remote == null { ^bash -c $cmd } else { ^ssh $remote $"cd /scratch/($env.USER)/(pwd | path basename) && ($cmd)" } }
-  let outs = (do $on $"($env.NIX_BUILD? | default nix-build) . ($attrs | each { $'-A ($in)' } | str join ' ') --argstr platform ($platform) --no-out-link" | lines | where { $in =~ '^/nix/store' })
+  let runner = ($RUNNERS | get $platform)
+  let here = {|command: string|
+    if $remote == null { ^bash -c $command } else { ^ssh $remote $"cd /scratch/($env.USER)/(pwd | path basename) && ($command)" }
+  }
+
+  let build = $"($env.NIX_BUILD? | default nix-build) . ($attrs | each {|attr| $'-A ($attr)' } | str join ' ') --argstr platform ($platform) --no-out-link"
+  let outs = (do $here $build | lines | where $it =~ '^/nix/store')
   if ($outs | length) != ($attrs | length) { error make {msg: "build failed"} }
-  let exe = (if $platform =~ windows { ".exe" } else { "" })
-  # as finish.nu version-check: spec.bin or bin/<name> when the build made one, libraries just unpack
-  let commands = ($attrs | zip $outs | each {|p|
-    let spec = (^nix-instantiate --eval --json --strict -E $"with import ./. { platform = \"($platform)\"; }; { v = ($p.0).version; t = ($p.0).spec.tests.version or true; b = ($p.0).spec.bin or []; }" | from json)
-    let b = (if ($spec.b | is-empty) and (do $on $"test -e ($p.1)/bin/($p.0)($exe)" | complete).exit_code == 0 { [$p.0] } else { $spec.b })
-    if $spec.t == false or ($b | is-empty) { return $"ls ($p.1)" }
-    let words = (if $spec.t == true { [($b | first) --version] } else { $spec.t | split row " " })
-    let words = (if $words.0 in $b { $words } else { [($b | first)] ++ $words })
-    $"($p.1)/bin/($words.0)($exe) ($words | skip 1 | str join ' ') | grep -F ($spec.v | str replace -r '-r[0-9]+$' '')"
-  })
-  let tar = $"/tmp/target-test-($platform).tar.gz"
+  let checks = ($attrs | zip $outs | each {|pair| version-check $platform $pair.0 $pair.1 $here })
+
+  let archive = $"/tmp/target-test-($platform).tar.gz"
   let pack = $"nix-store -qR ($outs | str join ' ') | grep -v -- '-debug$' | tar -C / -czf - -T -"
-  ^bash -c (if $remote == null { $"($pack) > ($tar)" } else { $"ssh ($remote) ($pack | to json) > ($tar)" })
+  ^bash -c (if $remote == null { $"($pack) > ($archive)" } else { $"ssh ($remote) ($pack | to json) > ($archive)" })
+
   let tag = "target-test"
-  if (^gh release view $tag -R $REPO | complete).exit_code != 0 { ^gh release create $tag -R $REPO --prerelease --notes "payloads for .github/workflows/target-test.yaml" --title $tag }
-  ^gh release upload $tag $tar -R $REPO --clobber
-  let url = $"https://github.com/($REPO)/releases/download/($tag)/($tar | path basename)"
-  print ($commands | str join "\n")
-  ^gh workflow run target-test.yaml -R $REPO -f $"runner=($runner)" -f $"url=($url)" -f $"commands=($commands | str join "\n")"
+  if (^gh release view $tag -R $REPO | complete).exit_code != 0 {
+    ^gh release create $tag -R $REPO --prerelease --notes "payloads for .github/workflows/target-test.yaml" --title $tag
+  }
+  ^gh release upload $tag $archive -R $REPO --clobber
+  let url = $"https://github.com/($REPO)/releases/download/($tag)/($archive | path basename)"
+
+  print ($checks | str join "\n")
+  ^gh workflow run target-test.yaml -R $REPO -f $"runner=($runner)" -f $"url=($url)" -f $"commands=($checks | str join "\n")"
   sleep 5sec
   let id = (^gh run list -R $REPO -w target-test.yaml -L 1 --json databaseId | from json | get 0.databaseId)
   print $"https://github.com/($REPO)/actions/runs/($id)"
   ^gh run watch $id -R $REPO --exit-status
-  ^gh run view $id -R $REPO --log | lines | where { $in =~ '\brun\b' } | each { str replace -r '^\S+\s+\S+\s+\S+\s' '' } | print
+  ^gh run view $id -R $REPO --log | lines | where $it =~ '\brun\b' | each { str replace -r '^\S+\s+\S+\s+\S+\s' '' } | print
 }

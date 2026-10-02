@@ -1,40 +1,48 @@
 #!/usr/bin/env nu
-# Build the seed nar for each system, upload to the GitHub release `seed-<version>` and rewrite
-# ./package.toml. Version comes from build.nix's seed name (seed-<N>-<system>).
-# Every system is built on this machine (build.nix cross compiles).
+# Builds the seed nar for each system here (build.nix cross compiles), uploads them to the GitHub
+# release seed-<N> and points ./package.toml at them. <N> comes from build.nix's seed-<N>-<system>.
 #   pkgs/se/seed/upload.nu [--systems x86_64-linux,aarch64-linux,riscv64-linux] [--repo Mic92/repkgs]
 
 def main [
-  --systems: string = "x86_64-linux,aarch64-linux,riscv64-linux" # comma separated, others keep their package.toml entry
-  --repo: string = "Mic92/repkgs" # GitHub repo holding the seed-<N> releases
+  --systems: string = "x86_64-linux,aarch64-linux,riscv64-linux" # comma separated, the rest keep their entry
+  --repo: string = "Mic92/repkgs" # where the seed-<N> releases live
 ]: nothing -> nothing {
-  let here = ($env.CURRENT_FILE | path dirname)
-  let toml = $"($here)/package.toml"
-  let build_system = (^nix config show system | str trim)
-  let built = ($systems | split row "," | each {|sys|
-    print -e $"building seed nar for ($sys)"
-    let out = (^nix-build $"($here)/default.nix" -A nar --argstr system $sys --argstr buildSystem $build_system --no-out-link | str trim)
+  let here     = ($env.CURRENT_FILE | path dirname)
+  let manifest = $"($here)/package.toml"
+  let builder  = (^nix config show system | str trim)
+
+  let nars = ($systems | split row "," | each {|system|
+    print -e $"building the seed nar for ($system)"
+    let out  = (^nix-build $"($here)/default.nix" -A nar --argstr system $system --argstr buildSystem $builder --no-out-link | str trim)
     let file = (ls $out | where name =~ '\.nar\.xz$' | first | get name)
-    { sys: $sys, file: $file, hash: (open --raw $"($out)/nar-hash" | str trim),
-      version: ($file | path basename | parse "seed-{v}-{rest}" | first | get v) }
+    {
+      system: $system
+      file: $file
+      hash: (open --raw $"($out)/nar-hash" | str trim)
+      version: ($file | path basename | parse "seed-{version}-{rest}" | first | get version)
+    }
   })
-  let version = ($built | get version | uniq)
-  if ($version | length) != 1 { error make {msg: $"systems disagree on seed version: ($version)"} }
-  let tag = $"seed-($version | first)"
+  let versions = ($nars | get version | uniq)
+  if ($versions | length) != 1 { error make {msg: $"the systems build different seed versions: ($versions)"} }
+  let version = ($versions | first)
+  let tag     = $"seed-($version)"
 
   if (^gh release view $tag -R $repo | complete).exit_code != 0 {
-    ^gh release create $tag -R $repo --title $tag --notes $"pkgs bootstrap seed ($version | first), built by pkgs/se/seed/build.nix"
+    ^gh release create $tag -R $repo --title $tag --notes $"bootstrap seed ($version), built by pkgs/se/seed/build.nix"
   }
-  ^gh release upload $tag -R $repo --clobber ...($built | get file)
+  ^gh release upload $tag -R $repo --clobber ...($nars | get file)
 
-  let cur = (open $toml)
-  let sources = ($built | each {|b| {
-    key: $b.sys
-    url: $"https://github.com/($repo)/releases/download/seed-{version}/seed-{version}-($b.sys).nar.xz"
-    hash: $b.hash, unpack: true, name: "seed"
-  } })
-  # systems not rebuilt this run keep their old entry
-  let kept = ($cur.source | where {|s| $s.key not-in ($built | get sys) })
-  $cur | update source ($sources ++ $kept) | update pin { version: ($version | first) } | to toml | save -f $toml
-  print -e $"($tag): uploaded ($built | get sys | str join ', '), wrote ($toml)"
+  let fresh = ($nars | each {|nar|
+    {
+      key: $nar.system
+      url: $"https://github.com/($repo)/releases/download/seed-{version}/seed-{version}-($nar.system).nar.xz"
+      hash: $nar.hash
+      unpack: true
+      name: "seed"
+    }
+  })
+  let table = (open $manifest)
+  let untouched = ($table.source | where key not-in ($nars | get system))
+  $table | update source ($fresh ++ $untouched) | update pin {version: $version} | to toml | save -f $manifest
+  print -e $"($tag): uploaded ($nars | get system | str join ', '), wrote ($manifest)"
 }
