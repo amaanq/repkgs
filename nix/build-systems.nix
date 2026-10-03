@@ -69,6 +69,8 @@ let
         python-build
         python-installer
       ];
+      # extension modules link the target's libpython, never the build machine's
+      dependencies = on platform.cross [ pkgs.cpython ];
     };
     # what exists before llvm and rust (formatelf, git) sets `cargo.tool = buildPkgs.rust-bootstrap`.
     # A cross build takes std for the target from its own package, <tool>-std
