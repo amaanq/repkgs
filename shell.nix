@@ -1,32 +1,29 @@
-# A development shell with nuff (nix/format.nix), rom and what spieler runs, from plain nixpkgs
-# (nix/nixpkgs.nix) and apart from the package set
 {
   pkgs ? import (import ./nix/nixpkgs.nix) { },
   rom ?
     let
-      locked = (builtins.fromJSON (builtins.readFile ./flake.lock)).nodes.rom.locked;
-      source = fetchTarball {
-        url = "https://github.com/${locked.owner}/${locked.repo}/archive/${locked.rev}.tar.gz";
-        sha256 = locked.narHash;
+      pin = (builtins.fromJSON (builtins.readFile ./flake.lock)).nodes.rom.locked;
+      src = builtins.fetchTarball {
+        url = "https://github.com/${pin.owner}/${pin.repo}/archive/${pin.rev}.tar.gz";
+        sha256 = pin.narHash;
       };
     in
-    pkgs.callPackage (source + "/nix/package.nix") { },
+    pkgs.callPackage "${src}/nix/package.nix" { },
 }:
 let
   host = pkgs.stdenv.hostPlatform;
-  wild = host.isLinux && (host.isx86_64 || host.isAarch64);
 in
 pkgs.mkShell {
   packages = [
     rom
     (import ./nix/format.nix { inherit pkgs; })
     (import ./nix/spieler.nix { inherit pkgs; })
-    # bsdtar, so spieler's prefetch unpacks the way nix/sources.nix does
+    # spieler prefetches with bsdtar so archives unpack as nix/sources.nix unpacks them, and
+    # formats act.lock with taplo as nuff does
     pkgs.libarchive
-    # spieler formats act.lock the way nuff does
     pkgs.taplo
   ]
-  ++ pkgs.lib.optionals wild [
+  ++ pkgs.lib.optionals (host.isLinux && (host.isx86_64 || host.isAarch64)) [
     pkgs.wild
     pkgs.clang
   ];

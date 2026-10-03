@@ -1,10 +1,6 @@
-# Nix master with the fixes this set relies on, built through nixpkgs' component packaging from
-# the `repkgs` branch of github.com/Mic92/nix-1:
-#   https://github.com/NixOS/nix/pull/16459  needed, dynamic derivations rebuild after a gc
-#   https://github.com/NixOS/nix/pull/16465  CA rebuilds of derivations that see their $out
-#                                            (bootstrap/) no longer conflict
-#   https://github.com/NixOS/nix/pull/16477  a CA rebuild that differs from a collected output
-#                                            replaces its build trace rather than failing
+# Nix's development branch plus three fixes the bootstrap leans on, NixOS/nix#16459 (dynamic
+# derivations rebuild after a GC), #16465 (CA rebuilds of derivations that see their own output path)
+# and #16477 (a CA rebuild that differs from a collected output replaces its build trace).
 {
   pkgs ? import (import ../nixpkgs.nix) { },
 }:

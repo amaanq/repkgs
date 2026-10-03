@@ -1,8 +1,6 @@
-# CI for one build machine, `nix-build nix/checks.nix -A pkg-jq` without flakes and `checks` in
-# flake.nix. Every supported package is `pkg-<name>` natively and `<platform>-<name>` elsewhere,
-# separate test suites are `tests-<name>` and tests/builder is `builder-<name>`. The msvc platform
-# stays out of the default list because its toolchain carries the unfree Windows SDK, which the
-# public cache must not hold.
+# What CI builds on one machine, also the flake's `checks`. Run one with
+# `nix-build nix/checks.nix -A pkg-jq`. msvc is left out by default since its toolchain carries the
+# unfree Windows SDK, which must not reach the public cache.
 {
   system ? builtins.currentSystem,
   nixpkgs ? import ./nixpkgs.nix,
@@ -16,47 +14,51 @@
   ],
 }:
 let
-  host = import nixpkgs { inherit system; };
-  inherit (host) lib;
+  pkgs = import nixpkgs { inherit system; };
+  inherit (pkgs) lib;
 
+  rename = f: lib.mapAttrs' (name: value: lib.nameValuePair (f name) value);
   setFor = platform: import ../default.nix { inherit system platform; };
-  prefixed = prefix: lib.mapAttrs' (name: lib.nameValuePair "${prefix}${name}");
-  # `supported` is known without forcing the derivation
-  supported = lib.filterAttrs (_: package: package.supported);
-  here = supported (setFor system);
-  packagesFor =
+  usable = platform: lib.filterAttrs (_: p: p.supported) (setFor platform);
+  native = usable system;
+
+  perPlatform = map (
     platform:
-    prefixed (if platform == system then "pkg-" else "${platform}-") (supported (setFor platform));
-  suites = lib.concatMapAttrs (
-    name: package: lib.optionalAttrs (package ? tests) { ${name} = package.tests; }
-  ) here;
-  checkout = builtins.path {
-    path = ../.;
+    rename (name: if platform == system then "pkg-${name}" else "${platform}-${name}") (usable platform)
+  ) platforms;
+  testSuites = rename (name: "tests-${name}") (
+    lib.mapAttrs (_: p: p.tests) (lib.filterAttrs (_: p: p ? tests) native)
+  );
+  builderTests = rename (name: "builder-${name}") (import ../tests/builder { inherit system; });
+
+  tree = builtins.path {
     name = "source";
+    path = ../.;
     filter =
       path: type:
-      !(builtins.elem (baseNameOf path) [
+      !lib.elem (baseNameOf path) [
         ".jj"
         "target"
-      ])
+      ]
       && lib.cleanSourceFilter path type;
   };
-  formatter = import ./format.nix {
-    pkgs = host;
-    evaluates = false;
-  };
 in
-lib.mergeAttrsList (map packagesFor platforms)
-// prefixed "tests-" suites
-// prefixed "builder-" (import ../tests/builder { inherit system; })
+lib.foldl' lib.mergeAttrs { } perPlatform
+// testSuites
+// builderTests
 // {
-  schema = host.runCommand "bigtop-schema-check" { } ''
+  schema = pkgs.runCommand "bigtop-schema-check" { } ''
     ${(setFor system).bigtop}/bin/bigtop schema --check ${./schema.json}
     touch $out
   '';
-  format = host.runCommand "format-check" {
-    nativeBuildInputs = [ formatter ];
-  } "cp -r ${checkout} src && chmod -R u+w src && cd src && nuff --check && touch $out";
+  format = pkgs.runCommand "format-check" {
+    nativeBuildInputs = [
+      (import ./format.nix {
+        inherit pkgs;
+        evaluates = false;
+      })
+    ];
+  } "cp -r ${tree} src && chmod -R u+w src && cd src && nuff --check && touch $out";
   inherit
     (import ../pkgs/pe/peanut {
       inherit system;
