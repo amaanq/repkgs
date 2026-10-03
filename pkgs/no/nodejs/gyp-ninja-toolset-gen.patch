@@ -1,0 +1,27 @@
+Give each gyp toolset its own SHARED_INTERMEDIATE_DIR in the ninja generator. A cross build
+emits V8 targets for both the host and the target toolset, and with one shared gen/ both write
+the same files, which ninja 1.13 rejects as duplicate edges.
+
+diff -ruN a/tools/gyp/pylib/gyp/generator/ninja.py b/tools/gyp/pylib/gyp/generator/ninja.py
+--- a/tools/gyp/pylib/gyp/generator/ninja.py
++++ b/tools/gyp/pylib/gyp/generator/ninja.py
+@@ -42,7 +42,7 @@
+     # the start of a string, while $| is used for variables that can appear
+     # anywhere in a string.
+     "INTERMEDIATE_DIR": "$!INTERMEDIATE_DIR",
+-    "SHARED_INTERMEDIATE_DIR": "$!PRODUCT_DIR/gen",
++    "SHARED_INTERMEDIATE_DIR": "$!SHARED_INTERMEDIATE_DIR",
+     "PRODUCT_DIR": "$!PRODUCT_DIR",
+     "CONFIGURATION_NAME": "$|CONFIGURATION_NAME",
+     # Special variables that may be used by gyp 'rule' targets.
+@@ -264,6 +264,10 @@
+         dir.
+         """
+ 
++        if (SHARED_INTERMEDIATE_DIR := "$!SHARED_INTERMEDIATE_DIR") in path:
++            shared = "gen.host" if self.toolset == "host" else "gen"
++            path = path.replace(SHARED_INTERMEDIATE_DIR, "$!PRODUCT_DIR/" + shared)
++
+         if (PRODUCT_DIR := "$!PRODUCT_DIR") in path:
+             if product_dir:
+                 path = path.replace(PRODUCT_DIR, product_dir)

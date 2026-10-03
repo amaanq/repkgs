@@ -20,6 +20,7 @@ patches = [
   "upstream-libcxx-includes.patch",
   "upstream-icu-emulator.patch",
   "v8-cfi-arm64.patch",
+  "gyp-ninja-toolset-gen.patch",
   "upstream-highway-rvv-baseline.patch",
 ]
 phases = [ "nodejs.configure", "nodejs.build", "nodejs.install" ]
