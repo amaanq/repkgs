@@ -1,15 +1,16 @@
 sources-from = "llvm21"
 
 [build]
-bin     = [ "ld.lld" ]
+bin     = [ "ld.lld", "lld" ]
 needs   = [ "llvm21", "zlib", "zstd" ]
 skip    = [ "cmake.test" ]
 systems = [ "cmake" ]
 tools   = [ "cpython" ]
 
 [build.check]
-run     = false
-version = true
+run = false
+# under wine ld.lld.exe resolves to lld.exe, which then picks no flavor from its name
+version = "lld -flavor gnu --version"
 
 [build.cmake]
 root = "lld"
