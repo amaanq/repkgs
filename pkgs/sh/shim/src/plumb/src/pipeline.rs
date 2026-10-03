@@ -193,7 +193,29 @@ fn candidates_of(package: &Package) -> io::Result<Vec<Candidate>> {
          .map(|items| items.iter().filter_map(Value::as_object).cloned().collect())
          .unwrap_or_default());
    }
-   datasource::versions(&watch_purl(package)?)
+   let mut found = datasource::versions(&watch_purl(package)?)?;
+   let Some(ref base) = package.upstream.base else {
+      return Ok(found);
+   };
+   if !base.starts_with(|ch: char| ch.is_ascii_digit()) {
+      return Err(io::Error::other(format!(
+         "[upstream] base = {base:?} does not start with a digit"
+      )));
+   }
+
+   for candidate in &mut found {
+      if datasource::rev(candidate).is_none() {
+         continue;
+      }
+      let Some(date) = datasource::date(candidate).map(str::to_owned) else {
+         continue;
+      };
+      candidate.insert(
+         "version".to_owned(),
+         Value::String(datasource::unstable(base, &date)),
+      );
+   }
+   Ok(found)
 }
 
 /// Adds `candidates` and `error` per package, the only stage that talks to
@@ -382,11 +404,6 @@ fn decide_one(found: &Resolved, prerelease: bool) -> Entry {
    let Some(newest) = best else {
       return entry;
    };
-   if let Some(ref have) = current
-      && version::cmp(&newest, have) != Ordering::Greater
-   {
-      return entry;
-   }
    let Some(chosen) = eligible
       .iter()
       .copied()
@@ -394,6 +411,15 @@ fn decide_one(found: &Resolved, prerelease: bool) -> Entry {
    else {
       return entry;
    };
+   let pinned_rev = package.pin.get("rev").and_then(Value::as_str);
+   // two commits of one day share a version, so a branch tip moves by rev
+   let moved = datasource::rev(chosen).is_some_and(|rev| Some(rev) != pinned_rev);
+   if let Some(ref have) = current
+      && version::cmp(&newest, have) != Ordering::Greater
+      && !moved
+   {
+      return entry;
+   }
    let newer_pre = version::max(
       found
          .candidates
@@ -408,6 +434,7 @@ fn decide_one(found: &Resolved, prerelease: bool) -> Entry {
       held,
       upstream.every.as_deref(),
       newer_pre.as_deref(),
+      pinned_rev,
    );
    let pin = candidate_pin(chosen);
    entry.sources = package
@@ -433,6 +460,7 @@ fn update_notes(
    held: usize,
    every: Option<&str>,
    newer_pre: Option<&str>,
+   pinned_rev: Option<&str>,
 ) -> String {
    let mut notes = Vec::new();
    if let Some(released) = datasource::date(chosen) {
@@ -446,6 +474,14 @@ fn update_notes(
    }
    if let Some(pre) = newer_pre {
       notes.push(format!("pre-release {pre} ignored"));
+   }
+   if let Some(rev) = datasource::rev(chosen) {
+      let short = |full: &str| full.get(..12).unwrap_or(full).to_owned();
+      notes.push(format!(
+         "rev {} -> {}",
+         pinned_rev.map_or_else(|| "none".to_owned(), short),
+         short(rev)
+      ));
    }
    notes.join(", ")
 }

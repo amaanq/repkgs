@@ -49,6 +49,43 @@ pub fn date(candidate: &Candidate) -> Option<&str> {
    text(candidate, "date")
 }
 
+/// The commit a branch-tip candidate stands for.
+pub fn rev(candidate: &Candidate) -> Option<&str> {
+   text(candidate, "rev")
+}
+
+/// nixpkgs' spelling for a commit after `base`, dated by the commit's day.
+pub fn unstable(base: &str, date: &str) -> String {
+   format!("{base}-unstable-{}", date.get(..10).unwrap_or(date))
+}
+
+/// The newest stable release among tag names, "0" when none qualifies.
+fn base_of<'tag>(tags: impl IntoIterator<Item = &'tag str>) -> String {
+   let releases = tags
+      .into_iter()
+      .map(version::from_tag)
+      .filter(|release| {
+         release.starts_with(|ch: char| ch.is_ascii_digit()) && !version::is_prerelease(release)
+      })
+      .collect::<Vec<_>>();
+   version::max(releases.iter().map(String::as_str))
+      .unwrap_or("0")
+      .to_owned()
+}
+
+/// `?branch=` follows one branch's newest commit instead of releases, so the
+/// datasource yields that commit alone.
+fn tip(base: &str, sha: Option<&str>, committed: Option<&str>) -> Vec<Candidate> {
+   let (Some(rev), Some(date)) = (sha, committed) else {
+      return Vec::new();
+   };
+   vec![candidate(json!({
+      "version": unstable(base, date),
+      "date": date,
+      "rev": rev,
+   }))]
+}
+
 fn fetch(url: &str, what: &str, max_age: Duration) -> io::Result<http::Response> {
    let response = http::cached(url, max_age)?;
    if response.status != 200 {
@@ -129,6 +166,29 @@ fn github(purl: &Purl) -> io::Result<Vec<Candidate>> {
       "https://api.github.com/repos/{}/{}",
       purl.namespace, purl.name
    );
+   if let Some(branch) = purl.qualifiers.get("branch") {
+      let commits = fetch_json(
+         &format!(
+            "{repo}/commits?sha={}&per_page=1",
+            utf8_percent_encode(branch, NON_ALPHANUMERIC)
+         ),
+         &repo,
+         ten_minutes(),
+      )?;
+      let newest = array(&commits).first();
+      let base = fetch_json(&format!("{repo}/tags?per_page=100"), &repo, ten_minutes())
+         .map_or_else(
+            |_unlisted| "0".to_owned(),
+            |listed| base_of(array(&listed).iter().filter_map(|tag| str_at(tag, "name"))),
+         );
+      return Ok(tip(
+         &base,
+         newest.and_then(|commit| str_at(commit, "sha")),
+         newest
+            .and_then(|commit| commit.pointer("/commit/committer/date"))
+            .and_then(Value::as_str),
+      ));
+   }
    let releases = fetch_json(
       &format!("{repo}/releases?per_page=20"),
       &repo,
@@ -180,8 +240,29 @@ fn gitlab(purl: &Purl) -> io::Result<Vec<Candidate>> {
       &format!("{host}/api/v4/projects/{id}/repository/tags?per_page=100"),
       &purl.name,
       ten_minutes(),
-   )?;
-   Ok(array(&tags)
+   );
+   if let Some(branch) = purl.qualifiers.get("branch") {
+      let head = fetch_json(
+         &format!(
+            "{host}/api/v4/projects/{id}/repository/branches/{}",
+            utf8_percent_encode(branch, NON_ALPHANUMERIC)
+         ),
+         &purl.name,
+         ten_minutes(),
+      )?;
+      let base = tags.map_or_else(
+         |_unlisted| "0".to_owned(),
+         |listed| base_of(array(&listed).iter().filter_map(|tag| str_at(tag, "name"))),
+      );
+      return Ok(tip(
+         &base,
+         head.pointer("/commit/id").and_then(Value::as_str),
+         head
+            .pointer("/commit/committed_date")
+            .and_then(Value::as_str),
+      ));
+   }
+   Ok(array(&tags?)
       .iter()
       .map(|tag| {
          let name = str_at(tag, "name").unwrap_or_default();

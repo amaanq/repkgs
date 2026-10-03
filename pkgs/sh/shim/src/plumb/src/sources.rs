@@ -37,6 +37,7 @@ pub struct Upstream {
    pub allow:      Option<String>,
    pub prerelease: Option<bool>,
    pub every:      Option<String>,
+   pub base:       Option<String>,
    pub group:      Option<String>,
    pub cpe:        Option<String>,
    pub frozen:     Option<String>,

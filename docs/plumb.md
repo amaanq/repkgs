@@ -33,6 +33,7 @@ purl = "pkg:github/sharkdp/fd"     # the identity, which picks the datasource an
 # allow = ">=10,<11"               versions outside are never candidates
 # prerelease = false
 # every = "30d"                    a release must be this old
+# base = "2.35.2"                  the release a ?branch= tip counts from, else the newest tag
 # group = "llvm"
 # cpe = "cpe:2.3:a:haxx:curl"      for NVD where OSV does not know the project
 # frozen = "last release 2009"     instead of a purl, for a dead upstream nobody polls
@@ -79,6 +80,12 @@ two vendor feeds, `visualstudio` for the Visual Studio release manifest and `app
 software update catalog). HTTP goes through a cache under `$XDG_CACHE_HOME/plumb` keeping etag,
 last-modified and body per URL, so a run over an unchanged world is conditional requests answered
 with 304.
+
+A github or gitlab purl with `?branch=<name>` follows that branch instead of releases. The one
+candidate is its newest commit, versioned `<base>-unstable-<commit day>` the way nixpkgs names
+snapshots, with the commit in `[pin] rev` for a `{rev}` url. The base is `[upstream] base` or the
+newest stable tag among the first hundred the API lists. A tip that moved within the same day keeps
+its version, so decide also proposes an update whenever the rev differs from the pinned one.
 
 **decide** is a pure function from the manifest, the candidates and the flags to a plan entry, the
 new version with its sources, pins and lock work, or a reason to skip. `check --json` prints the
