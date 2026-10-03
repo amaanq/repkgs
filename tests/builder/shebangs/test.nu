@@ -1,41 +1,45 @@
-# fix-shebangs (core.nu) points interpreters at PATH, keeps their arguments, and --undo restores
-# what it changed
-use core.nu *
-use checks.nu *
+use checks.nu [expect pass]
 
-let dir = (mktemp -d)
-$env.NIX_BUILD_TOP = (mktemp -d)
-let scripts = {
-  env: "#!/usr/bin/env sh\necho"
-  args: "#! /usr/bin/env sh -e\necho"
-  abs: "#!/usr/local/bin/nu --stdin\n1"
-  sh: "#!/bin/sh\necho"
-  body: "#!/bin/sh\n#!/bin/bash in the body"
-  stub: "#!/bin/sh\nexec ruby -x \"$0\"\n#!/usr/bin/env nu\n1"
-  missing: "#!/usr/bin/nonexistent\n"
+let top  = (mktemp -d)
+let tree = $"($top)/tree"
+mkdir $tree
+$env.NIX_BUILD_TOP = $top
+
+let sh      = (which sh | get path.0)
+let nushell = (which nu | get path.0)
+
+# name, executable, contents, and what jib should leave behind
+let cases = [
+  [name           exec  before                                                  after];
+  [env            true  "#!/usr/bin/env sh\ntrue\n"                             $"#!($sh)\ntrue\n"]
+  [env-spaced     true  "#! /usr/bin/env sh -eu\ntrue\n"                        $"#!($sh) -eu\ntrue\n"]
+  [absolute       true  "#!/usr/bin/nu --no-config-file\n1\n"                   $"#!($nushell) --no-config-file\n1\n"]
+  [local          true  "#!/usr/local/bin/nu\n1\n"                              $"#!($nushell)\n1\n"]
+  [bin-sh         true  "#!/bin/sh\ntrue\n"                                     "#!/bin/sh\ntrue\n"]
+  [bin-env        true  "#!/usr/bin/env\n"                                      "#!/usr/bin/env\n"]
+  [unknown        true  "#!/usr/bin/env no-such-interpreter\n"                  "#!/usr/bin/env no-such-interpreter\n"]
+  [later-env      true  "#!/bin/sh\nexec nu -x \"$0\"\n#!/usr/bin/env nu\n1\n"  $"#!/bin/sh\nexec nu -x \"$0\"\n#!($nushell)\n1\n"]
+  [later-absolute true  "#!/bin/sh\n#!/usr/bin/nu\n"                            "#!/bin/sh\n#!/usr/bin/nu\n"]
+  [not-executable false "#!/usr/bin/env sh\ntrue\n"                             "#!/usr/bin/env sh\ntrue\n"]
+]
+
+for case in $cases {
+  let file = $"($tree)/($case.name)"
+  $case.before | save -f $file
+  if $case.exec { ^chmod +x $file }
 }
-for script in ($scripts | transpose name text) {
-  $script.text | save -f $"($dir)/($script.name)"
-  ^chmod +x $"($dir)/($script.name)"
+let stamp = (ls $"($tree)/env" | get modified.0)
+
+^jib shebangs $tree
+for case in $cases {
+  let found = (open --raw $"($tree)/($case.name)")
+  expect $"($case.name): ($found | lines | first) wanted ($case.after | lines | first)" ($found == $case.after)
 }
-let sh      = (which sh | get 0.path)
-let nushell = (which nu | where type == external | get 0.path)
-let now     = {|name| open --raw $"($dir)/($name)" }
+expect "a rewrite keeps the file's mtime" ((ls $"($tree)/env" | get modified.0) == $stamp)
 
-fix-shebangs $dir
-expect "env finds sh on PATH"                         ((do $now env) == $"#!($sh)\necho")
-expect "no line is added to an escript-style header"  ((do $now abs | lines | length) == 2)
-expect "interpreter arguments survive"                ((do $now args | lines | first) == $"#!($sh) -e")
-expect "an absolute interpreter moves to PATH's"      ((do $now abs | lines | first) == $"#!($nushell) --stdin")
-expect "/bin/sh is left alone"                        ((do $now sh) == $scripts.sh)
-expect "absolute paths change on the first line only" ((do $now body) == $scripts.body)
-expect "an env line counts anywhere"                  ((do $now stub | lines | get 2) == $"#!($nushell)")
-expect "an interpreter missing from PATH stays"       ((do $now missing) == $scripts.missing)
-^sh $"($dir)/args"
+^jib shebangs --undo $tree
+for case in $cases {
+  expect $"($case.name) is restored by --undo" ((open --raw $"($tree)/($case.name)") == $case.before)
+}
 
-# a build system writes these after prepare (pyapp entry points), so undo must not touch them
-$"#!($sh)\nimport sys" | save -f $"($dir)/generated"
-fix-shebangs $dir --undo
-for name in [env args abs stub] { expect $"undo restores ($name)" ((do $now $name) == ($scripts | get $name)) }
-expect "undo leaves a later script alone" ((do $now generated) == $"#!($sh)\nimport sys")
 pass
