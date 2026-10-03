@@ -1,54 +1,35 @@
-# Choices a package offers, declared as its `features` and read back as values:
-#
-#   features = {
-#     codec = { values = [ "zstd" "lz4" "both" ]; default = "zstd"; doc = "compression codec"; };
-#     manpages = { default = false; };
-#   };
-#
-# A feature has its default's type, and `values` bounds a string or each item of a list. The set's
-# `features` argument fills the names a package declares, then `overrides.<pkg>.features` wins.
-# The result goes into the derivation and onto it as `.features`.
-let
-  inherit (builtins)
-    all
-    attrNames
-    elem
-    intersectAttrs
-    isList
-    mapAttrs
-    typeOf
-    ;
-  checked =
-    package: declared:
-    mapAttrs (
-      feature: value:
-      let
-        spec = declared.${feature};
-        wanted = typeOf spec.default;
-      in
-      if typeOf value != wanted then
-        throw "${package}: feature ${feature} wants a ${wanted}, got a ${typeOf value}"
-      else if
-        spec ? values && !all (item: elem item spec.values) (if isList value then value else [ value ])
-      then
-        throw "${package}: feature ${feature} = ${toString value}, not among ${toString spec.values}"
-      else
-        value
-    );
-in
+# A package's feature values, its defaults under the set-wide values it declares under its own
+# override entry. Values are checked lazily, so one shadowed by the package's own never fails.
 {
   resolve =
-    package: declared: everywhere: here:
+    name: declared: setWide: own:
     let
-      strays = attrNames (removeAttrs here (attrNames declared));
-      defaults = mapAttrs (_: spec: spec.default) declared;
+      names = builtins.attrNames declared;
+      unknown = builtins.filter (n: !(declared ? ${n})) (builtins.attrNames own);
+      words = builtins.concatStringsSep " ";
+
+      checked =
+        feature: value:
+        let
+          decl = declared.${feature};
+          want = builtins.typeOf decl.default;
+          got = builtins.typeOf value;
+          items = if builtins.isList value then value else [ value ];
+        in
+        if got != want then
+          throw "${name}: feature ${feature} wants a ${want}, got a ${got}"
+        else if decl ? values && !builtins.all (item: builtins.elem item decl.values) items then
+          throw "${name}: feature ${feature} = ${toString value}, not among ${toString decl.values}"
+        else
+          value;
+      given = values: builtins.mapAttrs checked values;
     in
-    if declared == { } && here == { } then
+    if declared == { } && own == { } then
       { }
-    else if strays != [ ] then
-      throw "${package}: unknown features ${toString strays} (has: ${toString (attrNames declared)})"
+    else if unknown != [ ] then
+      throw "${name}: unknown features ${words unknown} (has: ${words names})"
     else
-      defaults
-      // checked package declared (intersectAttrs declared everywhere)
-      // checked package declared here;
+      builtins.mapAttrs (_: decl: decl.default) declared
+      // given (builtins.intersectAttrs declared setWide)
+      // given own;
 }
