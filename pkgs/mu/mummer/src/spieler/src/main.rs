@@ -9,6 +9,7 @@ mod nix;
 mod pipeline;
 mod purl;
 mod sources;
+mod tag;
 mod version;
 
 use std::{

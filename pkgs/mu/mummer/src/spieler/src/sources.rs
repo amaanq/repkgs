@@ -23,7 +23,10 @@ use serde_json::{
    Value,
 };
 
-use crate::hooks;
+use crate::{
+   hooks,
+   tag::Template,
+};
 
 const LOCK_ECOSYSTEMS: [&str; 3] = ["go", "hackage", "luarocks"];
 
@@ -141,6 +144,12 @@ pub struct Package {
 }
 
 impl Package {
+   /// act.toml's tag template, checked when the package was read.
+   pub fn template(&self) -> Option<Template> {
+      let raw = self.tag.as_deref()?;
+      raw.parse().ok()
+   }
+
    pub fn version(&self) -> Option<&str> {
       self.pin.get("version").and_then(Value::as_str)
    }
@@ -201,19 +210,6 @@ fn purl_of(short: &str) -> String {
    format!("pkg:{}", short.replacen(':', "/", 1))
 }
 
-/// The tag `template` spells for `version`, None for a template with `*`.
-#[expect(
-   clippy::literal_string_with_formatting_args,
-   reason = "act.toml's own placeholders"
-)]
-pub fn spelled(template: &str, version: &str) -> Option<String> {
-   (!template.contains('*')).then(|| {
-      template
-         .replace("{version_}", &version.replace('.', "_"))
-         .replace("{version}", version)
-   })
-}
-
 /// `fetch` as sources by name, with the hashes act.lock records for them.
 fn sources_of(
    fetch: Option<Fetch>,
@@ -252,7 +248,7 @@ fn sources_of(
 
 /// act.lock's values as one map, `[vars]` among them, with the tag act.toml's
 /// `tag` template spells where act.lock records none.
-fn pin_of(mut lock: Map<String, Value>, tag: Option<&str>) -> Map<String, Value> {
+fn pin_of(mut lock: Map<String, Value>, tag: Option<&Template>) -> Map<String, Value> {
    let mut pin = match lock.remove("vars") {
       Some(Value::Object(vars)) => vars,
       _ => Map::new(),
@@ -260,7 +256,7 @@ fn pin_of(mut lock: Map<String, Value>, tag: Option<&str>) -> Map<String, Value>
    pin.extend(lock);
    if let (Some(template), Some(version)) = (tag, pin.get("version").and_then(Value::as_str))
       && !pin.contains_key("tag")
-      && let Some(spelt) = spelled(template, version)
+      && let Some(spelt) = template.spell(version)
    {
       pin.insert("tag".to_owned(), Value::String(spelt));
    }
@@ -317,7 +313,13 @@ fn parse(file: &Path) -> io::Result<Option<Package>> {
    let source =
       sources_of(act.fetch, lock.remove("hash"), upstream.purl.as_deref()).map_err(fail)?;
 
-   let pin = pin_of(lock, act.tag.as_deref());
+   let template = act
+      .tag
+      .as_deref()
+      .map(str::parse::<Template>)
+      .transpose()
+      .map_err(|error| fail(error.to_string()))?;
+   let pin = pin_of(lock, template.as_ref());
 
    // in-tree sources have nothing to track but may still lock dependencies.
    // `frozen = "<reason>"` pins a dead upstream: nothing to poll, hash stays as

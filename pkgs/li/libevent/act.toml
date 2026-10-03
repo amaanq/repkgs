@@ -1,6 +1,6 @@
-tag   = "release-{version}"
+tag   = "release-{version}-stable"
 track = "github:libevent/libevent"
-fetch = { url = "https://github.com/libevent/libevent/releases/download/release-{version}/libevent-{version}.tar.gz" }
+fetch = { asset = "libevent-{version}-stable.tar.gz" }
 with  = [ "cmake" ]
 deps  = [ "openssl" ]
 test  = false
