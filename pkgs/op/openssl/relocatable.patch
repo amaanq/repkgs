@@ -1,67 +1,67 @@
+diff -ruN a/crypto/cversion.c b/crypto/cversion.c
 --- a/crypto/cversion.c
 +++ b/crypto/cversion.c
-@@ -48,7 +48,12 @@
+@@ -48,7 +48,15 @@
  
  extern char ossl_cpu_info_str[];
  
 -#if defined(_WIN32) && defined(OSSL_WINCTX)
-+#if defined(OSSL_RELOCATABLE) && !defined(MAX_PATH)
-+#include <limits.h>
-+#define MAX_PATH PATH_MAX
++#if (defined(_WIN32) && defined(OSSL_WINCTX)) || defined(OSSL_RELOCATABLE)
++#define RUNTIME_DIRS
 +#endif
 +
-+#if (defined(_WIN32) && defined(OSSL_WINCTX)) || defined(OSSL_RELOCATABLE)
++#ifdef RUNTIME_DIRS
++#ifndef MAX_PATH
++#define MAX_PATH 4096
++#endif
++
  /* size: MAX_PATH + sizeof("OPENSSLDIR: \"\"") */
  static char openssldir[MAX_PATH + 15];
  
-@@ -78,7 +83,7 @@
+@@ -78,7 +86,7 @@
  
  const char *OpenSSL_version(int t)
  {
 -#if defined(_WIN32) && defined(OSSL_WINCTX)
-+#if (defined(_WIN32) && defined(OSSL_WINCTX)) || defined(OSSL_RELOCATABLE)
++#ifdef RUNTIME_DIRS
      /* Cannot really fail but we would return empty strings anyway */
      (void)RUN_ONCE(&version_strings_once, version_strings_setup);
  #endif
-@@ -96,7 +101,7 @@
+@@ -96,7 +104,7 @@
          return compiler_flags;
      case OPENSSL_PLATFORM:
          return PLATFORM;
 -#if defined(_WIN32) && defined(OSSL_WINCTX)
-+#if (defined(_WIN32) && defined(OSSL_WINCTX)) || defined(OSSL_RELOCATABLE)
++#ifdef RUNTIME_DIRS
      case OPENSSL_DIR:
          return openssldir;
      case OPENSSL_ENGINES_DIR:
+diff -ruN a/crypto/defaults.c b/crypto/defaults.c
 --- a/crypto/defaults.c
 +++ b/crypto/defaults.c
-@@ -13,10 +13,15 @@
+@@ -13,6 +13,12 @@
  #include "internal/cryptlib.h"
  #include "internal/e_os.h"
  
--#if defined(_WIN32) && defined(OSSL_WINCTX)
--
- #define TOSTR(x) #x
- #define MAKESTR(x) TOSTR(x)
-+
-+/* engines and providers sit next to the loaded libcrypto, wherever that is */
-+#if defined(OSSL_RELOCATABLE)
++#ifdef OSSL_RELOCATABLE
 +#include <reloc.h>
++#define RELOC_STR(x) #x
++#define RELOC_ENGINES(major) RELOC("engines-" RELOC_STR(major))
 +#endif
 +
-+#if defined(_WIN32) && defined(OSSL_WINCTX)
- #define NOQUOTE(x) x
- #if defined(OSSL_WINCTX)
- #define REGISTRY_KEY "SOFTWARE\\WOW6432Node\\OpenSSL" \
-@@ -170,6 +175,8 @@
+ #if defined(_WIN32) && defined(OSSL_WINCTX)
+ 
+ #define TOSTR(x) #x
+@@ -170,6 +176,8 @@
      if (!RUN_ONCE(&defaults_setup_init, do_defaults_setup))
          return NULL;
      return (const char *)enginesdirptr;
 +#elif defined(OSSL_RELOCATABLE)
-+    return RELOC("engines-" MAKESTR(OPENSSL_VERSION_MAJOR));
++    return RELOC_ENGINES(OPENSSL_VERSION_MAJOR);
  #else
      return ENGINESDIR;
  #endif
-@@ -186,6 +193,8 @@
+@@ -186,6 +194,8 @@
      if (!RUN_ONCE(&defaults_setup_init, do_defaults_setup))
          return NULL;
      return (const char *)modulesdirptr;

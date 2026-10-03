@@ -1,3 +1,4 @@
+diff -ruN a/awklib/eg/lib/groupawk.in b/awklib/eg/lib/groupawk.in
 --- a/awklib/eg/lib/groupawk.in
 +++ b/awklib/eg/lib/groupawk.in
 @@ -11,7 +11,7 @@
@@ -9,6 +10,7 @@
  }
  
  function _gr_init(    oldfs, oldrs, olddol0, grcat,
+diff -ruN a/awklib/eg/lib/passwdawk.in b/awklib/eg/lib/passwdawk.in
 --- a/awklib/eg/lib/passwdawk.in
 +++ b/awklib/eg/lib/passwdawk.in
 @@ -11,7 +11,7 @@
@@ -20,31 +22,46 @@
  }
  
  function _pw_init(    oldfs, oldrs, olddol0, pwcat, using_fw, using_fpat)
+diff -ruN a/main.c b/main.c
 --- a/main.c
 +++ b/main.c
-@@ -141,7 +141,8 @@
+@@ -28,6 +28,7 @@
+ 
+ #include "awk.h"
+ #include "getopt.h"
++#include <reloc.h>
+ 
+ #ifdef HAVE_MCHECK_H
+ #include <mcheck.h>
+@@ -141,7 +142,7 @@
  static int do_binary = false;		/* hands off my data! */
  static int do_version = false;		/* print version info */
  static const char *locale = "";		/* default value to setlocale */
 -static const char *locale_dir = LOCALEDIR;	/* default locale dir */
-+#include <reloc.h>
-+static const char *locale_dir;			/* set in main, relative to the binary */
++static const char *locale_dir;	/* default locale dir */
  #ifdef USE_PERSISTENT_MALLOC
  const char *get_pma_version(void);
  #endif
-@@ -245,6 +246,12 @@
+@@ -245,6 +246,18 @@
  	if (argc < 2)
  		usage(EXIT_FAILURE, stderr);
  
-+	static char awkpath[PATH_MAX + 3] = ".:";
-+	strcat(awkpath, RELOC("../share/awk"));
-+	defpath = awkpath;
-+	deflibpath = RELOC("../lib/gawk");
 +	locale_dir = RELOC("../share/locale");
++	deflibpath = RELOC("../lib/gawk");
 +	setenv("AWKLIBEXEC", RELOC("../libexec/awk"), 0);
++	{
++		const char *share = RELOC("../share/awk");
++		char *path;
++
++		emalloc(path, char *, strlen(share) + 3);
++		sprintf(path, ".%c%s", envsep, share);
++		defpath = path;
++	}
++
  	if ((cp = getenv("GAWK_LOCALE_DIR")) != NULL)
  		locale_dir = cp;
  
+diff -ruN a/posix/gawkmisc.c b/posix/gawkmisc.c
 --- a/posix/gawkmisc.c
 +++ b/posix/gawkmisc.c
 @@ -54,8 +54,8 @@

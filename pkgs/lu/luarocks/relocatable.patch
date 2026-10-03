@@ -1,3 +1,4 @@
+diff -ruN a/GNUmakefile b/GNUmakefile
 --- a/GNUmakefile
 +++ b/GNUmakefile
 @@ -36,7 +36,6 @@
@@ -8,33 +9,30 @@
  	'}\n'\
  	'variables = {\n'\
  	"$$([ -n "$(LUA_DIR)" ] && printf '   LUA_DIR = "%s";\\n' "$(LUA_DIR)")"\
-@@ -68,22 +67,24 @@
- $(builddir)/luarocks: src/bin/luarocks config.unix
- 	mkdir -p "$(@D)"
+@@ -70,9 +69,10 @@
  	(printf '$(SHEBANG)\n'\
-+	'local luadir = arg[0]:match("^(.*)/bin/[^/]*$$") .. [[/share/lua/$(LUA_VERSION)]]\n'\
  	'package.loaded["luarocks.core.hardcoded"] = { '\
  	"$$([ -n "$(FORCE_CONFIG)" ] && printf 'FORCE_CONFIG = true, ')"\
 -	'SYSCONFDIR = [[$(luarocksconfdir)]] }\n'\
 -	'package.path=[[$(luadir)/?.lua;]] .. package.path\n'\
 -	'local list = package.searchers or package.loaders; table.insert(list, 1, function(name) if name:match("^luarocks%%.") then return loadfile([[$(luadir)/]] .. name:gsub([[%%.]], [[/]]) .. [[.lua]]) end end)\n'; \
 +	'}\n'\
-+	'package.path=luadir .. [[/?.lua;]] .. package.path\n'\
++	'local luadir = arg[0]:gsub([[/bin/[^/]*$$]], [[]]) .. [[/share/lua/$(LUA_VERSION)]]\n'\
++	'package.path = luadir .. [[/?.lua;]] .. package.path\n'\
 +	'local list = package.searchers or package.loaders; table.insert(list, 1, function(name) if name:match("^luarocks%%.") then return loadfile(luadir .. [[/]] .. name:gsub([[%%.]], [[/]]) .. [[.lua]]) end end)\n'; \
  	tail -n +2 src/bin/luarocks \
  	)> "$@"
  
- $(builddir)/luarocks-admin: src/bin/luarocks-admin config.unix
- 	mkdir -p "$(@D)"
+@@ -81,9 +81,10 @@
  	(printf '$(SHEBANG)\n'\
-+	'local luadir = arg[0]:match("^(.*)/bin/[^/]*$$") .. [[/share/lua/$(LUA_VERSION)]]\n'\
  	'package.loaded["luarocks.core.hardcoded"] = { '\
  	"$$([ -n "$(FORCE_CONFIG)" ] && printf 'FORCE_CONFIG = true, ')"\
 -	'SYSCONFDIR = [[$(luarocksconfdir)]] }\n'\
 -	'package.path=[[$(luadir)/?.lua;]] .. package.path\n'\
 -	'local list = package.searchers or package.loaders; table.insert(list, 1, function(name) if name:match("^luarocks%%.") then return loadfile([[$(luadir)/]] .. name:gsub([[%%.]], [[/]]) .. [[.lua]]) end end)\n'; \
 +	'}\n'\
-+	'package.path=luadir .. [[/?.lua;]] .. package.path\n'\
++	'local luadir = arg[0]:gsub([[/bin/[^/]*$$]], [[]]) .. [[/share/lua/$(LUA_VERSION)]]\n'\
++	'package.path = luadir .. [[/?.lua;]] .. package.path\n'\
 +	'local list = package.searchers or package.loaders; table.insert(list, 1, function(name) if name:match("^luarocks%%.") then return loadfile(luadir .. [[/]] .. name:gsub([[%%.]], [[/]]) .. [[.lua]]) end end)\n'; \
  	tail -n +2 src/bin/luarocks-admin \
  	)> "$@"

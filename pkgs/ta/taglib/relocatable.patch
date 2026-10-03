@@ -1,15 +1,15 @@
-diff --git a/taglib-config.cmake b/taglib-config.cmake
-index c2539fb..02e6e01 100644
+diff -ruN a/taglib-config.cmake b/taglib-config.cmake
 --- a/taglib-config.cmake
 +++ b/taglib-config.cmake
-@@ -14,20 +14,9 @@ EOH
-   exit 1
+@@ -15,19 +15,11 @@
  }
  
--# Looks useless as it is, but could be replaced with a "pcfiledir" by Buildroot.
+ # Looks useless as it is, but could be replaced with a "pcfiledir" by Buildroot.
 -prefix=
 -exec_prefix=
--
++prefix=$(cd "$(dirname "$0")/.." && pwd)
++exec_prefix=$prefix
+ 
 -if test -z "$prefix"; then
 -  includedir=@CMAKE_INSTALL_FULL_INCLUDEDIR@
 -else
@@ -20,13 +20,12 @@ index c2539fb..02e6e01 100644
 -else
 -  libdir=${exec_prefix}/@CMAKE_INSTALL_LIBDIR@
 -fi
-+prefix=$(cd "$(dirname "$0")/.." && pwd -P)
 +includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
-+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
++libdir=${exec_prefix}/@CMAKE_INSTALL_LIBDIR@
  
  flags=""
  
-@@ -48,7 +37,7 @@ do
+@@ -48,7 +40,7 @@
        echo @TAGLIB_LIB_VERSION_STRING@
        ;;
      --prefix)
@@ -35,17 +34,16 @@ index c2539fb..02e6e01 100644
        ;;
      *)
        echo "$0: unknown option $1"
-diff --git a/taglib-config.cmd.cmake b/taglib-config.cmd.cmake
-index 2af6949..541980c 100644
+diff -ruN a/taglib-config.cmd.cmake b/taglib-config.cmd.cmake
 --- a/taglib-config.cmd.cmake
 +++ b/taglib-config.cmd.cmake
-@@ -27,9 +27,10 @@ goto theend
+@@ -27,9 +27,10 @@
    *       to allow for static, shared or debug builds.
    * It would be preferable if the top level CMakeLists.txt provided the library name during config. ??
  :doit
 -if /i "%1#" == "--libs#"    echo -L${CMAKE_INSTALL_FULL_LIBDIR} -llibtag${TAGLIB_INSTALL_SUFFIX}
 -if /i "%1#" == "--cflags#"  echo -I${CMAKE_INSTALL_FULL_INCLUDEDIR} -I${CMAKE_INSTALL_FULL_INCLUDEDIR}/taglib${TAGLIB_INSTALL_SUFFIX}
-+set prefix=%~dp0..
++for %%d in ("%~dp0..") do set "prefix=%%~fd"
 +if /i "%1#" == "--libs#"    echo -L%prefix%/${CMAKE_INSTALL_LIBDIR} -llibtag${TAGLIB_INSTALL_SUFFIX}
 +if /i "%1#" == "--cflags#"  echo -I%prefix%/${CMAKE_INSTALL_INCLUDEDIR} -I%prefix%/${CMAKE_INSTALL_INCLUDEDIR}/taglib${TAGLIB_INSTALL_SUFFIX}
  if /i "%1#" == "--version#" echo ${TAGLIB_LIB_VERSION_STRING}

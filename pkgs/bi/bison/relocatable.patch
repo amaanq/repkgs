@@ -1,12 +1,11 @@
+diff -ruN a/src/files.c b/src/files.c
 --- a/src/files.c
 +++ b/src/files.c
-@@ -31,7 +31,8 @@
- #include <gl_xmap.h>
+@@ -32,6 +32,7 @@
  #include <quote.h>
  #include <quotearg.h>
--#include <relocatable.h> /* relocate2 */
+ #include <relocatable.h> /* relocate2 */
 +#include <reloc.h>
-+#include <relocatable.h> /* relocate */
  #include <stdio-safer.h>
  #include <sys/stat.h>
  #include <sys/types.h>
@@ -19,18 +18,18 @@
      }
  }
  
+diff -ruN a/src/getargs.c b/src/getargs.c
 --- a/src/getargs.c
 +++ b/src/getargs.c
-@@ -23,6 +23,8 @@
- 
- #include "system.h"
- 
+@@ -37,6 +37,7 @@
+ #include "muscle-tab.h"
+ #include "output.h"
+ #include "uniqstr.h"
 +#include <reloc.h>
-+
- #include <argmatch.h>
- #include <c-strcase.h>
- #include <configmake.h>
-@@ -875,7 +877,7 @@
+ 
+ bool header_flag = false;
+ bool graph_flag = false;
+@@ -875,7 +876,7 @@
          break;
  
        case PRINT_LOCALEDIR_OPTION:
@@ -39,22 +38,33 @@
          exit (EXIT_SUCCESS);
  
        case PRINT_DATADIR_OPTION:
+diff -ruN a/src/main.c b/src/main.c
 --- a/src/main.c
 +++ b/src/main.c
-@@ -28,6 +28,7 @@
+@@ -28,7 +28,7 @@
  #include <progname.h>
  #include <quote.h>
  #include <quotearg.h>
+-#include <relocatable.h> /* relocate2 */
 +#include <reloc.h>
- #include <relocatable.h> /* relocate2 */
  #include <timevar.h>
  
-@@ -74,7 +75,7 @@
+ #include "complain.h"
+@@ -72,14 +72,9 @@
+ #define DEPENDS_ON_LIBINTL 1
+   set_program_name (argv[0]);
    setlocale (LC_ALL, "");
-   {
-     char *cp = NULL;
+-  {
+-    char *cp = NULL;
 -    char const *localedir = relocate2 (LOCALEDIR, &cp);
-+    char const *localedir = RELOC ("../share/locale");
-     bindtextdomain ("bison", localedir);
-     bindtextdomain ("bison-gnulib", localedir);
-     bindtextdomain ("bison-runtime", localedir);
+-    bindtextdomain ("bison", localedir);
+-    bindtextdomain ("bison-gnulib", localedir);
+-    bindtextdomain ("bison-runtime", localedir);
+-    free (cp);
+-  }
++  bindtextdomain ("bison", RELOC ("../share/locale"));
++  bindtextdomain ("bison-gnulib", RELOC ("../share/locale"));
++  bindtextdomain ("bison-runtime", RELOC ("../share/locale"));
+   textdomain ("bison");
+ 
+   {

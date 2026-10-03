@@ -1,3 +1,4 @@
+diff -ruN a/src/conf.c b/src/conf.c
 --- a/src/conf.c
 +++ b/src/conf.c
 @@ -431,6 +431,7 @@
@@ -8,15 +9,22 @@
  #ifdef HAVE_LIBPTHREAD
  #include <pthread.h>
  #endif
-@@ -602,7 +603,7 @@
+@@ -597,12 +598,12 @@
+  */
+ const char *snd_config_topdir(void)
+ {
+-	static char *topdir;
++	static const char *topdir;
+ 
  	if (!topdir) {
  		topdir = getenv("ALSA_CONFIG_DIR");
  		if (!topdir || *topdir != '/' || strlen(topdir) >= PATH_MAX)
 -			topdir = ALSA_CONFIG_DIR;
-+			topdir = (char *) RELOC("../share/alsa");
++			topdir = RELOC("../share/alsa");
  	}
  	return topdir;
  }
+diff -ruN a/src/ucm/utils.c b/src/ucm/utils.c
 --- a/src/ucm/utils.c
 +++ b/src/ucm/utils.c
 @@ -31,6 +31,7 @@
