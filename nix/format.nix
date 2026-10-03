@@ -1,4 +1,4 @@
-# `nix fmt`, `manicpkgs fmt` or `nuff` in the development shell formats the tree and `nuff --check`
+# `nix fmt`, `motley fmt` or `nuff` in the development shell formats the tree and `nuff --check`
 # checks it. nuff reads ../nuff.toml, and this wrapper pins nuff and every tool that config names.
 {
   pkgs,
@@ -31,13 +31,13 @@ let
     pkgs.ruff
     pkgs.taplo
     pkgs.ast-grep
-    (import ./plumb.nix { inherit pkgs; })
+    (import ./spieler.nix { inherit pkgs; })
   ];
 in
 pkgs.writeShellScriptBin "nuff" ''
   export PATH=${lib.makeBinPath tools}:$PATH
   # ast-grep reads nu through the tree-sitter grammar nushell maintains
   export TREE_SITTER_NU=${pkgs.tree-sitter-grammars.tree-sitter-nu}/parser
-  ${lib.optionalString (!evaluates) "export REPKGS_NO_EVAL=1"}
+  ${lib.optionalString (!evaluates) "export MOTLEY_NO_EVAL=1"}
   exec ${lib.getExe nuff} "$@"
 ''

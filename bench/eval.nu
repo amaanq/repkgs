@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# What instantiating the packages manicpkgs shares with nixpkgs costs in each, from Nix's own counters
+# What instantiating the packages motley shares with nixpkgs costs in each, from Nix's own counters
 # (NIX_SHOW_STATS). A package pairs with the nixpkgs attribute of the same name, or the one named
 # in `renames`. A set's fixed cost (its bootstrap, nixpkgs' stdenv) is paid by the first package, so
 # the per-package figures divide what all of them cost beyond the first one alone.
@@ -53,7 +53,7 @@ def main [
   let ours_expr = {|names: list<string>| $"let s = ($ours_set); in map \(n: s.${n}\) [(quoted $names)]" }
   let theirs_expr = {|names: list<string>| $"let p = ($theirs_set); find = ($lookup); in map \(find p\) [(quoted $names)]" }
   let rows = [
-    (cost manicpkgs $runs $ours_expr ($pairs | get ours))
+    (cost motley $runs $ours_expr ($pairs | get ours))
     (cost nixpkgs $runs $theirs_expr ($pairs | get theirs))
   ]
   let count = ($pairs | length)

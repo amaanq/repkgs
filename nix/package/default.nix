@@ -1,12 +1,12 @@
 # The `package` function: spec attrset -> derivation (+ `.tests` when tests.separate).
-# Validates the spec against the schema hoist emits, then hands hoist a plan, the build systems to set
-# up and the phases in order, which `hoist build` runs in one process, spawning nu only for the
+# Validates the spec against the schema bigtop emits, then hands bigtop a plan, the build systems to set
+# up and the phases in order, which `bigtop build` runs in one process, spawning nu only for the
 # phases written in it. Vocabulary: README.md "Writing a package".
 {
   platform,
   toolchain,
-  hoist,
-  crib,
+  bigtop,
+  peanut,
   nu,
   launch,
   dlaudit,
@@ -51,14 +51,14 @@ let
 
   # the part of every derivation that is the same across the set: built once
   shared = {
-    inherit crib;
+    inherit peanut;
     inherit (platform) system;
     __structuredAttrs = true;
     # content-addressed: rebuilds that change no bytes do not propagate
     __contentAddressed = true;
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    builder = "${hoist}/bin/hoist";
+    builder = "${bigtop}/bin/bigtop";
     # platform facts autoconf would otherwise probe (or guess, when cross): nix/config.site
     CONFIG_SITE = "${../config.site}";
     platform = (import ../platforms.nix).forBuilder platform // {
@@ -73,7 +73,7 @@ let
           "${launch}/bin/launch.exe"
         else
           "";
-      # hoist finish runs the version check under it: a failed dlopen fails the build
+      # bigtop finish runs the version check under it: a failed dlopen fails the build
       dlaudit = if elf then "${dlaudit}/lib/dlaudit.so" else "";
       relocStub = "${toolchain}/lib/reloc_stub.bin";
     };
@@ -152,7 +152,7 @@ let
     if stack == [ ] || (head stack).pname == name then [ ] else [ (head stack) ] ++ before (tail stack);
   # an upstream-binary package says `prebuilt`, or one of its build systems does (pyapp: wheels)
   prebuilt = args.prebuilt or (any (system: buildSystems.${system}.prebuilt == true) uses);
-  # DWARF goes to the `debug` output (hoist finish). false when the build cannot be made to keep it
+  # DWARF goes to the `debug` output (bigtop finish). false when the build cannot be made to keep it
   debug = args.debug or (prebuilt == false);
   # [pin] sys of recipe.toml. null: no recipe.toml, dependencies are all by hand
   sys = args.sys or (if pinned == null then null else pinned.sys);
@@ -181,7 +181,7 @@ let
       }) uses
     )
     // {
-      # sys for hoist syslibs
+      # sys for bigtop syslibs
       inherit prebuilt debug sys;
       phases = phases.list;
     }
@@ -190,14 +190,14 @@ let
   runsNu =
     any (step: step.kind == "nu") phases.steps
     || any (override: (override.run or "") != "") (attrValues (args.pyapp.overrides or { }));
-  # PATH order: the base tools (GNU userland, then the crib) go last and only once, so a build
-  # system that lists the crib as its `sh` does not pull toybox ahead of coreutils and grep
+  # PATH order: the base tools (GNU userland, then the peanut) go last and only once, so a build
+  # system that lists the peanut as its `sh` does not pull toybox ahead of coreutils and grep
   buildDependencies =
     { tests, base }:
     filter (dependency: !(elem dependency base)) (
       [
         toolchain
-        hoist
+        bigtop
       ]
       ++ (valid.buildDependencies or [ ])
       ++ tests

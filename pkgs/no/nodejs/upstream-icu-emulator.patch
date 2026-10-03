@@ -65,7 +65,7 @@ diff -ru a/tools/icu/icutrim.py b/tools/icu/icutrim.py
          cmd = os.path.join(options.toolpath, tool) + " " + cmd
      else:
          cmd = tool + " " + cmd
-+    # cross: the tools are target binaries (manicpkgs sets PKGS_EMULATOR when binfmt cannot run them)
++    # cross: the tools are target binaries (motley sets PKGS_EMULATOR when binfmt cannot run them)
 +    cmd = (os.environ.get("PKGS_EMULATOR", "") + " " + cmd).strip()
  
      if(options.verbose>4):

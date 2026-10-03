@@ -12,10 +12,10 @@ dependency references, overrides and derivations. A schema describes the values 
 that boundary. It does not turn Nix functions or package references into JSON expressions.
 
 Today `nix/build-systems.nix` repeats the fields Rust deserializes, including defaults
-that Rust often requires Nix to insert. Extend the hardening arrangement so `hoist schema`
+that Rust often requires Nix to insert. Extend the hardening arrangement so `bigtop schema`
 emits those declarations once and Nix reads the committed `nix/schema.json`.
 Loading the schema runs no executable, builds nothing and performs no network access.
-Bootstrap can read it before hoist exists, which avoids a schema-generation cycle.
+Bootstrap can read it before bigtop exists, which avoids a schema-generation cycle.
 
 | File | Proposed responsibility |
 | --- | --- |
@@ -24,8 +24,8 @@ Bootstrap can read it before hoist exists, which avoids a schema-generation cycl
 | `nix/platforms.nix` | Thin loader over emitted CPU, OS, ABI and toolchain facts. Bind the selected build and target platforms in Nix, with store paths supplied by bootstrap. |
 | `nix/build-systems.nix` | Thin loader over system descriptors. Resolve symbolic tool and dependency defaults against the current sets and fetch adapters. |
 | `nix/overrides.nix` | Keep edit operations and Nix function evaluation. Validate operands and edited recipes through the common schema validator. |
-| `nix/fetch.nix` | Small adapters over producer descriptors owned by shim and emitted by hoist. Keep `derivation`, `outputOf`, stage naming and store references in Nix. |
-| `nix/sources.nix` | Keep local TOML loading, pin/hash overrides, URL expansion and fixed-output derivations. Share source field contracts with plumb rather than duplicate them. |
+| `nix/fetch.nix` | Small adapters over producer descriptors owned by mummer and emitted by bigtop. Keep `derivation`, `outputOf`, stage naming and store references in Nix. |
+| `nix/sources.nix` | Keep local TOML loading, pin/hash overrides, URL expansion and fixed-output derivations. Share source field contracts with spieler rather than duplicate them. |
 | `nix/python.nix` | Keep project/environment construction and package resolution. Read helper and override option contracts from the schema. Preserve current local-lock and git-source behavior pending a separate decision. |
 | `nix/features.nix` | Keep package-defined feature names and value resolution. Use the schema for declaration shapes and value checking. |
 | `bootstrap/default.nix` | Keep stage ordering and dependency edges explicit. Load recipe input contracts and platform facts, then construct the stage derivations in Nix. |
@@ -42,7 +42,7 @@ Each option record carries these fields, emitted deterministically from typed Ru
 | `name` | Recipe spelling, including Serde renames, such as `cargo.noDefaultFeatures`. |
 | `type` | A recursive descriptor for scalars, lists, maps, closed records, enums, unions and package/path references. Includes element types and nullability. |
 | `default` | Tagged literal value, symbolic resolver or required-without-default. Explicit `null` differs from an omitted field. |
-| `doc` | The option's meaning, rendered by `manicpkgs options` from the same descriptor. |
+| `doc` | The option's meaning, rendered by `motley options` from the same descriptor. |
 | `system` | Owning build system, or `null` for common recipe options. |
 
 System descriptors also carry supported phases, their default order, tool roles, lock
@@ -106,10 +106,10 @@ Replace the spelling outright when chosen, without aliases or a compatibility la
 Start with common recipe fields and one system, then migrate the remaining system tables,
 platform facts and fetch/bootstrap input contracts. Each slice removes its duplicate table.
 Keep lock parsing, phase execution and relocation in their existing Rust owners.
-Do not fold target-side C rewrites into the schema work. The GHC bindist install is a hoist system mode.
+Do not fold target-side C rewrites into the schema work. The GHC bindist install is a bigtop system mode.
 
-Done means `hoist schema --check nix/schema.json` passes, valid existing recipes evaluate,
-invalid keys and values fail at eval, and `manicpkgs options` shows the emitted defaults and docs.
+Done means `bigtop schema --check nix/schema.json` passes, valid existing recipes evaluate,
+invalid keys and values fail at eval, and `motley options` shows the emitted defaults and docs.
 Check lazy evaluation and store references alongside native and cross proof builds, with
 evaluation time and memory compared against the same package selection before the rewrite.
 The schema has one current format. No version negotiation or migration framework is needed.

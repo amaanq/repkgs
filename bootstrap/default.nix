@@ -1,11 +1,11 @@
-# The crib grown into a configured `cc` for every platform, in three stages:
-#   stage0  the crib's clang on musl builds shim and a cc for this machine
-#   stage1  the crib's clang on glibc builds a cc that can host cmake and llvm (clang, lld, every target)
+# The peanut grown into a configured `cc` for every platform, in three stages:
+#   stage0  the peanut's clang on musl builds mummer and a cc for this machine
+#   stage1  the peanut's clang on glibc builds a cc that can host cmake and llvm (clang, lld, every target)
 #   stage2  that llvm builds compiler-rt, the libc, libc++, cc and launch per platform
-# Every derivation runs `shim bootstrap <recipe>` with structured attrs, recipes in
-# pkgs/sh/shim/src/shim/src/bootstrap/.
+# Every derivation runs `mummer bootstrap <recipe>` with structured attrs, recipes in
+# pkgs/mu/mummer/src/mummer/src/bootstrap/.
 {
-  crib ? null,
+  peanut ? null,
   system ? builtins.currentSystem,
 }:
 let
@@ -15,38 +15,38 @@ let
   # with "build" as the vendor, configure treats even a same-cpu build as a cross one
   buildTriple = builtins.replaceStrings [ "-unknown-" ] [ "-build-" ] host.gnuTriple;
 
-  cribBuild = import ../pkgs/cr/crib {
+  peanutBuild = import ../pkgs/pe/peanut {
     inherit system;
     buildSystem = system;
   };
-  # the crib is the unpacker, so its own recipe.toml has to be read without one
+  # the peanut is the unpacker, so its own recipe.toml has to be read without one
   readerFor =
     name:
-    if name == "crib" then
+    if name == "peanut" then
       import ../nix/sources.nix { unpacker = null; }
     else
       import ../nix/sources.nix {
-        unpacker = cribPath;
-        inherit (cribBuild) shim;
+        unpacker = peanutPath;
+        inherit (peanutBuild) mummer;
         inherit system;
       };
   sourcesOf = name: readerFor name (pkg name + "/recipe.toml");
   source = name: (sourcesOf name).default;
-  cribPath =
-    if crib == null then
-      (sourcesOf "crib").fetch system
-    else if builtins.isString crib then
-      builtins.storePath crib
+  peanutPath =
+    if peanut == null then
+      (sourcesOf "peanut").fetch system
+    else if builtins.isString peanut then
+      builtins.storePath peanut
     else
-      crib;
+      peanut;
 
   stage = import ./stage.nix {
     inherit system buildTriple;
-    crib = cribPath;
-    inherit (cribBuild) shim;
+    peanut = peanutPath;
+    inherit (peanutBuild) mummer;
     inputs = import ./inputs.nix {
       inherit pkg source;
-      prebuiltShim = cribBuild.shim;
+      prebuiltShim = peanutBuild.mummer;
     };
   };
   chain = import ./chain.nix { inherit pkg; };
@@ -74,7 +74,7 @@ let
       dlaudit = run [ built.cc ] "dlaudit" { };
     };
 
-  # before shim exists. The kernel headers install with musl's own tools, so they follow the libc
+  # before mummer exists. The kernel headers install with musl's own tools, so they follow the libc
   stage0 =
     let
       platform = platforms.forSystem system "musl";
@@ -93,16 +93,16 @@ let
           resource = built.compiler-rt;
         };
       };
-      shim = run [ ] "shim" { };
+      mummer = run [ ] "mummer" { };
     in
     built
     // {
-      inherit shim;
+      inherit mummer;
       linux-headers = headers;
       musl = built.libc;
-      cc = run [ shim ] "cc" {
+      cc = run [ mummer ] "cc" {
         inherit (built) sysroot;
-        prebuilt = shim;
+        prebuilt = mummer;
       };
     };
 
@@ -111,12 +111,12 @@ let
       run = stage {
         platform = host;
         tools = [
-          stage0.shim
+          stage0.mummer
           stage0.cc
         ];
         suffix = "-boot";
       };
-      built = glibcChain host run { prebuilt = stage0.shim; };
+      built = glibcChain host run { prebuilt = stage0.mummer; };
       cmake = run [ built.cc ] "cmake" { inherit (built) sysroot; };
     in
     built
@@ -140,13 +140,13 @@ let
         inherit platform;
         clang = stage1.llvm;
         tools = [
-          stage0.shim
+          stage0.mummer
           stage1.llvm
           stage1.cc
         ];
       };
       ccArgs = {
-        prebuilt = stage0.shim;
+        prebuilt = stage0.mummer;
       }
       // (if platform == host then { } else { native = nativeCc; });
       launched = built: built // { launch = run [ built.cc ] "launch" { }; };
@@ -178,9 +178,9 @@ let
   );
 in
 {
-  crib = cribPath;
+  peanut = peanutPath;
   inherit buildTriple;
-  inherit (cribBuild) hoist shim nu;
+  inherit (peanutBuild) bigtop mummer nu;
   inherit
     stage0
     stage1

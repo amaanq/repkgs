@@ -1,5 +1,5 @@
-# Every platform's facts, as hoist's targets module emits them into nix/schema.json. Bootstrap reads
-# this before hoist exists, which is why the facts are committed rather than computed at eval time.
+# Every platform's facts, as bigtop's targets module emits them into nix/schema.json. Bootstrap reads
+# this before bigtop exists, which is why the facts are committed rather than computed at eval time.
 let
   inherit (builtins.fromJSON (builtins.readFile ./schema.json)) targets;
   linux = builtins.filter (target: target.os == "linux") targets;
@@ -19,7 +19,7 @@ in
       value = target;
     }) (builtins.filter (target: target.libc != "musl") targets)
   );
-  # the facts a derivation hands hoist: shim adds march and minos to every compile itself, the
+  # the facts a derivation hands bigtop: mummer adds march and minos to every compile itself, the
   # package layer turns interp into a sysroot path, and system is the derivation's own
   forBuilder =
     facts:

@@ -1,4 +1,4 @@
-// Entry point for executables whose interpreter path is relative to the executable. shim links
+// Entry point for executables whose interpreter path is relative to the executable. mummer links
 // it in front of crt1 and flips PT_INTERP to PT_NULL after the link, so the kernel starts us
 // without one. We load that interpreter ourselves, put PT_INTERP back in memory, point AT_BASE
 // and AT_ENTRY at it and at the program, and enter it on the kernel's untouched stack.

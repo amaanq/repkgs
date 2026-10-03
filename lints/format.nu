@@ -1,4 +1,4 @@
-# The nuff.toml steps that are manicpkgs' own lints rather than a formatter's. REPKGS_NO_EVAL=1 skips
+# The nuff.toml steps that are motley's own lints rather than a formatter's. MOTLEY_NO_EVAL=1 skips
 # the package-scripts lint, which has no evaluator inside a build.
 
 def main [] {
@@ -8,7 +8,7 @@ def main [] {
 
 # recipes and phase modules name their package by directory
 def "main package-scripts" [...files: string]: nothing -> nothing {
-  if ($env.REPKGS_NO_EVAL? | default "") == "1" { return }
+  if ($env.MOTLEY_NO_EVAL? | default "") == "1" { return }
   let packaged = ($files | where $it =~ '^pkgs/[^/]+/[^/]+/(recipe\.(toml|nix)|[^/]+\.nu)$')
   if ($packaged | is-empty) { return }
   ^nu --no-config-file lints/package-scripts.nu ...$packaged

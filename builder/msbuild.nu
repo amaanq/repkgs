@@ -1,6 +1,6 @@
-# MSBuild project evaluation through `hoist msbuild`, for recipes driving Visual Studio projects
+# MSBuild project evaluation through `bigtop msbuild`, for recipes driving Visual Studio projects
 export def evaluate [file: path, seeds: record, --itemdefs: record = {}]: nothing -> record {
-  {properties: $seeds, itemdefs: $itemdefs} | to json | ^hoist msbuild $file | from json
+  {properties: $seeds, itemdefs: $itemdefs} | to json | ^bigtop msbuild $file | from json
 }
 
 # a Windows path from a project file, absolute against `dir` unless it already is

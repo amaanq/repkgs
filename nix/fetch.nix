@@ -1,13 +1,13 @@
 # Dependency fetchers driven by lock files, the upstream tarballs come from recipe.toml.
 #
-# Each is a dynamic derivation. A producer, `shim fetch <kind>` under builder-rpc-v0, reads the lock
+# Each is a dynamic derivation. A producer, `mummer fetch <kind>` under builder-rpc-v0, reads the lock
 # out of its inputs and writes one builtin:fetchurl derivation per artefact with the lock's own
-# hash, plus one that assembles them (`shim assemble`, with the crib's bsdtar). The producer's
+# hash, plus one that assembles them (`mummer assemble`, with the peanut's bsdtar). The producer's
 # output is that .drv and callers get `builtins.outputOf` it, so Nix downloads, caches and checks
 # every file and no lock is copied here. The daemon needs dynamic-derivations and ca-derivations.
 {
-  shim,
-  crib,
+  mummer,
+  peanut,
   system,
   cpu,
   sevenzip ? null,
@@ -23,8 +23,8 @@ let
       producer = derivation (
         {
           name = name + concatStringsSep "" (genList (_: ".drv") stages);
-          inherit system crib shim;
-          builder = "${shim}/bin/shim";
+          inherit system peanut mummer;
+          builder = "${mummer}/bin/mummer";
           args = [
             "fetch"
             kind
@@ -48,7 +48,7 @@ let
       root ? ".",
     }:
     dynamic name kind stages { inherit source root; };
-  # upstreams that commit no lock get one from `plumb lock`
+  # upstreams that commit no lock get one from `spieler lock`
   lockOrNone = lockFile: if lockFile == null then "" else lockFile;
 in
 {

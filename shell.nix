@@ -1,4 +1,4 @@
-# A development shell with nuff (nix/format.nix), rom and what plumb runs, from plain nixpkgs
+# A development shell with nuff (nix/format.nix), rom and what spieler runs, from plain nixpkgs
 # (nix/nixpkgs.nix) and apart from the package set
 {
   pkgs ? import (import ./nix/nixpkgs.nix) { },
@@ -20,10 +20,10 @@ pkgs.mkShell {
   packages = [
     rom
     (import ./nix/format.nix { inherit pkgs; })
-    (import ./nix/plumb.nix { inherit pkgs; })
-    # bsdtar, so plumb's prefetch unpacks the way nix/sources.nix does
+    (import ./nix/spieler.nix { inherit pkgs; })
+    # bsdtar, so spieler's prefetch unpacks the way nix/sources.nix does
     pkgs.libarchive
-    # plumb formats recipe.toml the way nuff does
+    # spieler formats recipe.toml the way nuff does
     pkgs.taplo
   ]
   ++ pkgs.lib.optionals wild [

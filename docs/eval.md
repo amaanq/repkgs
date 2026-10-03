@@ -1,6 +1,6 @@
 # Evaluation cost
 
-`bench/eval.nu` instantiates the packages manicpkgs and the pinned nixpkgs both have and reads what
+`bench/eval.nu` instantiates the packages motley and the pinned nixpkgs both have and reads what
 Nix itself counts (`NIX_SHOW_STATS`): CPU seconds and bytes allocated. Each set gets one
 `nix-instantiate` over all of its paired packages and one over the first of them alone. The
 difference, divided by the remaining packages, is the cost a package adds once the set's fixed
@@ -18,7 +18,7 @@ names (`cpython314` and `python314`, llvm's tools under `llvmPackages_23`).
 
 | | total | per package |
 |---|---|---|
-| manicpkgs | 420 MB, 1.2 to 1.6 s | 945 KB, 2.4 to 3.7 ms |
+| motley | 420 MB, 1.2 to 1.6 s | 945 KB, 2.4 to 3.7 ms |
 | nixpkgs | 498 MB, 1.9 to 3.3 s | 2991 KB, 12 to 20 ms |
 
 Allocation is deterministic and the same on every run. The times were taken on a 32-thread machine

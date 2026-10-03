@@ -1,4 +1,4 @@
-# manicpkgs
+# motley
 
 A package set for unmodified Nix that keeps the store and the language and rethinks what a
 derivation holds. The *re-* stands for relocatable, reproducible and another try at nixpkgs.
@@ -8,7 +8,7 @@ derivation holds. The *re-* stands for relocatable, reproducible and another try
 - **Relocatable outputs.** Binaries locate their libraries relative to themselves, so a store
   path copied anywhere still runs. Upstream prebuilt binaries are treated the same way.
 - **Recipes are data.** A package is a `recipe.toml`, the source pin and the build description
-  in one file. Phase code that has to exist is nushell, run by hoist, the builder, with no bash and
+  in one file. Phase code that has to exist is nushell, run by bigtop, the builder, with no bash and
   no setup hooks.
 - **A compile cache under Nix.** `cc`, `rustc`, `go` and configure probes are cached by content
   on the machine and shared across derivations. Changing a recipe rebuilds its derivation while
@@ -17,7 +17,7 @@ derivation holds. The *re-* stands for relocatable, reproducible and another try
 - **Cheap evaluation.** No overlays and no fixpoint per package. Overrides are one tree,
   out-of-tree packages one argument. A package shared with nixpkgs adds about a third of the memory
   and a fifth of the time to evaluation that it does there ([docs/eval.md](docs/eval.md)).
-- **A short bootstrap.** A small static crib reaches glibc in two stages. Rust, Go, Zig, GHC and
+- **A short bootstrap.** A small static peanut reaches glibc in two stages. Rust, Go, Zig, GHC and
   OpenJDK then build from source, each starting from its upstream binary.
 
 [docs/design.md](docs/design.md) gives the reasons and [docs/plan.md](docs/plan.md) what comes
@@ -32,7 +32,7 @@ After a garbage collection, CA rebuilds also go better with
 `packages.x86_64-linux.nix`). On NixOS:
 
 ```nix
-nix.package = inputs.manicpkgs.packages.${pkgs.system}.nix; # or import "${manicpkgs}/nix/nix" { inherit pkgs; }
+nix.package = inputs.motley.packages.${pkgs.system}.nix; # or import "${motley}/nix/nix" { inherit pkgs; }
 nix.settings = {
   experimental-features = [ "nix-command" "ca-derivations" "dynamic-derivations" ];
   system-features = [ "builder-rpc-v0" "big-parallel" "kvm" "nixos-test" "benchmark" ];
@@ -48,24 +48,24 @@ $ nix-build -A ripgrep -A fd -A deno -A pandoc      # cargo, prebuilt, haskell a
 $ nix-build bootstrap -A stage2.x86_64.cc           # the toolchain alone
 ```
 
-The first build fetches the crib and builds the toolchain, and later ones are incremental.
+The first build fetches the peanut and builds the toolchain, and later ones are incremental.
 
-`manicpkgs`, on PATH through direnv, covers the everyday tasks, all of them listed in
-[tools/manicpkgs/README.md](tools/manicpkgs/README.md):
+`motley`, on PATH through direnv, covers the everyday tasks, all of them listed in
+[tools/motley/README.md](tools/motley/README.md):
 
 ```console
-$ manicpkgs build jq                        # with shimd caching compiles, after `manicpkgs cache start`
-$ manicpkgs build --for aarch64-linux jq    # cross
-$ manicpkgs test jq                         # builds jq.tests
-$ manicpkgs dev jq                          # steps through the phases in a kept build tree
-$ manicpkgs info deno                       # pinned version, build systems, supported platforms
+$ motley build jq                        # with mummerd caching compiles, after `motley cache start`
+$ motley build --for aarch64-linux jq    # cross
+$ motley test jq                         # builds jq.tests
+$ motley dev jq                          # steps through the phases in a kept build tree
+$ motley info deno                       # pinned version, build systems, supported platforms
 ```
 
 ## Writing a package
 
 A package is a directory under `pkgs/<first two letters>/<name>/` holding a `recipe.toml`. Its
 `[upstream]`, `[[source]]` and `[pin]` tables say where the source comes from and are what
-plumb keeps current. Its `[build]` table says how to build it:
+spieler keeps current. Its `[build]` table says how to build it:
 
 ```toml
 [upstream]
@@ -91,9 +91,9 @@ PNG_TOOLS  = true
 
 `systems` picks the build systems, which bring their tools, their phases (configure, build, test,
 install) and their options, such as `cmake.defs` above, `cargo.features` or `go.tags`. Every build
-system also has `<name>.tool` to swap the program itself. hoist declares the options and
+system also has `<name>.tool` to swap the program itself. bigtop declares the options and
 nix/schema.json carries them, so a misspelt field or a wrong type fails evaluation.
-`manicpkgs options cmake` lists them.
+`motley options cmake` lists them.
 
 `needs` are linked and come from the target platform's set, `tools` run during the build and come
 from the build machine's. Both are found through the usual search paths (`-I`,
@@ -159,76 +159,76 @@ An out-of-tree package passed through `packages` may still be a `package.nix` ca
 
 ## Keeping it current
 
-`plumb` (pkgs/sh/shim/src/plumb, also `manicpkgs update …`) reads every `recipe.toml`, asks
+`spieler` (pkgs/mu/mummer/src/spieler, also `motley update …`) reads every `recipe.toml`, asks
 upstream for new versions and rewrites pin and hash:
 
 ```console
-$ plumb check          # what is out of date
-$ plumb apply zlib     # bump, prefetch, rewrite the hash (--commit makes one commit per bump)
-$ plumb lock fzf       # re-pin the Go modules fzf needs in locks/go.toml
+$ spieler check          # what is out of date
+$ spieler apply zlib     # bump, prefetch, rewrite the hash (--commit makes one commit per bump)
+$ spieler lock fzf       # re-pin the Go modules fzf needs in locks/go.toml
 ```
 
-[docs/plumb.md](docs/plumb.md) has the rest.
+[docs/spieler.md](docs/spieler.md) has the rest.
 
 ## Layout
 
 ```
 pkgs/xx/<name>/   the packages, xx being the name's first two letters, with recipe.toml, phase
                   modules (<name>.nu), patches and in-tree sources (src/)
-bootstrap/        crib, stage0 (musl cc), stage1 (llvm), stage2 (a cc per platform)
+bootstrap/        peanut, stage0 (musl cc), stage1 (llvm), stage2 (a cc per platform)
 nix/              evaluation: package/ turns a manifest into a derivation, build-systems.nix binds
                   each `uses` entry, fetch.nix holds the lock-file fetchers
 builder/          the nu that phase modules import
 locks/            hashes for the ecosystems whose lock files lack them
-tests/builder/    a small package per language checking what the builder does (`manicpkgs test`)
-docs/             design.md (why), shim.md, plumb.md, plan.md
-tools/manicpkgs/     the command (its README.md is for changing it)
+tests/builder/    a small package per language checking what the builder does (`motley test`)
+docs/             design.md (why), mummer.md, spieler.md, plan.md
+tools/motley/     the command (its README.md is for changing it)
 ```
 
-The build tools live here too. **shim** (pkgs/sh/shim, Rust) is what `cc` and `rustc` resolve to in a
-build: the compiler driver, the cache client and the ELF fixup. **hoist** (pkgs/sh/shim/src/hoist, Rust)
+The build tools live here too. **mummer** (pkgs/mu/mummer, Rust) is what `cc` and `rustc` resolve to in a
+build: the compiler driver, the cache client and the ELF fixup. **bigtop** (pkgs/mu/mummer/src/bigtop, Rust)
 runs a build from `prepare` through every build system to `finish`. It is on PATH in package
-builds only, so editing it leaves the toolchain alone. **shimd** (pkgs/sh/shimd, Rust) is the daemon
+builds only, so editing it leaves the toolchain alone. **mummerd** (pkgs/mu/mummerd, Rust) is the daemon
 behind the socket, holding the cache and the build slots. **launch** and **crt-interp** are the few
-hundred bytes of C that let scripts and ELF binaries run from any path. **plumb** (Rust) does
+hundred bytes of C that let scripts and ELF binaries run from any path. **spieler** (Rust) does
 the updates.
 
 The Rust tools build with nixpkgs' toolchain, without bootstrapping the set. The Cargo config links
 with Wild through Clang, and both development shells provide those.
 
 ```console
-$ nix develop .#rust --command cargo build --workspace --manifest-path pkgs/sh/shim/src/Cargo.toml
-$ nix develop .#rust --command cargo test --workspace --manifest-path pkgs/sh/shim/src/Cargo.toml
+$ nix develop .#rust --command cargo build --workspace --manifest-path pkgs/mu/mummer/src/Cargo.toml
+$ nix develop .#rust --command cargo test --workspace --manifest-path pkgs/mu/mummer/src/Cargo.toml
 ```
 
 To try a local daemon through the cache commands, build it and pass its executable:
 
 ```console
-$ nix develop .#rust --command cargo build --release -p shimd --manifest-path pkgs/sh/shim/src/Cargo.toml
-$ manicpkgs cache start --daemon pkgs/sh/shim/src/target/release/shimd
-$ manicpkgs cache status
-$ manicpkgs cache stop
+$ nix develop .#rust --command cargo build --release -p mummerd --manifest-path pkgs/mu/mummer/src/Cargo.toml
+$ motley cache start --daemon pkgs/mu/mummer/src/target/release/mummerd
+$ motley cache status
+$ motley cache stop
 ```
 
 ## The bootstrap
 
 ```
-crib        static clang, lld, bsdtar, toybox, make and the like
-→ stage0    musl, libc++ and shim, a C and C++ compiler for this machine
+peanut        static clang, lld, bsdtar, toybox, make and the like
+→ stage0    musl, libc++ and mummer, a C and C++ compiler for this machine
 → stage1    glibc, libc++, cmake, then clang and lld for every target, the set's compiler
 → stage2    compiler-rt, the libc and libc++, a cc-<platform> per target built by that clang
 → pkgs/*
 → rust, go, zig, ghc, jdk from their upstream binary as <lang>-bootstrap, then from source
 ```
 
-`pkgs/cr/crib/build.nix` reproduces the crib. `nix build .#bootstrap-llvm -L` builds its LLVM,
+`pkgs/pe/peanut/build.nix` reproduces the peanut. `nix build .#bootstrap-llvm -L` builds its LLVM,
 Clang and LLD through nixpkgs' minimal x86-64 bootstrap with no Rust or nushell involved, and
 [docs/bootstrap.md](docs/bootstrap.md) records the trust boundary of that source build.
 `nix build .#bootstrap-nushell -L` starts from Rust 1.90 built by mrustc, builds the following Rust
 source releases with that Clang and then a static nu with the last of them. `.#bootstrap-mrustc`
-is the starting compiler and `.#bootstrap-crib` the assembled crib, and nowhere in that graph is a
-downloaded Rust compiler. `nix build .#bootstrap-shim -L` builds the static shim with the same
-compiler. The first shim build needs the whole Rust chain, later shim edits rebuild only shim.
+is the starting compiler and `.#bootstrap-peanut` the assembled peanut, and nowhere in that graph is a
+downloaded Rust compiler. `nix build .#bootstrap-mummer -L` builds the static mummer with the same
+compiler. The first mummer build needs the whole Rust chain, later mummer edits rebuild only mummer.
 
 ## License
 

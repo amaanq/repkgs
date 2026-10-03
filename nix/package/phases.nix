@@ -1,4 +1,4 @@
-# The phase list and the plan hoist runs from it. `install`/`links` alone (prebuilt binaries, data):
+# The phase list and the plan bigtop runs from it. `install`/`links` alone (prebuilt binaries, data):
 # the one phase is copying them into $out. `phases` is the whole list, or edits to the first build
 # system's list (README):
 # { before.<phase> = [..]; after.<phase> = [..]; replace.<phase> = phase | [..]; remove = [..]; }
@@ -75,7 +75,7 @@ let
     else
       edited written.phases;
   prefix = phase: if isAttrs phase then null else match pattern phase;
-  # a phase as a plan step for hoist: a build system's verb runs in hoist, anything else is nu text,
+  # a phase as a plan step for bigtop: a build system's verb runs in bigtop, anything else is nu text,
   # inline or a package module's command. A prefix that is neither: nix reports "path …/<bs>.nu
   # does not exist". An inline phase's env changes carry over to later phases, its cwd does not
   step =

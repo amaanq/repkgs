@@ -31,8 +31,8 @@ export def store-args [directory: string, --shell: string = "", --build-dir: str
 }
 
 export def plan-dir [directory: string]: nothing -> string {
-  let crib = ($directory | path join crib)
-  if ($crib | path join plan.json | path exists) { $crib } else { $directory }
+  let peanut = ($directory | path join peanut)
+  if ($peanut | path join plan.json | path exists) { $peanut } else { $directory }
 }
 
 def output-path [drv: record, name: string]: nothing -> string {
@@ -66,8 +66,8 @@ def resolved-paths [directory: string, graph: table, paths: list<string>]: nothi
 
 def checkpoints [graph: table, derivation: string]: nothing -> table {
   let names = [
-    '^crib-llvm-static-' '^mrustc-bootstrap-' '^crib-rust-[0-9]'
-    '^crib-nushell-static-' '^crib-shim-static-'
+    '^peanut-llvm-static-' '^mrustc-bootstrap-' '^peanut-rust-[0-9]'
+    '^peanut-nushell-static-' '^peanut-mummer-static-'
   ] | each {|pattern|
     let found = ($graph | where {|entry| $entry.drv.name =~ $pattern } | sort-by --natural drv.name)
     if ($found | is-empty) { error make {msg: $"missing bootstrap checkpoint matching ($pattern)"} }
@@ -85,16 +85,16 @@ def checkpoints [graph: table, derivation: string]: nothing -> table {
   }
 }
 
-def freeze [directory: string, crib: bool]: nothing -> nothing {
-  let metadata = (if $crib { $directory | path join crib } else { $directory })
-  let previous = (if $crib {
+def freeze [directory: string, peanut: bool]: nothing -> nothing {
+  let metadata = (if $peanut { $directory | path join peanut } else { $directory })
+  let previous = (if $peanut {
     if not ($directory | path join prepared.json | path exists) {
-      error make {msg: "complete the isolated LLVM build before extending it through the crib"}
+      error make {msg: "complete the isolated LLVM build before extending it through the peanut"}
     }
     let original = (open ($directory | path join plan.json))
     let physical = ($directory | path join store ($original.output | str trim --left --char '/'))
     if not ($physical | path exists) {
-      error make {msg: "complete the isolated LLVM build before extending it through the crib"}
+      error make {msg: "complete the isolated LLVM build before extending it through the peanut"}
     }
     let hash = (capture nix [hash path $physical])
     if $original.baseline != null and $hash != $original.baseline {
@@ -108,7 +108,7 @@ def freeze [directory: string, crib: bool]: nothing -> nothing {
     null
   })
   let repository = ($bootstrap_dir | path dirname)
-  let target = (if $crib { "bootstrap-crib" } else { "bootstrap-llvm" })
+  let target = (if $peanut { "bootstrap-peanut" } else { "bootstrap-llvm" })
   print $"Freezing ($target) and auditing its inputs"
   let drv = (capture nix [eval --raw $"($repository)#($target).drvPath"])
   let document = (capture nix [derivation show --recursive $drv] | from json)
@@ -118,10 +118,10 @@ def freeze [directory: string, crib: bool]: nothing -> nothing {
   if ($stages | length) != 1 { error make {msg: "expected one pinned stage0 source tree"} }
   let stage = ($stages | first)
   let source = {derivation: $"/nix/store/($stage.path)", path: $stage.drv.env.out, hash: $stage.drv.outputs.out.hash}
-  if $crib {
+  if $peanut {
     let original = (open ($directory | path join graph.json)).derivations
     if $source != $previous.source or ($original | columns | any {|path| $path not-in ($graph | get path) }) {
-      error make {msg: "crib graph does not extend the frozen LLVM graph, keep this store and choose a new --state"}
+      error make {msg: "peanut graph does not extend the frozen LLVM graph, keep this store and choose a new --state"}
     }
   }
   let allowed = (declared-paths $graph)
@@ -129,12 +129,12 @@ def freeze [directory: string, crib: bool]: nothing -> nothing {
   if ($closure | any {|path| $path not-in $allowed }) {
     error make {msg: "derivation closure contains paths outside the declared build inputs"}
   }
-  let flags = (if $crib { [--rust] } else { [] })
+  let flags = (if $peanut { [--rust] } else { [] })
   let report = (capture nu ([--no-config-file ($bootstrap_dir | path join audit.nu) $drv] ++ $flags) | from json)
   let output = (output-path ($document.derivations | get ($drv | path basename)) out)
   let baseline = (if ($output | path exists) { capture nix [hash path $output] } else { null })
   let plan = {derivation: $drv, output: $output, baseline: $baseline, source: $source, created: (date now)}
-  let frozen = (if $crib { $plan | insert checkpoints (checkpoints $graph $drv) } else { $plan })
+  let frozen = (if $peanut { $plan | insert checkpoints (checkpoints $graph $drv) } else { $plan })
   mkdir $metadata
   $document | to json | save --force ($metadata | path join graph.json)
   $report | to json | save --force ($metadata | path join audit.json)
@@ -145,11 +145,11 @@ def freeze [directory: string, crib: bool]: nothing -> nothing {
 export def prepare [directory: string, through: string, --refresh]: nothing -> record {
   let active = (plan-dir $directory)
   if $through == llvm and $active != $directory {
-    error make {msg: "this run has advanced through the crib, omit --through to resume it"}
+    error make {msg: "this run has advanced through the peanut, omit --through to resume it"}
   }
   if $refresh {
     if $active == $directory or not ($active | path join prepared.json | path exists) {
-      error make {msg: "refresh requires a prepared crib plan"}
+      error make {msg: "refresh requires a prepared peanut plan"}
     }
     let original = (open ($active | path join plan.json))
     let archive = ($directory | path join history ($original.derivation | path basename))
@@ -167,7 +167,7 @@ export def prepare [directory: string, through: string, --refresh]: nothing -> r
     if ($comparisons | path exists) { rm $comparisons }
     print $"Previous plan and comparisons are preserved in ($archive)"
   }
-  if $through == crib and $active == $directory {
+  if $through == peanut and $active == $directory {
     freeze $directory true
   } else if not ($active | path join plan.json | path exists) {
     freeze $directory false

@@ -1,6 +1,6 @@
 // The one program behind every installed script and wrapped binary. On ELF platforms bin/foo is
 // a symlink to this binary in its own store path, on Windows bin/foo.exe is a copy of it. Either
-// way it reads bin/.foo.launch, which hoist's launchers wrote, and runs what that names.
+// way it reads bin/.foo.launch, which bigtop's launchers wrote, and runs what that names.
 //
 // The record is JSON, every string in it may use {root} (the package), {store} (its parent),
 // {self} (bin/foo) and {argv0} (what we were invoked as):

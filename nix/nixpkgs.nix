@@ -1,5 +1,5 @@
 # flake.lock's nixpkgs for the entry points without flakes (shell.nix, nix/checks.nix and
-# pkgs/cr/crib/build.nix), so their tools and the crib's nu are the ones the tree expects
+# pkgs/pe/peanut/build.nix), so their tools and the peanut's nu are the ones the tree expects
 let
   inherit ((builtins.fromJSON (builtins.readFile ../flake.lock)).nodes.nixpkgs) locked;
 in

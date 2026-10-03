@@ -1,0 +1,29 @@
+[package]
+name                   = "spieler"
+description            = "Upstream tracking for motley package trees"
+license                = "EUPL-1.2"
+repository             = "https://github.com/manic-systems/motley"
+keywords               = [ "update", "nix", "packaging" ]
+categories             = [ "command-line-utilities", "development-tools" ]
+version.workspace      = true
+edition.workspace      = true
+readme.workspace       = true
+rust-version.workspace = true
+
+[dependencies]
+base64           = "0.23"
+blake3           = { workspace = true }
+color-eyre       = { workspace = true }
+eyre             = { workspace = true }
+mummer             = { workspace = true }
+percent-encoding = "2"
+pound            = "0.1.7"
+regex-lite       = "0.1"
+serde            = { features = [ "derive" ], version = "1" }
+serde_json       = { features = [ "preserve_order" ], version = "1" }
+toml             = "1"
+toml_edit        = "0.25"
+ureq             = { default-features = false, features = [ "rustls" ], version = "3" }
+
+[lints]
+workspace = true

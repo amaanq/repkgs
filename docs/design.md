@@ -1,16 +1,16 @@
 # Design
 
 How the set differs from nixpkgs and why. What is not built yet is in `plan.md`, the updater in
-`plumb.md`, and the exact contract of shim and shimd in `shim.md`.
+`spieler.md`, and the exact contract of mummer and mummerd in `mummer.md`.
 
-The names that recur: **shim** is the compiler driver (`cc`, `c++` and `rustc` on a build's `PATH`)
-and the ELF post-processor, **hoist** the builder that runs a derivation, **shimd** the daemon behind
+The names that recur: **mummer** is the compiler driver (`cc`, `c++` and `rustc` on a build's `PATH`)
+and the ELF post-processor, **bigtop** the builder that runs a derivation, **mummerd** the daemon behind
 them both (compile cache, build slots), **launch** the one binary behind every installed script,
-**plumb** the updater, and **jsem** the proxy that backs GHC's `-jsem` tokens with shimd's slots.
+**spieler** the updater, and **jape** the proxy that backs GHC's `-jsem` tokens with mummerd's slots.
 
 ## Upstream
 
-The last upstream base is manic-systems/manicpkgs commit
+The last upstream base is manic-systems/motley commit
 `5d574c2d75c1b24419319dddd8f2753d58a4588e`, jj change `ouyumvxn`, dated
 2026-09-20, which added the tre package. Nothing after that commit is rebased onto
 this stack. Later upstream changes may be borrowed by hand per package.
@@ -21,30 +21,30 @@ this stack. Later upstream changes may be borrowed by hand per package.
    measures on the packages both sets have ([eval.md](eval.md)).
 2. **Relocatable outputs.** No output holds its own store path, so every derivation can be
    content-addressed, early cut-off happens by default and a closure runs from any directory.
-3. **Rust builders with Nushell phases.** Structured data, real errors, and a crib of a few static binaries.
+3. **Rust builders with Nushell phases.** Structured data, real errors, and a peanut of a few static binaries.
 4. **One toolchain.** A single LLVM targets every platform, and cross compiling is an argument to
    the set.
 5. **A compile cache under Nix**, so editing a recipe recompiles what changed and not everything
    downstream of it.
 
 The set uses stock Nix with `ca-derivations` and `dynamic-derivations`, `/nix/store`, no IFD
-and nothing fetched at eval time. glibc everywhere, musl only in the crib and stage0. nixpkgs
-builds the crib and provides dev tools. The [source bootstrap](bootstrap.md) starts with
+and nothing fetched at eval time. glibc everywhere, musl only in the peanut and stage0. nixpkgs
+builds the peanut and provides dev tools. The [source bootstrap](bootstrap.md) starts with
 x86-64 LLVM, allowing GCC in the early compiler chain. NixOS modules, nixpkgs compatibility
 and GCC as a package-set compiler remain outside the scope.
 
 Build machines are x86_64- and aarch64-linux. riscv64, loongarch64, ppc64le, Windows and macOS
 are cross targets. Windows supports Microsoft's CRT and SDK through the MSVC ABI, or MinGW
 with UCRT and our libc++. macOS uses Apple's SDK and `ld64.lld`. The CPU baseline
-(x86-64-v3, armv8.2-a+lse, rv64gc) belongs to the platform and shim adds it, so no package
+(x86-64-v3, armv8.2-a+lse, rv64gc) belongs to the platform and mummer adds it, so no package
 carries `-march`.
 
 ## Evaluation
 
 A package is its `recipe.toml`. nix/package/manifest.nix turns the `[build]` table, with the
 changes its `recipe.nix` returns merged on top, into a *spec*, and nix/package checks
-that spec against the schema hoist emits (an unknown field, or an option of the wrong type or with
-an unknown name, is an error) before making one derivation whose builder is `hoist build`, with a
+that spec against the schema bigtop emits (an unknown field, or an option of the wrong type or with
+an unknown name, is an error) before making one derivation whose builder is `bigtop build`, with a
 phase plan and structured JSON attributes. There is no callPackage, mkDerivation or module layer
 and no fixpoint per package.
 
@@ -127,17 +127,17 @@ a stale hash fails instead of reusing the old tarball. Archives are unpacked int
   dynamic derivation whose producer reads `Cargo.lock` from the fetched source at build time and
   writes one `builtin:fetchurl` per crate with the hash the lock already has, so evaluation never
   sees it. npm, pnpm, Yarn, Bundler, uv, Bun and Deno work the same way. The producer speaks the
-  Nix worker protocol itself (in shim), so there is no `nix` in the sandbox and no recursive Nix.
+  Nix worker protocol itself (in mummer), so there is no `nix` in the sandbox and no recursive Nix.
 - **Hashes that a lock file lacks** (Go, Hackage, LuaRocks) live in one sorted `locks/<eco>.toml`
-  per ecosystem, merged with `merge=union` and filled by `plumb lock`. A package's vendor
+  per ecosystem, merged with `merge=union` and filled by `spieler lock`. A package's vendor
   derivation mentions only its own share.
-- **Native libraries behind locked dependencies** are settled when the package is pinned. plumb
+- **Native libraries behind locked dependencies** are settled when the package is pinned. spieler
   reads the lock files in the source it just hashed, looks the names up in `builder/sys-libs.json`
   (openssl-sys to openssl, mattn/go-sqlite3 to sqlite) and writes `sys = [..]` into `[pin]`. The
   package then takes those of them the set has on the platform as ordinary dependencies, which
   evaluation, `info`, `supported` and overrides all see, while ripgrep's manifest never names
   pcre2. The build system checks the lock against `sys`, so a lock that has since gained a -sys
-  crate fails with a pointer to `manicpkgs update` rather than building a vendored copy.
+  crate fails with a pointer to `motley update` rather than building a vendored copy.
 - **Autoconf** results that are facts about a platform are pinned in `nix/config.site`.
 
 ## Relocatable outputs
@@ -148,10 +148,10 @@ and the reference scanner work as they always have.
 
 | reference | made relative by |
 |---|---|
-| ELF NEEDED and RUNPATH | shim links with a RUNPATH of exactly the directories that satisfied a `-l`. `reloc-fixup` rewrites in place, making NEEDED `$ORIGIN/…/libfoo.so.1` (one `open` per library) and keeping libc and `dlopen` directories in RUNPATH |
+| ELF NEEDED and RUNPATH | mummer links with a RUNPATH of exactly the directories that satisfied a `-l`. `reloc-fixup` rewrites in place, making NEEDED `$ORIGIN/…/libfoo.so.1` (one `open` per library) and keeping libc and `dlopen` directories in RUNPATH |
 | Mach-O LC_LOAD_DYLIB | dependents record each dylib's absolute install name at link time (`-headerpad_max_install_names`), and `reloc-fixup` respells those and store LC_RPATHs as `@loader_path/…` and signs again ad hoc |
 | PT_INTERP | a 300-byte entry stub (`crt-interp`) maps ld.so relative to `/proc/self/exe`, with glibc unmodified, in 0.09 ms |
-| upstream binaries | with `prebuilt = true`, hoist implant writes the same stub and RUNPATH |
+| upstream binaries | with `prebuilt = true`, bigtop implant writes the same stub and RUNPATH |
 | scripts and wrappers | `launch`, a `bin/foo` hardlink beside a `bin/.foo.launch` record with `{root}` placeholders, instead of shebang patching or makeWrapper |
 | glibc data, pkg-config, cmake | relative to `libc.so.6` (one patch), `${pcfiledir}`, and cmake's own relative paths, with `.la` files deleted |
 | exported environment | `exports.json` values written with `{root}` |
@@ -177,17 +177,17 @@ produced none fails. Sources are not shipped, DWARF names `/build/source/…`, a
 tree.
 
 With no output naming itself, every derivation, bootstrap stages included, is floating
-content-addressed. A change to shim, a builder script or the toolchain that leaves a package's bytes
+content-addressed. A change to mummer, a builder script or the toolchain that leaves a package's bytes
 alone lets its dependents resolve to what the store already has instead of rebuilding. Cross builds
 pass `--deny <build dependency>` to reloc-fixup, so a build-machine path in a target output fails
 rather than becoming a silent reference.
 
 ## Builders
 
-One hoist process prepares the environment and source tree, executes the package's phases,
+One bigtop process prepares the environment and source tree, executes the package's phases,
 then handles debug splitting, launchers, relocation, version checks and `exports.json`.
 Build systems implement the Rust `System` trait. Package-specific Nu phases run in child
-processes and hand their environment and build context back to hoist. A package names its build
+processes and hand their environment and build context back to bigtop. A package names its build
 systems and edits their phases:
 
 ```toml
@@ -203,25 +203,25 @@ WITH_FOO = true                      # typed options, checked at evaluation
 
 - **Dependencies contribute data and never behaviour.** Each output carries an `exports.json` of
   include, lib and pkg-config directories, environment and propagation. `prepare` turns the closure
-  into search paths and the flags shim adds, and nothing a dependency ships runs in another build.
+  into search paths and the flags mummer adds, and nothing a dependency ships runs in another build.
 - **Two dependency lists**, `tools` for the build machine, on `PATH`, and
   `needs` for the target.
 - **Cross compiling belongs to the build system**, driven by one platform record: `--host` and
   `config.site`, a meson cross file, a cmake toolchain file, `CARGO_TARGET_*`, `GOARCH`. Tests run
   under qemu.
-- **Hardening and reproducibility are compiler defaults.** shim adds `-O2 -g`, frame pointers and
-  the nixpkgs hardening set outside `CFLAGS`, so no Makefile drops them. hoist's typed hardening
+- **Hardening and reproducibility are compiler defaults.** mummer adds `-O2 -g`, frame pointers and
+  the nixpkgs hardening set outside `CFLAGS`, so no Makefile drops them. bigtop's typed hardening
   table defines the flags, a platform or package turns names off (`cc.hardening.fortify = false`).
   `SOURCE_DATE_EPOCH`, prefix maps and fixed seeds take care of reproducibility.
 - **Tests run**, inside the build or as `<pkg>.tests` with `tests.separate`. Every `bin/x
   --version` has to print the pinned version from an empty environment, under an audit module that
   fails when a `dlopen` finds nothing.
 
-## shim and shimd
+## mummer and mummerd
 
 Nix caches whole derivations, so one changed line in a recipe reruns every compiler call
-downstream of it. shim is the only compiler on `PATH`, and when `/nix/var/nix/shimd/socket` is
-mapped into the sandbox (`extra-sandbox-paths`) it asks shimd before compiling. No derivation
+downstream of it. mummer is the only compiler on `PATH`, and when `/nix/var/nix/mummerd/socket` is
+mapped into the sandbox (`extra-sandbox-paths`) it asks mummerd before compiling. No derivation
 mentions the cache, so outputs are the same either way, which CA outputs let anyone check.
 
 | cached | key |
@@ -238,7 +238,7 @@ included, and cached strings are restored literally.
 
 Autoconf C header checks first reuse successful, warning-free compiler results after validating
 their dependency manifests. These hits avoid launching the preprocessor. Otherwise, header
-checks can share successful results across packages. Shim preprocesses
+checks can share successful results across packages. Mummer preprocesses
 the current test and keys the result by the compiler, expanded flags, warning policy, helper
 definitions, site configuration, compiler environment, source, preprocessed output and headers.
 It replaces package metadata values in the source key only when Clang reports those macros as
@@ -247,25 +247,25 @@ on every lookup, and immutable headers retain their full store paths.
 
 Configure prints `(shared)` for these hits. Missing headers, unexpected preprocessing warnings,
 unsupported compiler options and an unavailable daemon fall back to the original check.
-Only the `cc`, `gcc`, `cc-build` and `gcc-build` aliases of the same shim installation are supported.
+Only the `cc`, `gcc`, `cc-build` and `gcc-build` aliases of the same mummer installation are supported.
 Failed checks, link checks and runtime checks are not shared through this mechanism. `nix/config.site`
 still supplies common platform defaults, and arbitrary `ac_cv_*` names are never used as
 cross-package keys.
 
-`tools/benchmark-configure.nu` measures Autoconf configuration with the selected crib and
+`tools/benchmark-configure.nu` measures Autoconf configuration with the selected peanut and
 the packages' resolved build inputs. It starts a fresh daemon, primes the compiler cache,
 alternates runs with and without shared header results, then measures whole `config.cache`
 reuse. Every pass starts with a fresh source and build directory at the same paths. The
 benchmark rejects changes to the generated `Makefile` and `config.h` files, requires the warm
 configure cache to report a restore, and preserves the per-run logs and timings in the printed
-directory. `environment.json` records the crib and daemon identity, while `summary.json` records
+directory. `environment.json` records the peanut and daemon identity, while `summary.json` records
 the median timings and configure-cache speedup. Package builds finish before measurements begin.
 
 ```console
-nu tools/benchmark-configure.nu --crib ./result-bootstrap-crib --daemon /path/to/shimd sed diffutils
+nu tools/benchmark-configure.nu --peanut ./result-bootstrap-peanut --daemon /path/mu/mummerd sed diffutils
 ```
 
-Measured on x86-64 Linux with the source-built crib and release shimd on September 13, 2026.
+Measured on x86-64 Linux with the source-built peanut and release mummerd on September 13, 2026.
 Compiler-cache and shared-header times are medians of three interleaved configure runs.
 The final column measures a restored whole configure cache, with identical generated files.
 
@@ -280,26 +280,26 @@ Nix output checks also pass for both packages with cold and warm caches. In ordi
 builds, diffutils reuses 16 successful header checks from sed. Warm rebuilds restore the whole
 configure cache and reuse 97 percent of sed's compiler actions and 98 percent of diffutils'.
 
-shimd keeps an append-only object store of packs with an in-memory index, evicts whole packs and
+mummerd keeps an append-only object store of packs with an in-memory index, evicts whole packs and
 serves hits with `sendfile`. It remembers store-file identities so a hit does not hash headers
 again, and it hands out build slots so N sandboxes running `make -jN` do not oversubscribe the
-machine (per process for cc and rustc, through `-toolexec` for go and through `jsem` for ghc). A
+machine (per process for cc and rustc, through `-toolexec` for go and through `jape` for ghc). A
 warm cache took sqlite3.c from 82 s to 0.08 s and fd's 200 rlibs from 218 s to 1.4 s.
-Request keys, manifests and the pack format are specified in `shim.md`. A cache writer can supply
+Request keys, manifests and the pack format are specified in `mummer.md`. A cache writer can supply
 compiler artifacts, so the cache stays per user and machine.
 
 ## Toolchain, bootstrap, cross
 
 ```
-crib      static musl: LLVM multicall (clang, lld, llvm-ar …), bsdtar, toybox, dash, make, python
-→ stage0  musl headers, compiler-rt, musl, linux headers, libc++, shim, cc     (this machine, crib clang)
-→ stage1  the same with glibc, cc-boot, cmake, llvm with clang, lld, libLLVM.so  (this machine, crib clang)
+peanut      static musl: LLVM multicall (clang, lld, llvm-ar …), bsdtar, toybox, dash, make, python
+→ stage0  musl headers, compiler-rt, musl, linux headers, libc++, mummer, cc     (this machine, peanut clang)
+→ stage1  the same with glibc, cc-boot, cmake, llvm with clang, lld, libLLVM.so  (this machine, peanut clang)
 → stage2  linux headers, glibc, compiler-rt, libc++, cc-<platform>             (per target, stage1's clang)
 → pkgs/*
 ```
 
-Recipes run through `shim bootstrap` from `shim/src/bootstrap/`. musl, compiler-rt and the C++ runtimes compile from file
-lists without cmake. The source-built Rust chain compiles static shim before stage0 installs it.
+Recipes run through `mummer bootstrap` from `mummer/src/bootstrap/`. musl, compiler-rt and the C++ runtimes compile from file
+lists without cmake. The source-built Rust chain compiles static mummer before stage0 installs it.
 The one generated input is compiler-rt's builtins list per cpu (pkgs/ll/llvm/update.nu). What
 differs per target follows the object format (`platform.binfmt` of elf, macho or coff), and a libc
 or SDK tells compiler-rt and cc its header directories and driver flags through `etc/cc/` files.
@@ -307,7 +307,7 @@ RISC-V needed `-mno-relax`.
 
 A self-hosting language has its upstream binary as `<lang>-bootstrap`, prebuilt, relocated and
 only ever a build dependency, and `<lang>` built from source with it (Go, Rust, GHC, OpenJDK). Zig
-bootstraps from the WASM blob in its source. The crib comes from `pkgs/cr/crib/build.nix`, through
+bootstraps from the WASM blob in its source. The peanut comes from `pkgs/pe/peanut/build.nix`, through
 nixpkgs' static packages today and from this set eventually.
 
 ## Influences

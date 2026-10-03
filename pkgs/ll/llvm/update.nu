@@ -1,4 +1,4 @@
-# shim bootstrap compiles compiler-rt before any cmake exists, so builtins.toml records, per target,
+# mummer bootstrap compiles compiler-rt before any cmake exists, so builtins.toml records, per target,
 # the lib/builtins sources compiler-rt's own cmake selects
 
 const targets = [
@@ -44,7 +44,7 @@ def selected [tree: path, target: record]: nothing -> list<string> {
   | parse -r '(?m)^CMakeFiles/(?<unit>[^/]+)\.dir/(?<file>[^:]*)\.o(?:bj)?:'
   | where unit =~ '^clang_rt\.builtins|outline_atomic_helpers'
   | each {|row|
-    # each aarch64 outline atomic is its own generated .S, which shim makes from aarch64/lse.S
+    # each aarch64 outline atomic is its own generated .S, which mummer makes from aarch64/lse.S
     if $row.unit =~ outline_atomic or ($row.file | path basename) =~ '^outline_atomic_' {
       $"@lse/($row.file | path basename)"
     } else {

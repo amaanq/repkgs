@@ -1,4 +1,4 @@
-# A resolved spec against the schema hoist emits: `errors` lists what is wrong at the top, `valid` is
+# A resolved spec against the schema bigtop emits: `errors` lists what is wrong at the top, `valid` is
 # the spec with each field checked deeply where it is read
 {
   platform,

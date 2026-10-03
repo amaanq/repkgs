@@ -2,8 +2,8 @@
 export def resolve [pkg: record]: nothing -> table {
   let zig   = (open ($pkg.dir | path dirname -n 2 | path join zi zig recipe.toml)).pin.version
   let url   = $"https://codeberg.org/ziglang/zig/raw/tag/($zig)/cmake/Findllvm.cmake"
-  let reply = (^plumb get $url --max-age 1day | from json)
+  let reply = (^spieler get $url --max-age 1day | from json)
   if $reply.status != 200 { error make {msg: $"GET ($url) returned ($reply.status)"} }
   let major = ($reply.body | parse -r 'expected LLVM (\d+)\.x' | get 0.capture0)
-  ^plumb versions $pkg.upstream.purl | from json | where ($it.version | split row "." | first) == $major
+  ^spieler versions $pkg.upstream.purl | from json | where ($it.version | split row "." | first) == $major
 }

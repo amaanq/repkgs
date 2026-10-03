@@ -18,25 +18,25 @@ export def configure []: nothing -> nothing {
   cd $c.src
   let libraries = [(linked ffi libffi include) (linked gmp gmp include) (linked curses ncurses include/ncursesw)] | flatten
   # autoreconf would run aclocal, which needs automake, and AC_PATH_PROG keeps only absolute presets
-  x sh ./configure $"--prefix=($c.out)" --with-system-libffi ...$libraries GHC=ghc $"AutoreconfCmd=(tool autoconf)" ...(^hoist system ghc-toolchain | lines)
+  x sh ./configure $"--prefix=($c.out)" --with-system-libffi ...$libraries GHC=ghc $"AutoreconfCmd=(tool autoconf)" ...(^bigtop system ghc-toolchain | lines)
 }
 
 # leaves $out out of the key since it moves with every recipe edit, and _build never embeds it
 def cache-key []: nothing -> string {
   let given = (attrs)
-  ^hoist probe key $"hadrian/($given.src | path basename)" ...$given.patches --no-out
+  ^bigtop probe key $"hadrian/($given.src | path basename)" ...$given.patches --no-out
 }
 
 export def build []: nothing -> nothing {
   let tree     = $"((ctx).src)/_build"
   let key      = (cache-key)
-  let restored = (^hoist probe restore-dir $key $tree | complete).exit_code == 0
+  let restored = (^bigtop probe restore-dir $key $tree | complete).exit_code == 0
   note hadrian-cache (if $restored { "restored" } else { "cold" })
   hadrian binary-dist-dir
-  ^hoist probe store-dir $key $tree
+  ^bigtop probe store-dir $key $tree
 }
 
 export def install []: nothing -> nothing {
   cd (files --dirs $"((ctx).src)/_build/bindist/ghc-*" | first)
-  ^hoist system ghc-install
+  ^bigtop system ghc-install
 }

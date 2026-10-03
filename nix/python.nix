@@ -2,7 +2,7 @@
 # Both build pyapp packages over fetch.pythonDeps (tests/builder/pyproject):
 #   .env { src or lock, … }   every locked dependency and bin/python3
 #   .project { src, … }       { package, devEnv }, where devEnv's python also imports the checkout
-#                             $REPKGS_PROJECT names
+#                             $MOTLEY_PROJECT names
 {
   package,
   fetch,

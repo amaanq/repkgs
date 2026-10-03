@@ -1,4 +1,4 @@
-# The packages behind each `uses` entry. hoist's system/<name>.rs owns the phases and declares in
+# The packages behind each `uses` entry. bigtop's system/<name>.rs owns the phases and declares in
 # nix/schema.json their default order, whether its packages are prebuilt, the platforms it cannot
 # serve and the `<name>.*` options. Here a system gets its `tool` (a package may swap it through
 # `<name>.tool`) and further `tools` on PATH, `dependencies` added to the package's, `lock` options
@@ -41,7 +41,7 @@ let
   ];
 
   bindings = with buildPkgs; {
-    # make and bash come from baseTools, or the crib for bootstrapTools packages
+    # make and bash come from baseTools, or the peanut for bootstrapTools packages
     make.tools = [ sh ];
     autotools.tools = [ sh ];
     cmake = {
@@ -84,7 +84,7 @@ let
       tool = cabal;
       tools = [
         ghc-bootstrap
-        jsem
+        jape
       ];
       # ghc-bignum links -lgmp into every program and the RTS links -lffi
       dependencies = [

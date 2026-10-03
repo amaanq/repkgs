@@ -4,7 +4,7 @@
 {
   system ? builtins.currentSystem,
   platform ? system,
-  crib ? null,
+  peanut ? null,
   rustToolchain ? null,
   buildTools ? { },
   # a tree or a list of trees, { zlib.autotools.flags.append = [ … ]; } (nix/overrides.nix)
@@ -18,7 +18,7 @@
   inherit
     system
     platform
-    crib
+    peanut
     rustToolchain
     buildTools
     overrides

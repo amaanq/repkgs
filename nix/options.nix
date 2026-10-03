@@ -1,4 +1,4 @@
-# manicpkgs options: every build system's options as { type, default, doc }, plain JSON: `deps`
+# motley options: every build system's options as { type, default, doc }, plain JSON: `deps`
 # defaults (fetcher derivations) become null, package defaults (`tool`) their name
 {
   system ? builtins.currentSystem,

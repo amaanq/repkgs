@@ -5,9 +5,9 @@ use core.nu *
 export def install []: nothing -> nothing {
   let c = (ctx)
   if ($"($c.src)/usr/lib/ghc" | path exists) {
-    ^hoist system ghc-install --deb
+    ^bigtop system ghc-install --deb
   } else {
     implant $c $c.src
-    ^hoist system ghc-install
+    ^bigtop system ghc-install
   }
 }

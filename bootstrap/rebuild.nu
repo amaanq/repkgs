@@ -4,13 +4,13 @@ use store.nu [capture save-progress store-args plan-dir prepare verify-stage]
 
 def state-dir [directory: any]: nothing -> string {
   let base = ($env.XDG_STATE_HOME? | default ($env.HOME | path join .local/state))
-  let path = ($directory | default ($base | path join manicpkgs/bootstrap-llvm) | path expand)
+  let path = ($directory | default ($base | path join motley/bootstrap-llvm) | path expand)
   if $path =~ '[%\r\n]' { error make {msg: "bootstrap state path contains unsupported characters"} }
   $path
 }
 
 def unit-name [directory: string]: nothing -> string {
-  $"manicpkgs-bootstrap-($directory | hash sha256 | str substring 0..11).service"
+  $"motley-bootstrap-($directory | hash sha256 | str substring 0..11).service"
 }
 
 def unit-info [directory: string]: nothing -> record {
@@ -65,7 +65,7 @@ def build-coreutils [directory: string, graph: table, shell: string, cores: int,
   if (capture findmnt [--noheadings --output FSTYPE --target /tmp]) != tmpfs {
     error make {msg: "Coreutils filesystem checks on bcachefs need /tmp on tmpfs"}
   }
-  let scratch = (capture mktemp [-d /tmp/manicpkgs-coreutils.XXXXXXXX])
+  let scratch = (capture mktemp [-d /tmp/motley-coreutils.XXXXXXXX])
   print $"Coreutils filesystem checks use ($scratch), completed outputs stay in the isolated store"
   for package in $packages {
     build-stage $directory $package.path ($cores // $jobs) $jobs --shell $shell --dependencies
@@ -81,7 +81,7 @@ def "main start" [--state: path, --cores: int = 30, --jobs: int = 3, --llvm-core
   if $jobs > $cores { error make {msg: "jobs must not exceed the total core budget"} }
   if $llvm_cores > $cores { error make {msg: "LLVM workers must not exceed the total core budget"} }
   if $memory <= 0B { error make {msg: "memory limit must be positive"} }
-  if $through not-in ["" llvm crib] { error make {msg: "--through must be llvm or crib"} }
+  if $through not-in ["" llvm peanut] { error make {msg: "--through must be llvm or peanut"} }
   let directory = (state-dir $state)
   mkdir $directory
   let unit = (unit-info $directory)

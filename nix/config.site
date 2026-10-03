@@ -2,7 +2,7 @@
 # The answers depend on the target alone. Most stand in for AC_RUN_IFELSE checks, which a cross
 # build cannot run and autoconf would replace with its worst-case guess.
 
-# hoist's autotools system passes the output and its probe cache when configure got neither
+# bigtop's autotools system passes the output and its probe cache when configure got neither
 if [ "$prefix" = NONE ] && [ -n "$PKGS_PREFIX" ]; then prefix=$PKGS_PREFIX; fi
 if [ "$cache_file" = /dev/null ] && [ -n "$PKGS_CONFIG_CACHE" ]; then cache_file=$PKGS_CONFIG_CACHE; fi
 if [ "$sbindir" = '${exec_prefix}/sbin' ]; then sbindir='${exec_prefix}/bin'; fi

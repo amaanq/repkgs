@@ -1,6 +1,6 @@
 result
 result-*
 **/target/
-pkgs/sh/shim/build/
+pkgs/mu/mummer/build/
 .direnv
 !/.envrc

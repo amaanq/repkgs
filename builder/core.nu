@@ -1,11 +1,11 @@
-# What every nu phase may use. hoist build runs nu for each nu phase with this directory on the
+# What every nu phase may use. bigtop build runs nu for each nu phase with this directory on the
 # include path and carries what a phase exported into the next one. Inline phases and package
 # modules import this module: ctx, options, x, tool, note, exports and the rest below.
 
 export use glob.nu *
 export use log.nu *
 
-# the build's context as hoist prepare wrote it: {spec out deps njobs src build platform testsRun}
+# the build's context as bigtop prepare wrote it: {spec out deps njobs src build platform testsRun}
 export def ctx []: nothing -> record<spec: record, out: string, dest: string, deps: list<record<name: string, root: string>>, roots: list<string>, njobs: int, src: string, build: string, platform: record, testsRun: bool, cache: bool> {
   open $"($env.NIX_BUILD_TOP)/ctx.json"
 }
@@ -22,7 +22,7 @@ export def dep-root [name: string, why: string]: nothing -> string {
 
 # the store path of build dependency `name`, for tools that are not a bin/ on PATH
 export def tool-root [name: string]: nothing -> string {
-  let found = ((attrs).buildDependencies | where { (^hoist exports $in | from json | first | get name) == $name })
+  let found = ((attrs).buildDependencies | where { (^bigtop exports $in | from json | first | get name) == $name })
   if ($found | is-empty) { error make {msg: $"buildPkgs.($name) must be in buildDependencies"} }
   $found.0
 }
@@ -92,7 +92,7 @@ export def is-macho [file: path]: nothing -> bool {
 # bin/<name> as a launch record (pkgs/la/launch): `program` with `args` before the user's, `vars`
 # name -> value set for it. For entry points that are not files with a #! line (escripts)
 export def write-launcher [name: string, program: string, args: list<string>, vars: record = {}]: nothing -> nothing {
-  ^hoist launcher $name $program ...$args --env ($vars | to json -r)
+  ^bigtop launcher $name $program ...$args --env ($vars | to json -r)
 }
 
 # no /usr/bin/env in the sandbox: point such scripts at the build PATH's env (build tree only;
@@ -100,5 +100,5 @@ export def write-launcher [name: string, program: string, args: list<string>, va
 # in the build tree: a generator script newer than its shipped output makes make regenerate it
 # (coreutils' cu-progs.m4 -> aclocal, ruby's prism templates -> baseruby)
 export def fix-shebangs [dir: path, --undo]: nothing -> nothing {
-  ^hoist shebangs $dir ...(if $undo { [--undo] } else { [] })
+  ^bigtop shebangs $dir ...(if $undo { [--undo] } else { [] })
 }

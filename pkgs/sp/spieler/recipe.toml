@@ -1,0 +1,16 @@
+[build]
+bin     = [ "spieler" ]
+systems = [ "cargo" ]
+version = "1.0.0"
+
+[build.cargo]
+flags = [ "-p", "spieler" ]
+
+[build.check]
+version = false
+
+[build.env]
+MUMMER_STORE_DIR = "/nix/store"
+
+[build.targets]
+posix = true

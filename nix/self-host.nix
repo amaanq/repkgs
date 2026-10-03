@@ -1,16 +1,16 @@
 {
   system ? builtins.currentSystem,
-  crib,
+  peanut,
   rustToolchain,
 }:
 let
   common = {
     inherit system rustToolchain;
-    crib = builtins.storePath crib;
+    peanut = builtins.storePath peanut;
   };
   initial = import ./set.nix common;
   executors = set: {
-    inherit (set.pkgs) shim hoist;
+    inherit (set.pkgs) mummer bigtop;
     nu = set.pkgs.nushell;
   };
   first = import ./set.nix (common // { buildTools = executors initial; });

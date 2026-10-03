@@ -50,18 +50,18 @@ lib.mergeAttrsList (map packagesFor platforms)
 // prefixed "tests-" suites
 // prefixed "builder-" (import ../tests/builder { inherit system; })
 // {
-  schema = host.runCommand "hoist-schema-check" { } ''
-    ${(setFor system).hoist}/bin/hoist schema --check ${./schema.json}
+  schema = host.runCommand "bigtop-schema-check" { } ''
+    ${(setFor system).bigtop}/bin/bigtop schema --check ${./schema.json}
     touch $out
   '';
   format = host.runCommand "format-check" {
     nativeBuildInputs = [ formatter ];
   } "cp -r ${checkout} src && chmod -R u+w src && cd src && nuff --check && touch $out";
   inherit
-    (import ../pkgs/cr/crib {
+    (import ../pkgs/pe/peanut {
       inherit system;
       buildSystem = system;
     })
-    crib
+    peanut
     ;
 }

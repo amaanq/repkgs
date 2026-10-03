@@ -15,7 +15,7 @@ tag     = "llvmorg-22.1.8"
 bin     = [ "llvm-config" ]
 check   = false
 needs   = [ "zlib", "zstd" ]
-patches = [ "../llvm/upstream-x86-vastart-stack-probe.patch", "../llvm/shim-absent-log.patch" ]
+patches = [ "../llvm/upstream-x86-vastart-stack-probe.patch", "../llvm/mummer-absent-log.patch" ]
 systems = [ "cmake" ]
 tools   = [ "cpython" ]
 

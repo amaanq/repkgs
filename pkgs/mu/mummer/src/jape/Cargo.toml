@@ -1,0 +1,21 @@
+[package]
+name                   = "jape"
+description            = "GHC -jsem tokens served from mummerd compiler slots"
+license                = "EUPL-1.2"
+repository             = "https://github.com/manic-systems/motley"
+keywords               = [ "ghc", "cabal", "nix", "build" ]
+categories             = [ "command-line-utilities", "development-tools" ]
+version.workspace      = true
+edition.workspace      = true
+readme.workspace       = true
+rust-version.workspace = true
+
+[dependencies]
+color-eyre = { workspace = true }
+eyre       = { workspace = true }
+mummer     = { workspace = true }
+libc       = "0.2"
+rustix     = { features = [ "process" ], workspace = true }
+
+[lints]
+workspace = true

@@ -1,10 +1,10 @@
 # `(stage { … }) extraTools recipe args`: one recipe run, a derivation whose builder is
-# `shim bootstrap <recipe>`. PATH is extraTools (shim's clang shim first once it exists),
-# the stage's tools, the crib. SHIM_CC is the clang behind the shim
+# `mummer bootstrap <recipe>`. PATH is extraTools (mummer's clang mummer first once it exists),
+# the stage's tools, the peanut. MUMMER_CC is the clang behind the mummer
 {
   system,
-  crib,
-  shim,
+  peanut,
+  mummer,
   buildTriple,
   inputs,
 }:
@@ -23,23 +23,23 @@ let
       inherit (strict) drvPath;
     };
   shared = {
-    inherit system crib;
+    inherit system peanut;
     __structuredAttrs = true;
     __contentAddressed = true;
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
     outputs = [ "out" ];
-    builder = "${shim}/bin/shim";
-    SHIM_STORE_IDENTITY = "content";
+    builder = "${mummer}/bin/mummer";
+    MUMMER_STORE_IDENTITY = "content";
     M4 = "m4";
-    BISON_PKGDATADIR = "${crib}/share/bison";
+    BISON_PKGDATADIR = "${peanut}/share/bison";
     CONFIG_SITE = "${../nix/config.site}";
   };
   binPath = tools: builtins.concatStringsSep ":" (map (tool: "${tool}/bin") tools);
 in
 {
   platform,
-  clang ? crib, # whose bin/clang compiles, and what the compiler driver uses
+  clang ? peanut, # whose bin/clang compiles, and what the compiler driver uses
   tools ? [ ],
   suffix ? "-${platform.name}",
 }:
@@ -58,9 +58,9 @@ let
     site_libc = platform.libc;
     flags = toString platform.march;
     llvm = clang;
-    SHIM_CC = "${clang}/bin/clang";
+    MUMMER_CC = "${clang}/bin/clang";
   };
-  basePath = binPath (tools ++ [ crib ]);
+  basePath = binPath (tools ++ [ peanut ]);
 in
 extraTools: recipe: args:
 leaf (

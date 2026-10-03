@@ -1,4 +1,4 @@
-# `rustToolchain`: a finished rust in the store standing in for the set's own, so a change to shim
+# `rustToolchain`: a finished rust in the store standing in for the set's own, so a change to mummer
 # does not wait on the from-source compiler. Native only, checked for the pieces cargo needs
 {
   rustToolchain,

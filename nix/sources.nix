@@ -1,9 +1,9 @@
-# The sources half of a recipe.toml (docs/plumb.md), with URL placeholders filled the way
-# plumb fills them. `unpacker` is a store path holding bin/bsdtar and `shim` the shim that fetches
-# and unpacks with it. Only the crib's own recipe.toml, a .nar, is read without them.
+# The sources half of a recipe.toml (docs/spieler.md), with URL placeholders filled the way
+# spieler fills them. `unpacker` is a store path holding bin/bsdtar and `mummer` the mummer that fetches
+# and unpacks with it. Only the peanut's own recipe.toml, a .nar, is read without them.
 {
   unpacker,
-  shim ? null,
+  mummer ? null,
   system ? null,
 }:
 let
@@ -73,14 +73,14 @@ let
       if github == null then baseNameOf stem else "${elemAt github 0}-${elemAt github 1}"
     );
 
-  # one fixed-output derivation runs `shim unpack` over the download, so the store holds the
-  # unpacked tree and `hash` is that tree's NAR hash, the one plumb computes too
+  # one fixed-output derivation runs `mummer unpack` over the download, so the store holds the
+  # unpacked tree and `hash` is that tree's NAR hash, the one spieler computes too
   unpacked =
     source: url:
     derivation {
       inherit system unpacker;
       name = source.name or (storeName url);
-      builder = "${shim}/bin/shim";
+      builder = "${mummer}/bin/mummer";
       args = [ "unpack" ];
       urls = spellings url;
       outputHash = source.hash;
@@ -148,7 +148,7 @@ let
             key: source: if hashes ? ${key} then source // { hash = hashes.${key}; } else source
           ) declared;
 
-      # `unpack = false` and .nar urls, the crib among them, go through builtin:fetchurl
+      # `unpack = false` and .nar urls, the peanut among them, go through builtin:fetchurl
       fetch =
         key:
         let
@@ -168,7 +168,7 @@ let
     in
     {
       inherit version tag fetch;
-      # libraries of the set that the lock files link, which plumb records (builder/sys-libs.json)
+      # libraries of the set that the lock files link, which spieler records (builder/sys-libs.json)
       sys = pinned.sys or [ ];
       has = key: sources ? ${key};
       default = fetch "default";
