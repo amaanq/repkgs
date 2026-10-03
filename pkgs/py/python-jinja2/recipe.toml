@@ -1,0 +1,18 @@
+[upstream]
+purl = "pkg:pypi/jinja2"
+
+[[source]]
+key  = "default"
+url  = "https://files.pythonhosted.org/packages/source/j/jinja2/jinja2-{version}.tar.gz"
+hash = "sha256-NzHWoHRHwm6kSUUOVnMBWvPEXZhAszTiJjp19h77laM="
+
+[pin]
+version = "3.1.6"
+
+[build]
+needs   = [ "python-markupsafe" ]
+systems = [ "python" ]
+
+[build.python]
+backend = "flit_core"
+module  = "jinja2"
