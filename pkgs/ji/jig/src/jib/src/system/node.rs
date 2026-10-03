@@ -1,4 +1,5 @@
 use std::{
+   array,
    collections::BTreeMap,
    env::{
       current_dir,
@@ -97,7 +98,7 @@ fn options(manager: Manager, ctx: &Ctx) -> io::Result<(Options, BTreeMap<String,
       return Ok((ctx.options(manager.name())?, BTreeMap::new()));
    }
 
-   let bun: BunOptions = ctx.options("bun")?;
+   let bun = ctx.options::<BunOptions>("bun")?;
    let common = Options {
       _root:  bun._root,
       script: bun.script,
@@ -178,10 +179,110 @@ fn pnpm_conf(settings: &[(&str, String)]) -> Vec<(String, String)> {
       .collect()
 }
 
+#[derive(Deserialize)]
+struct BunIndexed {
+   id:  String,
+   dir: String,
+}
+
+/// Links `<cache>/<folder>` to each package unpacked under `<deps>/<dir>` so
+/// `bun install --offline` finds it.
+fn fill_bun_cache(deps: &str, cache: &str) -> io::Result<()> {
+   let index =
+      serde_json::from_str::<Vec<BunIndexed>>(&read_to_string(format!("{deps}/index.json"))?)?;
+   for entry in index {
+      let link = Path::new(cache).join(bun_cache_folder(&entry.id));
+      if let Some(parent) = link.parent() {
+         create_dir_all(parent)?;
+      }
+      symlink(Path::new(deps).join(&entry.dir), link)?;
+   }
+   Ok(())
+}
+
+/// bun 1.4 names a cached package `<name>@<major>.<minor>.<patch>`, then the
+/// pre-release as `-<hash>` and the build as `+<HASH>`, then `@@@1`
+/// (`cached_npm_package_folder_print_basename` in
+/// src/install/PackageManager/PackageManagerDirectories.rs).
+fn bun_cache_folder(id: &str) -> String {
+   let Some((name, version)) = id.rsplit_once('@').filter(|&(head, _)| !head.is_empty()) else {
+      return format!("{id}@@@1");
+   };
+   let (core, build) = version
+      .split_once('+')
+      .map_or((version, None), |(head, tail)| (head, Some(tail)));
+   let release = match core.split_once('-') {
+      Some((numbers, pre)) => format!("{numbers}-{:016x}", wyhash11(pre.as_bytes())),
+      None => core.to_owned(),
+   };
+   let suffix = build.map_or_else(String::new, |tag| {
+      format!("+{:016X}", wyhash11(tag.as_bytes()))
+   });
+   format!("{name}@{release}{suffix}@@@1")
+}
+
+const WYHASH11_PRIMES: [u64; 5] = [
+   0xA076_1D64_78BD_642F,
+   0xE703_7ED1_A0B4_28DB,
+   0x8EBC_6AF0_9C88_C6E3,
+   0x5899_65CC_7537_4CC3,
+   0x1D8E_4E27_C47D_124F,
+];
+
+/// bun's `Wyhash11::hash(0, input)` (src/wyhash/lib.rs), the legacy wyhash
+/// with 32-byte rounds that bun hashes semver tags with.
+fn wyhash11(input: &[u8]) -> u64 {
+   let [p0, p1, p2, p3, p4] = WYHASH11_PRIMES;
+   let mum = |left: u64, right: u64| {
+      let product = u128::from(left) * u128::from(right);
+      u64::try_from((product ^ (product >> 64_u32)) & u128::from(u64::MAX)).unwrap_or_default()
+   };
+   let little = |bytes: &[u8]| {
+      bytes
+         .iter()
+         .rev()
+         .fold(0_u64, |value, &byte| (value << 8_u32) | u64::from(byte))
+   };
+   // a tail word reads its 8 bytes as two halves, the first one high, and a
+   // shorter one as 4, 2 and 1 byte pieces in that order, the first one high
+   let tail_word = |bytes: &[u8]| {
+      if bytes.len() == 8 {
+         return (little(&bytes[..4]) << 32) | little(&bytes[4..]);
+      }
+      let mut value = 0_u64;
+      let mut at = 0_usize;
+      for piece in [4_usize, 2, 1] {
+         if bytes.len() & piece != 0 {
+            value = (value << (8 * piece)) | little(&bytes[at..at + piece]);
+            at += piece;
+         }
+      }
+      value
+   };
+
+   let mut seed = 0_u64;
+   let (blocks, rest) = input.as_chunks::<32>();
+   for block in blocks {
+      let [w0, w1, w2, w3] = array::from_fn(|lane| little(&block[8 * lane..8 * lane + 8]));
+      seed = mum(w0 ^ seed ^ p0, w1 ^ seed ^ p1) ^ mum(w2 ^ seed ^ p2, w3 ^ seed ^ p3);
+   }
+
+   let mut words = rest.chunks(8).map(tail_word);
+   let mut word = || words.next().unwrap_or(p4);
+   if !rest.is_empty() {
+      let head = mum(word() ^ seed ^ p0, word() ^ seed ^ p1);
+      seed = if rest.len() > 16 {
+         head ^ mum(word() ^ seed ^ p2, word() ^ seed ^ p3)
+      } else {
+         head
+      };
+   }
+   mum(seed ^ u64::try_from(input.len()).unwrap_or(u64::MAX), p4)
+}
+
 fn install_command(
    manager: Manager,
    ctx: &Ctx,
-   attrs: &Attrs,
    options: &Options,
 ) -> io::Result<Vec<&'static str>> {
    let args = match manager {
@@ -212,13 +313,7 @@ fn install_command(
          ]
       },
       Manager::Bun => {
-         let builder = attrs
-            .probe_inputs
-            .first()
-            .ok_or_else(|| io::Error::other("the builder tree is not among probeInputs"))?;
-         let script = format!("{builder}/systems/bun-cache.ts");
-         let cache = format!("{}/bun-cache", ctx.build);
-         run("bun", &[&script, &options.deps, &cache], &[])?;
+         fill_bun_cache(&options.deps, &format!("{}/bun-cache", ctx.build))?;
          vec![
             "install",
             "--frozen-lockfile",
@@ -284,13 +379,13 @@ fn manager_env(manager: Manager, ctx: &Ctx, options: &Options) -> Vec<(String, S
 fn setup(manager: Manager, ctx: &Ctx, attrs: &Attrs) -> io::Result<Env> {
    let (options, _compile) = options(manager, ctx)?;
    let vars = manager_env(manager, ctx, &options);
-   let env_vars: Vec<(&str, &str)> = vars
+   let env_vars = vars
       .iter()
       .map(|pair| (pair.0.as_str(), pair.1.as_str()))
-      .collect();
-   let mut args: Vec<&str> = install_command(manager, ctx, attrs, &options)?
+      .collect::<Vec<(&str, &str)>>();
+   let mut args = install_command(manager, ctx, &options)?
       .into_iter()
-      .collect();
+      .collect::<Vec<&str>>();
    args.extend(strs(&options.flags));
    run(manager.name(), &args, &env_vars)?;
    let modules = Path::new("node_modules");
@@ -298,7 +393,7 @@ fn setup(manager: Manager, ctx: &Ctx, attrs: &Attrs) -> io::Result<Env> {
       shebangs(modules, false)?;
    }
 
-   let mut path: Vec<String> = vec![format!("{}/node_modules/.bin", current_dir()?.display())];
+   let mut path = vec![format!("{}/node_modules/.bin", current_dir()?.display())];
    path.extend(
       var("PATH")
          .unwrap_or_default()
@@ -400,7 +495,7 @@ fn install_tree(ctx: &Ctx) -> io::Result<()> {
    create_dir_all(format!("{}/lib/node_modules", ctx.out))?;
    create_dir_all(format!("{}/bin", ctx.out))?;
    succeed(Command::new("cp").args(["-r", ".", &tree]), "cp")?;
-   let package: PackageJson = serde_json::from_str(&read_to_string("package.json")?)?;
+   let package = serde_json::from_str::<PackageJson>(&read_to_string("package.json")?)?;
    let bins = match package.bin {
       Some(Bin::One(path)) => {
          BTreeMap::from([(
