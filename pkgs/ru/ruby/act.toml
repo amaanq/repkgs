@@ -21,3 +21,12 @@ flags = [
   "--without-git",
   "--without-baseruby",
 ]
+
+[on.cross]
+tools = [ "ruby" ]
+
+[on.cross.autotools]
+flags = [ "--with-baseruby=ruby" ]
+
+[on.cross.steps.before]
+"autotools.install" = [ "ruby.restore-shebangs" ]

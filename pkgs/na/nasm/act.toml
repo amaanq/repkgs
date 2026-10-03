@@ -4,3 +4,7 @@ fetch = { url = "https://www.nasm.us/pub/nasm/releasebuilds/{version}/nasm-{vers
 with  = [ "autotools" ]
 tools = [ "perl" ]
 test  = false
+
+# Makefile.in names win/manifest.rc relative to the build directory, which has no win/
+[on.windows.autotools]
+outOfTree = false

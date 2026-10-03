@@ -13,3 +13,12 @@ flags      = [ "CC=cc", "AR=llvm-ar" ]
 programs   = [ "mdb_stat", "mdb_copy", "mdb_dump", "mdb_load" ]
 root       = "libraries/liblmdb"
 testTarget = [ "test" ]
+
+[on.linux.make]
+flags = [ "SOEXT=.so" ]
+
+[on.macos.make]
+flags = [ "SOEXT=.dylib" ]
+
+[on.windows.make]
+flags = [ "SOEXT=.dll" ]

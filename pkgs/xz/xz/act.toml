@@ -8,3 +8,4 @@ abi = [ "gnu", "apple" ]
 
 [cmake]
 flags = [ "-DBUILD_SHARED_LIBS=ON", "-DXZ_NLS=OFF", "-DXZ_DOC=OFF", "-DXZ_POSIX_SHELL=/bin/sh" ]
+tool  = "cmake-bootstrap"

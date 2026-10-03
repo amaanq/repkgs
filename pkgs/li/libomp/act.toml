@@ -19,3 +19,12 @@ LLVM_INCLUDE_TESTS         = false
 OPENMP_ENABLE_LIBOMPTARGET = false
 OPENMP_ENABLE_OMPT_TOOLS   = false
 OPENMP_ENABLE_TESTING      = false
+
+[on.native.only]
+os = [ "linux", "macos" ]
+
+[on.windows.only]
+os = [ "linux", "macos" ]
+
+[on.msvc.cc]
+cflags = [ "-Dpid_t=int" ]

@@ -5,3 +5,15 @@ source   = "rust-std-x86_64"
 
 [steps]
 phases = [ "rust-bootstrap-std.install" ]
+
+[on.aarch64]
+source = "rust-std-aarch64"
+
+[on.loongarch64]
+source = "rust-std-loongarch64"
+
+[on.powerpc64le]
+source = "rust-std-powerpc64le"
+
+[on.riscv64]
+source = "rust-std-riscv64"

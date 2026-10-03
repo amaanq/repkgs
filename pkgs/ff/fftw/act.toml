@@ -5,3 +5,7 @@ tools = [ "perl" ]
 
 [autotools]
 flags = [ "--enable-threads", "CFLAGS=-O3 -fomit-frame-pointer -fstrict-aliasing" ]
+
+[on.windows.autotools]
+flags     = [ "--with-combined-threads" ]
+makeFlags = [ "LDFLAGS=-no-undefined" ]

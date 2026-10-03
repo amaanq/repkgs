@@ -9,3 +9,16 @@ with  = [ "autotools" ]
 [autotools]
 flags = [ "--disable-icu-config" ]
 root  = "source"
+
+[on.cross]
+test  = false
+tools = [ "icu" ]
+
+[on.cross.autotools]
+flags = [ "--with-cross-build=/build/native-icu" ]
+
+[on.cross.steps.before]
+"autotools.configure" = [ "icu.cross-buildroot" ]
+
+[on.macos.autotools]
+flags = [ "--enable-rpath" ]

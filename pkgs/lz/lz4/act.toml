@@ -8,3 +8,4 @@ allow = "<100"
 
 [cmake]
 root = "build/cmake"
+tool = "cmake-bootstrap"

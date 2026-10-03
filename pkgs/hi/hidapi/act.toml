@@ -2,3 +2,9 @@ tag   = "hidapi-{version}"
 track = "github:libusb/hidapi"
 fetch = { url = "https://github.com/libusb/hidapi/archive/refs/tags/hidapi-{version}.tar.gz" }
 with  = [ "cmake" ]
+
+[on.linux]
+deps = [ "libusb" ]
+
+[on.linux.cmake.defs]
+HIDAPI_WITH_HIDRAW = false

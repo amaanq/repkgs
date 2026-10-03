@@ -2,3 +2,12 @@ track = "generic:file?url=https://astron.com/pub/file/"
 fetch = { url = "https://astron.com/pub/file/file-{version}.tar.gz" }
 with  = [ "autotools" ]
 deps  = [ "zlib", "bzip2", "xz", "zstd" ]
+
+[on.cross]
+tools = [ "file" ]
+
+[on.cross.autotools]
+makeFlags = [ "FILE_COMPILE=file" ]
+
+[on.windows]
+deps = [ "tre" ]

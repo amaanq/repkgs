@@ -13,3 +13,4 @@ version = "--numeric-version"
 
 [cabal]
 exes = [ "cabal" ]
+tool = "cabal-bootstrap"

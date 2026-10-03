@@ -11,3 +11,6 @@ regex = 'libxml2-([0-9]+\.[0-9]+\.[0-9]+)\.tar'
 
 [autotools]
 flags = [ "--sysconfdir=/etc" ]
+
+[on.windows]
+deps = [ "libiconv" ]
