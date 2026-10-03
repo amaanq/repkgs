@@ -13,6 +13,7 @@ tag     = "20260817.0"
 
 [build]
 needs   = [ "googletest" ]
+patches = [ "upstream-cctz-sync.patch" ]
 systems = [ "cmake" ]
 
 [build.cmake.defs]
