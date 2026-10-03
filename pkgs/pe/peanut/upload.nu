@@ -1,48 +1,76 @@
 #!/usr/bin/env nu
-# Builds the crib nar for each system here (build.nix cross compiles), uploads them to the GitHub
-# release crib-<N> and points ./recipe.toml at them. <N> comes from build.nix's crib-<N>-<system>.
-#   pkgs/cr/crib/upload.nu [--systems x86_64-linux,aarch64-linux,riscv64-linux] [--repo manic-systems/manicpkgs]
+# Publishes peanut as a GitHub release and points recipe.toml at it. Run by hand. Each target is
+# built on this machine from default.nix's `nar`, a directory holding <name>.nar.xz and nar-hash,
+# which is the SRI hash of the uncompressed NAR the recipe pins.
+
+def render [header: string, fields: record] {
+   let width = $fields | columns | each { str length } | math max
+   let lines = $fields | transpose key value | each {|field|
+      $"($field.key | fill --width $width) = ($field.value | to json --raw)"
+   }
+   [$header ...$lines] | str join "\n"
+}
 
 def main [
-  --systems: string = "x86_64-linux,aarch64-linux,riscv64-linux" # comma separated, the rest keep their entry
-  --repo: string = "manic-systems/manicpkgs" # where the crib-<N> releases live
-]: nothing -> nothing {
-  let here     = ($env.CURRENT_FILE | path dirname)
-  let manifest = $"($here)/recipe.toml"
-  let builder  = (^nix config show system | str trim)
+   --systems: list<string> = [x86_64-linux aarch64-linux riscv64-linux] # the rest keep their entries
+   --repo: string = "manic-systems/motley"
+] {
+   let recipe = $env.FILE_PWD | path join recipe.toml
+   let local  = ^nix config show system | str trim
 
-  let nars = ($systems | split row "," | each {|system|
-    print -e $"building the crib nar for ($system)"
-    let out  = (^nix-build $"($here)/default.nix" -A nar --argstr system $system --argstr buildSystem $builder --no-out-link | str trim)
-    let file = (ls $out | where name =~ '\.nar\.xz$' | first | get name)
-    {
-      system: $system
-      file: $file
-      hash: (open --raw $"($out)/nar-hash" | str trim)
-      version: ($file | path basename | parse "crib-{version}-{rest}" | first | get version)
-    }
-  })
-  let versions = ($nars | get version | uniq)
-  if ($versions | length) != 1 { error make {msg: $"the systems build different crib versions: ($versions)"} }
-  let version = ($versions | first)
-  let tag     = $"crib-($version)"
+   let built = $systems | each {|system|
+      print --stderr $"building peanut for ($system) on ($local)"
+      let out = (
+         ^nix-build --no-out-link ($env.FILE_PWD | path join default.nix) -A nar
+            --argstr system $system --argstr buildSystem $local
+      ) | str trim
+      let archives = ls $out | where name =~ '\.nar\.xz$' | get name
+      if ($archives | length) != 1 {
+         error make { msg: $"($out) holds ($archives | length) .nar.xz files, expected one" }
+      }
+      let archive = $archives | first
+      let parsed  = $archive | path basename | parse --regex '^peanut-(?<generation>[^-]+)-'
+      if ($parsed | is-empty) {
+         error make { msg: $"($archive) is not named peanut-<generation>-<system>.nar.xz" }
+      }
+      {
+         system:     $system
+         archive:    $archive
+         generation: ($parsed | first | get generation)
+         hash:       (open --raw ($out | path join nar-hash) | str trim)
+      }
+   }
 
-  if (^gh release view $tag -R $repo | complete).exit_code != 0 {
-    ^gh release create $tag -R $repo --title $tag --notes $"bootstrap crib ($version), built by pkgs/cr/crib/build.nix"
-  }
-  ^gh release upload $tag -R $repo --clobber ...($nars | get file)
+   let generations = $built | get generation | uniq
+   if ($generations | length) != 1 {
+      error make { msg: $"the systems built different generations: ($generations | str join ', ')" }
+   }
+   let generation = $generations | first
+   let tag        = $"peanut-($generation)"
 
-  let fresh = ($nars | each {|nar|
-    {
-      key: $nar.system
-      url: $"https://github.com/($repo)/releases/download/crib-{version}/crib-{version}-($nar.system).nar.xz"
-      hash: $nar.hash
-      unpack: true
-      name: "crib"
-    }
-  })
-  let table = (open $manifest)
-  let untouched = ($table.source | where key not-in ($nars | get system))
-  $table | update source ($fresh ++ $untouched) | update pin {version: $version} | to toml | save -f $manifest
-  print -e $"($tag): uploaded ($nars | get system | str join ', '), wrote ($manifest)"
+   if (do { ^gh release view $tag --repo $repo } | complete | get exit_code) != 0 {
+      ^gh release create $tag --repo $repo --title $tag --notes $"bootstrap peanut ($generation), built by pkgs/pe/peanut/build.nix"
+   }
+   ^gh release upload $tag ...($built | get archive) --repo $repo --clobber
+
+   # the recipe only changes once the assets it names exist
+   let url = $"https://github.com/($repo)/releases/download/peanut-{version}/peanut-{version}"
+   let fresh = $built | each {|entry|
+      {
+         key:    $entry.system
+         url:    $"($url)-($entry.system).nar.xz"
+         hash:   $entry.hash
+         unpack: true
+         name:   "peanut"
+      }
+   }
+   let kept   = open $recipe | get source | where key not-in $systems
+   let tables = [
+      (render "[upstream]" { purl: $"pkg:github/($repo)" })
+      ...($fresh ++ $kept | each {|source| render "[[source]]" $source })
+      (render "[pin]" { version: $generation })
+   ]
+   $tables | str join "\n\n" | $in + "\n" | save --force $recipe
+
+   print --stderr $"($tag): uploaded ($systems | str join ', ') to ($repo) and updated ($recipe)"
 }
