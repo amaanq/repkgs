@@ -19,4 +19,14 @@ in
       value = target;
     }) (builtins.filter (target: target.libc != "musl") targets)
   );
+  # the facts a derivation hands jib: jig adds march and minos to every compile itself, the
+  # package layer turns interp into a sysroot path, and system is the derivation's own
+  forBuilder =
+    facts:
+    removeAttrs facts [
+      "march"
+      "minos"
+      "interp"
+      "system"
+    ];
 }

@@ -60,30 +60,7 @@ let
     builder = "${jib}/bin/jib";
     # platform facts autoconf would otherwise probe (or guess, when cross): nix/config.site
     CONFIG_SITE = "${../config.site}";
-    platform = {
-      inherit (platform)
-        name
-        cpu
-        os
-        binfmt
-        names
-        osNames
-        clangTarget
-        gnuTriple
-        rustTriple
-        opensslTarget
-        buildRustTriple
-        buildTriple
-        bits
-        endian
-        cross
-        emulator
-        abi
-        libc
-        posix
-        ext
-        hardening
-        ;
+    platform = (import ../platforms.nix).forBuilder platform // {
       inherit (toolchain) sysroot;
       probe = if platform.cross then "${toolchain.sysroot}/lib/${platform.interp}" else "";
       # `prebuilt`: upstream ELFs get our dynamic linker implanted (true) or via launch ("ldso")
