@@ -16,7 +16,7 @@ let
     powerpc64le = "PowerPC";
   };
   binutils =
-    pkgs.runCommand "crib-binutils"
+    pkgs.runCommand "seed-binutils"
       {
         passthru = {
           isLLVM = true;
@@ -58,7 +58,7 @@ in
 }:
 let
   rust = stdenv.mkDerivation {
-    pname = "crib-rust";
+    pname = "seed-rust";
     inherit version src;
     nativeBuildInputs = [
       pkgs.python3Minimal
@@ -85,7 +85,7 @@ let
     configurePhase = ''
       runHook preConfigure
       cp ${
-        pkgs.writeText "crib-rust-bootstrap.toml" (config {
+        pkgs.writeText "seed-rust-bootstrap.toml" (config {
           globalSection = {
             change-id = "ignore";
             profile = "dist";
@@ -118,7 +118,7 @@ let
               vendor = true;
               locked-deps = true;
               optimized-compiler-builtins = false;
-              description = "manicpkgs";
+              description = "repkgs";
             };
             install = {
               prefix = "@out@";

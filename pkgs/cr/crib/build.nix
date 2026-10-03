@@ -60,7 +60,7 @@ let
   # configured as a native build since the static binary runs on the machine it targets. For
   # another cpu, llvm builds its tblgen tools in a NATIVE subtree with this machine's compiler
   llvm = musl.stdenv.mkDerivation {
-    pname = "crib-llvm";
+    pname = "seed-llvm";
     inherit (llvmSource) version;
     src = llvmSource.default;
     patches = [ ../../ll/llvm/upstream-x86-vastart-stack-probe.patch ];
@@ -151,7 +151,7 @@ let
         ];
     in
     rustPlatform.buildRustPackage {
-      pname = "crib-${name}";
+      pname = "seed-${name}";
       version = "3.0.0";
       src = builtins.path {
         path = ../../sh/shim/src;
@@ -186,7 +186,7 @@ let
       ];
     }).overrideAttrs
       {
-        pname = "crib-nushell";
+        pname = "seed-nushell";
         inherit (nuSource) version;
         src = nuSource.default;
         auditable = false;
@@ -224,7 +224,7 @@ let
   # glibc's build runs python scripts, which need only the stdlib as source, without extension
   # modules or ensurepip
   python = musl.stdenv.mkDerivation {
-    name = "crib-python";
+    name = "seed-python";
     src = (source "cpython314").default;
     # every module that would want a library the crib does not carry
     preConfigure = ''
@@ -271,7 +271,7 @@ let
     dontFixup = true;
   };
 
-  crib = native.runCommand "crib-4-${system}" { allowedReferences = [ ]; } ''
+  crib = native.runCommand "seed-4-${system}" { allowedReferences = [ ]; } ''
     mkdir -p $out/bin $out/lib $out/share
     cp ${bsdtar}/bin/bsdtar ${toybox}/bin/toybox ${dash}/bin/dash $out/bin/
     ln -s dash $out/bin/sh
