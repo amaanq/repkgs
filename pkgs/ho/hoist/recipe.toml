@@ -1,0 +1,16 @@
+[build]
+bin     = [ "hoist" ]
+systems = [ "cargo" ]
+version = "1.0.0"
+
+[build.cargo]
+flags = [ "-p", "hoist" ]
+
+[build.check]
+version = false
+
+[build.env]
+SHIM_STORE_DIR = "/nix/store"
+
+[build.targets]
+posix = true

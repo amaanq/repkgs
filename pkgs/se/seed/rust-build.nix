@@ -118,7 +118,7 @@ let
               vendor = true;
               locked-deps = true;
               optimized-compiler-builtins = false;
-              description = "repkgs";
+              description = "manicpkgs";
             };
             install = {
               prefix = "@out@";

@@ -2,7 +2,7 @@
 # and lib/ on the include path and $env.fixtures naming the directory. A directory with a
 # recipe.toml or package.nix is first built as the out-of-tree package test-<name>, handed over as
 # $env.pkg and $env.debug, so each test needs only its own toolchain. `nix-build tests/builder -A
-# <name>` runs one and `repkgs test` all.
+# <name>` runs one and `manicpkgs test` all.
 {
   system ? builtins.currentSystem,
   platform ? system,
@@ -72,7 +72,7 @@ let
           "--include-path=${includes}"
           "${dir}/test.nu"
         ];
-        PATH = "${tools.nu}/bin:${tools.jib}/bin:${set.bootstrap.seed}/bin";
+        PATH = "${tools.nu}/bin:${tools.hoist}/bin:${set.bootstrap.seed}/bin";
         fixtures = dir;
         SYS_LIBS = ../../builder/sys-libs.json;
       }

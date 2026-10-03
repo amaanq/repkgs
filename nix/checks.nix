@@ -50,8 +50,8 @@ lib.mergeAttrsList (map packagesFor platforms)
 // prefixed "tests-" suites
 // prefixed "builder-" (import ../tests/builder { inherit system; })
 // {
-  schema = host.runCommand "jib-schema-check" { } ''
-    ${(setFor system).jib}/bin/jib schema --check ${./schema.json}
+  schema = host.runCommand "hoist-schema-check" { } ''
+    ${(setFor system).hoist}/bin/hoist schema --check ${./schema.json}
     touch $out
   '';
   format = host.runCommand "format-check" {

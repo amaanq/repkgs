@@ -67,7 +67,7 @@ def resolved-paths [directory: string, graph: table, paths: list<string>]: nothi
 def checkpoints [graph: table, derivation: string]: nothing -> table {
   let names = [
     '^seed-llvm-static-' '^mrustc-bootstrap-' '^seed-rust-[0-9]'
-    '^seed-nushell-static-' '^seed-jig-static-'
+    '^seed-nushell-static-' '^seed-shim-static-'
   ] | each {|pattern|
     let found = ($graph | where {|entry| $entry.drv.name =~ $pattern } | sort-by --natural drv.name)
     if ($found | is-empty) { error make {msg: $"missing bootstrap checkpoint matching ($pattern)"} }

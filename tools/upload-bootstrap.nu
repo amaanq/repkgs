@@ -3,12 +3,12 @@
 # output as a nar to the GitHub release bootstrap-<pkg>-<version> and adds a <cpu> source to
 # <pkg>-bootstrap's recipe.toml. That set then fetches it like any upstream tarball, as a fixed
 # output with no tie to this machine's derivations.
-#   tools/upload-bootstrap.nu jdk [--cpus riscv64] [--repo Mic92/repkgs] [--store-path /nix/store/…]
+#   tools/upload-bootstrap.nu jdk [--cpus riscv64] [--repo manic-systems/manicpkgs] [--store-path /nix/store/…]
 
 def main [
   ...pkgs: string # the packages whose output becomes <pkg>-bootstrap's source
   --cpus: string = "riscv64" # comma separated
-  --repo: string = "Mic92/repkgs"
+  --repo: string = "manic-systems/manicpkgs"
   --store-path: string # an output built elsewhere and `nix copy`ed here, which skips the build
 ]: nothing -> nothing {
   let root = ($env.CURRENT_FILE | path dirname | path dirname)
@@ -32,7 +32,7 @@ def main [
 
     if (^gh release view $tag -R $repo | complete).exit_code != 0 {
       let commit = (^git -C $root rev-parse --short HEAD | str trim)
-      ^gh release create $tag -R $repo --title $tag --notes $"($pkg) ($version) cross built at repkgs ($commit), for cpus upstream has no binaries for"
+      ^gh release create $tag -R $repo --title $tag --notes $"($pkg) ($version) cross built at manicpkgs ($commit), for cpus upstream has no binaries for"
     }
     ^gh release upload $tag -R $repo --clobber ...($nars | get file)
 

@@ -10,7 +10,7 @@ flags = [ "-p", "jsem" ]
 version = false
 
 [build.env]
-JIG_STORE_DIR = "/nix/store"
+SHIM_STORE_DIR = "/nix/store"
 
 [build.targets]
 posix = true

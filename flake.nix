@@ -36,8 +36,8 @@
         in
         {
           bootstrap-llvm = seed.llvm;
-          bootstrap-jig = seed.jig;
-          bootstrap-jib = seed.jib;
+          bootstrap-shim = seed.shim;
+          bootstrap-hoist = seed.hoist;
           bootstrap-rust-stage0 = seed.stage0;
           bootstrap-rust = seed.rust;
           bootstrap-nushell = seed.nu;

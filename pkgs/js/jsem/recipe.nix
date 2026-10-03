@@ -7,7 +7,7 @@
   {
     cargo.tool = tools.rust-bootstrap;
     source = tree {
-      dir = "../../ji/jig/src";
+      dir = "../../sh/shim/src";
       exclude = [ "target" ];
       files = [
         ".rs"
@@ -15,7 +15,7 @@
         "Cargo.lock"
         "README.md"
       ];
-      name = "jig-src";
+      name = "shim-src";
     };
   }
 ]

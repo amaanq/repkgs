@@ -1,4 +1,4 @@
-# `nix fmt`, `repkgs fmt` or `nuff` in the development shell formats the tree and `nuff --check`
+# `nix fmt`, `manicpkgs fmt` or `nuff` in the development shell formats the tree and `nuff --check`
 # checks it. nuff reads ../nuff.toml, and this wrapper pins nuff and every tool that config names.
 {
   pkgs,
@@ -31,7 +31,7 @@ let
     pkgs.ruff
     pkgs.taplo
     pkgs.ast-grep
-    (import ./uptrack.nix { inherit pkgs; })
+    (import ./plumb.nix { inherit pkgs; })
   ];
 in
 pkgs.writeShellScriptBin "nuff" ''

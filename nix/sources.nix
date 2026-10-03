@@ -1,9 +1,9 @@
-# The sources half of a recipe.toml (docs/uptrack.md), with URL placeholders filled the way
-# uptrack fills them. `unpacker` is a store path holding bin/bsdtar and `jig` the jig that fetches
+# The sources half of a recipe.toml (docs/plumb.md), with URL placeholders filled the way
+# plumb fills them. `unpacker` is a store path holding bin/bsdtar and `shim` the shim that fetches
 # and unpacks with it. Only the seed's own recipe.toml, a .nar, is read without them.
 {
   unpacker,
-  jig ? null,
+  shim ? null,
   system ? null,
 }:
 let
@@ -73,14 +73,14 @@ let
       if github == null then baseNameOf stem else "${elemAt github 0}-${elemAt github 1}"
     );
 
-  # one fixed-output derivation runs `jig unpack` over the download, so the store holds the
-  # unpacked tree and `hash` is that tree's NAR hash, the one uptrack computes too
+  # one fixed-output derivation runs `shim unpack` over the download, so the store holds the
+  # unpacked tree and `hash` is that tree's NAR hash, the one plumb computes too
   unpacked =
     source: url:
     derivation {
       inherit system unpacker;
       name = source.name or (storeName url);
-      builder = "${jig}/bin/jig";
+      builder = "${shim}/bin/shim";
       args = [ "unpack" ];
       urls = spellings url;
       outputHash = source.hash;
@@ -168,7 +168,7 @@ let
     in
     {
       inherit version tag fetch;
-      # libraries of the set that the lock files link, which uptrack records (builder/sys-libs.json)
+      # libraries of the set that the lock files link, which plumb records (builder/sys-libs.json)
       sys = pinned.sys or [ ];
       has = key: sources ? ${key};
       default = fetch "default";

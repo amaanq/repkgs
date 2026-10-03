@@ -1,4 +1,4 @@
-# The packages behind each `uses` entry. jib's system/<name>.rs owns the phases and declares in
+# The packages behind each `uses` entry. hoist's system/<name>.rs owns the phases and declares in
 # nix/schema.json their default order, whether its packages are prebuilt, the platforms it cannot
 # serve and the `<name>.*` options. Here a system gets its `tool` (a package may swap it through
 # `<name>.tool`) and further `tools` on PATH, `dependencies` added to the package's, `lock` options

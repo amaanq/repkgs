@@ -1,9 +1,9 @@
 # The seed grown into a configured `cc` for every platform, in three stages:
-#   stage0  the seed's clang on musl builds jig and a cc for this machine
+#   stage0  the seed's clang on musl builds shim and a cc for this machine
 #   stage1  the seed's clang on glibc builds a cc that can host cmake and llvm (clang, lld, every target)
 #   stage2  that llvm builds compiler-rt, the libc, libc++, cc and launch per platform
-# Every derivation runs `jig bootstrap <recipe>` with structured attrs, recipes in
-# pkgs/ji/jig/src/jig/src/bootstrap/.
+# Every derivation runs `shim bootstrap <recipe>` with structured attrs, recipes in
+# pkgs/sh/shim/src/shim/src/bootstrap/.
 {
   seed ? null,
   system ? builtins.currentSystem,
@@ -27,7 +27,7 @@ let
     else
       import ../nix/sources.nix {
         unpacker = seedPath;
-        inherit (seedBuild) jig;
+        inherit (seedBuild) shim;
         inherit system;
       };
   sourcesOf = name: readerFor name (pkg name + "/recipe.toml");
@@ -43,10 +43,10 @@ let
   stage = import ./stage.nix {
     inherit system buildTriple;
     seed = seedPath;
-    inherit (seedBuild) jig;
+    inherit (seedBuild) shim;
     inputs = import ./inputs.nix {
       inherit pkg source;
-      prebuiltJig = seedBuild.jig;
+      prebuiltShim = seedBuild.shim;
     };
   };
   chain = import ./chain.nix { inherit pkg; };
@@ -74,7 +74,7 @@ let
       dlaudit = run [ built.cc ] "dlaudit" { };
     };
 
-  # before jig exists. The kernel headers install with musl's own tools, so they follow the libc
+  # before shim exists. The kernel headers install with musl's own tools, so they follow the libc
   stage0 =
     let
       platform = platforms.forSystem system "musl";
@@ -93,16 +93,16 @@ let
           resource = built.compiler-rt;
         };
       };
-      jig = run [ ] "jig" { };
+      shim = run [ ] "shim" { };
     in
     built
     // {
-      inherit jig;
+      inherit shim;
       linux-headers = headers;
       musl = built.libc;
-      cc = run [ jig ] "cc" {
+      cc = run [ shim ] "cc" {
         inherit (built) sysroot;
-        prebuilt = jig;
+        prebuilt = shim;
       };
     };
 
@@ -111,12 +111,12 @@ let
       run = stage {
         platform = host;
         tools = [
-          stage0.jig
+          stage0.shim
           stage0.cc
         ];
         suffix = "-boot";
       };
-      built = glibcChain host run { prebuilt = stage0.jig; };
+      built = glibcChain host run { prebuilt = stage0.shim; };
       cmake = run [ built.cc ] "cmake" { inherit (built) sysroot; };
     in
     built
@@ -140,13 +140,13 @@ let
         inherit platform;
         clang = stage1.llvm;
         tools = [
-          stage0.jig
+          stage0.shim
           stage1.llvm
           stage1.cc
         ];
       };
       ccArgs = {
-        prebuilt = stage0.jig;
+        prebuilt = stage0.shim;
       }
       // (if platform == host then { } else { native = nativeCc; });
       launched = built: built // { launch = run [ built.cc ] "launch" { }; };
@@ -180,7 +180,7 @@ in
 {
   seed = seedPath;
   inherit buildTriple;
-  inherit (seedBuild) jib jig nu;
+  inherit (seedBuild) hoist shim nu;
   inherit
     stage0
     stage1

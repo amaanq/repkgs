@@ -1,7 +1,7 @@
 use core.nu *
 
-# A gfortran beside the runtime: jig itself, configured to drive flang with this runtime's paths.
-# "@" is jig's own prefix, so the configuration still holds once the output moves to the store
+# A gfortran beside the runtime: shim itself, configured to drive flang with this runtime's paths.
+# "@" is shim's own prefix, so the configuration still holds once the output moves to the store
 export def driver []: nothing -> nothing {
   let c      = (ctx)
   let cc     = $env.TOOLCHAIN
@@ -12,12 +12,12 @@ export def driver []: nothing -> nothing {
     -fintrinsic-modules-path (do $inside "lib/clang/*/finclude/flang/*") $"-L(do $inside 'lib/clang/*/lib/*')"
   ]
   mkdir $"($c.out)/bin" $"($c.out)/etc"
-  (open $"($cc)/etc/jig.json" | reject flags cxxflags prefix-map
+  (open $"($cc)/etc/shim.json" | reject flags cxxflags prefix-map
     | merge {fc: $c.spec.cmake.defs.CMAKE_Fortran_COMPILER, fflags: $flags}
-    | save $"($c.out)/etc/jig.json")
+    | save $"($c.out)/etc/shim.json")
   cp $"($cc)/etc/roots" $"($c.out)/etc/"
-  cp $"($cc)/bin/jig" $"($c.out)/bin/"
-  for name in [gfortran flang fortran] { ^ln -s jig $"($c.out)/bin/($name)" }
+  cp $"($cc)/bin/shim" $"($c.out)/bin/"
+  for name in [gfortran flang fortran] { ^ln -s shim $"($c.out)/bin/($name)" }
 }
 
 export def hello []: nothing -> nothing {

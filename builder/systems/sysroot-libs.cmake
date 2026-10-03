@@ -1,7 +1,7 @@
 # find_library() returns files inside the sysroot, <sysroot>/usr/lib/libm.so or the macOS SDK's
 # libz.tbd and Foo.framework. An installed *Config.cmake or .pc that records such a path ties every
 # dependent to this build's sysroot, while -lm and -framework Foo resolve in whatever sysroot links
-# later. jib's cmake system injects this through CMAKE_PROJECT_TOP_LEVEL_INCLUDES with -DPKGS_SYSROOT.
+# later. hoist's cmake system injects this through CMAKE_PROJECT_TOP_LEVEL_INCLUDES with -DPKGS_SYSROOT.
 function(find_library result)
   _find_library(${result} ${ARGN})
   set(found "${${result}}")

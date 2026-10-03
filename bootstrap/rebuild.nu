@@ -4,13 +4,13 @@ use store.nu [capture save-progress store-args plan-dir prepare verify-stage]
 
 def state-dir [directory: any]: nothing -> string {
   let base = ($env.XDG_STATE_HOME? | default ($env.HOME | path join .local/state))
-  let path = ($directory | default ($base | path join repkgs/bootstrap-llvm) | path expand)
+  let path = ($directory | default ($base | path join manicpkgs/bootstrap-llvm) | path expand)
   if $path =~ '[%\r\n]' { error make {msg: "bootstrap state path contains unsupported characters"} }
   $path
 }
 
 def unit-name [directory: string]: nothing -> string {
-  $"repkgs-bootstrap-($directory | hash sha256 | str substring 0..11).service"
+  $"manicpkgs-bootstrap-($directory | hash sha256 | str substring 0..11).service"
 }
 
 def unit-info [directory: string]: nothing -> record {
@@ -65,7 +65,7 @@ def build-coreutils [directory: string, graph: table, shell: string, cores: int,
   if (capture findmnt [--noheadings --output FSTYPE --target /tmp]) != tmpfs {
     error make {msg: "Coreutils filesystem checks on bcachefs need /tmp on tmpfs"}
   }
-  let scratch = (capture mktemp [-d /tmp/repkgs-coreutils.XXXXXXXX])
+  let scratch = (capture mktemp [-d /tmp/manicpkgs-coreutils.XXXXXXXX])
   print $"Coreutils filesystem checks use ($scratch), completed outputs stay in the isolated store"
   for package in $packages {
     build-stage $directory $package.path ($cores // $jobs) $jobs --shell $shell --dependencies

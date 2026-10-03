@@ -1,11 +1,11 @@
 # The `package` function: spec attrset -> derivation (+ `.tests` when tests.separate).
-# Validates the spec against the schema jib emits, then hands jib a plan, the build systems to set
-# up and the phases in order, which `jib build` runs in one process, spawning nu only for the
+# Validates the spec against the schema hoist emits, then hands hoist a plan, the build systems to set
+# up and the phases in order, which `hoist build` runs in one process, spawning nu only for the
 # phases written in it. Vocabulary: README.md "Writing a package".
 {
   platform,
   toolchain,
-  jib,
+  hoist,
   seed,
   nu,
   launch,
@@ -58,7 +58,7 @@ let
     __contentAddressed = true;
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    builder = "${jib}/bin/jib";
+    builder = "${hoist}/bin/hoist";
     # platform facts autoconf would otherwise probe (or guess, when cross): nix/config.site
     CONFIG_SITE = "${../config.site}";
     platform = (import ../platforms.nix).forBuilder platform // {
@@ -73,7 +73,7 @@ let
           "${launch}/bin/launch.exe"
         else
           "";
-      # jib finish runs the version check under it: a failed dlopen fails the build
+      # hoist finish runs the version check under it: a failed dlopen fails the build
       dlaudit = if elf then "${dlaudit}/lib/dlaudit.so" else "";
       relocStub = "${toolchain}/lib/reloc_stub.bin";
     };
@@ -152,7 +152,7 @@ let
     if stack == [ ] || (head stack).pname == name then [ ] else [ (head stack) ] ++ before (tail stack);
   # an upstream-binary package says `prebuilt`, or one of its build systems does (pyapp: wheels)
   prebuilt = args.prebuilt or (any (system: buildSystems.${system}.prebuilt == true) uses);
-  # DWARF goes to the `debug` output (jib finish). false when the build cannot be made to keep it
+  # DWARF goes to the `debug` output (hoist finish). false when the build cannot be made to keep it
   debug = args.debug or (prebuilt == false);
   # [pin] sys of recipe.toml. null: no recipe.toml, dependencies are all by hand
   sys = args.sys or (if pinned == null then null else pinned.sys);
@@ -181,7 +181,7 @@ let
       }) uses
     )
     // {
-      # sys for jib syslibs
+      # sys for hoist syslibs
       inherit prebuilt debug sys;
       phases = phases.list;
     }
@@ -197,7 +197,7 @@ let
     filter (dependency: !(elem dependency base)) (
       [
         toolchain
-        jib
+        hoist
       ]
       ++ (valid.buildDependencies or [ ])
       ++ tests

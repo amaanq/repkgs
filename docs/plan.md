@@ -5,7 +5,7 @@ The work still ahead. design.md covers what exists.
 ## Source bootstrap
 
 The x86-64 source bootstrap has completed in an isolated store without compiled substitutes.
-All 13 checkpoints through LLVM, mrustc, Rust 1.98.1, Nushell, jig and seed assembly match the
+All 13 checkpoints through LLVM, mrustc, Rust 1.98.1, Nushell, shim and seed assembly match the
 normal-store builds byte for byte. The assembled seed has no store references and runs after
 relocation. The complete source archive restores offline into an empty store, and the 49 early
 stages through kaem rebuild there with a matching kaem output. A full replay on another machine
@@ -24,7 +24,7 @@ source, as go, rust, zig and jdk already are. These remain:
 - **node**, by replacing the remaining bundled dependencies with ours wherever configure allows.
 
 Until then they serve as build tools only, pinned per cpu and never linked into an output. On
-riscv64 bun, deno and node have no upstream binary and do not cross build yet (`repkgs bootstrap
+riscv64 bun, deno and node have no upstream binary and do not cross build yet (`manicpkgs bootstrap
 <x>` uploads ours once they do), and `ghc-bootstrap` is Debian's package until upstream ships a
 bindist or hadrian can build a compiler for another machine.
 
@@ -61,13 +61,13 @@ stays out because its checksum covers a zip yarn repacks, not the registry tarba
 
 **Native dependencies for JS locks.** sys-libs.json covers cargo, go, python, gems. node-gyp
 addons (`sharp` with libvips, `better-sqlite3`, `canvas` with cairo and pango) need the same table
-for npm, pnpm and bun, and `uptrack check` should warn when a lock names a library the set lacks.
+for npm, pnpm and bun, and `plumb check` should warn when a lock names a library the set lacks.
 
 ## Infrastructure
 
 - **CI**: builds on both build platforms and every cross target, a harmonia cache with
-  realisations, and `repkgs repro` as a job.
-- **uptrack**: the reports and the GitHub sync docs/uptrack.md lists as not built.
+  realisations, and `manicpkgs repro` as a job.
+- **plumb**: the reports and the GitHub sync docs/plumb.md lists as not built.
 - **builder/ reach**: every package's script hashes the whole `builder/` tree, so an edit to any
   module there rebuilds everything down to llvm. Only what every script imports should live there.
 - **llvm install size**: `install` copies the roughly 200 component archives libLLVM.so was linked
@@ -75,7 +75,7 @@ for npm, pnpm and bun, and `uptrack check` should warn when a lock names a libra
   links them. `LLVM_DISTRIBUTION_COMPONENTS` with `install-distribution` installs a named list and
   writes a matching LLVMExports.cmake. Due with the next full rebuild.
 
-## jig
+## shim
 
 - Measure cold builds and cache replay with the Rust wrapper. Its request keys keep exact
   arguments and compiler paths, so the C++ wrapper's benchmark results do not carry over.
@@ -104,7 +104,7 @@ for npm, pnpm and bun, and `uptrack check` should warn when a lock names a libra
   `out` only, so the inner build's `debug` output is lost.
 - **rust cross**: std for the target triple from our llvm, and cargo's linker per target.
 - `dep-root --optional` and a lint for dep-root names missing from dependencies, lock validation
-  in uptrack at update time, `repkgs fetch-plan` for what a build would download and `repkgs debug
+  in plumb at update time, `manicpkgs fetch-plan` for what a build would download and `manicpkgs debug
   <pkg>` for gdb pointed at the package's debug output.
 
 ## Known test gaps

@@ -13,15 +13,15 @@ def main [--seed: path, --daemon: path, --runs: int = 3, ...packages: string]: n
   let daemon_path = ($daemon | path expand --strict)
   let targets = (if ($packages | is-empty) { [sed diffutils] } else { $packages })
   let repository = ($env.FILE_PWD | path dirname)
-  let directory = (capture mktemp [-d /tmp/repkgs-configure-benchmark.XXXXXXXX])
-  let unit = $"repkgs-configure-($directory | path basename)"
+  let directory = (capture mktemp [-d /tmp/manicpkgs-configure-benchmark.XXXXXXXX])
+  let unit = $"manicpkgs-configure-($directory | path basename)"
   let socket = ($directory | path join socket)
   let shell = (which nu | first | get path | path expand)
   {seed: $seed_path, daemon: $daemon_path, daemon_hash: (capture nix [hash file $daemon_path]), runs: $runs, packages: $targets, started: (date now)}
     | to json | save ($directory | path join environment.json)
   print $"Results and logs in ($directory)"
   capture systemd-run [--user --collect $"--unit=($unit)" $"--setenv=XDG_CACHE_HOME=($directory)/cache"
-    --setenv=JIGD_SLOTS=30 $daemon_path $socket] | ignore
+    --setenv=SHIMD_SLOTS=30 $daemon_path $socket] | ignore
   try {
     let deadline = (date now) + 5sec
     while not ($socket | path exists) {
@@ -51,7 +51,7 @@ def main [--seed: path, --daemon: path, --runs: int = 3, ...packages: string]: n
         print $"($package) ($mode)"
         let log = ($directory | path join $"($package)-($mode).log")
         let arguments = [-i $"PATH=($seed_path)/bin" NIX_STORE=/nix/store NIX_BUILD_CORES=30
-          $"NIX_BUILD_TOP=($work)" $"NIX_ATTRS_JSON_FILE=($work)/attrs.json" $"JIG_SOCK=($socket)"
+          $"NIX_BUILD_TOP=($work)" $"NIX_ATTRS_JSON_FILE=($work)/attrs.json" $"SHIM_SOCK=($socket)"
           $shell --no-config-file '--experimental-options=[cell-path-types]' $env.CURRENT_FILE work $work $mode]
         try { ^env ...$arguments out+err> $log } catch { error make {msg: $"($package) ($mode) failed, see ($log)"} }
         let caches = (open --raw $log | lines | where $it starts-with '@nix '
@@ -100,21 +100,21 @@ def "main work" [directory: path, mode: string]: nothing -> nothing {
     let path = ($directory | path join $name)
     if ($path | path exists) { rm --recursive $path }
   }
-  let prepared = (^jib prepare | from json)
+  let prepared = (^hoist prepare | from json)
   load-env $prepared.env
   cd $prepared.cwd
   let ctx = ($env.NIX_BUILD_TOP | path join ctx.json)
   let context = (open $ctx)
   $context | update cache ($mode starts-with shared or $mode starts-with whole) | save --force $ctx
-  $env.JIG_LOG = ($directory | path join $"($mode)-jig.log")
-  load-env (^jib system setup autotools | from json)
-  cd (^jib system workdir autotools | str trim)
-  let elapsed = (timeit { ^jib system phase autotools configure })
+  $env.SHIM_LOG = ($directory | path join $"($mode)-shim.log")
+  load-env (^hoist system setup autotools | from json)
+  cd (^hoist system workdir autotools | str trim)
+  let elapsed = (timeit { ^hoist system phase autotools configure })
   let outputs = (glob **/{Makefile,config.h} | sort | each {|file|
     {file: ($file | path relative-to $directory), hash: (open --raw $file | hash sha256)}
   })
-  let events = (if ($env.JIG_LOG | path exists) {
-    open --raw $env.JIG_LOG | lines | parse "{tool}\t{outcome}\t{subject}\t{milliseconds}"
+  let events = (if ($env.SHIM_LOG | path exists) {
+    open --raw $env.SHIM_LOG | lines | parse "{tool}\t{outcome}\t{subject}\t{milliseconds}"
   } else { [] })
   {mode: $mode, seconds: (($elapsed | into int) / 1_000_000_000), outputs: $outputs
     headers: ($events | where tool == header | group-by outcome | transpose outcome events

@@ -8,7 +8,7 @@ $env.NIX_BUILD_TOP = $top
 let sh      = (which sh | get path.0)
 let nushell = (which nu | get path.0)
 
-# name, executable, contents, and what jib should leave behind
+# name, executable, contents, and what hoist should leave behind
 let cases = [
   [name           exec  before                                                  after];
   [env            true  "#!/usr/bin/env sh\ntrue\n"                             $"#!($sh)\ntrue\n"]
@@ -30,14 +30,14 @@ for case in $cases {
 }
 let stamp = (ls $"($tree)/env" | get modified.0)
 
-^jib shebangs $tree
+^hoist shebangs $tree
 for case in $cases {
   let found = (open --raw $"($tree)/($case.name)")
   expect $"($case.name): ($found | lines | first) wanted ($case.after | lines | first)" ($found == $case.after)
 }
 expect "a rewrite keeps the file's mtime" ((ls $"($tree)/env" | get modified.0) == $stamp)
 
-^jib shebangs --undo $tree
+^hoist shebangs --undo $tree
 for case in $cases {
   expect $"($case.name) is restored by --undo" ((open --raw $"($tree)/($case.name)") == $case.before)
 }

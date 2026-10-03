@@ -16,11 +16,11 @@ def main [installable: string = ".#bootstrap-llvm", --rust, --mrustc]: nothing -
   } | sort-by name)
   let rust_version = (open ($env.FILE_PWD | path join ../pkgs/ru/rust/recipe.toml) | get pin.version)
   let nu_version = (open ($env.FILE_PWD | path join ../pkgs/nu/nushell/recipe.toml) | get pin.version)
-  let jig_crates = (open --raw ($env.FILE_PWD | path join ../pkgs/ji/jig/src/Cargo.lock) | from toml
+  let shim_crates = (open --raw ($env.FILE_PWD | path join ../pkgs/sh/shim/src/Cargo.lock) | from toml
     | get package | where source? == "registry+https://github.com/rust-lang/crates.io-index"
     | each {|crate| $"($crate.name)-($crate.version)" })
   let rust_names = (if $rust {
-    ($rust_sources | get name) ++ $jig_crates ++ [
+    ($rust_sources | get name) ++ $shim_crates ++ [
       rustc-1.90.0-src.tar.gz
       $"rust-($rust_version)-source"
       $"nushell-($nu_version)-source"
@@ -29,7 +29,7 @@ def main [installable: string = ".#bootstrap-llvm", --rust, --mrustc]: nothing -
     ]
   } else if $mrustc { [rustc-1.90.0-src.tar.gz] } else { [] })
   let forbidden = ($graph | where {|entry|
-    (($entry.drv.name =~ '^(rustc?|rustfmt|cargo|nushell|jigd?)(-|$)' and $entry.drv.name not-in $rust_names)
+    (($entry.drv.name =~ '^(rustc?|rustfmt|cargo|nushell|shimd?)(-|$)' and $entry.drv.name not-in $rust_names)
       or $entry.drv.name =~ 'bootstrap-tools'
       or (not $rust and $entry.drv.name =~ '^seed-(rust|nushell)'))
   } | get path)

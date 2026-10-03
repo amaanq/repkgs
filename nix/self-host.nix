@@ -10,7 +10,7 @@ let
   };
   initial = import ./set.nix common;
   executors = set: {
-    inherit (set.pkgs) jig jib;
+    inherit (set.pkgs) shim hoist;
     nu = set.pkgs.nushell;
   };
   first = import ./set.nix (common // { buildTools = executors initial; });

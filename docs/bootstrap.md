@@ -11,17 +11,17 @@ entry point is the 229-byte AMD64 hex0 executable. The chain builds Mes, TinyCC,
 GCC versions and the tools needed by the normal nixpkgs build environment.
 
 `pkgs/se/seed/build.nix` uses that environment to build our pinned LLVM as a static musl
-multicall binary. It includes Clang, LLD and the object tools used by repkgs. LLVM source
+multicall binary. It includes Clang, LLD and the object tools used by manicpkgs. LLVM source
 extraction uses the C and shell tools from nixpkgs. CMake, Python and Ninja are selected
 without a Rust or Nushell dependency.
 
 ```console
 nix build .#bootstrap-llvm --no-link --print-out-paths -L
-nu bootstrap/audit.nu > /tmp/repkgs-bootstrap-inputs.json
+nu bootstrap/audit.nu > /tmp/manicpkgs-bootstrap-inputs.json
 ```
 
 The audit walks build dependencies, including fixed-output fetchers. It rejects Rust, Cargo,
-Nushell, jig and the old binary bootstrap-tools bundle in the LLVM graph, and requires
+Nushell, shim and the old binary bootstrap-tools bundle in the LLVM graph, and requires
 hex0-seed to be the only executable builtin fetch. Its JSON output records the hashes and
 URLs of fixed-output inputs for inspection. Run it after changing the nixpkgs pin or LLVM
 build dependencies.
@@ -69,7 +69,7 @@ from nixpkgs' source recipes.
 ```console
 nix build .#bootstrap-rust -L
 nix build .#bootstrap-nushell -L
-nu bootstrap/audit.nu .#bootstrap-nushell --rust > /tmp/repkgs-bootstrap-inputs.json
+nu bootstrap/audit.nu .#bootstrap-nushell --rust > /tmp/manicpkgs-bootstrap-inputs.json
 nix build .#bootstrap-seed -L
 ```
 
@@ -81,7 +81,7 @@ directly, since its general TOML converter needs Rust. The normal package set st
 Seed assembly takes Nu from this build and strips its binaries with the source-built LLVM.
 It removes store references from the tool binaries and copied data, including Python's build
 configuration. Nix rejects the seed if it retains a dependency on another store path.
-These targets do not replace the downloaded seed used by normal repkgs builds. Publishing a
+These targets do not replace the downloaded seed used by normal manicpkgs builds. Publishing a
 new seed remains separate work.
 
 Use an assembled seed locally by passing its result link to the package commands. The same
@@ -89,19 +89,19 @@ option selects the seed for `build`, `test`, `repro`, `log`, `shell`, `info` and
 
 ```console
 nix build .#bootstrap-seed --out-link result-bootstrap-seed --cores 30 --max-jobs 1 -L
-nu tools/repkgs/repkgs build --seed ./result-bootstrap-seed sed diffutils
-nu tools/repkgs/repkgs log --seed ./result-bootstrap-seed sed
+nu tools/manicpkgs/manicpkgs build --seed ./result-bootstrap-seed sed diffutils
+nu tools/manicpkgs/manicpkgs log --seed ./result-bootstrap-seed sed
 ```
 
 Select a completed Rust toolchain with `--rust-toolchain`. It supplies Rust and Cargo to
-package builds, including tools such as jigd and formatelf that otherwise use the binary
+package builds, including tools such as shimd and formatelf that otherwise use the binary
 bootstrap compiler. The option works with the same package commands as `--seed`, and both
-options are accepted by `cache start` when it builds jigd.
+options are accepted by `cache start` when it builds shimd.
 
 ```console
 nix build .#bootstrap-rust --out-link result-bootstrap-rust --cores 30 --max-jobs 1 -L
-nu tools/repkgs/repkgs build --seed ./result-bootstrap-seed --rust-toolchain ./result-bootstrap-rust ripgrep
-nu tools/repkgs/repkgs repro --seed ./result-bootstrap-seed --rust-toolchain ./result-bootstrap-rust ripgrep
+nu tools/manicpkgs/manicpkgs build --seed ./result-bootstrap-seed --rust-toolchain ./result-bootstrap-rust ripgrep
+nu tools/manicpkgs/manicpkgs repro --seed ./result-bootstrap-seed --rust-toolchain ./result-bootstrap-rust ripgrep
 ```
 
 The Nix package-set argument is `rustToolchain`, pointing to an existing store path.
@@ -114,12 +114,12 @@ seed. It reuses the completed Rust bootstrap. Seed assembly takes its Toybox com
 from the configured target package, so commands enabled there are available when building
 the kernel headers and libc.
 
-`bootstrap-jig` builds the Rust compiler wrapper with the same source compiler and static musl
+`bootstrap-shim` builds the Rust compiler wrapper with the same source compiler and static musl
 target. Normal bootstrap recipes copy this binary into the cache wrapper and each configured
 toolchain. Its dependencies use the nixpkgs revision pinned in `pkgs/se/seed/nixpkgs.json`,
 including for non-flake builds and CI. Ordinary flake updates leave the bootstrap compiler
-chain alone. Update this pin deliberately when rebuilding that chain. Editing jig rebuilds
-the wrapper without restarting the compiler chain. Seed assembly includes jig, while Nushell
+chain alone. Update this pin deliberately when rebuilding that chain. Editing shim rebuilds
+the wrapper without restarting the compiler chain. Seed assembly includes shim, while Nushell
 is a separate dependency for packages that use Nu phases.
 
 Once assembled, the seed can be stored and reused for ordinary package builds. Rebuilding
@@ -127,7 +127,7 @@ the seed and checking its inputs remains separate from rebuilding an application
 
 ## Self-hosted build tools
 
-`nix/self-host.nix` builds jig, jib and Nushell through the package set using an existing seed
+`nix/self-host.nix` builds shim, hoist and Nushell through the package set using an existing seed
 and Rust toolchain. `stage1` uses the bootstrap builders. `stage2` rebuilds the three tools
 with stage1, and `pkgs` uses stage2 for package builds. Each stage is a separate package set,
 so Nushell's build can use an earlier interpreter without depending on itself.
@@ -136,7 +136,7 @@ Run these commands in Nushell from the repository root. Each result link protect
 completed outputs from garbage collection. Rerunning a command reuses completed derivations.
 
 ```nu
-use tools/repkgs/nix.nu [cache-args]
+use tools/manicpkgs/nix.nu [cache-args]
 let bootstrap_args = [--argstr seed (realpath result-bootstrap-seed) --argstr rustToolchain (realpath result-bootstrap-rust) --cores 30 --max-jobs 1]
 nix-build nix/self-host.nix -A stage1 ...$bootstrap_args ...(cache-args) -o result-self-host-stage1
 nix-build nix/self-host.nix -A stage2 ...$bootstrap_args ...(cache-args) -o result-self-host-stage2
@@ -147,14 +147,14 @@ The provided Rust toolchain supplies Cargo and rustc throughout. This does not r
 mrustc chain. Nushell's system-library dependencies can still require a package-set LLVM build.
 Its parser macro patch preserves the deterministic map ordering used by the seed recipe.
 
-`buildTools = { jig = ...; jib = ...; nu = ...; }` selects tools explicitly when importing
+`buildTools = { shim = ...; hoist = ...; nu = ...; }` selects tools explicitly when importing
 `default.nix` or `nix/set.nix`. Values can be derivations or existing store paths, and omitted
 tools keep their bootstrap defaults. The same argument is accepted by `tests/builder` and
-`tools/repkgs/dev.nix`.
+`tools/manicpkgs/dev.nix`.
 
-The staged jig handles source unpacking and dependency producers, jib runs package builds,
+The staged shim handles source unpacking and dependency producers, hoist runs package builds,
 and Nushell runs Nu phases. The compiler wrappers and bootstrap recipes still use the seed's
-static jig. Replacing that binary requires a static build suitable for copying into each
+static shim. Replacing that binary requires a static build suitable for copying into each
 toolchain. These stages do not remove the initial seed or establish output reproducibility
 without a comparison.
 
@@ -165,7 +165,7 @@ inspect that starting point with the separate target, or select an intermediate 
 
 ```console
 nix build .#bootstrap-mrustc -L
-nu bootstrap/audit.nu .#bootstrap-mrustc --mrustc > /tmp/repkgs-mrustc-inputs.json
+nu bootstrap/audit.nu .#bootstrap-mrustc --mrustc > /tmp/manicpkgs-mrustc-inputs.json
 nix build .#bootstrap-rust-1_91_1 --cores 30 --max-jobs 1 -L
 nix build .#bootstrap-seed --cores 30 --max-jobs 1 --keep-failed -L
 ```
@@ -233,7 +233,7 @@ from garbage collection.
 
 The runner saves its evaluated derivation and dependency audit on the first run. Later starts
 use that same derivation even after repository edits. State lives under
-`$XDG_STATE_HOME/repkgs/bootstrap-llvm`, or `~/.local/state/repkgs/bootstrap-llvm` by default.
+`$XDG_STATE_HOME/manicpkgs/bootstrap-llvm`, or `~/.local/state/manicpkgs/bootstrap-llvm` by default.
 The directory contains `build.log`, `plan.json`, `graph.json` and the isolated `store`.
 `status` counts completed derivations, including source downloads. It is not a time estimate.
 
@@ -253,7 +253,7 @@ The runner does not change that account setting.
 When LLVM finishes, the runner compares its NAR hash with the existing LLVM output if one
 was available when the run began. A mismatch reports failure and preserves both outputs.
 
-Extend a completed LLVM run through mrustc, each Rust release, Nushell, jig and seed assembly
+Extend a completed LLVM run through mrustc, each Rust release, Nushell, shim and seed assembly
 with the same store and log commands.
 
 ```console
@@ -299,7 +299,7 @@ source files, the auditable hex0 seed and derivation recipes. It follows the act
 a run extended through the assembled seed includes the Rust and Nushell sources too.
 
 ```console
-nu tools/archive-bootstrap.nu --destination /path/to/repkgs-bootstrap-cache
+nu tools/archive-bootstrap.nu --destination /path/to/manicpkgs-bootstrap-cache
 ```
 
 The archiver checks each fixed-output input against its pinned flat or NAR hash and rejects
@@ -312,7 +312,7 @@ Copy the archive directory to another x86-64 Linux machine with Nix, Nushell and
 then restore it into a new state directory.
 
 ```console
-nu tools/archive-bootstrap.nu restore /path/to/repkgs-bootstrap-cache --state /path/to/offline-bootstrap
+nu tools/archive-bootstrap.nu restore /path/to/manicpkgs-bootstrap-cache --state /path/to/offline-bootstrap
 nu bootstrap/rebuild.nu status --state /path/to/offline-bootstrap
 nu bootstrap/rebuild.nu start --state /path/to/offline-bootstrap
 nu bootstrap/rebuild.nu log --state /path/to/offline-bootstrap

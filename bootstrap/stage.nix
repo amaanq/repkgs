@@ -1,10 +1,10 @@
 # `(stage { … }) extraTools recipe args`: one recipe run, a derivation whose builder is
-# `jig bootstrap <recipe>`. PATH is extraTools (jig's clang shim first once it exists),
-# the stage's tools, the seed. JIG_CC is the clang behind the shim
+# `shim bootstrap <recipe>`. PATH is extraTools (shim's clang shim first once it exists),
+# the stage's tools, the seed. SHIM_CC is the clang behind the shim
 {
   system,
   seed,
-  jig,
+  shim,
   buildTriple,
   inputs,
 }:
@@ -29,8 +29,8 @@ let
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
     outputs = [ "out" ];
-    builder = "${jig}/bin/jig";
-    JIG_STORE_IDENTITY = "content";
+    builder = "${shim}/bin/shim";
+    SHIM_STORE_IDENTITY = "content";
     M4 = "m4";
     BISON_PKGDATADIR = "${seed}/share/bison";
     CONFIG_SITE = "${../nix/config.site}";
@@ -58,7 +58,7 @@ let
     site_libc = platform.libc;
     flags = toString platform.march;
     llvm = clang;
-    JIG_CC = "${clang}/bin/clang";
+    SHIM_CC = "${clang}/bin/clang";
   };
   basePath = binPath (tools ++ [ seed ]);
 in

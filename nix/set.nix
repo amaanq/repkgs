@@ -18,19 +18,19 @@ let
   editing = import ./overrides.nix;
   overrideTree = editing.merge overrides;
 
-  # jig, jib and nu may come prebuilt as store paths, a development shortcut
+  # shim, hoist and nu may come prebuilt as store paths, a development shortcut
   given = builtins.mapAttrs (
     _: tool: if builtins.isString tool || builtins.isPath tool then builtins.storePath tool else tool
   ) buildTools;
   strayTools = builtins.attrNames (
     removeAttrs buildTools [
-      "jig"
-      "jib"
+      "shim"
+      "hoist"
       "nu"
     ]
   );
   tools = {
-    inherit (bootstrap) jig jib nu;
+    inherit (bootstrap) shim hoist nu;
   }
   // given;
 
@@ -45,7 +45,7 @@ let
     }
   );
   toolchain = stage.cc;
-  # build systems want one word for the emulator, and jib prepare caps its address space with
+  # build systems want one word for the emulator, and hoist prepare caps its address space with
   # $QEMU_RESERVED_VA
   emulator =
     if cross && target.os == "linux" then
@@ -110,11 +110,11 @@ let
 
   readSources = import ./sources.nix {
     unpacker = bootstrap.seed;
-    inherit (tools) jig;
+    inherit (tools) shim;
     inherit system;
   };
   fetch = import ./fetch.nix {
-    jig = given.jig or bootstrap.stage0.jig;
+    shim = given.shim or bootstrap.stage0.shim;
     sevenzip = buildPkgs."7zip";
     inherit (bootstrap) seed;
     inherit system;
@@ -135,7 +135,7 @@ let
       buildSystems
       baseTools
       ;
-    inherit (tools) jib nu;
+    inherit (tools) hoist nu;
     inherit (bootstrap) seed;
     launch = stage.launch or null;
     dlaudit = stage.dlaudit or null;
@@ -191,7 +191,7 @@ in
 {
   # forcing `stage` makes a misspelt platform fail even when only attrNames are asked for
   pkgs = builtins.seq stage (
-    assert lib.check "repkgs" [
+    assert lib.check "manicpkgs" [
       (on (strayTools != [ ]) [ "unknown build tools ${toString strayTools}" ])
       (on (rustToolchain != null && cross) [
         "rustToolchain currently supports native builds only, omit it for ${platform}"
@@ -209,5 +209,5 @@ in
     toolchain
     tools
     ;
-  bundle = import ./bundle.nix { inherit (tools) jib; };
+  bundle = import ./bundle.nix { inherit (tools) hoist; };
 }

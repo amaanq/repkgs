@@ -1,4 +1,4 @@
-# The nuff.toml steps that are repkgs' own lints rather than a formatter's. REPKGS_NO_EVAL=1 skips
+# The nuff.toml steps that are manicpkgs' own lints rather than a formatter's. REPKGS_NO_EVAL=1 skips
 # the package-scripts lint, which has no evaluator inside a build.
 
 def main [] {

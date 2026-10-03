@@ -3,13 +3,13 @@
 {
   pkg,
   source,
-  prebuiltJig,
+  prebuiltShim,
 }:
 let
   llvm = source "llvm";
 in
 {
-  jig.prebuilt = prebuiltJig;
+  shim.prebuilt = prebuiltShim;
   launch.launch = pkg "launch" + "/src/launch.c";
   cc = {
     crt_interp = pkg "crt-interp" + "/src/crt_interp.c";
@@ -26,7 +26,7 @@ in
     zlib = source "zlib";
     patches = [
       (pkg "llvm" + "/upstream-x86-vastart-stack-probe.patch")
-      (pkg "llvm" + "/jig-absent-log.patch")
+      (pkg "llvm" + "/shim-absent-log.patch")
     ];
     targets =
       (builtins.fromTOML (builtins.readFile (pkg "llvm" + "/recipe.toml")))

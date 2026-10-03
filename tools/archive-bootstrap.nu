@@ -60,7 +60,7 @@ def main [
   if $destination == null { error make {msg: "provide an archive directory with --destination"} }
   if $jobs < 1 { error make {msg: "jobs must be positive"} }
   let base = ($env.XDG_STATE_HOME? | default ($env.HOME | path join .local/state))
-  let state = ($state | default ($base | path join repkgs/bootstrap-llvm) | path expand)
+  let state = ($state | default ($base | path join manicpkgs/bootstrap-llvm) | path expand)
   let destination = ($destination | path expand)
   let metadata = (plan-dir $state)
   let catalog = (inventory $metadata)
@@ -91,8 +91,8 @@ def main [
   ^nix --store $store copy --derivation --to $uri --no-check-sigs --option substitute false $catalog.derivation
   let archived = (capture nix ([path-info --store $uri --json --json-format "2"] ++ $catalog.paths) | from json)
   $catalog | insert created (date now) | insert nar_bytes ($archived.info | values | get narSize | math sum)
-    | to json | save --force ($destination | path join repkgs-bootstrap-manifest.tmp.json)
-  mv --force ($destination | path join repkgs-bootstrap-manifest.tmp.json) ($destination | path join repkgs-bootstrap-manifest.json)
+    | to json | save --force ($destination | path join manicpkgs-bootstrap-manifest.tmp.json)
+  mv --force ($destination | path join manicpkgs-bootstrap-manifest.tmp.json) ($destination | path join manicpkgs-bootstrap-manifest.json)
   print $"Archive complete at ($destination)"
 }
 
@@ -103,7 +103,7 @@ def "main restore" [archive: path, --state: path, --jobs: int = 30]: nothing -> 
   let source = ($archive | path expand --strict)
   let metadata = ($source | path join metadata)
   let catalog = (inventory (plan-dir $metadata))
-  let manifest = (open ($source | path join repkgs-bootstrap-manifest.json))
+  let manifest = (open ($source | path join manicpkgs-bootstrap-manifest.json))
   if ($manifest | select derivation fixed_outputs derivations paths) != $catalog {
     error make {msg: "archive manifest differs from its saved bootstrap graph"}
   }

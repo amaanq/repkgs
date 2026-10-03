@@ -14,7 +14,7 @@ mode = "files"
 # nu has no stable formatter, so lints/format.nu parses, type checks and lints instead
 [formatter.nu]
 command       = "nu"
-includes      = [ "**/*.nu", "tools/repkgs/repkgs", "tools/target-test" ]
+includes      = [ "**/*.nu", "tools/manicpkgs/manicpkgs", "tools/target-test" ]
 mode          = "files"
 options       = [ "--no-config-file", "lints/format.nu", "nu" ]
 check_options = [ "--no-config-file", "lints/format.nu", "nu" ]
@@ -32,7 +32,7 @@ env = { RUST_LOG = "warn" }
 
 # one sorted entry per line, so additions merge as text (.gitattributes merge=union)
 [formatter.locks]
-command  = "uptrack"
+command  = "plumb"
 includes = [ "locks/*.toml" ]
 mode     = "files"
 options  = [ "normalize" ]

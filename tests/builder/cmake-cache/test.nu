@@ -1,4 +1,4 @@
-# jib probe cmake-init turns a CMakeCache.txt into `set(... CACHE INTERNAL "")` lines
+# hoist probe cmake-init turns a CMakeCache.txt into `set(... CACHE INTERNAL "")` lines
 use checks.nu *
 
 let cache = [
@@ -14,7 +14,7 @@ let cache = [
 ] | str join "\n"
 let file = (mktemp)
 $cache + "\n" | save -f $file
-let entries = (^jib probe cmake-init $file | lines | parse 'set([[{key}]] [[{value}]] CACHE INTERNAL "")')
+let entries = (^hoist probe cmake-init $file | lines | parse 'set([[{key}]] [[{value}]] CACHE INTERNAL "")')
 rm $file
 let value = {|key| ($entries | where key == $key).0.value }
 

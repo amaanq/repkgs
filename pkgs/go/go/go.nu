@@ -8,7 +8,7 @@ export def build []: nothing -> nothing {
     GOROOT_FINAL: $c.out
     GOCACHE: $"($c.build)/go-cache"
     GOFLAGS: "-trimpath"
-    # jib's debug split keys on a GNU build-id
+    # hoist's debug split keys on a GNU build-id
     GO_LDFLAGS: "-B gobuildid"
     GOOS: $c.platform.osNames.go
     GOARCH: $c.platform.names.go

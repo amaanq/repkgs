@@ -51,7 +51,7 @@ def write-config [c: record, build: record, rust: closure, rest: record]: nothin
 
 export def --env configure []: nothing -> nothing {
   let c = (ctx)
-  load-env ({PKG_CONFIG_ALLOW_CROSS: "1"} | merge (^jib system sys-env cargo | from json))
+  load-env ({PKG_CONFIG_ALLOW_CROSS: "1"} | merge (^hoist system sys-env cargo | from json))
   let triple = $c.platform.rustTriple
   let llvm   = (dep-root llvm22 libLLVM)
   # a cross llvm's bin/llvm-config is a target program, llvm puts one for this machine in host/
@@ -65,7 +65,7 @@ export def --env configure []: nothing -> nothing {
     target: ([$triple] ++ $freestanding)
     extended: true
     tools: [cargo clippy rustfmt rustdoc rust-analyzer-proc-macro-srv]
-    description: repkgs
+    description: manicpkgs
   } {|level|
     {debuginfo-level: $level, llvm-bitcode-linker: false, codegen-backends: [llvm], codegen-tests: false}
   } {

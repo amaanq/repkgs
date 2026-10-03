@@ -21,7 +21,7 @@ let
   inherit (native) lib;
   triple = musl.stdenv.hostPlatform.config;
 
-  # a recipe.toml's pinned sources, fetched with nixpkgs, since the seed exists before jig does
+  # a recipe.toml's pinned sources, fetched with nixpkgs, since the seed exists before shim does
   source =
     name:
     let
@@ -135,7 +135,7 @@ let
     cargo = rustBootstrap.rust;
   };
 
-  # jib's sources stay out of jig's, so a builder edit leaves the toolchain under jig alone. cargo
+  # hoist's sources stay out of shim's, so a builder edit leaves the toolchain under shim alone. cargo
   # still wants every workspace member's main.rs
   rustCrate =
     name: excluded:
@@ -154,24 +154,24 @@ let
       pname = "seed-${name}";
       version = "3.0.0";
       src = builtins.path {
-        path = ../../ji/jig/src;
+        path = ../../sh/shim/src;
         name = "${name}-rust-src";
         filter = path: type: !(excluded path) && kept path type;
       };
-      cargoLock.lockFile = ../../ji/jig/src/Cargo.lock;
+      cargoLock.lockFile = ../../sh/shim/src/Cargo.lock;
       cargoBuildFlags = [
         "-p"
         name
       ];
       auditable = false;
       doCheck = false;
-      env.JIG_STORE_DIR = builtins.storeDir;
+      env.SHIM_STORE_DIR = builtins.storeDir;
       allowedReferences = [ ];
     };
-  jig = rustCrate "jig" (
-    path: builtins.match ".*/(jib|jsem|uptrack)/src/.+" path != null && baseNameOf path != "main.rs"
+  shim = rustCrate "shim" (
+    path: builtins.match ".*/(hoist|jsem|plumb)/src/.+" path != null && baseNameOf path != "main.rs"
   );
-  jib = rustCrate "jib" (_: false);
+  hoist = rustCrate "hoist" (_: false);
 
   nuSource = source "nushell";
   nu =
@@ -286,7 +286,7 @@ let
     cp -a ${llvm}/bin/. $out/bin/
     cp -a ${llvm}/lib/clang $out/lib/
     chmod -R u+w $out
-    cp ${jig}/bin/jig $out/bin/jig
+    cp ${shim}/bin/shim $out/bin/shim
     ${llvm}/bin/llvm-strip $out/bin/bsdtar $out/bin/toybox $out/bin/dash $out/bin/python3 ${
       toString (map (n: "$out/bin/${n}") (builtins.attrNames tools))
     }
@@ -303,8 +303,8 @@ in
 {
   inherit
     llvm
-    jig
-    jib
+    shim
+    hoist
     nu
     bsdtar
     toybox

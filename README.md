@@ -1,4 +1,4 @@
-# repkgs
+# manicpkgs
 
 A package set for unmodified Nix that keeps the store and the language and rethinks what a
 derivation holds. The *re-* stands for relocatable, reproducible and another try at nixpkgs.
@@ -8,7 +8,7 @@ derivation holds. The *re-* stands for relocatable, reproducible and another try
 - **Relocatable outputs.** Binaries locate their libraries relative to themselves, so a store
   path copied anywhere still runs. Upstream prebuilt binaries are treated the same way.
 - **Recipes are data.** A package is a `recipe.toml`, the source pin and the build description
-  in one file. Phase code that has to exist is nushell, run by jib, the builder, with no bash and
+  in one file. Phase code that has to exist is nushell, run by hoist, the builder, with no bash and
   no setup hooks.
 - **A compile cache under Nix.** `cc`, `rustc`, `go` and configure probes are cached by content
   on the machine and shared across derivations. Changing a recipe rebuilds its derivation while
@@ -32,7 +32,7 @@ After a garbage collection, CA rebuilds also go better with
 `packages.x86_64-linux.nix`). On NixOS:
 
 ```nix
-nix.package = inputs.repkgs.packages.${pkgs.system}.nix; # or import "${repkgs}/nix/nix" { inherit pkgs; }
+nix.package = inputs.manicpkgs.packages.${pkgs.system}.nix; # or import "${manicpkgs}/nix/nix" { inherit pkgs; }
 nix.settings = {
   experimental-features = [ "nix-command" "ca-derivations" "dynamic-derivations" ];
   system-features = [ "builder-rpc-v0" "big-parallel" "kvm" "nixos-test" "benchmark" ];
@@ -50,22 +50,22 @@ $ nix-build bootstrap -A stage2.x86_64.cc           # the toolchain alone
 
 The first build fetches the seed and builds the toolchain, and later ones are incremental.
 
-`repkgs`, on PATH through direnv, covers the everyday tasks, all of them listed in
-[tools/repkgs/README.md](tools/repkgs/README.md):
+`manicpkgs`, on PATH through direnv, covers the everyday tasks, all of them listed in
+[tools/manicpkgs/README.md](tools/manicpkgs/README.md):
 
 ```console
-$ repkgs build jq                        # with jigd caching compiles, after `repkgs cache start`
-$ repkgs build --for aarch64-linux jq    # cross
-$ repkgs test jq                         # builds jq.tests
-$ repkgs dev jq                          # steps through the phases in a kept build tree
-$ repkgs info deno                       # pinned version, build systems, supported platforms
+$ manicpkgs build jq                        # with shimd caching compiles, after `manicpkgs cache start`
+$ manicpkgs build --for aarch64-linux jq    # cross
+$ manicpkgs test jq                         # builds jq.tests
+$ manicpkgs dev jq                          # steps through the phases in a kept build tree
+$ manicpkgs info deno                       # pinned version, build systems, supported platforms
 ```
 
 ## Writing a package
 
 A package is a directory under `pkgs/<first two letters>/<name>/` holding a `recipe.toml`. Its
 `[upstream]`, `[[source]]` and `[pin]` tables say where the source comes from and are what
-uptrack keeps current. Its `[build]` table says how to build it:
+plumb keeps current. Its `[build]` table says how to build it:
 
 ```toml
 [upstream]
@@ -91,9 +91,9 @@ PNG_TOOLS  = true
 
 `systems` picks the build systems, which bring their tools, their phases (configure, build, test,
 install) and their options, such as `cmake.defs` above, `cargo.features` or `go.tags`. Every build
-system also has `<name>.tool` to swap the program itself. jib declares the options and
+system also has `<name>.tool` to swap the program itself. hoist declares the options and
 nix/schema.json carries them, so a misspelt field or a wrong type fails evaluation.
-`repkgs options cmake` lists them.
+`manicpkgs options cmake` lists them.
 
 `needs` are linked and come from the target platform's set, `tools` run during the build and come
 from the build machine's. Both are found through the usual search paths (`-I`,
@@ -159,16 +159,16 @@ An out-of-tree package passed through `packages` may still be a `package.nix` ca
 
 ## Keeping it current
 
-`uptrack` (pkgs/ji/jig/src/uptrack, also `repkgs update …`) reads every `recipe.toml`, asks
+`plumb` (pkgs/sh/shim/src/plumb, also `manicpkgs update …`) reads every `recipe.toml`, asks
 upstream for new versions and rewrites pin and hash:
 
 ```console
-$ uptrack check          # what is out of date
-$ uptrack apply zlib     # bump, prefetch, rewrite the hash (--commit makes one commit per bump)
-$ uptrack lock fzf       # re-pin the Go modules fzf needs in locks/go.toml
+$ plumb check          # what is out of date
+$ plumb apply zlib     # bump, prefetch, rewrite the hash (--commit makes one commit per bump)
+$ plumb lock fzf       # re-pin the Go modules fzf needs in locks/go.toml
 ```
 
-[docs/uptrack.md](docs/uptrack.md) has the rest.
+[docs/plumb.md](docs/plumb.md) has the rest.
 
 ## Layout
 
@@ -180,41 +180,41 @@ nix/              evaluation: package/ turns a manifest into a derivation, build
                   each `uses` entry, fetch.nix holds the lock-file fetchers
 builder/          the nu that phase modules import
 locks/            hashes for the ecosystems whose lock files lack them
-tests/builder/    a small package per language checking what the builder does (`repkgs test`)
-docs/             design.md (why), jig.md, uptrack.md, plan.md
-tools/repkgs/     the command (its README.md is for changing it)
+tests/builder/    a small package per language checking what the builder does (`manicpkgs test`)
+docs/             design.md (why), shim.md, plumb.md, plan.md
+tools/manicpkgs/     the command (its README.md is for changing it)
 ```
 
-The build tools live here too. **jig** (pkgs/ji/jig, Rust) is what `cc` and `rustc` resolve to in a
-build: the compiler driver, the cache client and the ELF fixup. **jib** (pkgs/ji/jig/src/jib, Rust)
+The build tools live here too. **shim** (pkgs/sh/shim, Rust) is what `cc` and `rustc` resolve to in a
+build: the compiler driver, the cache client and the ELF fixup. **hoist** (pkgs/sh/shim/src/hoist, Rust)
 runs a build from `prepare` through every build system to `finish`. It is on PATH in package
-builds only, so editing it leaves the toolchain alone. **jigd** (pkgs/ji/jigd, Rust) is the daemon
+builds only, so editing it leaves the toolchain alone. **shimd** (pkgs/sh/shimd, Rust) is the daemon
 behind the socket, holding the cache and the build slots. **launch** and **crt-interp** are the few
-hundred bytes of C that let scripts and ELF binaries run from any path. **uptrack** (Rust) does
+hundred bytes of C that let scripts and ELF binaries run from any path. **plumb** (Rust) does
 the updates.
 
 The Rust tools build with nixpkgs' toolchain, without bootstrapping the set. The Cargo config links
 with Wild through Clang, and both development shells provide those.
 
 ```console
-$ nix develop .#rust --command cargo build --workspace --manifest-path pkgs/ji/jig/src/Cargo.toml
-$ nix develop .#rust --command cargo test --workspace --manifest-path pkgs/ji/jig/src/Cargo.toml
+$ nix develop .#rust --command cargo build --workspace --manifest-path pkgs/sh/shim/src/Cargo.toml
+$ nix develop .#rust --command cargo test --workspace --manifest-path pkgs/sh/shim/src/Cargo.toml
 ```
 
 To try a local daemon through the cache commands, build it and pass its executable:
 
 ```console
-$ nix develop .#rust --command cargo build --release -p jigd --manifest-path pkgs/ji/jig/src/Cargo.toml
-$ repkgs cache start --daemon pkgs/ji/jig/src/target/release/jigd
-$ repkgs cache status
-$ repkgs cache stop
+$ nix develop .#rust --command cargo build --release -p shimd --manifest-path pkgs/sh/shim/src/Cargo.toml
+$ manicpkgs cache start --daemon pkgs/sh/shim/src/target/release/shimd
+$ manicpkgs cache status
+$ manicpkgs cache stop
 ```
 
 ## The bootstrap
 
 ```
 seed        static clang, lld, bsdtar, toybox, make and the like
-→ stage0    musl, libc++ and jig, a C and C++ compiler for this machine
+→ stage0    musl, libc++ and shim, a C and C++ compiler for this machine
 → stage1    glibc, libc++, cmake, then clang and lld for every target, the set's compiler
 → stage2    compiler-rt, the libc and libc++, a cc-<platform> per target built by that clang
 → pkgs/*
@@ -227,8 +227,8 @@ Clang and LLD through nixpkgs' minimal x86-64 bootstrap with no Rust or nushell 
 `nix build .#bootstrap-nushell -L` starts from Rust 1.90 built by mrustc, builds the following Rust
 source releases with that Clang and then a static nu with the last of them. `.#bootstrap-mrustc`
 is the starting compiler and `.#bootstrap-seed` the assembled seed, and nowhere in that graph is a
-downloaded Rust compiler. `nix build .#bootstrap-jig -L` builds the static jig with the same
-compiler. The first jig build needs the whole Rust chain, later jig edits rebuild only jig.
+downloaded Rust compiler. `nix build .#bootstrap-shim -L` builds the static shim with the same
+compiler. The first shim build needs the whole Rust chain, later shim edits rebuild only shim.
 
 ## License
 

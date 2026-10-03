@@ -3,7 +3,7 @@
 #   tools/target-test aarch64-macos ripgrep xz
 # It builds them, packs the closure as a release asset, starts the workflow with one version check
 # per package and follows the run.
-const REPO = "Mic92/repkgs"
+const REPO = "manic-systems/manicpkgs"
 const RUNNERS = {
   x86_64-windows-gnu: windows-latest
   x86_64-windows-msvc: windows-latest
@@ -14,7 +14,7 @@ const RUNNERS = {
   aarch64-linux-musl: ubuntu-24.04-arm
 }
 
-# the command that checks one package, the way jib finish checks versions: the spec's `bin`, else
+# the command that checks one package, the way hoist finish checks versions: the spec's `bin`, else
 # bin/<name> when the build made one, and a plain listing for a library
 def version-check [platform: string, attr: string, out: string, here: closure]: nothing -> string {
   let exe = if $platform =~ windows { ".exe" } else { "" }
