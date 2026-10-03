@@ -1,2 +1,7 @@
 # one entry per line, additions from two branches merge textually; `nuff` normalises
 locks/*.toml merge=union
+
+tests/builder/*/src/** linguist-vendored
+nix/schema.json        linguist-generated
+locks/*.toml           linguist-generated
+pkgs/**/act.lock       linguist-generated
