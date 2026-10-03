@@ -191,16 +191,17 @@ in
 {
   # forcing `stage` makes a misspelt platform fail even when only attrNames are asked for
   pkgs = builtins.seq stage (
-    if strayTools != [ ] then
-      throw "unknown build tools ${toString strayTools}"
-    else if rustToolchain != null && cross then
-      throw "rustToolchain currently supports native builds only, omit it for ${platform}"
-    else if rustToolchain != null && rust.missing != [ ] then
-      throw "rustToolchain ${toString rust.path} is missing ${toString rust.missing}"
-    else if strayOverrides != [ ] then
-      throw "overrides: no packages named ${toString strayOverrides}"
-    else
-      self
+    assert lib.check "repkgs" [
+      (on (strayTools != [ ]) [ "unknown build tools ${toString strayTools}" ])
+      (on (rustToolchain != null && cross) [
+        "rustToolchain currently supports native builds only, omit it for ${platform}"
+      ])
+      (on (rustToolchain != null && !cross && rust.missing != [ ]) [
+        "rustToolchain ${toString rust.path} is missing ${toString rust.missing}"
+      ])
+      (on (strayOverrides != [ ]) [ "overrides: no packages named ${toString strayOverrides}" ])
+    ];
+    self
   );
   inherit
     bootstrap
