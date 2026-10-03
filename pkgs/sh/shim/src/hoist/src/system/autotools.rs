@@ -149,14 +149,18 @@ impl Autotools {
          .to_string_lossy()
          .into_owned();
       let platform = ctx.platform()?;
-      let host_flags: Vec<String> = if platform.cross {
-         vec![
-            format!("--host={}", platform.gnu_triple),
-            format!("--build={}", platform.build_triple),
-         ]
+      // natively both name the target, so configure still runs its test
+      // programs. The bootstrap's build triple differs from every
+      // target's on purpose and would read as cross
+      let build = if platform.cross {
+         &platform.build_triple
       } else {
-         Vec::new()
+         &platform.gnu_triple
       };
+      let host_flags = vec![
+         format!("--host={}", platform.gnu_triple),
+         format!("--build={build}"),
+      ];
       let cache = format!("{}/config.cache", ctx.build);
       let key = probe::key(
          "autotools",
