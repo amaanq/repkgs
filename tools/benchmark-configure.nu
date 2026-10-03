@@ -6,10 +6,10 @@ def capture [program: string, arguments: list<string>]: nothing -> string {
   $result.stdout | str trim
 }
 
-def main [--seed: path, --daemon: path, --runs: int = 3, ...packages: string]: nothing -> nothing {
-  if $seed == null or $daemon == null { error make {msg: "--seed and --daemon are required"} }
+def main [--crib: path, --daemon: path, --runs: int = 3, ...packages: string]: nothing -> nothing {
+  if $crib == null or $daemon == null { error make {msg: "--crib and --daemon are required"} }
   if $runs < 1 { error make {msg: "--runs must be positive"} }
-  let seed_path = ($seed | path expand --strict)
+  let crib_path = ($crib | path expand --strict)
   let daemon_path = ($daemon | path expand --strict)
   let targets = (if ($packages | is-empty) { [sed diffutils] } else { $packages })
   let repository = ($env.FILE_PWD | path dirname)
@@ -17,7 +17,7 @@ def main [--seed: path, --daemon: path, --runs: int = 3, ...packages: string]: n
   let unit = $"manicpkgs-configure-($directory | path basename)"
   let socket = ($directory | path join socket)
   let shell = (which nu | first | get path | path expand)
-  {seed: $seed_path, daemon: $daemon_path, daemon_hash: (capture nix [hash file $daemon_path]), runs: $runs, packages: $targets, started: (date now)}
+  {crib: $crib_path, daemon: $daemon_path, daemon_hash: (capture nix [hash file $daemon_path]), runs: $runs, packages: $targets, started: (date now)}
     | to json | save ($directory | path join environment.json)
   print $"Results and logs in ($directory)"
   capture systemd-run [--user --collect $"--unit=($unit)" $"--setenv=XDG_CACHE_HOME=($directory)/cache"
@@ -32,7 +32,7 @@ def main [--seed: path, --daemon: path, --runs: int = 3, ...packages: string]: n
     let builds = ($targets | each {|package|
       let log = ($directory | path join $"($package)-build.log")
       print $"Preparing ($package), build log in ($log)"
-      let built = (^nix-build $repository -A $package --argstr seed $seed_path --no-out-link --cores 30 --max-jobs 1 --keep-failed err> $log | complete)
+      let built = (^nix-build $repository -A $package --argstr crib $crib_path --no-out-link --cores 30 --max-jobs 1 --keep-failed err> $log | complete)
       if $built.exit_code != 0 { error make {msg: $"Could not build ($package), see ($log)"} }
       let output = ($built.stdout | str trim)
       let drv = (capture nix-store [--query --deriver $output])
@@ -50,7 +50,7 @@ def main [--seed: path, --daemon: path, --runs: int = 3, ...packages: string]: n
       for mode in $modes {
         print $"($package) ($mode)"
         let log = ($directory | path join $"($package)-($mode).log")
-        let arguments = [-i $"PATH=($seed_path)/bin" NIX_STORE=/nix/store NIX_BUILD_CORES=30
+        let arguments = [-i $"PATH=($crib_path)/bin" NIX_STORE=/nix/store NIX_BUILD_CORES=30
           $"NIX_BUILD_TOP=($work)" $"NIX_ATTRS_JSON_FILE=($work)/attrs.json" $"SHIM_SOCK=($socket)"
           $shell --no-config-file '--experimental-options=[cell-path-types]' $env.CURRENT_FILE work $work $mode]
         try { ^env ...$arguments out+err> $log } catch { error make {msg: $"($package) ($mode) failed, see ($log)"} }

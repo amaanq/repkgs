@@ -5,8 +5,8 @@ The work still ahead. design.md covers what exists.
 ## Source bootstrap
 
 The x86-64 source bootstrap has completed in an isolated store without compiled substitutes.
-All 13 checkpoints through LLVM, mrustc, Rust 1.98.1, Nushell, shim and seed assembly match the
-normal-store builds byte for byte. The assembled seed has no store references and runs after
+All 13 checkpoints through LLVM, mrustc, Rust 1.98.1, Nushell, shim and crib assembly match the
+normal-store builds byte for byte. The assembled crib has no store references and runs after
 relocation. The complete source archive restores offline into an empty store, and the 49 early
 stages through kaem rebuild there with a matching kaem output. A full replay on another machine
 and regenerating release archives' generated files remain unverified.
@@ -30,7 +30,7 @@ bindist or hadrian can build a compiler for another machine.
 
 ## Platforms
 
-- **The seed** on loongarch64 and powerpc64le end to end, whose backends are already in, and built
+- **The crib** on loongarch64 and powerpc64le end to end, whose backends are already in, and built
   from this set's own static packages rather than nixpkgs, checked as a fixed point in CI.
 - **Windows**: `.exe` and `.dll` install names, the cargo and go targets, and wine as the test
   emulator. autotools stays unsupported there.

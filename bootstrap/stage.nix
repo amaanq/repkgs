@@ -1,9 +1,9 @@
 # `(stage { … }) extraTools recipe args`: one recipe run, a derivation whose builder is
 # `shim bootstrap <recipe>`. PATH is extraTools (shim's clang shim first once it exists),
-# the stage's tools, the seed. SHIM_CC is the clang behind the shim
+# the stage's tools, the crib. SHIM_CC is the clang behind the shim
 {
   system,
-  seed,
+  crib,
   shim,
   buildTriple,
   inputs,
@@ -23,7 +23,7 @@ let
       inherit (strict) drvPath;
     };
   shared = {
-    inherit system seed;
+    inherit system crib;
     __structuredAttrs = true;
     __contentAddressed = true;
     outputHashMode = "recursive";
@@ -32,14 +32,14 @@ let
     builder = "${shim}/bin/shim";
     SHIM_STORE_IDENTITY = "content";
     M4 = "m4";
-    BISON_PKGDATADIR = "${seed}/share/bison";
+    BISON_PKGDATADIR = "${crib}/share/bison";
     CONFIG_SITE = "${../nix/config.site}";
   };
   binPath = tools: builtins.concatStringsSep ":" (map (tool: "${tool}/bin") tools);
 in
 {
   platform,
-  clang ? seed, # whose bin/clang compiles, and what the compiler driver uses
+  clang ? crib, # whose bin/clang compiles, and what the compiler driver uses
   tools ? [ ],
   suffix ? "-${platform.name}",
 }:
@@ -60,7 +60,7 @@ let
     llvm = clang;
     SHIM_CC = "${clang}/bin/clang";
   };
-  basePath = binPath (tools ++ [ seed ]);
+  basePath = binPath (tools ++ [ crib ]);
 in
 extraTools: recipe: args:
 leaf (

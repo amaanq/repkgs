@@ -6,7 +6,7 @@ def main [installable: string = ".#bootstrap-llvm", --rust, --mrustc]: nothing -
   let document = ($result.stdout | from json)
   if $document.version != 4 { error make {msg: "expected Nix derivation JSON version 4"} }
   let graph = ($document.derivations | transpose path drv)
-  let rust_chain = (open ($env.FILE_PWD | path join ../pkgs/se/seed/rust-chain.toml) | get release)
+  let rust_chain = (open ($env.FILE_PWD | path join ../pkgs/cr/crib/rust-chain.toml) | get release)
   let rust_sources = ($rust_chain | each {|archive|
     {
       name: $"rustc-($archive.version)-src.tar.gz"
@@ -31,7 +31,7 @@ def main [installable: string = ".#bootstrap-llvm", --rust, --mrustc]: nothing -
   let forbidden = ($graph | where {|entry|
     (($entry.drv.name =~ '^(rustc?|rustfmt|cargo|nushell|shimd?)(-|$)' and $entry.drv.name not-in $rust_names)
       or $entry.drv.name =~ 'bootstrap-tools'
-      or (not $rust and $entry.drv.name =~ '^seed-(rust|nushell)'))
+      or (not $rust and $entry.drv.name =~ '^crib-(rust|nushell)'))
   } | get path)
   if ($forbidden | is-not-empty) {
     error make {msg: $"bootstrap has an unexpected toolchain dependency\n($forbidden | str join (char newline))"}
@@ -59,7 +59,7 @@ def main [installable: string = ".#bootstrap-llvm", --rust, --mrustc]: nothing -
     let found = ($sources | where name in ($rust_sources | get name) | each {|entry|
       {name: $entry.name, url: ($entry.urls | get 0), hash: $entry.outputs.out.hash}
     } | sort-by name)
-    let complete_chain = ($graph | any {|entry| $entry.drv.name == $"seed-rust-($rust_version)"})
+    let complete_chain = ($graph | any {|entry| $entry.drv.name == $"crib-rust-($rust_version)"})
     let expected = (if $complete_chain { $rust_sources } else { $rust_sources | first ($found | length) })
     if ($found | is-empty) or $found != $expected {
       error make {msg: "expected a prefix of the pinned Rust source releases"}
@@ -70,7 +70,7 @@ def main [installable: string = ".#bootstrap-llvm", --rust, --mrustc]: nothing -
   {
     target: $installable
     derivations: ($graph | length)
-    seed: ($seeds | first | get drv | select name outputs)
+    crib: ($seeds | first | get drv | select name outputs)
     rust_sources: $rust_inputs
     fixed_outputs: $sources
   } | to json

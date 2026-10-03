@@ -1,4 +1,4 @@
-# The seed: the static musl programs for the build machine that the set needs before it can build
+# The crib: the static musl programs for the build machine that the set needs before it can build
 # its own userland, built with nixpkgs. It runs on `system` and is built on `buildSystem`, and
 # static musl makes that a cross build either way. ./upload.nu builds `nar` per system, uploads it
 # and rewrites ./recipe.toml.
@@ -21,7 +21,7 @@ let
   inherit (native) lib;
   triple = musl.stdenv.hostPlatform.config;
 
-  # a recipe.toml's pinned sources, fetched with nixpkgs, since the seed exists before shim does
+  # a recipe.toml's pinned sources, fetched with nixpkgs, since the crib exists before shim does
   source =
     name:
     let
@@ -60,7 +60,7 @@ let
   # configured as a native build since the static binary runs on the machine it targets. For
   # another cpu, llvm builds its tblgen tools in a NATIVE subtree with this machine's compiler
   llvm = musl.stdenv.mkDerivation {
-    pname = "seed-llvm";
+    pname = "crib-llvm";
     inherit (llvmSource) version;
     src = llvmSource.default;
     patches = [ ../../ll/llvm/upstream-x86-vastart-stack-probe.patch ];
@@ -116,7 +116,7 @@ let
     dontFixup = true;
   };
 
-  # a cross seed still bootstraps rust with this machine's llvm
+  # a cross crib still bootstraps rust with this machine's llvm
   rustBootstrap = import ./rust.nix {
     ps = musl;
     inherit source;
@@ -151,7 +151,7 @@ let
         ];
     in
     rustPlatform.buildRustPackage {
-      pname = "seed-${name}";
+      pname = "crib-${name}";
       version = "3.0.0";
       src = builtins.path {
         path = ../../sh/shim/src;
@@ -186,7 +186,7 @@ let
       ];
     }).overrideAttrs
       {
-        pname = "seed-nushell";
+        pname = "crib-nushell";
         inherit (nuSource) version;
         src = nuSource.default;
         auditable = false;
@@ -224,9 +224,9 @@ let
   # glibc's build runs python scripts, which need only the stdlib as source, without extension
   # modules or ensurepip
   python = musl.stdenv.mkDerivation {
-    name = "seed-python";
+    name = "crib-python";
     src = (source "cpython314").default;
-    # every module that would want a library the seed does not carry
+    # every module that would want a library the crib does not carry
     preConfigure = ''
       cat > Modules/Setup.local <<EOF
       *disabled*
@@ -271,7 +271,7 @@ let
     dontFixup = true;
   };
 
-  seed = native.runCommand "seed-4-${system}" { allowedReferences = [ ]; } ''
+  crib = native.runCommand "crib-4-${system}" { allowedReferences = [ ]; } ''
     mkdir -p $out/bin $out/lib $out/share
     cp ${bsdtar}/bin/bsdtar ${toybox}/bin/toybox ${dash}/bin/dash $out/bin/
     ln -s dash $out/bin/sh
@@ -293,11 +293,11 @@ let
     find $out -type f -exec ${native.nukeReferences}/bin/nuke-refs {} +
   '';
 
-  nar = native.runCommand "${seed.name}.nar.xz" { nativeBuildInputs = [ native.nix ]; } ''
+  nar = native.runCommand "${crib.name}.nar.xz" { nativeBuildInputs = [ native.nix ]; } ''
     mkdir $out
-    nix-store --dump ${seed} | ${native.xz}/bin/xz -T$NIX_BUILD_CORES -9e > $out/${seed.name}.nar.xz
+    nix-store --dump ${crib} | ${native.xz}/bin/xz -T$NIX_BUILD_CORES -9e > $out/${crib.name}.nar.xz
     # what package.toml pins: hash of the unpacked tree (fetchurl unpack=true is recursive/NAR-hashed)
-    nix-hash --type sha256 --to-sri $(nix-store --dump ${seed} | sha256sum | cut -d' ' -f1) > $out/nar-hash
+    nix-hash --type sha256 --to-sri $(nix-store --dump ${crib} | sha256sum | cut -d' ' -f1) > $out/nar-hash
   '';
 in
 {
@@ -310,7 +310,7 @@ in
     toybox
     dash
     python
-    seed
+    crib
     nar
     ;
   inherit (tools)

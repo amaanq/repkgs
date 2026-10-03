@@ -1,6 +1,6 @@
 # The sources half of a recipe.toml (docs/plumb.md), with URL placeholders filled the way
 # plumb fills them. `unpacker` is a store path holding bin/bsdtar and `shim` the shim that fetches
-# and unpacks with it. Only the seed's own recipe.toml, a .nar, is read without them.
+# and unpacks with it. Only the crib's own recipe.toml, a .nar, is read without them.
 {
   unpacker,
   shim ? null,
@@ -148,7 +148,7 @@ let
             key: source: if hashes ? ${key} then source // { hash = hashes.${key}; } else source
           ) declared;
 
-      # `unpack = false` and .nar urls, the seed among them, go through builtin:fetchurl
+      # `unpack = false` and .nar urls, the crib among them, go through builtin:fetchurl
       fetch =
         key:
         let

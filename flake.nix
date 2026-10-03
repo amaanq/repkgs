@@ -1,5 +1,5 @@
 # CI builds .#checks (nix/checks.nix) and .#packages holds the whole set. The set is default.nix
-# and takes no inputs, nixpkgs only serves the formatter, the shells and the seed build.
+# and takes no inputs, nixpkgs only serves the formatter, the shells and the crib build.
 {
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   inputs.rom = {
@@ -20,29 +20,29 @@
     }:
     let
       inherit (nixpkgs) lib;
-      # aarch64-linux joins once its seed nar is uploaded (pkgs/se/seed/upload.nu)
+      # aarch64-linux joins once its crib nar is uploaded (pkgs/cr/crib/upload.nu)
       forSystems = lib.genAttrs [ "x86_64-linux" ];
 
-      seedOutputs =
+      cribOutputs =
         system:
         let
-          seed = import ./pkgs/se/seed {
+          crib = import ./pkgs/cr/crib {
             inherit system;
             buildSystem = system;
           };
           stages = lib.mapAttrs' (
             version: lib.nameValuePair "bootstrap-rust-${builtins.replaceStrings [ "." ] [ "_" ] version}"
-          ) seed.rustStages;
+          ) crib.rustStages;
         in
         {
-          bootstrap-llvm = seed.llvm;
-          bootstrap-shim = seed.shim;
-          bootstrap-hoist = seed.hoist;
-          bootstrap-rust-stage0 = seed.stage0;
-          bootstrap-rust = seed.rust;
-          bootstrap-nushell = seed.nu;
-          bootstrap-mrustc = seed.mrustc;
-          bootstrap-seed = seed.seed;
+          bootstrap-llvm = crib.llvm;
+          bootstrap-shim = crib.shim;
+          bootstrap-hoist = crib.hoist;
+          bootstrap-rust-stage0 = crib.stage0;
+          bootstrap-rust = crib.rust;
+          bootstrap-nushell = crib.nu;
+          bootstrap-mrustc = crib.mrustc;
+          bootstrap-crib = crib.crib;
         }
         // stages;
 
@@ -75,7 +75,7 @@
         // {
           nix = import ./nix/nix { pkgs = nixpkgs.legacyPackages.${system}; };
         }
-        // seedOutputs system
+        // cribOutputs system
       );
       checks = forSystems (system: import ./nix/checks.nix { inherit system nixpkgs; });
       formatter = forSystems (

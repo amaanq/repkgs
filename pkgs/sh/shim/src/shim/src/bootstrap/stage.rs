@@ -245,7 +245,7 @@ impl Stage {
       }
    }
 
-   /// compile and link against the sysroot with the raw seed clang, which
+   /// compile and link against the sysroot with the raw crib clang, which
    /// defaults to libunwind, built last. Plain C needs no unwinder.
    pub fn ccflags(&self) -> io::Result<Vec<String>> {
       let sysroot = wanted(self.sysroot.as_deref(), "sysroot")?;
@@ -451,7 +451,7 @@ pub struct Item {
    pub flags: Vec<String>,
 }
 
-/// parallel compile with the seed clang, the object paths back.
+/// parallel compile with the crib clang, the object paths back.
 pub fn compile(common: &[String], items: &[Item]) -> io::Result<Vec<PathBuf>> {
    let failures: Vec<Option<(PathBuf, String)>> = parallel_with(items, cores(), |item| {
       if let Some(parent) = item.obj.parent() {

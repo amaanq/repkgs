@@ -1,12 +1,12 @@
 {
   system ? builtins.currentSystem,
-  seed,
+  crib,
   rustToolchain,
 }:
 let
   common = {
     inherit system rustToolchain;
-    seed = builtins.storePath seed;
+    crib = builtins.storePath crib;
   };
   initial = import ./set.nix common;
   executors = set: {

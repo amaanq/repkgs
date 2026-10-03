@@ -1,11 +1,11 @@
-# The seed grown into a configured `cc` for every platform, in three stages:
-#   stage0  the seed's clang on musl builds shim and a cc for this machine
-#   stage1  the seed's clang on glibc builds a cc that can host cmake and llvm (clang, lld, every target)
+# The crib grown into a configured `cc` for every platform, in three stages:
+#   stage0  the crib's clang on musl builds shim and a cc for this machine
+#   stage1  the crib's clang on glibc builds a cc that can host cmake and llvm (clang, lld, every target)
 #   stage2  that llvm builds compiler-rt, the libc, libc++, cc and launch per platform
 # Every derivation runs `shim bootstrap <recipe>` with structured attrs, recipes in
 # pkgs/sh/shim/src/shim/src/bootstrap/.
 {
-  seed ? null,
+  crib ? null,
   system ? builtins.currentSystem,
 }:
 let
@@ -15,38 +15,38 @@ let
   # with "build" as the vendor, configure treats even a same-cpu build as a cross one
   buildTriple = builtins.replaceStrings [ "-unknown-" ] [ "-build-" ] host.gnuTriple;
 
-  seedBuild = import ../pkgs/se/seed {
+  cribBuild = import ../pkgs/cr/crib {
     inherit system;
     buildSystem = system;
   };
-  # the seed is the unpacker, so its own recipe.toml has to be read without one
+  # the crib is the unpacker, so its own recipe.toml has to be read without one
   readerFor =
     name:
-    if name == "seed" then
+    if name == "crib" then
       import ../nix/sources.nix { unpacker = null; }
     else
       import ../nix/sources.nix {
-        unpacker = seedPath;
-        inherit (seedBuild) shim;
+        unpacker = cribPath;
+        inherit (cribBuild) shim;
         inherit system;
       };
   sourcesOf = name: readerFor name (pkg name + "/recipe.toml");
   source = name: (sourcesOf name).default;
-  seedPath =
-    if seed == null then
-      (sourcesOf "seed").fetch system
-    else if builtins.isString seed then
-      builtins.storePath seed
+  cribPath =
+    if crib == null then
+      (sourcesOf "crib").fetch system
+    else if builtins.isString crib then
+      builtins.storePath crib
     else
-      seed;
+      crib;
 
   stage = import ./stage.nix {
     inherit system buildTriple;
-    seed = seedPath;
-    inherit (seedBuild) shim;
+    crib = cribPath;
+    inherit (cribBuild) shim;
     inputs = import ./inputs.nix {
       inherit pkg source;
-      prebuiltShim = seedBuild.shim;
+      prebuiltShim = cribBuild.shim;
     };
   };
   chain = import ./chain.nix { inherit pkg; };
@@ -178,9 +178,9 @@ let
   );
 in
 {
-  seed = seedPath;
+  crib = cribPath;
   inherit buildTriple;
-  inherit (seedBuild) hoist shim nu;
+  inherit (cribBuild) hoist shim nu;
   inherit
     stage0
     stage1

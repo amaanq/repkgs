@@ -2,7 +2,7 @@
   attr,
   system ? builtins.currentSystem,
   platform ? system,
-  seed ? null,
+  crib ? null,
   rustToolchain ? null,
   buildTools ? { },
 }:
@@ -11,7 +11,7 @@ let
     inherit
       system
       platform
-      seed
+      crib
       rustToolchain
       buildTools
       ;

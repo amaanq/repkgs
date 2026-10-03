@@ -58,10 +58,10 @@ lib.mergeAttrsList (map packagesFor platforms)
     nativeBuildInputs = [ formatter ];
   } "cp -r ${checkout} src && chmod -R u+w src && cd src && nuff --check && touch $out";
   inherit
-    (import ../pkgs/se/seed {
+    (import ../pkgs/cr/crib {
       inherit system;
       buildSystem = system;
     })
-    seed
+    crib
     ;
 }

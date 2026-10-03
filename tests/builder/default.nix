@@ -6,7 +6,7 @@
 {
   system ? builtins.currentSystem,
   platform ? system,
-  seed ? null,
+  crib ? null,
   rustToolchain ? null,
   buildTools ? { },
 }:
@@ -39,7 +39,7 @@ let
     inherit
       system
       platform
-      seed
+      crib
       rustToolchain
       buildTools
       ;
@@ -72,7 +72,7 @@ let
           "--include-path=${includes}"
           "${dir}/test.nu"
         ];
-        PATH = "${tools.nu}/bin:${tools.hoist}/bin:${set.bootstrap.seed}/bin";
+        PATH = "${tools.nu}/bin:${tools.hoist}/bin:${set.bootstrap.crib}/bin";
         fixtures = dir;
         SYS_LIBS = ../../builder/sys-libs.json;
       }

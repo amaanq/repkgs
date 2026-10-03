@@ -6,7 +6,7 @@
   platform,
   toolchain,
   hoist,
-  seed,
+  crib,
   nu,
   launch,
   dlaudit,
@@ -51,7 +51,7 @@ let
 
   # the part of every derivation that is the same across the set: built once
   shared = {
-    inherit seed;
+    inherit crib;
     inherit (platform) system;
     __structuredAttrs = true;
     # content-addressed: rebuilds that change no bytes do not propagate
@@ -190,8 +190,8 @@ let
   runsNu =
     any (step: step.kind == "nu") phases.steps
     || any (override: (override.run or "") != "") (attrValues (args.pyapp.overrides or { }));
-  # PATH order: the base tools (GNU userland, then the seed) go last and only once, so a build
-  # system that lists the seed as its `sh` does not pull toybox ahead of coreutils and grep
+  # PATH order: the base tools (GNU userland, then the crib) go last and only once, so a build
+  # system that lists the crib as its `sh` does not pull toybox ahead of coreutils and grep
   buildDependencies =
     { tests, base }:
     filter (dependency: !(elem dependency base)) (

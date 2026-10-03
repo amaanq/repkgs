@@ -31,7 +31,7 @@ use crate::{
 #[derive(Deserialize)]
 pub struct Attrs {
    pub outputs: BTreeMap<String, String>,
-   pub seed:    String,
+   pub crib:    String,
    pub layout:  Vec<Entry>,
 }
 
@@ -93,7 +93,7 @@ fn place(entry: &Entry, out: &str, bin: &str) -> io::Result<()> {
 pub fn run_mode() -> io::Result<()> {
    let attrs = Attrs::load()?;
    let out = attrs.out()?;
-   let bin = format!("{}/bin", attrs.seed);
+   let bin = format!("{}/bin", attrs.crib);
    parallel_with(&attrs.layout, cores(), |entry| place(entry, out, &bin))?;
    run(&format!("{bin}/chmod"), &["-R", "u+w,go-w,a-st", out])
 }

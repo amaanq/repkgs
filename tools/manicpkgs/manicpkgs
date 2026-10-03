@@ -6,9 +6,9 @@ use dev.nu *
 
 def main []: nothing -> nothing { help main }
 
-def built [attrs: list<string>, platform, seed, toolchain, --file: string]: nothing -> nothing {
+def built [attrs: list<string>, platform, crib, toolchain, --file: string]: nothing -> nothing {
   let targets = ($attrs | each {|attr| $"($attr)^out" })
-  let flags = [--quiet --no-link --print-out-paths ...(cache-args) ...(platform-arg $platform) ...(seed-arg $seed) ...(rust-toolchain-arg $toolchain)]
+  let flags = [--quiet --no-link --print-out-paths ...(cache-args) ...(platform-arg $platform) ...(crib-arg $crib) ...(rust-toolchain-arg $toolchain)]
   # a failed build exits with nix's status
   try { ^rom --platform nix build ...$targets -- --file ($file | default (root)) ...$FEATURES ...$flags } catch {|failure| exit ($failure.exit_code? | default 1) }
 }
@@ -16,41 +16,41 @@ def built [attrs: list<string>, platform, seed, toolchain, --file: string]: noth
 # build packages with the compile cache
 def "main build" [
   --for: string # platform, aarch64-linux or x86_64-windows for instance
-  --seed: path
+  --crib: path
   --rust-toolchain: path
   ...attrs: string # attributes, jq or jq.tests
 ]: nothing -> nothing {
   if ($attrs | is-empty) { fail "manicpkgs build <attr>…, or nix-build nix/checks.nix for everything" }
-  built $attrs $for $seed $rust_toolchain
+  built $attrs $for $crib $rust_toolchain
 }
 
 # build <pkg>.tests for packages that test separately and the package for those that test in its
 # own build. Without attrs, the builder's tests in tests/builder, which follow any builder/ edit
 def "main test" [
   --for: string # platform
-  --seed: path
+  --crib: path
   --rust-toolchain: path
   ...attrs: string
 ]: nothing -> nothing {
   if ($attrs | is-empty) {
-    built [.] $for $seed $rust_toolchain --file $"(root)/tests/builder"
+    built [.] $for $crib $rust_toolchain --file $"(root)/tests/builder"
     return
   }
   let targets = ($attrs | each {|attr|
-    let separate = (eval $"(pkg-expr $attr $for $seed $rust_toolchain) ? tests")
+    let separate = (eval $"(pkg-expr $attr $for $crib $rust_toolchain) ? tests")
     if $separate { $"($attr).tests" } else { $attr }
   })
-  built $targets $for $seed $rust_toolchain
+  built $targets $for $crib $rust_toolchain
 }
 
 # print the build log of a package's derivation
 def "main log" [
   --for: string # platform
-  --seed: path
+  --crib: path
   --rust-toolchain: path
   attr: string
 ]: nothing -> nothing {
-  let derivation = (drv $attr $for $seed $rust_toolchain)
+  let derivation = (drv $attr $for $crib $rust_toolchain)
   let log = (^nix ...$FEATURES log $derivation | complete)
   if $log.exit_code != 0 { fail $"no local log for ($derivation), it was built elsewhere or substituted, so `manicpkgs build` it here first" }
   print $log.stdout
@@ -59,12 +59,12 @@ def "main log" [
 # the packages a platform supports, or with --unsupported the others and why
 def "main list" [
   --for: string # platform
-  --seed: path
+  --crib: path
   --rust-toolchain: path
   --unsupported # what `supported` leaves out, with the reason
   --json (-j) # machine-readable
 ]: nothing -> any {
-  let set = (set-expr $for $seed $rust_toolchain)
+  let set = (set-expr $for $crib $rust_toolchain)
   if $unsupported {
     let refused = (eval $"let s = ($set); in map \(n: { name = n; reason = s.${n}.unsupportedReason; }\) \(builtins.filter \(n: !s.${n}.supported\) \(builtins.attrNames s\)\)")
     return (if $json { $refused | to json } else { $refused })
@@ -76,13 +76,13 @@ def "main list" [
 # one package's version, platform support, build systems and features, without building it
 def "main info" [
   --for: string # platform
-  --seed: path
+  --crib: path
   --rust-toolchain: path
   --json (-j) # machine-readable, the whole record
   attr: string
 ]: nothing -> any {
   let fields = "{ name = p.pname; version = p.version or null; platform = p.platform; supported = p.supported; reason = p.unsupportedReason; uses = p.args.uses or []; features = builtins.mapAttrs (n: d: d // { value = p.features.${n}; }) (p.args.features or {}); }"
-  let package = (eval $"let p = (pkg-expr $attr $for $seed $rust_toolchain); in ($fields)")
+  let package = (eval $"let p = (pkg-expr $attr $for $crib $rust_toolchain); in ($fields)")
   if $json { return ($package | to json) }
 
   let summary = {name: $package.name, version: $package.version, platform: $package.platform, uses: ($package.uses | str join " ")}
@@ -149,13 +149,13 @@ def --wrapped "main update" [...args: string]: nothing -> nothing {
 # build packages again and compare with the store (nix-build --check)
 def "main repro" [
   --for: string # platform
-  --seed: path
+  --crib: path
   --rust-toolchain: path
   ...attrs: string # zlib xz pcre2 jq sqlite ncurses by default
 ]: nothing -> table {
   let attrs = (if ($attrs | is-empty) { [zlib xz pcre2 jq sqlite ncurses] } else { $attrs })
   $attrs | each {|attr|
-    let build = (^nix-build (root) ...$FEATURES -A $attr --no-out-link ...(cache-args) ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain) | complete)
+    let build = (^nix-build (root) ...$FEATURES -A $attr --no-out-link ...(cache-args) ...(platform-arg $for) ...(crib-arg $crib) ...(rust-toolchain-arg $rust_toolchain) | complete)
     if $build.exit_code != 0 { return {attr: $attr, status: build-failed} }
     let derivation = (^nix-store --query --deriver ($build.stdout | str trim) | str trim)
     # --check really compiles, so the cache stays out of it
@@ -178,7 +178,7 @@ def "main cache" [
   action: string # one of start, stop, status
   --size: int = 50 # GiB kept before whole packs are evicted, for start
   --daemon: path
-  --seed: path
+  --crib: path
   --rust-toolchain: path
 ]: nothing -> nothing {
   let dir = (shimd-dir)
@@ -193,7 +193,7 @@ def "main cache" [
         return
       }
       let program = if $daemon != null { $daemon | path expand --strict } else {
-        let build = (^nix-build (root) ...$FEATURES -A shimd --no-out-link ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain) err> /dev/stderr | complete)
+        let build = (^nix-build (root) ...$FEATURES -A shimd --no-out-link ...(crib-arg $crib) ...(rust-toolchain-arg $rust_toolchain) err> /dev/stderr | complete)
         if $build.exit_code != 0 { fail "could not build shimd" }
         $build.stdout | str trim | path join bin shimd
       }
@@ -233,9 +233,9 @@ def "main cache" [
   }
 }
 
-# build the seed nars here and upload them (pkgs/se/seed/upload.nu)
-def --wrapped "main seed" [...args: string]: nothing -> nothing {
-  ^$"(root)/pkgs/se/seed/upload.nu" ...$args
+# build the crib nars here and upload them (pkgs/cr/crib/upload.nu)
+def --wrapped "main crib" [...args: string]: nothing -> nothing {
+  ^$"(root)/pkgs/cr/crib/upload.nu" ...$args
 }
 
 # cross build <pkg> for cpus upstream ships no binaries for and upload it as the source of

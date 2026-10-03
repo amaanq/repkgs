@@ -41,7 +41,7 @@ let
   ];
 
   bindings = with buildPkgs; {
-    # make and bash come from baseTools, or the seed for bootstrapTools packages
+    # make and bash come from baseTools, or the crib for bootstrapTools packages
     make.tools = [ sh ];
     autotools.tools = [ sh ];
     cmake = {

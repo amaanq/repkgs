@@ -51,7 +51,7 @@ def prepare-build [directory: path, configuration: record]: nothing -> record {
 
 export def "main dev" [
   --for: string
-  --seed: path
+  --crib: path
   --rust-toolchain: path
   --fresh
   --reset
@@ -59,7 +59,7 @@ export def "main dev" [
   ...cmds: string
 ]: nothing -> nothing {
   let evaluated = (^nix-instantiate $"(root)/tools/manicpkgs/dev.nix" ...$FEATURES --argstr attr $attr
-    ...(platform-arg $for) ...(seed-arg $seed) ...(rust-toolchain-arg $rust_toolchain) | complete)
+    ...(platform-arg $for) ...(crib-arg $crib) ...(rust-toolchain-arg $rust_toolchain) | complete)
   if $evaluated.exit_code != 0 { fail $evaluated.stderr }
   let derivation = ($evaluated.stdout | str trim)
   let configuration = {

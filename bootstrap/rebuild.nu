@@ -81,7 +81,7 @@ def "main start" [--state: path, --cores: int = 30, --jobs: int = 3, --llvm-core
   if $jobs > $cores { error make {msg: "jobs must not exceed the total core budget"} }
   if $llvm_cores > $cores { error make {msg: "LLVM workers must not exceed the total core budget"} }
   if $memory <= 0B { error make {msg: "memory limit must be positive"} }
-  if $through not-in ["" llvm seed] { error make {msg: "--through must be llvm or seed"} }
+  if $through not-in ["" llvm crib] { error make {msg: "--through must be llvm or crib"} }
   let directory = (state-dir $state)
   mkdir $directory
   let unit = (unit-info $directory)

@@ -2,12 +2,12 @@
 #
 # Each is a dynamic derivation. A producer, `shim fetch <kind>` under builder-rpc-v0, reads the lock
 # out of its inputs and writes one builtin:fetchurl derivation per artefact with the lock's own
-# hash, plus one that assembles them (`shim assemble`, with the seed's bsdtar). The producer's
+# hash, plus one that assembles them (`shim assemble`, with the crib's bsdtar). The producer's
 # output is that .drv and callers get `builtins.outputOf` it, so Nix downloads, caches and checks
 # every file and no lock is copied here. The daemon needs dynamic-derivations and ca-derivations.
 {
   shim,
-  seed,
+  crib,
   system,
   cpu,
   sevenzip ? null,
@@ -23,7 +23,7 @@ let
       producer = derivation (
         {
           name = name + concatStringsSep "" (genList (_: ".drv") stages);
-          inherit system seed shim;
+          inherit system crib shim;
           builder = "${shim}/bin/shim";
           args = [
             "fetch"

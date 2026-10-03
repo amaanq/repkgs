@@ -79,7 +79,7 @@ def main [
   verify-sources $state $catalog.fixed_outputs $jobs
   mkdir $destination
   for directory in ([$state $metadata] | uniq) {
-    let target = (if $directory == $state { $saved } else { $saved | path join seed })
+    let target = (if $directory == $state { $saved } else { $saved | path join crib })
     mkdir $target
     for name in [plan.json graph.json audit.json] { cp --force ($directory | path join $name) ($target | path join $name) }
   }
@@ -138,7 +138,7 @@ def "main restore" [archive: path, --state: path, --jobs: int = 30]: nothing -> 
   verify-sources $directory $catalog.fixed_outputs $jobs
   let active = (plan-dir $metadata)
   for origin in ([$metadata $active] | uniq) {
-    let target = (if $origin == $metadata { $directory } else { $directory | path join seed })
+    let target = (if $origin == $metadata { $directory } else { $directory | path join crib })
     mkdir $target
     for name in [plan.json graph.json audit.json] { cp --force ($origin | path join $name) ($target | path join $name) }
     {paths: $restored, imported_sources: $catalog.fixed_outputs, prepared: (date now)} | to json

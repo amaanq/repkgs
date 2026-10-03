@@ -11,15 +11,15 @@ export def platform-arg [platform]: nothing -> list<string> {
   if $platform == null { [] } else { [--argstr platform $platform] }
 }
 
-export def seed-path [seed: any]: nothing -> any {
-  if $seed == null { return null }
-  let path = ($seed | path expand --strict)
+export def crib-path [crib: any]: nothing -> any {
+  if $crib == null { return null }
+  let path = ($crib | path expand --strict)
   if not ($path | path join bin/shim | path exists) { fail $"($path) has no bin/shim" }
   $path
 }
 
-export def seed-arg [seed: any]: nothing -> list<string> {
-  if $seed == null { [] } else { [--argstr seed (seed-path $seed)] }
+export def crib-arg [crib: any]: nothing -> list<string> {
+  if $crib == null { [] } else { [--argstr crib (crib-path $crib)] }
 }
 
 export def rust-toolchain-path [toolchain: any]: nothing -> any {
@@ -34,8 +34,8 @@ export def rust-toolchain-arg [toolchain: any]: nothing -> list<string> {
   if $toolchain == null { [] } else { [--argstr rustToolchain (rust-toolchain-path $toolchain)] }
 }
 
-export def set-expr [p, seed: any, toolchain: any]: nothing -> string {
-  let fields = ({platform: $p, seed: (seed-path $seed), rustToolchain: (rust-toolchain-path $toolchain)} | transpose name value | where value != null
+export def set-expr [p, crib: any, toolchain: any]: nothing -> string {
+  let fields = ({platform: $p, crib: (crib-path $crib), rustToolchain: (rust-toolchain-path $toolchain)} | transpose name value | where value != null
     | each {|field| $"($field.name) = ($field.value | to json -r | str replace -a '${' '\${');" })
   $"\(import (root) { ($fields | str join ' ') }\)"
 }
@@ -54,9 +54,9 @@ export def eval [expr: string]: nothing -> any {
 
 # `s.${"7zip"}` parses where s.7zip does not, and a misspelt name lists the packages sharing its
 # first two letters instead of a trace through this expression
-export def pkg-expr [attr: string, p, seed: any, toolchain: any]: nothing -> string {
+export def pkg-expr [attr: string, p, crib: any, toolchain: any]: nothing -> string {
   let quoted = ($attr | to json)
-  $"\(let s = (set-expr $p $seed $toolchain); n = ($quoted); in s.${n} or \(builtins.throw \"no package ${n}, near: ${toString \(builtins.filter \(a: builtins.substring 0 2 a == builtins.substring 0 2 n\) \(builtins.attrNames s\)\)}\"\)\)"
+  $"\(let s = (set-expr $p $crib $toolchain); n = ($quoted); in s.${n} or \(builtins.throw \"no package ${n}, near: ${toString \(builtins.filter \(a: builtins.substring 0 2 a == builtins.substring 0 2 n\) \(builtins.attrNames s\)\)}\"\)\)"
 }
 
 # a socket with a listener, since a crashed shimd leaves its socket file behind
@@ -81,4 +81,4 @@ export def cache-args []: nothing -> list<string> {
   []
 }
 
-export def drv [attr: string, p, seed: any, toolchain: any]: nothing -> string { eval $"(pkg-expr $attr $p $seed $toolchain).drvPath" }
+export def drv [attr: string, p, crib: any, toolchain: any]: nothing -> string { eval $"(pkg-expr $attr $p $crib $toolchain).drvPath" }

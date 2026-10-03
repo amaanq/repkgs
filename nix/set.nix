@@ -4,7 +4,7 @@
 {
   system ? builtins.currentSystem,
   platform ? system,
-  seed ? null,
+  crib ? null,
   rustToolchain ? null,
   buildTools ? { },
   overrides ? { },
@@ -14,7 +14,7 @@
 let
   lib = import ./lib.nix;
   inherit (lib) on;
-  bootstrap = import ../bootstrap { inherit seed system; };
+  bootstrap = import ../bootstrap { inherit crib system; };
   editing = import ./overrides.nix;
   overrideTree = editing.merge overrides;
 
@@ -71,7 +71,7 @@ let
           platform = system;
           inherit
             system
-            seed
+            crib
             rustToolchain
             buildTools
             overrides
@@ -84,14 +84,14 @@ let
     // rust.packages;
 
   # after the toolchain and the build systems' tools come GNU tools, which build scripts in the
-  # wild need where toybox falls short, then llvm's object tools and the seed's bsdtar and sh.
+  # wild need where toybox falls short, then llvm's object tools and the crib's bsdtar and sh.
   # `bootstrapTools = true` packages, the base tools among them, get only the latter
-  seedTools = [
+  cribTools = [
     bootstrap.llvm
-    bootstrap.seed
+    bootstrap.crib
   ];
   baseTools = {
-    bootstrap = seedTools;
+    bootstrap = cribTools;
     full =
       (with buildPkgs; [
         coreutils
@@ -105,18 +105,18 @@ let
         bash
         pkgconf
       ])
-      ++ seedTools;
+      ++ cribTools;
   };
 
   readSources = import ./sources.nix {
-    unpacker = bootstrap.seed;
+    unpacker = bootstrap.crib;
     inherit (tools) shim;
     inherit system;
   };
   fetch = import ./fetch.nix {
     shim = given.shim or bootstrap.stage0.shim;
     sevenzip = buildPkgs."7zip";
-    inherit (bootstrap) seed;
+    inherit (bootstrap) crib;
     inherit system;
     inherit (facts) cpu;
   };
@@ -124,8 +124,8 @@ let
     inherit buildPkgs fetch lib;
     platform = facts;
     pkgs = self;
-    # the seed's dash, for tools that start `sh` by name
-    sh = bootstrap.seed;
+    # the crib's dash, for tools that start `sh` by name
+    sh = bootstrap.crib;
   };
   package = import ./package {
     platform = facts;
@@ -136,7 +136,7 @@ let
       baseTools
       ;
     inherit (tools) hoist nu;
-    inherit (bootstrap) seed;
+    inherit (bootstrap) crib;
     launch = stage.launch or null;
     dlaudit = stage.dlaudit or null;
     # `prebuilt = true` patches upstream ELFs with it (builder/implant.nu)

@@ -151,7 +151,7 @@ fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 19] {
       (
          "bootstrapTools",
          Type::Boolean,
-         "build with the seed's tools instead of the set's base tools",
+         "build with the crib's tools instead of the set's base tools",
       ),
       (
          "prebuilt",

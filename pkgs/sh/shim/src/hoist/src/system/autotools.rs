@@ -172,7 +172,7 @@ impl Autotools {
       note("config.cache", if restored { "restored" } else { "cold" });
       Self::backports(Path::new(&ctx.src))?;
       copy(
-         Path::new(&attrs.seed).join("bin/install"),
+         Path::new(&attrs.crib).join("bin/install"),
          Self::install_tool(ctx),
       )?;
       let mut args = vec![

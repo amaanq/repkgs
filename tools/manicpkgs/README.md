@@ -52,10 +52,10 @@ build directories. `--reset` discards those directories and `--fresh` removes th
 workspace. The shell can access the network and the host's `/usr`, so confirm fixes with
 `manicpkgs build`. Use `--reset` to unpack a changed source version or apply changed patches.
 
-The seed and Rust toolchain flags work here too.
+The crib and Rust toolchain flags work here too.
 
 ```nu
-manicpkgs dev --seed ./result-bootstrap-seed --rust-toolchain ./result-bootstrap-rust ripgrep
+manicpkgs dev --crib ./result-bootstrap-crib --rust-toolchain ./result-bootstrap-rust ripgrep
 ```
 
 Once the fix is clear, make the edit a patch beside recipe.toml (`diff -u` against an untouched
@@ -85,7 +85,7 @@ $ manicpkgs repro zlib                   # build again and compare
 ## Seldom
 
 ```console
-$ manicpkgs seed …                       # build and upload the bootstrap seed
+$ manicpkgs crib …                       # build and upload the bootstrap crib
 $ manicpkgs bootstrap ghc --cpus riscv64 # cross build a -bootstrap package's binary and upload it
 ```
 

@@ -26,7 +26,7 @@ impl Recipe for Linux {
    }
 
    /// the kernel's own `make headers`, HOSTCC builds unifdef and co. for the
-   /// build machine, stage0's cc in stage1 and the seed clang in stage0.
+   /// build machine, stage0's cc in stage1 and the crib clang in stage0.
    fn run(&self, stage: &Stage) -> io::Result<()> {
       let out = stage.out();
       let src = stage.unpack("linux", &[])?;

@@ -42,7 +42,7 @@ use crate::{
 
 #[derive(Deserialize)]
 pub struct Attrs {
-   pub seed:               String,
+   pub crib:               String,
    #[serde(rename = "buildDependencies")]
    pub build_dependencies: Vec<String>,
    pub dependencies:       Vec<String>,

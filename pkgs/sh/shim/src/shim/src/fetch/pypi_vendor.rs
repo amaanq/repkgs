@@ -58,7 +58,7 @@ impl Producer for PypiVendor {
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
       let mut stage: Stage = serde_json::from_str(&read_to_string(attr("stage_attrs")?)?)?;
-      let bsdtar = format!("{}/bin/bsdtar", attr("seed")?);
+      let bsdtar = format!("{}/bin/bsdtar", attr("crib")?);
       let archive = |args: &[&str]| -> io::Result<String> {
          let output = Command::new(&bsdtar)
             .args(args)

@@ -41,7 +41,7 @@ use crate::{
 #[derive(Deserialize)]
 struct Attrs {
    outputs:  BTreeMap<String, String>,
-   seed:     String,
+   crib:     String,
    sevenzip: String,
    payloads: Vec<Payload>,
 }
@@ -237,7 +237,7 @@ pub fn run_mode() -> io::Result<()> {
       .get("out")
       .cloned()
       .ok_or_else(|| io::Error::other("no out output"))?;
-   let bin = format!("{}/bin", attrs.seed);
+   let bin = format!("{}/bin", attrs.crib);
    let work = PathBuf::from(format!(
       "{}/w",
       var("NIX_BUILD_TOP").map_err(|_unset| io::Error::other("NIX_BUILD_TOP is not set"))?

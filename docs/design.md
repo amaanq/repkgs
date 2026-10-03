@@ -21,15 +21,15 @@ this stack. Later upstream changes may be borrowed by hand per package.
    measures on the packages both sets have ([eval.md](eval.md)).
 2. **Relocatable outputs.** No output holds its own store path, so every derivation can be
    content-addressed, early cut-off happens by default and a closure runs from any directory.
-3. **Rust builders with Nushell phases.** Structured data, real errors, and a seed of a few static binaries.
+3. **Rust builders with Nushell phases.** Structured data, real errors, and a crib of a few static binaries.
 4. **One toolchain.** A single LLVM targets every platform, and cross compiling is an argument to
    the set.
 5. **A compile cache under Nix**, so editing a recipe recompiles what changed and not everything
    downstream of it.
 
 The set uses stock Nix with `ca-derivations` and `dynamic-derivations`, `/nix/store`, no IFD
-and nothing fetched at eval time. glibc everywhere, musl only in the seed and stage0. nixpkgs
-builds the seed and provides dev tools. The [source bootstrap](bootstrap.md) starts with
+and nothing fetched at eval time. glibc everywhere, musl only in the crib and stage0. nixpkgs
+builds the crib and provides dev tools. The [source bootstrap](bootstrap.md) starts with
 x86-64 LLVM, allowing GCC in the early compiler chain. NixOS modules, nixpkgs compatibility
 and GCC as a package-set compiler remain outside the scope.
 
@@ -252,20 +252,20 @@ Failed checks, link checks and runtime checks are not shared through this mechan
 still supplies common platform defaults, and arbitrary `ac_cv_*` names are never used as
 cross-package keys.
 
-`tools/benchmark-configure.nu` measures Autoconf configuration with the selected seed and
+`tools/benchmark-configure.nu` measures Autoconf configuration with the selected crib and
 the packages' resolved build inputs. It starts a fresh daemon, primes the compiler cache,
 alternates runs with and without shared header results, then measures whole `config.cache`
 reuse. Every pass starts with a fresh source and build directory at the same paths. The
 benchmark rejects changes to the generated `Makefile` and `config.h` files, requires the warm
 configure cache to report a restore, and preserves the per-run logs and timings in the printed
-directory. `environment.json` records the seed and daemon identity, while `summary.json` records
+directory. `environment.json` records the crib and daemon identity, while `summary.json` records
 the median timings and configure-cache speedup. Package builds finish before measurements begin.
 
 ```console
-nu tools/benchmark-configure.nu --seed ./result-bootstrap-seed --daemon /path/to/shimd sed diffutils
+nu tools/benchmark-configure.nu --crib ./result-bootstrap-crib --daemon /path/to/shimd sed diffutils
 ```
 
-Measured on x86-64 Linux with the source-built seed and release shimd on September 13, 2026.
+Measured on x86-64 Linux with the source-built crib and release shimd on September 13, 2026.
 Compiler-cache and shared-header times are medians of three interleaved configure runs.
 The final column measures a restored whole configure cache, with identical generated files.
 
@@ -291,9 +291,9 @@ compiler artifacts, so the cache stays per user and machine.
 ## Toolchain, bootstrap, cross
 
 ```
-seed      static musl: LLVM multicall (clang, lld, llvm-ar …), bsdtar, toybox, dash, make, python
-→ stage0  musl headers, compiler-rt, musl, linux headers, libc++, shim, cc     (this machine, seed clang)
-→ stage1  the same with glibc, cc-boot, cmake, llvm with clang, lld, libLLVM.so  (this machine, seed clang)
+crib      static musl: LLVM multicall (clang, lld, llvm-ar …), bsdtar, toybox, dash, make, python
+→ stage0  musl headers, compiler-rt, musl, linux headers, libc++, shim, cc     (this machine, crib clang)
+→ stage1  the same with glibc, cc-boot, cmake, llvm with clang, lld, libLLVM.so  (this machine, crib clang)
 → stage2  linux headers, glibc, compiler-rt, libc++, cc-<platform>             (per target, stage1's clang)
 → pkgs/*
 ```
@@ -307,7 +307,7 @@ RISC-V needed `-mno-relax`.
 
 A self-hosting language has its upstream binary as `<lang>-bootstrap`, prebuilt, relocated and
 only ever a build dependency, and `<lang>` built from source with it (Go, Rust, GHC, OpenJDK). Zig
-bootstraps from the WASM blob in its source. The seed comes from `pkgs/se/seed/build.nix`, through
+bootstraps from the WASM blob in its source. The crib comes from `pkgs/cr/crib/build.nix`, through
 nixpkgs' static packages today and from this set eventually.
 
 ## Influences

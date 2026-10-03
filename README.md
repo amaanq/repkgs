@@ -17,7 +17,7 @@ derivation holds. The *re-* stands for relocatable, reproducible and another try
 - **Cheap evaluation.** No overlays and no fixpoint per package. Overrides are one tree,
   out-of-tree packages one argument. A package shared with nixpkgs adds about a third of the memory
   and a fifth of the time to evaluation that it does there ([docs/eval.md](docs/eval.md)).
-- **A short bootstrap.** A small static seed reaches glibc in two stages. Rust, Go, Zig, GHC and
+- **A short bootstrap.** A small static crib reaches glibc in two stages. Rust, Go, Zig, GHC and
   OpenJDK then build from source, each starting from its upstream binary.
 
 [docs/design.md](docs/design.md) gives the reasons and [docs/plan.md](docs/plan.md) what comes
@@ -48,7 +48,7 @@ $ nix-build -A ripgrep -A fd -A deno -A pandoc      # cargo, prebuilt, haskell a
 $ nix-build bootstrap -A stage2.x86_64.cc           # the toolchain alone
 ```
 
-The first build fetches the seed and builds the toolchain, and later ones are incremental.
+The first build fetches the crib and builds the toolchain, and later ones are incremental.
 
 `manicpkgs`, on PATH through direnv, covers the everyday tasks, all of them listed in
 [tools/manicpkgs/README.md](tools/manicpkgs/README.md):
@@ -175,7 +175,7 @@ $ plumb lock fzf       # re-pin the Go modules fzf needs in locks/go.toml
 ```
 pkgs/xx/<name>/   the packages, xx being the name's first two letters, with recipe.toml, phase
                   modules (<name>.nu), patches and in-tree sources (src/)
-bootstrap/        seed, stage0 (musl cc), stage1 (llvm), stage2 (a cc per platform)
+bootstrap/        crib, stage0 (musl cc), stage1 (llvm), stage2 (a cc per platform)
 nix/              evaluation: package/ turns a manifest into a derivation, build-systems.nix binds
                   each `uses` entry, fetch.nix holds the lock-file fetchers
 builder/          the nu that phase modules import
@@ -213,7 +213,7 @@ $ manicpkgs cache stop
 ## The bootstrap
 
 ```
-seed        static clang, lld, bsdtar, toybox, make and the like
+crib        static clang, lld, bsdtar, toybox, make and the like
 → stage0    musl, libc++ and shim, a C and C++ compiler for this machine
 → stage1    glibc, libc++, cmake, then clang and lld for every target, the set's compiler
 → stage2    compiler-rt, the libc and libc++, a cc-<platform> per target built by that clang
@@ -221,12 +221,12 @@ seed        static clang, lld, bsdtar, toybox, make and the like
 → rust, go, zig, ghc, jdk from their upstream binary as <lang>-bootstrap, then from source
 ```
 
-`pkgs/se/seed/build.nix` reproduces the seed. `nix build .#bootstrap-llvm -L` builds its LLVM,
+`pkgs/cr/crib/build.nix` reproduces the crib. `nix build .#bootstrap-llvm -L` builds its LLVM,
 Clang and LLD through nixpkgs' minimal x86-64 bootstrap with no Rust or nushell involved, and
 [docs/bootstrap.md](docs/bootstrap.md) records the trust boundary of that source build.
 `nix build .#bootstrap-nushell -L` starts from Rust 1.90 built by mrustc, builds the following Rust
 source releases with that Clang and then a static nu with the last of them. `.#bootstrap-mrustc`
-is the starting compiler and `.#bootstrap-seed` the assembled seed, and nowhere in that graph is a
+is the starting compiler and `.#bootstrap-crib` the assembled crib, and nowhere in that graph is a
 downloaded Rust compiler. `nix build .#bootstrap-shim -L` builds the static shim with the same
 compiler. The first shim build needs the whole Rust chain, later shim edits rebuild only shim.
 

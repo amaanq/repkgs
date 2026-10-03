@@ -209,7 +209,7 @@ pub fn collect(
    attrs: Map<String, Value>,
    srcs: &[String],
 ) -> io::Result<()> {
-   let seed = attr("seed")?;
+   let crib = attr("crib")?;
    let shim = attr("shim")?;
    let system = attr("system")?;
    let mut json = Map::new();
@@ -219,10 +219,10 @@ pub fn collect(
       "outputs".to_owned(),
       Value::Array(vec![Value::String("out".to_owned())]),
    );
-   json.insert("seed".to_owned(), Value::String(seed.clone()));
+   json.insert("crib".to_owned(), Value::String(crib.clone()));
    json.insert("layout".to_owned(), to_value(layout)?);
    json.extend(attrs);
-   let mut sources = BTreeSet::from([seed, shim.clone()]);
+   let mut sources = BTreeSet::from([crib, shim.clone()]);
    sources.extend(srcs.iter().cloned());
    let derivation = Derivation {
       outputs: BTreeMap::from([("out".to_owned(), Output {
@@ -262,7 +262,7 @@ pub fn stage<Attrs>(
 where
    Attrs: Serialize,
 {
-   let seed = attr("seed")?;
+   let crib = attr("crib")?;
    let shim = attr("shim")?;
    let system = attr("system")?;
    let attrs_file = store.add_text(
@@ -271,12 +271,12 @@ where
       &serde_json::to_vec(attrs)?,
    )?;
    let drv_name = format!("{name}.drv");
-   let mut sources = BTreeSet::from([seed.clone(), shim.clone(), attrs_file.clone()]);
+   let mut sources = BTreeSet::from([crib.clone(), shim.clone(), attrs_file.clone()]);
    sources.extend(srcs.iter().cloned());
    let env = [
       ("name", drv_name.clone()),
       ("system", system.clone()),
-      ("seed", seed),
+      ("crib", crib),
       ("shim", shim.clone()),
       ("stage_attrs", attrs_file),
       ("requiredSystemFeatures", "builder-rpc-v0".to_owned()),

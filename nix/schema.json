@@ -687,7 +687,7 @@
         "kind": "boolean"
       },
       "default": null,
-      "doc": "build with the seed's tools instead of the set's base tools"
+      "doc": "build with the crib's tools instead of the set's base tools"
     },
     {
       "name": "prebuilt",
