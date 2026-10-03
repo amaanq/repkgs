@@ -59,10 +59,7 @@ use crate::{
    http,
    nix,
    purl::Purl,
-   sources::{
-      self,
-      Package,
-   },
+   sources::Package,
    version,
 };
 
@@ -176,7 +173,31 @@ fn watch_purl(package: &Package) -> io::Result<Purl> {
    package.upstream.purl.as_deref().unwrap_or_default().parse()
 }
 
+/// The releases upstream lists, kept to the tags act.toml's template spells and
+/// versioned by its slot.
 fn candidates_of(package: &Package) -> io::Result<Vec<Candidate>> {
+   let listed = listed_of(package)?;
+   let Some(template) = package.template() else {
+      return Ok(listed);
+   };
+   Ok(listed
+      .into_iter()
+      .filter_map(|mut candidate| {
+         let Some(tag) = candidate.get("tag").and_then(Value::as_str) else {
+            return Some(candidate);
+         };
+         if !template.matches(tag) {
+            return None;
+         }
+         if let Some(version) = template.version_in(tag) {
+            candidate.insert("version".to_owned(), Value::String(version));
+         }
+         Some(candidate)
+      })
+      .collect())
+}
+
+fn listed_of(package: &Package) -> io::Result<Vec<Candidate>> {
    if let Some(ref hook) = package.hook
       && package.has_hook("resolve")
    {
@@ -596,8 +617,8 @@ fn write_lock(
    sys: &[String],
 ) -> io::Result<()> {
    let version = pin.get("version").and_then(Value::as_str);
-   let spelled = match (package.tag.as_deref(), version) {
-      (Some(template), Some(release)) => sources::spelled(template, release),
+   let spelled = match (package.template(), version) {
+      (Some(template), Some(release)) => template.spell(release),
       (None, Some(release)) => Some(release.to_owned()),
       (_, None) => None,
    };

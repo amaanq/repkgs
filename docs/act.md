@@ -27,9 +27,13 @@ skipTests = [ "add_subdirectory", "find_package" ]
 ### Identity
 
 `tag` is how upstream spells a release, `{version}` (or `{version_}`, the version with `_` for
-`.`) once, plus fixed text around it. A trailing `*` stands for whatever upstream appends, as in
-`v{version}-*` for `v1.2.3-8f3c2a1`. Such a tag can not be spelled from the version, so spieler
-records the one it found in act.lock. Without `tag` the tag is the version.
+`.`) once, plus fixed text around it. spieler only takes upstream tags the template spells, and
+the slot only matches integers joined by `.`, `-`, `_` or `+`, so `v{version}` passes over
+`v2.1-rc1` and `release-{version}-stable` over the alphas beside it. What the slot holds is the
+version. A trailing `*` stands for whatever upstream appends, as in `v{version}-*` for
+`v1.2.3-8f3c2a1`, and a bare `*` for tags that do not spell the version at all. Such a tag can not
+be spelled from the version, so spieler records the one it found in act.lock. Without `tag` the tag
+is the version.
 
 `track` names where new versions come from, a purl without its `pkg:` and with `:` after the
 type, as in `github:owner/repo`, `gitlab:group/project`, `pypi:name` or

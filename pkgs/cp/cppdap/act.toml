@@ -1,4 +1,4 @@
-tag   = "dap-{version}"
+tag   = "dap-{version}-a"
 fetch = { archive = true }
 with  = [ "cmake" ]
 deps  = [ "nlohmann-json" ]

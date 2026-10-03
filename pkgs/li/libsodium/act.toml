@@ -1,3 +1,4 @@
+tag   = "{version}"
 track = "github:jedisct1/libsodium"
 fetch = { archive = true }
 with  = [ "autotools" ]
