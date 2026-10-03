@@ -1,6 +1,5 @@
-# One platform's set, `pkgs`, beside the parts it is assembled from (bootstrap, toolchain, tools,
-# buildSystems, bundle). default.nix hands out `pkgs` and nix/checks.nix and the tooling read the
-# rest.
+# One platform's package set and the parts it is built from. default.nix hands out `pkgs`, the
+# checks and tooling read the rest.
 {
   system ? builtins.currentSystem,
   platform ? system,
@@ -14,29 +13,32 @@
 let
   lib = import ./lib.nix;
   inherit (lib) on;
-  bootstrap = import ../bootstrap { inherit peanut system; };
-  editing = import ./overrides.nix;
-  overrideTree = editing.merge overrides;
+  overriding = import ./overrides.nix;
+  boot = import ../bootstrap { inherit peanut system; };
 
-  # mummer, bigtop and nu may come prebuilt as store paths, a development shortcut
+  tree = overriding.merge overrides;
+  cross = platform != system;
+  words = builtins.concatStringsSep " ";
+
+  # mummer, bigtop and nu may arrive prebuilt as store paths while working on them
   given = builtins.mapAttrs (
     _: tool: if builtins.isString tool || builtins.isPath tool then builtins.storePath tool else tool
   ) buildTools;
-  strayTools = builtins.attrNames (
-    removeAttrs buildTools [
+  strays = builtins.filter (
+    name:
+    !builtins.elem name [
       "mummer"
       "bigtop"
       "nu"
     ]
-  );
+  ) (builtins.attrNames buildTools);
   tools = {
-    inherit (bootstrap) mummer bigtop nu;
+    inherit (boot) mummer bigtop nu;
   }
   // given;
 
-  cross = platform != system;
   target = (import ./platforms.nix).byName.${platform} or (throw "no platform ${platform}");
-  stage = bootstrap.toolchain.${target.name} (
+  stage = boot.toolchain.${target.name} (
     on (target.libc == "msvc") {
       sdk = fetch.windowsSdk {
         manifest = (readSources ../pkgs/wi/windows-sdk).fetch "default";
@@ -44,9 +46,9 @@ let
       };
     }
   );
-  toolchain = stage.cc;
-  # build systems want one word for the emulator, and bigtop prepare caps its address space with
-  # $QEMU_RESERVED_VA
+
+  # one word, since build systems take the emulator as one, and bigtop's prepare caps its address
+  # space through QEMU_RESERVED_VA
   emulator =
     if cross && target.os == "linux" then
       [ "${buildPkgs.qemu}/bin/qemu-${stage.platform.names.qemu}" ]
@@ -56,19 +58,19 @@ let
       [ ];
   facts = stage.platform // {
     inherit system cross emulator;
-    inherit (bootstrap) buildTriple;
-    buildRustTriple = bootstrap.stage1.platform.rustTriple;
+    inherit (boot) buildTriple;
+    buildRustTriple = boot.stage1.platform.rustTriple;
   };
 
   rust = import ./set/rust.nix {
     inherit rustToolchain;
     triple = facts.buildRustTriple;
   };
+  # the build machine's set never sees `features`
   buildPkgs =
     (
       if cross then
         (import ./set.nix {
-          platform = system;
           inherit
             system
             peanut
@@ -77,23 +79,23 @@ let
             overrides
             packages
             ;
+          platform = system;
         }).pkgs
       else
-        self
+        all
     )
     // rust.packages;
 
-  # after the toolchain and the build systems' tools come GNU tools, which build scripts in the
-  # wild need where toybox falls short, then llvm's object tools and the peanut's bsdtar and sh.
-  # `bootstrapTools = true` packages, the base tools among them, get only the latter
-  peanutTools = [
-    bootstrap.llvm
-    bootstrap.peanut
-  ];
-  baseTools = {
-    bootstrap = peanutTools;
+  # GNU tools for build scripts where toybox falls short, then llvm's object tools and the
+  # peanut's bsdtar and sh. `bootstrapTools = true` packages get only the last two.
+  baseTools = rec {
+    bootstrap = [
+      boot.llvm
+      boot.peanut
+    ];
     full =
-      (with buildPkgs; [
+      with buildPkgs;
+      [
         coreutils
         sed
         grep
@@ -104,29 +106,29 @@ let
         gnumake
         bash
         pkgconf
-      ])
-      ++ peanutTools;
+      ]
+      ++ bootstrap;
   };
 
   readSources = import ./sources.nix {
-    unpacker = bootstrap.peanut;
+    unpacker = boot.peanut;
     inherit (tools) mummer;
     inherit system;
   };
   fetch = import ./fetch.nix {
-    mummer = given.mummer or bootstrap.stage0.mummer;
+    mummer = given.mummer or boot.stage0.mummer;
     sevenzip = buildPkgs."7zip";
-    inherit (bootstrap) peanut;
+    inherit (boot) peanut;
     inherit system;
     inherit (facts) cpu;
   };
   buildSystems = import ./build-systems.nix {
     inherit buildPkgs fetch lib;
     platform = facts;
-    pkgs = self;
-    # the peanut's dash, for tools that start `sh` by name
-    sh = bootstrap.peanut;
+    pkgs = all;
+    sh = boot.peanut;
   };
+  toolchain = stage.cc;
   package = import ./package {
     platform = facts;
     inherit
@@ -136,17 +138,15 @@ let
       baseTools
       ;
     inherit (tools) bigtop nu;
-    inherit (bootstrap) peanut;
+    inherit (boot) peanut;
     launch = stage.launch or null;
     dlaudit = stage.dlaudit or null;
-    # `prebuilt = true` patches upstream ELFs with it (builder/implant.nu)
+    # `prebuilt = true` packages get upstream ELFs patched with it
     relocTools = [ buildPkgs.formatelf ];
-    # null without overrides, so no package pays for an identity edit
-    edit = if overrideTree == { } then null else editing.apply self overrideTree;
-    pkgs = self;
+    edit = if tree == { } then null else overriding.apply all tree;
+    pkgs = all;
   };
 
-  # what a package.nix or act.toml may ask for
   scope = {
     inherit
       package
@@ -157,57 +157,53 @@ let
       on
       ;
     platform = facts;
-    pkgs = self;
-    # for `extras = "python"` (nix/package/manifest.nix)
+    pkgs = all;
     pythonProject =
-      package: python:
+      wrap: python:
       import ./python.nix {
-        inherit
-          package
-          fetch
-          python
-          buildPkgs
-          ;
-        pkgs = self;
+        package = wrap;
+        inherit fetch python buildPkgs;
+        pkgs = all;
       };
   };
   found = import ./set/packages.nix {
-    inherit packages self;
+    inherit packages;
+    self = all;
     call = import ./set/call.nix {
       inherit
         scope
         package
-        readSources
-        overrideTree
         features
-        self
+        readSources
         ;
-      overrides = editing;
+      overrideTree = tree;
+      self = all;
+      overrides = overriding;
     };
   };
-  self = found.all;
-  strayOverrides = editing.unknown (self // found.aliases) overrideTree;
+  inherit (found) all;
 in
 {
-  # forcing `stage` makes a misspelt platform fail even when only attrNames are asked for
+  # forced first so a misspelt platform fails even when only names are asked for
   pkgs = builtins.seq stage (
     assert lib.check "motley" [
-      (on (strayTools != [ ]) [ "unknown build tools ${toString strayTools}" ])
+      (on (strays != [ ]) [ "unknown build tools ${words strays}" ])
       (on (rustToolchain != null && cross) [
         "rustToolchain currently supports native builds only, omit it for ${platform}"
       ])
       (on (rustToolchain != null && !cross && rust.missing != [ ]) [
-        "rustToolchain ${toString rust.path} is missing ${toString rust.missing}"
+        "rustToolchain ${toString rust.path} is missing ${words rust.missing}"
       ])
-      (on (strayOverrides != [ ]) [ "overrides: no packages named ${toString strayOverrides}" ])
+      (
+        let
+          unknown = overriding.unknown (all // found.aliases) tree;
+        in
+        on (unknown != [ ]) [ "overrides: no packages named ${words unknown}" ]
+      )
     ];
-    self
+    all
   );
-  inherit
-    bootstrap
-    buildSystems
-    toolchain
-    tools
-    ;
+  bootstrap = boot;
+  inherit buildSystems toolchain tools;
   bundle = import ./bundle.nix { inherit (tools) bigtop; };
 }
