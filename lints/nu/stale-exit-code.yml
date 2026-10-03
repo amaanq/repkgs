@@ -1,0 +1,9 @@
+id: stale-exit-code
+language: nu
+severity: error
+message: "`$env.LAST_EXIT_CODE` is the status of the last external anywhere, not of the command above, so take `exit_code` from `| complete` or wrap the call in `try`"
+rule:
+  kind: val_variable
+  has:
+    kind: cell_path
+    regex: LAST_EXIT_CODE

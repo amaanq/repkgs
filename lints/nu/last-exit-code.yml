@@ -1,7 +1,0 @@
-id: last-exit-code
-language: nu
-severity: error
-message: "$env.LAST_EXIT_CODE belongs to whatever ran last, read `(cmd | complete).exit_code` or use `try { cmd }`"
-rule:
-  kind: val_variable
-  regex: 'LAST_EXIT_CODE'
