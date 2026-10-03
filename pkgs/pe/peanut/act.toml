@@ -1,16 +1,17 @@
-track = "github:Mic92/repkgs"
+tag   = "peanut-{version}"
+track = "github:manic-systems/motley"
 
 [fetch.x86_64-linux]
-url    = "https://github.com/Mic92/repkgs/releases/download/seed-{version}/seed-{version}-x86_64-linux.nar.xz"
+asset  = "peanut-{version}-x86_64-linux.nar.xz"
 unpack = true
-name   = "seed"
+name   = "peanut"
 
 [fetch.aarch64-linux]
-url    = "https://github.com/Mic92/repkgs/releases/download/seed-{version}/seed-{version}-aarch64-linux.nar.xz"
+asset  = "peanut-{version}-aarch64-linux.nar.xz"
 unpack = true
-name   = "seed"
+name   = "peanut"
 
 [fetch.riscv64-linux]
-url    = "https://github.com/Mic92/repkgs/releases/download/seed-{version}/seed-{version}-riscv64-linux.nar.xz"
+asset  = "peanut-{version}-riscv64-linux.nar.xz"
 unpack = true
-name   = "seed"
+name   = "peanut"
