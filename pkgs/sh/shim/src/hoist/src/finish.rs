@@ -367,15 +367,18 @@ fn version_check(spec: &Spec, ctx: &Ctx, top: &str, exe: &str) -> io::Result<()>
    if command.is_empty() {
       return Ok(());
    }
-   let want = spec
+   let version = spec
       .version
+      .split_once("-unstable-")
+      .map_or(spec.version.as_str(), |cut| cut.0);
+   let want = version
       .rfind("-r")
       .filter(|&at| {
-         spec.version[at + 2..]
+         version[at + 2..]
             .chars()
             .all(|digit| digit.is_ascii_digit())
       })
-      .map_or(spec.version.as_str(), |at| &spec.version[..at]);
+      .map_or(version, |at| &version[..at]);
    let audit = format!("{top}/dlaudit.txt");
    let mut prefix = emulator;
    // via qemu's -E when emulated. The audit libc needs surplus static TLS
