@@ -1,29 +1,30 @@
-# Every platform's facts, as bigtop's targets module emits them into nix/schema.json. Bootstrap reads
-# this before bigtop exists, which is why the facts are committed rather than computed at eval time.
+# Platform facts are bigtop's `targets`, committed in schema.json because the bootstrap reads them
+# before bigtop exists.
 let
   inherit (builtins.fromJSON (builtins.readFile ./schema.json)) targets;
-  linux = builtins.filter (target: target.os == "linux") targets;
+  # musl only serves the bootstrap and reuses the glibc names
+  named = builtins.filter (t: t.libc != "musl") targets;
 in
 {
-  # the Linux platform of a nix system (`x86_64-linux`) with that libc, glibc or musl
   forSystem =
     system: libc:
     let
       cpu = builtins.head (builtins.split "-" system);
     in
-    builtins.head (builtins.filter (target: target.cpu == cpu && target.libc == libc) linux);
-  # every target platform by its name, musl only serves the bootstrap
+    builtins.head (builtins.filter (t: t.os == "linux" && t.cpu == cpu && t.libc == libc) targets);
+
   byName = builtins.listToAttrs (
-    map (target: {
-      inherit (target) name;
-      value = target;
-    }) (builtins.filter (target: target.libc != "musl") targets)
+    map (t: {
+      inherit (t) name;
+      value = t;
+    }) named
   );
-  # the facts a derivation hands bigtop: mummer adds march and minos to every compile itself, the
-  # package layer turns interp into a sysroot path, and system is the derivation's own
+
+  # mummer adds march and minos itself, the package layer turns interp into a sysroot path and
+  # every derivation brings its own system
   forBuilder =
     facts:
-    removeAttrs facts [
+    builtins.removeAttrs facts [
       "march"
       "minos"
       "interp"

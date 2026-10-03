@@ -1,20 +1,18 @@
-# Passed to package.nix files as `lib`, and `on` on its own
+# Handed to every recipe as `lib`, so it holds only what recipes use.
 {
-  # the value when the condition holds, else the empty list or set. A string has no empty form here
   on =
-    condition: value:
-    if condition then
+    cond: value:
+    if cond then
       value
     else if builtins.isAttrs value then
       { }
     else
       [ ];
   join = builtins.concatStringsSep;
-  # true when every list is empty, else one error naming them all
   check =
-    context: errors:
+    context: problems:
     let
-      found = builtins.concatLists errors;
+      all = builtins.concatLists problems;
     in
-    found == [ ] || throw "${context}: ${builtins.concatStringsSep "; " found}";
+    all == [ ] || throw "${context}: ${builtins.concatStringsSep "; " all}";
 }
