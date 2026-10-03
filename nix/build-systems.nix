@@ -1,9 +1,7 @@
-# The packages behind each `uses` entry. bigtop's system/<name>.rs owns the phases and declares in
-# nix/schema.json their default order, whether its packages are prebuilt, the platforms it cannot
-# serve and the `<name>.*` options. Here a system gets its `tool` (a package may swap it through
-# `<name>.tool`) and further `tools` on PATH, `dependencies` added to the package's, `lock` options
-# filled from the package's own lock file, and the `stack` of tools built with the system itself.
-# `sh` is for tools that start a shell by name, ninja, npm run and libtool among them.
+# What stands behind each `uses` name beyond schema.json's phases and options, its main tool (a
+# recipe may swap it as `<name>.tool`), what else goes on PATH, runtime dependencies, lock-derived
+# defaults and the stack built with it. Bare `sh` is on PATH where ninja, `npm run` or libtool
+# spawn a shell by that name.
 {
   buildPkgs,
   pkgs,
@@ -14,34 +12,17 @@
 }:
 let
   schema = import ./schema.nix;
-  inherit (lib) on;
+  cross = lib.on platform.cross;
 
-  # bin scripts start with #!/usr/bin/env node, and prebuilt .node addons such as rollup's and
-  # esbuild's link libgcc_s.so.1, at run time and while building (builder/node-common.nu)
-  nodeRun = [
+  # bin scripts start `#!/usr/bin/env node`, and prebuilt .node addons (rollup's, esbuild's) need
+  # libgcc_s.so.1 both while building and at run time
+  node = [
     pkgs.nodejs
     pkgs.libgcc-shim
   ];
-  nodeBuild = [ buildPkgs.libgcc-shim ];
-  # uv.lock leaves build backends out, so a python app gets every one the set has
-  backends = with buildPkgs; [
-    cpython
-    python-build
-    python-installer
-    python-pyproject-hooks
-    python-packaging
-    python-flit-core
-    python-setuptools
-    python-setuptools-scm
-    python-hatchling
-    python-hatch-vcs
-    python-cython
-    maturin
-    rust
-  ];
+  beam = [ pkgs.erlang ];
 
-  bindings = with buildPkgs; {
-    # make and bash come from baseTools, or the peanut for bootstrapTools packages
+  table = with buildPkgs; {
     make.tools = [ sh ];
     autotools.tools = [ sh ];
     cmake = {
@@ -59,9 +40,9 @@ let
         sh
       ];
     };
-    # the PEP 517 front end. A member of this stack sees only the members before it
     python = {
       tool = cpython;
+      # each member sees only those before it
       stack = [
         python-flit-core
         python-packaging
@@ -69,29 +50,27 @@ let
         python-build
         python-installer
       ];
-      # extension modules link the target's libpython, never the build machine's
-      dependencies = on platform.cross [ pkgs.cpython ];
+      # extension modules link the target's libpython
+      dependencies = cross [ pkgs.cpython ];
     };
-    # what exists before llvm and rust (formatelf, git) sets `cargo.tool = buildPkgs.rust-bootstrap`.
-    # A cross build takes std for the target from its own package, <tool>-std
     cargo = {
       tool = rust;
-      tools = spec: on platform.cross [ pkgs."${spec.cargo.tool.pname}-std" ];
+      # formatelf and git predate llvm and rust and swap in rust-bootstrap, whose std follows it
+      tools = spec: cross [ pkgs."${spec.cargo.tool.pname}-std" ];
       lock.deps = fetch.cargoVendor;
     };
-    # cabal itself builds with `cabal.tool = buildPkgs.cabal-bootstrap`
     cabal = {
       tool = cabal;
       tools = [
         ghc-bootstrap
         jape
       ];
-      # ghc-bignum links -lgmp into every program and the RTS links -lffi
+      lock.deps = _: fetch.hackageSet { };
+      # ghc-bignum puts -lgmp in every link, the RTS -lffi
       dependencies = [
         pkgs.gmp
         pkgs.libffi
       ];
-      lock.deps = _: fetch.hackageSet { };
     };
     luarocks = {
       tool = luarocks;
@@ -107,15 +86,29 @@ let
       tools = [
         nodejs
         sh
-      ]
-      ++ nodeBuild;
+        libgcc-shim
+      ];
       lock.deps = fetch.pnpmDeps;
-      dependencies = nodeRun;
+      dependencies = node;
     };
-    pyapp = {
-      tools = backends ++ on platform.cross [ pkgs.rust-std ];
-      lock.deps = args: fetch.pythonDeps (args // { python = pkgs.cpython; });
-    };
+    # uv.lock leaves build backends out, so an app gets every one the set has
+    pyapp.tools = [
+      cpython
+      python-build
+      python-installer
+      python-pyproject-hooks
+      python-packaging
+      python-flit-core
+      python-setuptools
+      python-setuptools-scm
+      python-hatchling
+      python-hatch-vcs
+      python-cython
+      maturin
+      rust
+    ]
+    ++ cross [ pkgs.rust-std ];
+    pyapp.lock.deps = args: fetch.pythonDeps (args // { python = pkgs.cpython; });
     bundler = {
       tool = ruby;
       tools = [ sh ];
@@ -127,21 +120,24 @@ let
     };
     bun = {
       tool = bun;
-      tools = [ sh ] ++ nodeBuild;
+      tools = [
+        sh
+        libgcc-shim
+      ];
       lock.deps = fetch.bunDeps;
-      dependencies = nodeRun;
+      dependencies = node;
     };
     yarn = {
       tool = yarn;
       tools = [
         nodejs
         sh
-      ]
-      ++ nodeBuild;
+        libgcc-shim
+      ];
       lock.deps = fetch.yarnDeps;
-      dependencies = nodeRun;
+      dependencies = node;
     };
-    # escripts start with #!/usr/bin/env escript and releases exec erl
+    # escripts start `#!/usr/bin/env escript` and releases exec erl
     mix = {
       tool = elixir;
       tools = [
@@ -150,7 +146,7 @@ let
         rebar3
       ];
       lock.deps = fetch.hexDeps;
-      dependencies = [ pkgs.erlang ];
+      dependencies = beam;
     };
     rebar3 = {
       tools = [
@@ -158,42 +154,43 @@ let
         erlang
       ];
       lock.deps = fetch.hexDeps;
-      dependencies = [ pkgs.erlang ];
+      dependencies = beam;
     };
     npm = {
       tool = nodejs;
-      tools = [ sh ] ++ nodeBuild;
+      tools = [
+        sh
+        libgcc-shim
+      ];
       lock.deps = fetch.npmDeps;
-      dependencies = nodeRun;
+      dependencies = node;
     };
   };
 
-  refuses =
-    condition:
-    if condition == "cross" then
+  refused =
+    when:
+    if when == "cross" then
       platform.cross
-    else if condition ? libc then
-      platform.libc == condition.libc
+    else if when ? libc then
+      platform.libc == when.libc
     else
-      platform.libc != condition.libcOtherThan;
+      platform.libc != when.libcOtherThan;
 
-  bind =
+  describe =
     name: descriptor:
     let
-      given = bindings.${name} or { };
-      hasTool = given ? tool;
+      entry = table.${name} or { };
+      owned = entry ? tool;
       options =
-        on hasTool {
+        lib.on owned {
           tool = {
             type = [ "set" ];
-            default = given.tool;
+            default = entry.tool;
             doc = "the package that provides ${name}";
           };
         }
         // schema.options.${name};
-      defaults = builtins.mapAttrs (_: option: option.default) options;
-      more = given.tools or [ ];
-      moreFor = if builtins.isFunction more then more else _: more;
+      extras = entry.tools or [ ];
     in
     {
       inherit options;
@@ -202,26 +199,26 @@ let
         schema.validate (
           {
             system = name;
-            extra = on hasTool { tool.kind = "package"; };
+            extra = lib.on owned { tool.kind = "package"; };
           }
           // args
         );
       phases = map (phase: "${name}.${phase}") descriptor.phases;
-      # the start of a package's `<name>` record, with the `lock` options fetched from its source
       defaults =
-        if given ? lock then
-          source: defaults // builtins.mapAttrs (_: fetcher: fetcher { inherit source; }) given.lock
-        else
-          _: defaults;
-      tools = spec: on hasTool [ spec.${name}.tool ] ++ moreFor spec;
-      dependencies = given.dependencies or [ ];
+        source:
+        builtins.mapAttrs (_: option: option.default) options
+        // builtins.mapAttrs (_: fetcher: fetcher { inherit source; }) (entry.lock or { });
+      tools =
+        spec:
+        lib.on owned [ spec.${name}.tool ] ++ (if builtins.isFunction extras then extras spec else extras);
+      dependencies = entry.dependencies or [ ];
       prebuilt = descriptor.prebuilt or false;
       unsupported =
-        if descriptor ? unsupported && refuses descriptor.unsupported.when then
+        if descriptor ? unsupported && refused descriptor.unsupported.when then
           descriptor.unsupported.reason
         else
           null;
-      stack = given.stack or [ ];
+      stack = entry.stack or [ ];
     };
 in
-builtins.mapAttrs bind schema.descriptors
+builtins.mapAttrs describe schema.descriptors
