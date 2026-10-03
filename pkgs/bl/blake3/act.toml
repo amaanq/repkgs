@@ -1,0 +1,9 @@
+track = "github:BLAKE3-team/BLAKE3"
+fetch = { archive = true }
+with  = [ "cmake" ]
+
+[cmake]
+root = "c"
+
+[cmake.defs]
+BLAKE3_USE_TBB = false

@@ -1,0 +1,12 @@
+track   = "github:nushell/nushell"
+fetch   = { archive = true }
+with    = [ "cargo" ]
+patches = [  ]
+
+[test]
+bin = [ "nu" ]
+run = false
+
+[cargo]
+features          = [ "network", "sqlite", "trash-support", "rustls-tls" ]
+noDefaultFeatures = true

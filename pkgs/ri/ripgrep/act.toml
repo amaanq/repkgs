@@ -1,0 +1,9 @@
+track = "github:BurntSushi/ripgrep"
+fetch = { archive = true }
+with  = [ "cargo" ]
+
+[test]
+bin = [ "rg" ]
+
+[cargo]
+features = [ "pcre2" ]

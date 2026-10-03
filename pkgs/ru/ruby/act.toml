@@ -1,0 +1,23 @@
+tag   = "v{version}"
+track = "github:ruby/ruby"
+fetch = { url = "https://cache.ruby-lang.org/pub/ruby/{major}.{minor}/ruby-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "bash", "zlib", "openssl", "libyaml", "libffi" ]
+
+[test]
+bin = [ "ruby", "gem", "bundle", "irb", "rake" ]
+run = false
+
+[steps.after]
+"autotools.install" = [ "ruby.relocate-rbconfig" ]
+
+[autotools]
+flags = [
+  "--enable-load-relative",
+  "--disable-install-doc",
+  "--sysconfdir=/etc",
+  "--enable-shared",
+  "--with-out-ext=win32,win32ole,readline,gdbm,dbm",
+  "--without-git",
+  "--without-baseruby",
+]

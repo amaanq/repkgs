@@ -1,0 +1,7 @@
+tag   = "v{version}"
+track = "github:elixir-lang/ex_doc"
+fetch = { archive = true }
+with  = [ "mix" ]
+
+[mix]
+escript = [ "ex_doc" ]

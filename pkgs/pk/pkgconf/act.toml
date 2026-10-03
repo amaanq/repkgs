@@ -1,0 +1,19 @@
+track          = "github:pkgconf/pkgconf"
+fetch          = { url = "https://distfiles.ariadne.space/pkgconf/pkgconf-{version}.tar.xz" }
+with           = [ "autotools" ]
+bootstrapTools = true
+
+[test]
+bin = [ "pkgconf", "pkg-config" ]
+run = false
+
+[autotools]
+flags = [
+  "--with-pkg-config-dir=",
+  "--with-personality-dir=",
+  "--with-system-libdir=/nonexistent",
+  "--with-system-includedir=/nonexistent",
+]
+
+[links]
+"bin/pkg-config" = "pkgconf"

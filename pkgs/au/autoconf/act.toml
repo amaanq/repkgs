@@ -1,0 +1,11 @@
+track = "gnu:autoconf"
+fetch = { url = "https://ftp.gnu.org/gnu/autoconf/autoconf-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "m4", "perl", "bash" ]
+test  = false
+
+[steps.after]
+"autotools.install" = [ "autoconf.retarget-tools" ]
+
+[steps.before]
+"autotools.configure" = [ "autoconf.keep-man" ]

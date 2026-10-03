@@ -1,0 +1,38 @@
+fetch = { url = "https://github.com/Mic92/nix-1/archive/{rev}.tar.gz" }
+with = [ "meson" ]
+deps = [
+  "bzip2",
+  "curl",
+  "libarchive",
+  "openssl",
+  "sqlite",
+  "xz",
+  "zlib",
+  "zstd",
+  "bdw-gc",
+  "blake3",
+  "boost",
+  "libsodium",
+  "lowdown",
+  "brotli",
+  "nlohmann-json",
+  "libgit2",
+  "toml11",
+  "editline",
+  "mimalloc",
+]
+tools = [ "bison", "cmake", "flex" ]
+test = false
+
+# the fork carries the CA and dynamic-derivation fixes this set relies on (nix/nix/default.nix)
+[track]
+from = "github:Mic92/nix-1?branch=repkgs"
+# what the branch calls itself in .version, its own tags run past 2.90
+base = "2.36.0"
+
+[meson.defs]
+doc-gen            = false
+functional-tests   = false
+json-schema-checks = false
+"nix:mimalloc"     = "enabled"
+unit-tests         = false

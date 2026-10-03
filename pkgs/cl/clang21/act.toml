@@ -1,0 +1,29 @@
+fetch = { from = "llvm21" }
+with  = [ "cmake" ]
+deps  = [ "llvm21", "zlib", "zstd" ]
+tools = [ "cpython" ]
+
+[test]
+bin = [  ]
+run = false
+
+[steps]
+skip = [ "cmake.test" ]
+
+[cmake]
+root = "clang"
+
+[cmake.defs]
+BUILD_SHARED_LIBS                     = false
+CLANG_BUILD_EXAMPLES                  = false
+CLANG_BUILD_TOOLS                     = false
+CLANG_ENABLE_ARCMT                    = false
+CLANG_ENABLE_STATIC_ANALYZER          = false
+CLANG_INCLUDE_DOCS                    = false
+CLANG_INCLUDE_TESTS                   = false
+CLANG_LINK_CLANG_DYLIB                = true
+CLANG_TOOLING_BUILD_AST_INTROSPECTION = false
+LIBCLANG_BUILD_STATIC                 = false
+LLVM_INCLUDE_TESTS                    = false
+LLVM_LINK_LLVM_DYLIB                  = true
+LLVM_PARALLEL_LINK_JOBS               = 4

@@ -7,9 +7,9 @@ derivation holds. The *re-* stands for relocatable, reproducible and another try
   `--argstr platform riscv64-linux` cross compiles with it rather than with a second compiler.
 - **Relocatable outputs.** Binaries locate their libraries relative to themselves, so a store
   path copied anywhere still runs. Upstream prebuilt binaries are treated the same way.
-- **Recipes are data.** A package is a `recipe.toml`, the source pin and the build description
-  in one file. Phase code that has to exist is nushell, run by bigtop, the builder, with no bash and
-  no setup hooks.
+- **Recipes are data.** A package is an `act.toml` saying where its source comes from and how
+  it builds, beside the `act.lock` spieler keeps current. Phase code that has to exist is
+  nushell, run by bigtop, the builder, with no bash and no setup hooks.
 - **A compile cache under Nix.** `cc`, `rustc`, `go` and configure probes are cached by content
   on the machine and shared across derivations. Changing a recipe rebuilds its derivation while
   almost nothing compiles again. The cache is a socket inside the sandbox rather than an input,
@@ -63,73 +63,67 @@ $ motley info deno                       # pinned version, build systems, suppor
 
 ## Writing a package
 
-A package is a directory under `pkgs/<first two letters>/<name>/` holding a `recipe.toml`. Its
-`[upstream]`, `[[source]]` and `[pin]` tables say where the source comes from and are what
-spieler keeps current. Its `[build]` table says how to build it:
+A package is a directory under `pkgs/<first two letters>/<name>/` holding an `act.toml`. `track`
+and `fetch` say where the source comes from, and everything else how to build it:
 
 ```toml
-[upstream]
-purl = "pkg:github/pnggroup/libpng"
+track = "github:pnggroup/libpng"
+fetch = { url = "https://downloads.sourceforge.net/libpng/libpng-{version}.tar.xz" }
+with  = [ "cmake" ]
+deps  = [ "zlib" ]
 
-[[source]]
-key  = "default"
-url  = "https://downloads.sourceforge.net/libpng/libpng-{version}.tar.xz"
-hash = "sha256-…"
-
-[pin]
-version = "1.6.58"
-
-[build]
-patches = [ "upstream-cmake-install-pc-when-generated.patch" ]
-systems = [ "cmake" ]
-needs   = [ "zlib" ]
-
-[build.cmake.defs]
+[cmake.defs]
 PNG_STATIC = false
 PNG_TOOLS  = true
 ```
 
-`systems` picks the build systems, which bring their tools, their phases (configure, build, test,
+The version and hash live in the `act.lock` beside it, which spieler writes.
+[docs/act.md](docs/act.md) has the whole format.
+
+`with` picks the build systems, which bring their tools, their phases (configure, build, test,
 install) and their options, such as `cmake.defs` above, `cargo.features` or `go.tags`. Every build
 system also has `<name>.tool` to swap the program itself. bigtop declares the options and
 nix/schema.json carries them, so a misspelt field or a wrong type fails evaluation.
 `motley options cmake` lists them.
 
-`needs` are linked and come from the target platform's set, `tools` run during the build and come
+`deps` are linked and come from the target platform's set, `tools` run during the build and come
 from the build machine's. Both are found through the usual search paths (`-I`,
-`-L`, pkg-config, cmake) without further description. `patches` are files beside recipe.toml,
-applied after unpacking, and `bin = [ "rg" ]` names the programs when they are not the package's
-name.
+`-L`, pkg-config, cmake) without further description. Every `*.patch` beside the act applies after
+unpacking, in name order, unless `patches` lists them, and `test.bin = [ "rg" ]` names the
+programs when they are not the package's name.
 
-What depends on the platform or names another package goes in a `recipe.nix` beside it, a
-function of the target's facts and the package sets returning a list of changes merged over
-`[build]` in order:
+What depends on the platform goes in `[on.<when>]` tables, merged over the rest where they match:
 
-```nix
-{ platform, pkgs, when, ... }:
-[
-  { cmake.defs.ZLIB_ROOT = "${pkgs.zlib}"; }
-  (when (platform.os == "windows") { needs = [ "libiconv" ]; })
-]
+```toml
+[on.windows]
+deps = [ "libiconv" ]
 ```
 
-nix/package/manifest.nix documents the whole format.
+What needs Nix, a fetcher, a local tree or another package's path, goes in an `act.nix` beside it,
+a function of the target's facts and the package sets returning a list of changes:
+
+```nix
+{ pkgs, ... }:
+[
+  { cmake.defs.ZLIB_ROOT = "${pkgs.zlib}"; }
+]
+```
 
 A lock file in the source is used as it is. At build time a dynamic derivation reads it and fetches
 each entry as a fixed output with the hash the lock records, for Cargo, Go, npm, pnpm, Yarn,
 Bundler, Deno, Hex, Hackage and LuaRocks. go.sum, Hackage and LuaRocks record no usable hashes, so
 `locks/*.toml` holds those.
 
-When a build system's phases are not enough, `before.<phase>`, `after.<phase>`,
-`replace.<phase>` (a phase or a list) and `skip` (a list) edit its list, or `phases` spells the
-whole list out. A phase is a build system's or a function in a nu module beside recipe.toml, so
+When a build system's phases are not enough, `[steps]` edits its list with `before.<phase>`,
+`after.<phase>`, `replace.<phase>` (a phase or a list) and `skip` (a list), or `phases` spells the
+whole list out. A phase is a build system's or a function in a nu module beside the act, so
 `"rust.configure"` is `configure` in `rust.nu`. Its `ctx` holds the paths and facts of the build:
 
 ```toml
-[build]
+[steps]
 skip = [ "cargo.test" ]
 
-[build.replace]
+[steps.replace]
 "autotools.configure" = "perl.configure"
 ```
 
@@ -138,8 +132,8 @@ paths from it once installed.
 
 Every build ends the same way. ELF outputs are made relocatable, and `bin/<name> --version` runs
 in an empty environment and must print the pinned version. A `dlopen` that finds nothing during
-that run fails the build unless `check.dlopen = [ "libudev.so.1" ]` marks it optional, and the run
-repeats from a copy of the closure under another root. `check.separate = true` moves the test
+that run fails the build unless `test.dlopen = [ "libudev.so.1" ]` marks it optional, and the run
+repeats from a copy of the closure under another root. `test.separate = true` moves the test
 phase into its own derivation.
 
 The compiler driver supplies hardening and `-O2 -g`, not `CFLAGS`. `cc.hardening.fortify = false`
@@ -159,8 +153,8 @@ An out-of-tree package passed through `packages` may still be a `package.nix` ca
 
 ## Keeping it current
 
-`spieler` (pkgs/mu/mummer/src/spieler, also `motley update …`) reads every `recipe.toml`, asks
-upstream for new versions and rewrites pin and hash:
+`spieler` (pkgs/mu/mummer/src/spieler, also `motley update …`) reads every `act.toml`, asks
+upstream for new versions and rewrites its `act.lock`:
 
 ```console
 $ spieler check          # what is out of date
@@ -173,7 +167,7 @@ $ spieler lock fzf       # re-pin the Go modules fzf needs in locks/go.toml
 ## Layout
 
 ```
-pkgs/xx/<name>/   the packages, xx being the name's first two letters, with recipe.toml, phase
+pkgs/xx/<name>/   the packages, xx being the name's first two letters, with act.toml, phase
                   modules (<name>.nu), patches and in-tree sources (src/)
 bootstrap/        peanut, stage0 (musl cc), stage1 (llvm), stage2 (a cc per platform)
 nix/              evaluation: package/ turns a manifest into a derivation, build-systems.nix binds

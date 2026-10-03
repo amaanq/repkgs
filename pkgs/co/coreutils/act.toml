@@ -1,0 +1,26 @@
+track          = "gnu:coreutils"
+fetch          = { url = "https://ftp.gnu.org/gnu/coreutils/coreutils-{version}.tar.xz" }
+with           = [ "autotools" ]
+bootstrapTools = true
+
+[test]
+bin = [ "ls", "cp", "install", "sort" ]
+run = false
+
+[only]
+posix = true
+
+[autotools]
+flags = [
+  "--disable-acl",
+  "--disable-xattr",
+  "--disable-libcap",
+  "--without-selinux",
+  "--without-openssl",
+  "--without-libgmp",
+  "--enable-no-install-program=kill,uptime",
+  "--enable-single-binary=symlinks",
+]
+
+[env]
+FORCE_UNSAFE_CONFIGURE = "1"

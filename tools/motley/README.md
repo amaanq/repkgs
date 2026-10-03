@@ -19,7 +19,7 @@ $ motley test                         # tests/builder, after a builder/ or bigto
 $ motley log jq                       # its most recent build log
 $ motley info jq                      # version, platforms, build systems and features (--json)
 $ motley list --for riscv64-linux --unsupported   # what a platform lacks, and why
-$ motley options cmake                # every cmake.* option of [build], with defaults
+$ motley options cmake                # every cmake.* option, with defaults
 $ motley fmt                          # nuff, --check to only check
 ```
 
@@ -58,8 +58,8 @@ The peanut and Rust toolchain flags work here too.
 motley dev --peanut ./result-bootstrap-peanut --rust-toolchain ./result-bootstrap-rust ripgrep
 ```
 
-Once the fix is clear, make the edit a patch beside recipe.toml (`diff -u` against an untouched
-unpack), list it in `patches` and build for real.
+Once the fix is clear, make the edit a patch beside act.toml (`diff -u` against an untouched
+unpack), which applies by default, and build for real.
 
 ## The compile cache
 
@@ -76,7 +76,7 @@ in `nix.settings.trusted-users`.
 ## New packages and updates
 
 ```console
-$ motley new foo pkg:github/o/foo 'https://…/foo-{version}.tar.gz'   # pkgs/fo/foo/ with recipe.toml
+$ motley new foo pkg:github/o/foo 'https://…/foo-{version}.tar.gz'   # pkgs/fo/foo/ with act.toml
 $ motley update check                 # what is out of date (spieler)
 $ motley update apply foo             # a new pin and hashes
 $ motley repro zlib                   # build again and compare

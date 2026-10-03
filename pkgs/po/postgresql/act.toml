@@ -1,0 +1,21 @@
+track = "generic:postgresql?url=https://ftp.postgresql.org/pub/source/&regex=v([0-9.]+)/"
+fetch = { url = "https://ftp.postgresql.org/pub/source/v{version}/postgresql-{version}.tar.bz2" }
+with  = [ "meson" ]
+deps  = [ "openssl", "zlib", "readline", "icu", "util-linux" ]
+tools = [ "bison", "flex", "perl" ]
+test  = false
+
+[steps.after]
+"meson.install" = [ "postgresql.relocate-pgxs" ]
+
+[steps.before]
+"meson.configure" = [ "postgresql.fixed-paths" ]
+
+[meson.defs]
+icu           = "enabled"
+readline      = "enabled"
+rpath         = false
+ssl           = "openssl"
+system_tzdata = "/usr/share/zoneinfo"
+uuid          = "e2fs"
+zlib          = "enabled"

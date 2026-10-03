@@ -1,6 +1,0 @@
-[build]
-systems = [ "npm" ]
-version = "2.0.0"
-
-[build.check]
-version = "test-npm"

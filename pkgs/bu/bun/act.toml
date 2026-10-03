@@ -1,0 +1,18 @@
+tag      = "bun-v{version}"
+track    = "github:oven-sh/bun"
+prebuilt = true
+
+[fetch.x86_64-linux]
+url = "https://github.com/oven-sh/bun/releases/download/bun-v{version}/bun-linux-x64.zip"
+
+[fetch.aarch64-linux]
+url = "https://github.com/oven-sh/bun/releases/download/bun-v{version}/bun-linux-aarch64.zip"
+
+[test]
+version = true
+
+[install]
+"bin/bun" = "bun"
+
+[links]
+"bin/bunx" = "bun"

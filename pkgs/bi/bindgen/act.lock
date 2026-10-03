@@ -1,0 +1,3 @@
+version = "0.73.2"
+sys     = [ "clang" ]
+hash    = "sha256-b+0LM4AbngOsOPp0YjLww3EINHJFSbISLbUa2H/HiaA="

@@ -1,0 +1,19 @@
+fetch = { url = "https://downloads.sourceforge.net/infozip/unzip60.tar.gz" }
+
+[track]
+frozen = "Info-ZIP, last release 2009"
+
+[test]
+version = "-v"
+
+[steps]
+phases = [ "unzip.build" ]
+
+[only]
+posix = true
+
+[install]
+"bin/" = [ "unzip", "funzip", "unzipsfx" ]
+
+[links]
+"bin/zipinfo" = "unzip"

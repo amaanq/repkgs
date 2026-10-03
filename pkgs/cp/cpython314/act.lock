@@ -1,0 +1,12 @@
+version = "3.14.7"
+
+[hash]
+default = "sha256-lJP052bZrUsDASpKauL7Xa6pI3QMQW1Ho3o7Dsr062Y="
+sqlite  = "sha256-7S+QPa5C+lQrmNEQFyqO+yvF47voia2z4vTJ2rEIpIY="
+xz      = "sha256-DbocrojDc5hEyJ6YAP7iLuGnURgMLIHUFU6gJOzQgRM="
+zlib-ng = "sha256-eOw3CjdO5EHMofsgHRtH7fuydXZxrwpVzNvjmNeIQqQ="
+
+[vars]
+sqlite  = "3.50.4.0"
+xz      = "5.2.5"
+zlib_ng = "2.2.4"

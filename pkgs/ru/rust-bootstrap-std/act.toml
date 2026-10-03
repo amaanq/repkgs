@@ -1,0 +1,7 @@
+fetch    = { from = "rust-bootstrap" }
+exports  = false
+prebuilt = "ldso"
+source   = "rust-std-x86_64"
+
+[steps]
+phases = [ "rust-bootstrap-std.install" ]

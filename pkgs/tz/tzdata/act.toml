@@ -1,0 +1,12 @@
+track = "generic:tzdb?url=https://data.iana.org/time-zones/releases/"
+fetch = { url = "https://data.iana.org/time-zones/releases/tzdb-{version}.tar.lz" }
+with  = [ "make" ]
+test  = false
+
+[only]
+os = [ "linux", "macos" ]
+
+[make]
+flags        = [ "cc=cc", "AR=llvm-ar", "RANLIB=llvm-ranlib", "USRDIR=", "ZICDIR=$(BINDIR)" ]
+installFlags = [ "TOPDIR=$(PREFIX)" ]
+programs     = [ "zic", "zdump" ]

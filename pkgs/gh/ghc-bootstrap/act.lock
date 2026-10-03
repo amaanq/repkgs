@@ -1,0 +1,6 @@
+version = "9.14.1"
+
+[hash]
+aarch64-linux = "sha256-C3VwOfx07bf3RLWrJbstY3dEmuICM2ZnWfbmE/18qqo="
+riscv64-linux = "sha256-2pm3qHjvJYPtWbn2i2TJdg+AlHo14TTeOjU6KR2Dn/k="
+x86_64-linux  = "sha256-GC8kkBVwi1RLdWv65kSngsWdfG4yHx7HqWvP4SNvE18="

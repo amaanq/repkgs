@@ -22,10 +22,10 @@ let
   source =
     name:
     let
-      recipe = fromTOML (builtins.readFile ../../${builtins.substring 0 2 name}/${name}/recipe.toml);
-      inherit (recipe.pin) version;
-      tag = recipe.pin.tag or version;
-      entries = lib.listToAttrs (map (entry: lib.nameValuePair entry.key entry) recipe.source);
+      act = import ../../../nix/act.nix ../../${builtins.substring 0 2 name}/${name};
+      inherit (act.pinned) version;
+      tag = act.tagOf act.pinned;
+      entries = act.sources;
       fetch =
         key:
         (native.fetchzip.override { withUnzip = false; }) {
@@ -284,7 +284,7 @@ let
     grep = musl.gnugrep.override { pcre2 = null; };
     m4 = musl.gnum4;
     # glibc's intl/plural.y
-    bison = musl.bison;
+    inherit (musl) bison;
   };
 
   python = musl.stdenv.mkDerivation {
@@ -396,7 +396,7 @@ let
     find $out -type f -exec ${native.nukeReferences}/bin/nuke-refs {} +
   '';
 
-  # the hash recipe.toml pins is the NAR hash of the unpacked tree
+  # the hash act.lock pins is the NAR hash of the unpacked tree
   nar =
     native.runCommand "${peanut.name}.nar.xz"
       {

@@ -1,0 +1,8 @@
+tag   = "v{version}"
+track = "github:webmproject/libwebp"
+fetch = { url = "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-{version}.tar.gz" }
+with  = [ "cmake" ]
+deps  = [ "libjpeg-turbo", "libpng", "giflib" ]
+
+[cmake.defs]
+WEBP_BUILD_EXTRAS = false

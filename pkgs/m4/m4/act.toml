@@ -1,0 +1,7 @@
+track          = "gnu:m4"
+fetch          = { url = "https://ftp.gnu.org/gnu/m4/m4-{version}.tar.xz" }
+with           = [ "autotools" ]
+bootstrapTools = true
+
+[test]
+separate = true

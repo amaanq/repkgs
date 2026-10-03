@@ -1,0 +1,4 @@
+version = "1.15.0"
+date    = "2026-08-24"
+sys     = [ "openssl", "xz", "zstd" ]
+hash    = "sha256-elK82eg/m33GYNWeZUSfKxFVJS6fMRatHl66NgvxcxE="

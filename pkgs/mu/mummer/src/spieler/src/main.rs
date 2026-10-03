@@ -14,7 +14,6 @@ mod version;
 use std::{
    collections::BTreeMap,
    env::args_os,
-   fmt::Write as _,
    fs::{
       create_dir_all,
       read_to_string,
@@ -34,12 +33,12 @@ use std::{
 };
 
 use eyre::Result;
-use pound::Parse;
-use serde_json::Value;
 use mummer::process::{
    run_main,
    text_arguments,
 };
+use pound::Parse;
+use serde_json::Value;
 
 use crate::{
    locks::Used,
@@ -55,7 +54,7 @@ use crate::{
 #[derive(Parse)]
 #[pound(name = "spieler")]
 enum Mode {
-   /// parse and validate every recipe.toml.
+   /// parse and validate every act.toml.
    List { names: Vec<String> },
    /// resolve and decide, write nothing. Exits 10 when updates are pending.
    Check {
@@ -67,7 +66,7 @@ enum Mode {
       #[pound(long)]
       prerelease: bool,
    },
-   /// prefetch and write hash + [pin] (+ hook files, locks) for pending
+   /// prefetch and write act.lock (+ hook files, locks) for pending
    /// updates. `verify` builds them.
    Apply {
       names:      Vec<String>,
@@ -93,7 +92,7 @@ enum Mode {
       #[pound(long)]
       prune: bool,
    },
-   /// write a new recipe.toml and pin it to the newest version upstream
+   /// write a new act.toml and pin it to the newest version upstream
    /// lists.
    Init {
       /// package directory.
@@ -148,7 +147,7 @@ fn selected(names: &[String], all: bool) -> io::Result<Vec<Package>> {
       .collect();
    if !missing.is_empty() {
       return Err(io::Error::other(format!(
-         "no recipe.toml for {}",
+         "no act.toml for {}",
          missing.join(", ")
       )));
    }
@@ -431,16 +430,20 @@ fn lock(names: &[String], prune: bool) -> io::Result<()> {
 
 fn init(dir: &PathBuf, purl: &str, url: &str, allow: Option<&str>) -> io::Result<()> {
    purl.parse::<Purl>()?;
-   let file = dir.join("recipe.toml");
+   let file = dir.join("act.toml");
    if file.exists() {
       return Err(io::Error::other(format!("{} exists", file.display())));
    }
    create_dir_all(dir)?;
-   let mut text = format!("[upstream]\npurl = \"{purl}\"\n");
-   if let Some(range) = allow {
-      writeln!(text, "allow = \"{range}\"").map_err(io::Error::other)?;
-   }
-   writeln!(text, "\n[[source]]\nkey = \"default\"\nurl = \"{url}\"").map_err(io::Error::other)?;
+   let track = purl
+      .strip_prefix("pkg:")
+      .unwrap_or(purl)
+      .replacen('/', ":", 1);
+   let fetch = format!("fetch = {{ url = \"{url}\" }}\n");
+   let text = allow.map_or_else(
+      || format!("track = \"{track}\"\n{fetch}"),
+      |range| format!("{fetch}\n[track]\nfrom  = \"{track}\"\nallow = \"{range}\"\n"),
+   );
    write(&file, text)?;
    let name = dir
       .file_name()

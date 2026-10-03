@@ -1,0 +1,7 @@
+tag   = "v{version}"
+track = "github:kkos/oniguruma"
+fetch = { asset = "onig-{version}.tar.gz" }
+with  = [ "autotools" ]
+
+[autotools]
+configureScript = "configure"

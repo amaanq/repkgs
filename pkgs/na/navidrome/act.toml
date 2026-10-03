@@ -1,0 +1,20 @@
+tag   = "v{version}"
+fetch = { archive = true }
+with  = [ "go", "npm" ]
+
+[track]
+from = "github:navidrome/navidrome"
+
+[track.locks]
+go = "."
+
+# go's tests want a music library fixture set
+[steps]
+phases = [ "npm.build", "go.build", "go.install" ]
+
+[go]
+packages = [ "." ]
+tags     = [ "netgo", "sqlite_fts5" ]
+
+[npm]
+root = "ui"

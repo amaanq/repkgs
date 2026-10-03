@@ -1,0 +1,2 @@
+track = "generic:musl?url=https://musl.libc.org/releases.html"
+fetch = { url = "https://musl.libc.org/releases/musl-{version}.tar.gz" }

@@ -39,7 +39,7 @@ let
   stage = bootstrap.toolchain.${target.name} (
     on (target.libc == "msvc") {
       sdk = fetch.windowsSdk {
-        manifest = (readSources ../pkgs/wi/windows-sdk/recipe.toml).fetch "default";
+        manifest = (readSources ../pkgs/wi/windows-sdk).fetch "default";
         arch = target.cpu;
       };
     }
@@ -146,7 +146,7 @@ let
     pkgs = self;
   };
 
-  # what a package.nix or recipe.toml may ask for
+  # what a package.nix or act.toml may ask for
   scope = {
     inherit
       package
@@ -158,7 +158,7 @@ let
       ;
     platform = facts;
     pkgs = self;
-    # for `helpers = "python"` (nix/package/manifest.nix)
+    # for `extras = "python"` (nix/package/manifest.nix)
     pythonProject =
       package: python:
       import ./python.nix {

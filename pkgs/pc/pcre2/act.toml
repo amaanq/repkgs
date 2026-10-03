@@ -1,0 +1,14 @@
+tag   = "pcre2-{version}"
+track = "github:PCRE2Project/pcre2"
+fetch = { asset = "pcre2-{version}.tar.bz2" }
+with  = [ "cmake" ]
+deps  = [ "zlib", "bzip2" ]
+
+[test]
+separate = true
+
+[cmake.defs]
+PCRE2GREP_SUPPORT_CALLOUT_FORK = false
+PCRE2_BUILD_PCRE2_16           = true
+PCRE2_BUILD_PCRE2_32           = true
+PCRE2_SUPPORT_JIT              = true

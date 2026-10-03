@@ -1,0 +1,3 @@
+version = "15.2.0"
+sys     = [ "jemalloc", "pcre2" ]
+hash    = "sha256-BsSIbZwB6s8i3dDTRYJ1EdVbJmiO0oxcLu6qiYlPkOI="

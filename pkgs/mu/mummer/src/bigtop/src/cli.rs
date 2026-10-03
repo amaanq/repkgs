@@ -123,7 +123,7 @@ pub enum Mode {
    /// the package on the structured attrs as one self-contained tree, for
    /// the bundle derivation.
    Bundle,
-   /// the lock side of sys-libs.json, what [pin] sys should say.
+   /// the lock side of sys-libs.json, what act.lock's sys should say.
    Syslibs {
       #[pound(subcommand)]
       operation: SyslibsOperation,

@@ -1,0 +1,18 @@
+track          = "gnu:make"
+fetch          = { url = "https://ftp.gnu.org/gnu/make/make-{version}.tar.gz" }
+with           = [ "autotools" ]
+bootstrapTools = true
+
+[test]
+bin      = [ "make" ]
+separate = true
+
+[steps.before]
+"autotools.test" = [ "gnumake.drop-general4" ]
+
+[autotools]
+flags     = [ "--without-guile" ]
+makeFlags = [ "MAKEINFO=true" ]
+
+[cc.hardening]
+format = true

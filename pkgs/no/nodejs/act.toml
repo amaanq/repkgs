@@ -1,0 +1,22 @@
+tag = "v{version}"
+fetch = { url = "https://nodejs.org/dist/v{version}/node-v{version}.tar.xz" }
+deps = [ "zlib", "openssl", "zstd", "brotli", "libuv", "nghttp2", "c-ares", "sqlite" ]
+tools = [ "cpython", "ninja" ]
+patches = [
+  "upstream-libcxx-includes.patch",
+  "upstream-icu-emulator.patch",
+  "v8-cfi-arm64.patch",
+  "gyp-ninja-toolset-gen.patch",
+  "upstream-highway-rvv-baseline.patch",
+]
+
+[track]
+from  = "github:nodejs/node"
+allow = ">=24,<25"
+
+[test]
+bin = [ "node", "npm", "npx" ]
+run = false
+
+[steps]
+phases = [ "nodejs.configure", "nodejs.build", "nodejs.install" ]

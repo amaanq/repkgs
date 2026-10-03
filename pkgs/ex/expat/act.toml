@@ -1,0 +1,8 @@
+tag   = "R_{version_}"
+track = "github:libexpat/libexpat"
+fetch = { asset = "expat-{version}.tar.xz" }
+with  = [ "cmake" ]
+
+[cmake.defs]
+EXPAT_BUILD_DOCS     = false
+EXPAT_BUILD_EXAMPLES = false

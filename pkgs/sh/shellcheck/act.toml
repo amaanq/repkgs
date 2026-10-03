@@ -1,0 +1,12 @@
+fetch = { url = "https://hackage.haskell.org/package/ShellCheck-{version}/ShellCheck-{version}.tar.gz" }
+with  = [ "cabal" ]
+
+[track]
+from = "hackage:ShellCheck"
+
+[track.locks]
+hackage = "."
+
+[cabal]
+exes    = [ "shellcheck" ]
+project = "allow-newer: ShellCheck:aeson, ShellCheck:QuickCheck"

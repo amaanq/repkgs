@@ -1,0 +1,7 @@
+tag   = "v{version}"
+track = "github:laurikari/tre"
+fetch = { asset = "tre-{version}.tar.gz" }
+with  = [ "autotools" ]
+
+[autotools]
+flags = [ "--disable-agrep", "--enable-static" ]

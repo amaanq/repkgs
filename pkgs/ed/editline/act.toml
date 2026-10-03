@@ -1,0 +1,6 @@
+track = "github:troglobit/editline"
+fetch = { url = "https://github.com/troglobit/editline/releases/download/{version}/editline-{version}.tar.gz" }
+with  = [ "autotools" ]
+
+[only]
+posix = true

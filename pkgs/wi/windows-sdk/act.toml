@@ -1,0 +1,12 @@
+# The Visual Studio release manifest (what https://aka.ms/vs/17/release/channel names): it pins
+# every payload by sha256. Unfree: https://visualstudio.microsoft.com/license-terms/
+track   = "visualstudio:17"
+fetch   = { unpack = false, url = "https://download.visualstudio.microsoft.com/download/pr/{pr}/VisualStudio.vsman" }
+exports = false
+
+[only]
+abi = [ "msvc" ]
+cpu = [ "x86_64", "aarch64" ]
+
+[install]
+"." = [ "crt", "sdk" ]

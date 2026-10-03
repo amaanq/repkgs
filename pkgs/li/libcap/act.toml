@@ -1,0 +1,14 @@
+track = "generic:libcap?url=https://kernel.org/pub/linux/libs/security/linux-privs/libcap2/"
+fetch = { url = "https://kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-{version}.tar.xz" }
+with  = [ "make" ]
+tools = [ "bash" ]
+
+[steps.after]
+"make.test" = [ "libcap.test" ]
+
+[only]
+os = [ "linux" ]
+
+[make]
+flags      = [ "lib=lib", "sbin=bin", "CC=cc", "GOLANG=no", "PAM_CAP=no", "RAISE_SETFCAP=no" ]
+testTarget = [ "-C", "libcap", "cap_test" ]

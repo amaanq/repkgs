@@ -1,0 +1,4 @@
+# Apple's Command Line Tools SDK package (MacOSX.sdk inside) as the macOS software update catalog
+# lists it. Xcode/CLT licence: stays out of the public cache.
+track = "applesdk:CLTools_macOSNMOS_SDK"
+fetch = { unpack = false, url = "https://swcdn.apple.com/content/downloads/{path}/CLTools_macOSNMOS_SDK.pkg" }

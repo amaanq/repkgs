@@ -41,15 +41,15 @@ carries `-march`.
 
 ## Evaluation
 
-A package is its `recipe.toml`. nix/package/manifest.nix turns the `[build]` table, with the
-changes its `recipe.nix` returns merged on top, into a *spec*, and nix/package checks
-that spec against the schema bigtop emits (an unknown field, or an option of the wrong type or with
-an unknown name, is an error) before making one derivation whose builder is `bigtop build`, with a
-phase plan and structured JSON attributes. There is no callPackage, mkDerivation or module layer
-and no fixpoint per package.
+A package is its `act.toml` (docs/act.md). nix/package/manifest.nix turns its build keys, with the
+`[on]` overlays that match and the changes an `act.nix` returns merged on top, into a *spec*, and
+nix/package checks that spec against the schema bigtop emits (an unknown field, or an option of the
+wrong type or with an unknown name, is an error) before making one derivation whose builder is
+`bigtop build`, with a phase plan and structured JSON attributes. There is no callPackage,
+mkDerivation or module layer and no fixpoint per package.
 
 ```
-pkgs/zl/zlib/recipe.toml     attribute = directory name, sharded by its first two letters
+pkgs/zl/zlib/act.toml        attribute = directory name, sharded by its first two letters
 pkgs/cp/cpython314/          another major version is another package, pkgs/aliases.toml maps cpython to it
 ```
 
@@ -58,11 +58,11 @@ pkgs/cp/cpython314/          another major version is another package, pkgs/alia
 package passed through `packages` may also be a `package.nix` calling `package { … }`.
 
 Every package exists on every platform, and `pkg.supported` says whether it is meant for it without
-forcing the derivation. Prebuilt packages are for the platforms their `recipe.toml` has tarballs
-for (keys such as `x86_64-linux` and `aarch64-macos`), a recipe narrows itself with
-`targets.{cpu,os,abi,libc}`, `targets.posix = true` or `targets.cross = false`, and an
-unsupported dependency makes its dependents unsupported. Only the store paths throw (`bun:
-recipe.toml has no 'riscv64-linux' source`), so CI filters on a boolean rather than `tryEval`,
+forcing the derivation. Prebuilt packages are for the platforms their `act.toml` has tarballs
+for (sources named `x86_64-linux`, `aarch64-macos` and so on), an act narrows itself with
+`only.{cpu,os,abi,libc}`, `only.posix = true` or `only.cross = false`, and an unsupported
+dependency makes its dependents unsupported. Only the store paths throw (`bun: act.toml has no
+'riscv64-linux' source`), so CI filters on a boolean rather than `tryEval`,
 which would hide real errors too.
 
 ### Overrides
@@ -75,7 +75,7 @@ import ./. {
     xz.autotools.flags.prepend = [ "--disable-nls" ];
     curl.dependencies.remove = [ "nghttp2" ];     # names resolve in the final set
     sqlite.env.merge = { SQLITE_DEBUG = "1"; };
-    zstd.pin.merge = { version = "1.5.6"; };      # its recipe.toml read again at this version
+    zstd.pin.merge = { version = "1.5.6"; };      # its sources read again at this version
     zstd.hash.merge = { default = "sha256-…"; };
     ruby.edit = spec: spec // { … };              # anything the verbs cannot express
   };
@@ -120,7 +120,7 @@ an undeclared name fails evaluation, the result goes into the derivation and rea
 
 ## Sources and lock files
 
-A `recipe.toml` source becomes a fixed-output fetch named after its URL, so a bumped version with
+An `act.toml` source becomes a fixed-output fetch named after its URL, so a bumped version with
 a stale hash fails instead of reusing the old tarball. Archives are unpacked into the store once.
 
 - **Upstream lock files are neither copied nor hashed here.** `fetch.cargoVendor { source }` is a
@@ -133,7 +133,7 @@ a stale hash fails instead of reusing the old tarball. Archives are unpacked int
   derivation mentions only its own share.
 - **Native libraries behind locked dependencies** are settled when the package is pinned. spieler
   reads the lock files in the source it just hashed, looks the names up in `builder/sys-libs.json`
-  (openssl-sys to openssl, mattn/go-sqlite3 to sqlite) and writes `sys = [..]` into `[pin]`. The
+  (openssl-sys to openssl, mattn/go-sqlite3 to sqlite) and writes `sys = [..]` into act.lock. The
   package then takes those of them the set has on the platform as ordinary dependencies, which
   evaluation, `info`, `supported` and overrides all see, while ripgrep's manifest never names
   pcre2. The build system checks the lock against `sys`, so a lock that has since gained a -sys
@@ -191,14 +191,13 @@ processes and hand their environment and build context back to bigtop. A package
 systems and edits their phases:
 
 ```toml
-[build]
-systems = [ "cmake" ]                # the phases default to the build system's
+with = [ "cmake" ]                   # the phases default to the build system's
 
-[build.cmake.defs]
+[cmake.defs]
 WITH_FOO = true                      # typed options, checked at evaluation
 
-[build.after]
-"cmake.install" = [ "foo.gen" ]      # foo.gen is `gen` in foo.nu beside recipe.toml
+[steps.after]
+"cmake.install" = [ "foo.gen" ]      # foo.gen is `gen` in foo.nu beside act.toml
 ```
 
 - **Dependencies contribute data and never behaviour.** Each output carries an `exports.json` of

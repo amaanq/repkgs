@@ -1,6 +1,0 @@
-[build]
-systems = [ "cmake" ]
-version = "1.2"
-
-[build.check]
-version = "hello"

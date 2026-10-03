@@ -1,0 +1,3 @@
+track = "github:inaka/elvis"
+fetch = { archive = true }
+with  = [ "rebar3" ]

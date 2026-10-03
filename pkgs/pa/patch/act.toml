@@ -1,0 +1,8 @@
+track          = "gnu:patch"
+fetch          = { url = "https://ftp.gnu.org/gnu/patch/patch-{version}.tar.xz" }
+with           = [ "autotools" ]
+test           = false
+bootstrapTools = true
+
+[only]
+posix = true

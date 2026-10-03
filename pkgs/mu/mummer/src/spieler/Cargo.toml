@@ -15,14 +15,13 @@ base64           = "0.23"
 blake3           = { workspace = true }
 color-eyre       = { workspace = true }
 eyre             = { workspace = true }
-mummer             = { workspace = true }
+mummer           = { workspace = true }
 percent-encoding = "2"
 pound            = "0.1.7"
 regex-lite       = "0.1"
 serde            = { features = [ "derive" ], version = "1" }
 serde_json       = { features = [ "preserve_order" ], version = "1" }
 toml             = "1"
-toml_edit        = "0.25"
 ureq             = { default-features = false, features = [ "rustls" ], version = "3" }
 
 [lints]

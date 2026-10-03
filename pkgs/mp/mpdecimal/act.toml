@@ -1,0 +1,4 @@
+track = "generic:mpdecimal?url=https://www.bytereef.org/mpdecimal/download.html"
+fetch = { url = "https://www.bytereef.org/software/mpdecimal/releases/mpdecimal-{version}.tar.gz" }
+with  = [ "autotools" ]
+test  = false

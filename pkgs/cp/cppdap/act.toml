@@ -1,0 +1,11 @@
+tag   = "dap-{version}"
+fetch = { archive = true }
+with  = [ "cmake" ]
+deps  = [ "nlohmann-json" ]
+
+[track]
+from       = "github:google/cppdap"
+prerelease = true
+
+[cmake.defs]
+CPPDAP_USE_EXTERNAL_NLOHMANN_JSON_PACKAGE = true

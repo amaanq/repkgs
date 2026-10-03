@@ -1,0 +1,9 @@
+tag   = "version-{version}"
+track = "github:sqlite/sqlite"
+fetch = { url = "https://github.com/sqlite/sqlite/archive/refs/tags/version-{version}.tar.gz" }
+with  = [ "make" ]
+deps  = [ "zlib" ]
+test  = false
+
+[make]
+configureFlags = [ "--enable-all", "--enable-column-metadata" ]

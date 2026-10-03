@@ -1,0 +1,7 @@
+tag   = "v{version}"
+track = "github:libusb/libusb"
+fetch = { asset = "libusb-{version}.tar.bz2" }
+with  = [ "autotools" ]
+
+[autotools]
+flags = [ "--disable-udev", "--enable-dependency-tracking" ]

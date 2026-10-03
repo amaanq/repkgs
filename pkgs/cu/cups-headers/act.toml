@@ -1,0 +1,9 @@
+tag   = "v{version}"
+fetch = { url = "https://github.com/OpenPrinting/cups/releases/download/v{version}/cups-{version}-source.tar.gz" }
+
+[track]
+from  = "github:OpenPrinting/cups"
+allow = "==2.4.*"
+
+[install]
+"include/cups/" = "cups/*.h"

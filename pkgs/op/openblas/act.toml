@@ -1,0 +1,12 @@
+tag   = "v{version}"
+track = "github:OpenMathLib/OpenBLAS"
+fetch = { asset = "OpenBLAS-{version}.tar.gz" }
+with  = [ "make" ]
+
+[only]
+os = [ "linux" ]
+
+[make]
+buildTarget = [ "shared" ]
+flags       = [ "DYNAMIC_ARCH=1" ]
+testTarget  = [ "tests" ]

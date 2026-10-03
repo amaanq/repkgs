@@ -1,0 +1,7 @@
+tag   = "r{version}"
+track = "github:benhoyt/inih"
+fetch = { archive = true }
+with  = [ "meson" ]
+
+[meson.defs]
+with_INIReader = true

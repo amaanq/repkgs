@@ -1,0 +1,4 @@
+track = "gnu:mpfr"
+fetch = { url = "https://ftpmirror.gnu.org/mpfr/mpfr-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "gmp" ]

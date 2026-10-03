@@ -1,0 +1,6 @@
+version = "3.16.1.0"
+date    = "2025-12-21"
+
+[hash]
+aarch64-linux = "sha256-2xLni3MQ/Hrm6/tKF8H8VqhAKkJKFvQT7kejuJUn2e0="
+x86_64-linux  = "sha256-VoRTzrThKrttv/3U/4ck2U6CT89qHzpWGuARKZrmob8="

@@ -1,0 +1,14 @@
+tag     = "boost-{version}"
+track   = "github:boostorg/boost"
+fetch   = { asset = "boost-{version}-cmake.tar.xz" }
+with    = [ "cmake" ]
+deps    = [ "zlib", "bzip2", "zstd", "openssl" ]
+patches = [ "upstream-redis-cmath.patch", "upstream-cobalt-win32-libs.patch" ]
+test    = false
+
+[cc]
+cxxflags = [ "-Wno-pragma-clang-attribute" ]
+
+[cmake.defs]
+BOOST_ENABLE_MPI    = false
+BOOST_ENABLE_PYTHON = false

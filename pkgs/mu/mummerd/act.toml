@@ -1,0 +1,12 @@
+with    = [ "cargo" ]
+version = "3.0.0"
+
+# a daemon, it has no --version
+[test]
+version = false
+
+[only]
+posix = true
+
+[cargo]
+flags = [ "-p", "mummerd" ]

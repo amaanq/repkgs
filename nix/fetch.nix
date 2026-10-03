@@ -1,4 +1,4 @@
-# Dependency fetchers driven by lock files, the upstream tarballs come from recipe.toml.
+# Dependency fetchers driven by lock files, the upstream tarballs come from act.toml.
 #
 # Each is a dynamic derivation. A producer, `mummer fetch <kind>` under builder-rpc-v0, reads the lock
 # out of its inputs and writes one builtin:fetchurl derivation per artefact with the lock's own

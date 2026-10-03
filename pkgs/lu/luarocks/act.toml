@@ -1,0 +1,12 @@
+tag   = "v{version}"
+track = "github:luarocks/luarocks"
+fetch = { url = "https://luarocks.github.io/luarocks/releases/luarocks-{version}.tar.gz" }
+with  = [ "make" ]
+deps  = [ "lua", "unzip" ]
+
+[test]
+bin = [ "luarocks", "luarocks-admin" ]
+run = false
+
+[steps.after]
+"make.install" = [ "luarocks.use-cc" ]

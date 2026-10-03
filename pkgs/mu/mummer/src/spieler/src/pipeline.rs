@@ -11,9 +11,9 @@ use std::{
       var,
    },
    ffi::OsStr,
+   fmt::Write as _,
    fs::{
       create_dir_all,
-      read_to_string,
       remove_dir_all,
       write,
    },
@@ -22,16 +22,22 @@ use std::{
       Path,
       PathBuf,
    },
-   process::{
-      Command,
-      id,
-   },
+   process::id,
    time::{
       Duration,
       Instant,
    },
 };
 
+use mummer::{
+   syslibs::{
+      Tables,
+      load,
+      wanted,
+   },
+   tree::parallel,
+   unpack::unpack,
+};
 use serde::{
    Deserialize,
    Deserializer,
@@ -43,22 +49,6 @@ use serde_json::{
    Value,
    json,
 };
-use mummer::{
-   syslibs::{
-      Tables,
-      load,
-      wanted,
-   },
-   tree::parallel,
-   unpack::unpack,
-};
-use toml_edit::{
-   Array,
-   DocumentMut,
-   Item,
-   Table,
-   value,
-};
 
 use crate::{
    datasource::{
@@ -69,7 +59,10 @@ use crate::{
    http,
    nix,
    purl::Purl,
-   sources::Package,
+   sources::{
+      self,
+      Package,
+   },
    version,
 };
 
@@ -199,7 +192,7 @@ fn candidates_of(package: &Package) -> io::Result<Vec<Candidate>> {
    };
    if !base.starts_with(|ch: char| ch.is_ascii_digit()) {
       return Err(io::Error::other(format!(
-         "[upstream] base = {base:?} does not start with a digit"
+         "[track] base = {base:?} does not start with a digit"
       )));
    }
 
@@ -279,7 +272,7 @@ fn day_of(date: &str) -> &str {
    date.get(..10).unwrap_or(date)
 }
 
-/// url templates: every [pin] key as {key}, plus {version_} (dots as
+/// url templates: every act.lock key as {key}, plus {version_} (dots as
 /// underscores) {major} {minor}, and {tag} falling back to the version.
 pub fn expand(template: &str, pin: &Map<String, Value>) -> String {
    let release = pin
@@ -317,7 +310,7 @@ pub fn expand(template: &str, pin: &Map<String, Value>) -> String {
    })
 }
 
-/// Adds `from`, `to`, `note`, and for an update `pin` (the [pin] table to
+/// Adds `from`, `to`, `note`, and for an update `pin` (the act.lock values to
 /// write) and the expanded `sources`. Pure.
 pub fn decide(resolved: &[Resolved], prerelease: bool) -> Vec<Entry> {
    resolved
@@ -486,7 +479,7 @@ fn update_notes(
    notes.join(", ")
 }
 
-/// [pin] = the candidate minus datasource bookkeeping. Whatever else a
+/// The pin: the candidate minus datasource bookkeeping. Whatever else a
 /// resolve hook put there (jdk-bootstrap's file name spelling) is kept and
 /// usable as {key} in urls.
 fn candidate_pin(chosen: &Candidate) -> Map<String, Value> {
@@ -513,7 +506,7 @@ pub struct Prefetched {
 
 /// The hash nix/sources.nix expects: the NAR hash of the unpacked tree, or
 /// the file's own for `unpack = false`. `sys`: the libraries of ours the
-/// tree's lock files can link, for [pin].
+/// tree's lock files can link, for act.lock.
 pub fn prefetch(url: &str, unpacks: bool) -> io::Result<Prefetched> {
    let fetched = nix::prefetch_file(url)?;
    if !unpacks {
@@ -535,93 +528,132 @@ pub fn prefetch(url: &str, unpacks: bool) -> io::Result<Prefetched> {
    Ok(found)
 }
 
-fn document(file: &Path) -> io::Result<DocumentMut> {
-   read_to_string(file)?
-      .parse::<DocumentMut>()
-      .map_err(|error| io::Error::other(format!("{}: {error}", file.display())))
-}
-
-fn toml_item(item: &Value) -> Item {
+/// A value as taplo formats it in act.lock.
+fn toml_text(item: &Value) -> String {
    match *item {
-      Value::Bool(flag) => value(flag),
-      Value::Number(ref number) => {
-         number
-            .as_i64()
-            .map_or_else(|| value(number.to_string()), value)
-      },
-      Value::String(ref text) => value(text.as_str()),
+      Value::String(ref text) => toml::Value::String(text.clone()).to_string(),
+      Value::Array(ref items) if items.is_empty() => "[ ]".to_owned(),
       Value::Array(ref items) => {
-         let mut array = Array::new();
-         for element in items {
-            match *element {
-               Value::String(ref text) => array.push(text.as_str()),
-               Value::Null
-               | Value::Bool(_)
-               | Value::Number(_)
-               | Value::Array(_)
-               | Value::Object(_) => array.push(element.to_string()),
-            }
-         }
-         value(array)
+         format!(
+            "[ {} ]",
+            items.iter().map(toml_text).collect::<Vec<_>>().join(", ")
+         )
       },
-      Value::Null | Value::Object(_) => value(item.to_string()),
+      Value::Bool(flag) => flag.to_string(),
+      Value::Number(ref number) => number.to_string(),
+      Value::Null | Value::Object(_) => toml::Value::String(item.to_string()).to_string(),
    }
 }
 
-/// [pin] as `pin` plus `sys` in place of the old table, the tree's key order:
-/// version, tag, whatever else a hook added, date, sys.
-fn set_pin(doc: &mut DocumentMut, pin: &Map<String, Value>, sys: &[String]) {
-   let mut table = Table::new();
-   for fixed in ["version", "tag"] {
-      if let Some(item) = pin.get(fixed) {
-         table.insert(fixed, toml_item(item));
-      }
-   }
-   for (key, item) in pin {
-      if !matches!(key.as_str(), "version" | "tag" | "date" | "sys") {
-         table.insert(key, toml_item(item));
-      }
-   }
-   if let Some(item) = pin.get("date") {
-      table.insert("date", toml_item(item));
-   }
-   if !sys.is_empty() {
-      table.insert("sys", toml_item(&json!(sys)));
-   }
-   table.set_position(
-      doc.get("pin")
-         .and_then(Item::as_table)
-         .and_then(Table::position),
-   );
-   doc.insert("pin", Item::Table(table));
+/// `key = value` lines with the `=` in one column, as taplo aligns them.
+fn aligned(lines: &[(String, String)]) -> String {
+   let width = lines
+      .iter()
+      .map(|line| line.0.len())
+      .max()
+      .unwrap_or_default();
+   lines
+      .iter()
+      .try_fold(String::new(), |mut text, line| {
+         writeln!(text, "{:width$} = {}", line.0, line.1).map(|()| text)
+      })
+      .unwrap_or_default()
 }
 
-fn pin_sys(doc: &DocumentMut) -> Vec<String> {
-   doc.get("pin")
-      .and_then(Item::as_table)
-      .and_then(|pin| pin.get("sys"))
-      .and_then(Item::as_array)
+fn key_text(key: &str) -> String {
+   if !key.is_empty()
+      && key
+         .bytes()
+         .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+   {
+      key.to_owned()
+   } else {
+      toml::Value::String(key.to_owned()).to_string()
+   }
+}
+
+fn pinned_sys(package: &Package) -> Vec<String> {
+   package
+      .pin
+      .get("sys")
+      .and_then(Value::as_array)
       .map(|listed| {
          listed
             .iter()
-            .filter_map(|item| item.as_str())
+            .filter_map(Value::as_str)
             .map(str::to_owned)
             .collect()
       })
       .unwrap_or_default()
 }
 
-/// recipe.toml with `hash` filled in for every [[source]] and [pin] set to
-/// `pin` plus `sys`. `known`: key -> hash already at hand (an
-/// upstream-published sha256), not prefetched again.
+/// act.lock for `pin`, `hashes` by source and `sys`. The tag goes in only where
+/// act.toml's template does not spell it.
+fn write_lock(
+   package: &Package,
+   pin: &Map<String, Value>,
+   hashes: &BTreeMap<String, String>,
+   sys: &[String],
+) -> io::Result<()> {
+   let version = pin.get("version").and_then(Value::as_str);
+   let spelled = match (package.tag.as_deref(), version) {
+      (Some(template), Some(release)) => sources::spelled(template, release),
+      (None, Some(release)) => Some(release.to_owned()),
+      (_, None) => None,
+   };
+   let mut top = ["version", "date", "rev"]
+      .into_iter()
+      .filter_map(|fixed| {
+         pin.get(fixed)
+            .map(|item| (fixed.to_owned(), toml_text(item)))
+      })
+      .collect::<Vec<_>>();
+   if let Some(tag) = pin.get("tag").and_then(Value::as_str)
+      && spelled.as_deref() != Some(tag)
+   {
+      top.push(("tag".to_owned(), toml_text(&json!(tag))));
+   }
+   if !sys.is_empty() {
+      top.push(("sys".to_owned(), toml_text(&json!(sys))));
+   }
+   if package.single
+      && let Some(hash) = hashes.get("default")
+   {
+      top.push(("hash".to_owned(), toml_text(&json!(hash))));
+   }
+   let mut text = aligned(&top);
+   if !package.single && !hashes.is_empty() {
+      let listed = hashes
+         .iter()
+         .map(|(key, hash)| (key_text(key), toml_text(&json!(hash))))
+         .collect::<Vec<_>>();
+      text.push_str("\n[hash]\n");
+      text.push_str(&aligned(&listed));
+   }
+   let mut vars = pin
+      .iter()
+      .filter(|pair| !matches!(pair.0.as_str(), "version" | "date" | "rev" | "tag" | "sys"))
+      .map(|(key, item)| (key_text(key), toml_text(item)))
+      .collect::<Vec<_>>();
+   vars.sort();
+   if !vars.is_empty() {
+      text.push_str("\n[vars]\n");
+      text.push_str(&aligned(&vars));
+   }
+   write(&package.file, text)
+}
+
+/// act.lock with every source's hash and the pin set to `pin` plus `sys`.
+/// `known`: key -> hash already at hand (an upstream-published sha256), not
+/// prefetched again.
 fn with_hashes(
    package: &Package,
-   doc: &mut DocumentMut,
    pin: &Map<String, Value>,
    known: &Map<String, Value>,
 ) -> io::Result<()> {
    let mut sys: Vec<String> = Vec::new();
-   for (index, source) in package.source.iter().enumerate() {
+   let mut hashes = BTreeMap::new();
+   for source in &package.source {
       let url = expand(&source.url, pin);
       nix::say(&format!("  {url}"));
       // a frozen source keeps its hash, a known one needs no download
@@ -642,13 +674,7 @@ fn with_hashes(
          },
          None => prefetch(&url, source.unpacks())?,
       };
-      if let Some(entry) = doc
-         .get_mut("source")
-         .and_then(Item::as_array_of_tables_mut)
-         .and_then(|tables| tables.get_mut(index))
-      {
-         entry.insert("hash", value(fetched.hash.as_str()));
-      }
+      hashes.insert(source.key.clone(), fetched.hash);
       for lib in fetched.sys {
          if !sys.contains(&lib) {
             sys.push(lib);
@@ -656,71 +682,29 @@ fn with_hashes(
       }
    }
    sys.sort();
-   // [locks] hackage: no lock file in the tree, sys is the lock step's
+   // [track] locks hackage: no lock file in the tree, sys is the lock step's
    // (set-sys) and kept here
    if package.locks.contains_key("hackage") {
-      sys = pin_sys(doc);
+      sys = pinned_sys(package);
    }
    if !sys.is_empty() {
       nix::say(&format!("  sys: {}", sys.join(" ")));
    }
-   set_pin(doc, pin, &sys);
-   Ok(())
+   write_lock(package, pin, &hashes, &sys)
 }
 
-/// recipe.toml as treefmt (taplo) formats it, so an update commits clean.
-fn save(doc: &DocumentMut, file: &Path) -> io::Result<()> {
-   write(file, doc.to_string())?;
-   drop(Command::new("taplo").args(["format"]).arg(file).output());
-   Ok(())
-}
-
-/// [pin] sys = `sys` for ecosystems whose lock lives outside the source.
+/// act.lock's sys = `sys` for ecosystems whose lock lives outside the source.
 pub fn set_sys(package: &Package, sys: &[String]) -> io::Result<()> {
-   let mut doc = document(&package.file)?;
-   if pin_sys(&doc) == sys {
+   if pinned_sys(package) == sys {
       return Ok(());
    }
    nix::say(&format!("  sys: {}", sys.join(" ")));
-   let pin = doc
-      .get("pin")
-      .and_then(Item::as_table)
-      .map(|table| {
-         table
-            .iter()
-            .filter(|pair| pair.0 != "sys")
-            .map(|pair| (pair.0.to_owned(), json_item(pair.1)))
-            .collect::<Map<String, Value>>()
-      })
-      .unwrap_or_default();
-   set_pin(&mut doc, &pin, sys);
-   save(&doc, &package.file)
-}
-
-fn json_item(item: &Item) -> Value {
-   if let Some(text) = item.as_str() {
-      return Value::String(text.to_owned());
-   }
-   if let Some(number) = item.as_integer() {
-      return json!(number);
-   }
-   if let Some(flag) = item.as_bool() {
-      return Value::Bool(flag);
-   }
-   if let Some(listed) = item.as_array() {
-      return Value::Array(
-         listed
-            .iter()
-            .map(|element| {
-               element.as_str().map_or_else(
-                  || Value::String(element.to_string()),
-                  |text| Value::String(text.to_owned()),
-               )
-            })
-            .collect(),
-      );
-   }
-   Value::String(item.to_string())
+   let hashes = package
+      .source
+      .iter()
+      .filter_map(|source| Some((source.key.clone(), source.hash.clone()?)))
+      .collect();
+   write_lock(package, &package.pin, &hashes, sys)
 }
 
 /// Re-prefetch every source at the current pin (after editing a url, or for
@@ -728,17 +712,14 @@ fn json_item(item: &Item) -> Value {
 pub fn rehash(package: &Package) -> io::Result<()> {
    if package.version().is_none() {
       return Err(io::Error::other(format!(
-         "{}: no [pin] version to rehash at",
+         "{}: no version to rehash at",
          package.file.display()
       )));
    }
-   let mut doc = document(&package.file)?;
-   let pin = package.pin.clone();
-   with_hashes(package, &mut doc, &pin, &Map::new())?;
-   save(&doc, &package.file)
+   with_hashes(package, &package.pin, &Map::new())
 }
 
-/// Write hashes + [pin] for the decided update into recipe.toml, then the
+/// Write hashes and the pin for the decided update into act.lock, then the
 /// `files` hook's outputs.
 pub fn apply(entry: &Entry) -> io::Result<()> {
    let (Some(candidate), Some(pin)) = (entry.candidate.as_ref(), entry.pin.as_ref()) else {
@@ -757,9 +738,7 @@ pub fn apply(entry: &Entry) -> io::Result<()> {
          }
       }
    }
-   let mut doc = document(&entry.package.file)?;
-   with_hashes(&entry.package, &mut doc, pin, &known)?;
-   save(&doc, &entry.package.file)?;
+   with_hashes(&entry.package, pin, &known)?;
    if let Some(ref hook) = entry.package.hook
       && entry.package.has_hook("files")
    {

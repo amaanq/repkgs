@@ -1,0 +1,13 @@
+fetch = { url = "https://download.gnome.org/sources/libxml2/{major}.{minor}/libxml2-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "zlib", "xz" ]
+
+[track]
+from = "generic:libxml2"
+
+[track.watch]
+url   = "https://download.gnome.org/sources/libxml2/cache.json"
+regex = 'libxml2-([0-9]+\.[0-9]+\.[0-9]+)\.tar'
+
+[autotools]
+flags = [ "--sysconfdir=/etc" ]

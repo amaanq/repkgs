@@ -1,0 +1,32 @@
+fetch = { from = "llvm" }
+with  = [ "cmake" ]
+deps  = [ "llvm", "zlib", "zstd" ]
+tools = [ "cpython" ]
+
+[test]
+bin = [ "mlir-tblgen" ]
+run = false
+
+[steps]
+skip = [ "cmake.test" ]
+
+[only]
+cross = false
+
+[cmake]
+root = "mlir"
+
+[cmake.defs]
+BUILD_SHARED_LIBS              = false
+LLVM_INCLUDE_TESTS             = false
+LLVM_LINK_LLVM_DYLIB           = true
+LLVM_PARALLEL_LINK_JOBS        = 4
+MLIR_ENABLE_BINDINGS_PYTHON    = false
+MLIR_INCLUDE_DOCS              = false
+MLIR_INCLUDE_INTEGRATION_TESTS = false
+MLIR_INCLUDE_TESTS             = false
+MLIR_INSTALL_AGGREGATE_OBJECTS = false
+MLIR_LINK_MLIR_DYLIB           = false
+
+[install]
+"bin/" = "bin/mlir-tblgen"

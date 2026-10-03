@@ -1,0 +1,7 @@
+tag   = "v{version}"
+track = "github:svg/svgo"
+fetch = { archive = true }
+with  = [ "pnpm" ]
+
+[steps.replace]
+"pnpm.test" = "svgo.test"

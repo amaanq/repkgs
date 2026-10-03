@@ -1,0 +1,10 @@
+tag   = "v{version}"
+track = "github:PyO3/maturin"
+fetch = { archive = true }
+with  = [ "cargo" ]
+
+[steps]
+skip = [ "cargo.test" ]
+
+[cargo]
+noDefaultFeatures = true

@@ -1,0 +1,7 @@
+track = "gnu:readline"
+fetch = { url = "https://ftpmirror.gnu.org/readline/readline-{version}.tar.gz" }
+with  = [ "autotools" ]
+deps  = [ "ncurses" ]
+
+[autotools]
+flags = [ "--with-curses", "--with-shared-termcap-library" ]

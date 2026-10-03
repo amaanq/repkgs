@@ -1,0 +1,16 @@
+track = "github:Mic92/repkgs"
+
+[fetch.x86_64-linux]
+url    = "https://github.com/Mic92/repkgs/releases/download/seed-{version}/seed-{version}-x86_64-linux.nar.xz"
+unpack = true
+name   = "seed"
+
+[fetch.aarch64-linux]
+url    = "https://github.com/Mic92/repkgs/releases/download/seed-{version}/seed-{version}-aarch64-linux.nar.xz"
+unpack = true
+name   = "seed"
+
+[fetch.riscv64-linux]
+url    = "https://github.com/Mic92/repkgs/releases/download/seed-{version}/seed-{version}-riscv64-linux.nar.xz"
+unpack = true
+name   = "seed"

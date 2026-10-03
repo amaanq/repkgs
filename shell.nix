@@ -23,7 +23,7 @@ pkgs.mkShell {
     (import ./nix/spieler.nix { inherit pkgs; })
     # bsdtar, so spieler's prefetch unpacks the way nix/sources.nix does
     pkgs.libarchive
-    # spieler formats recipe.toml the way nuff does
+    # spieler formats act.lock the way nuff does
     pkgs.taplo
   ]
   ++ pkgs.lib.optionals wild [

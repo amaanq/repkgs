@@ -1,6 +1,6 @@
-# The sources half of a recipe.toml (docs/spieler.md), with URL placeholders filled the way
-# spieler fills them. `unpacker` is a store path holding bin/bsdtar and `mummer` the mummer that fetches
-# and unpacks with it. Only the peanut's own recipe.toml, a .nar, is read without them.
+# A package's sources (docs/act.md), with URL placeholders filled the way spieler fills them.
+# `unpacker` is a store path holding bin/bsdtar and `mummer` the mummer that fetches and unpacks
+# with it. Only the peanut's own sources, a .nar, are read without them.
 {
   unpacker,
   mummer ? null,
@@ -14,14 +14,10 @@ let
     concatMap
     elemAt
     filter
-    fromTOML
     groupBy
     head
-    length
-    listToAttrs
     mapAttrs
     match
-    readFile
     replaceStrings
     stringLength
     substring
@@ -95,16 +91,16 @@ let
       ];
     };
 
-  # `pin` overrides [pin] keys and `hashes` source hashes by key, for overrides (nix/package)
+  # `pin` overrides act.lock values and `hashes` source hashes by name, for overrides (nix/package)
   read =
-    pin: hashes: file:
+    pin: hashes: dir:
     let
-      table = fromTOML (readFile file);
-      pinned = (table.pin or { }) // pin;
+      act = import ./act.nix dir;
+      pinned = act.pinned // pin;
       version = pinned.version or "";
-      tag = pinned.tag or version;
+      tag = act.tagOf pinned;
 
-      # {version} and {tag} cover nearly every url, the other placeholders are every [pin] key and
+      # {version} and {tag} cover nearly every url, the other placeholders are every act.lock value and
       # three spellings of the version
       everyPlaceholder =
         let
@@ -129,17 +125,7 @@ let
             attrValues everyPlaceholder
           )) quick;
 
-      listed = table.source or [ ];
-      declared =
-        if length listed == 1 && (head listed).key == "default" then
-          { default = head listed; }
-        else
-          listToAttrs (
-            map (source: {
-              name = source.key;
-              value = source;
-            }) listed
-          );
+      declared = act.sources;
       sources =
         if hashes == { } then
           declared
@@ -152,7 +138,7 @@ let
       fetch =
         key:
         let
-          source = sources.${key} or (throw "${toString file}: no source '${key}'");
+          source = sources.${key} or (throw "${toString dir}: no source '${key}'");
           url = fill source.url;
           nar = match ".*\\.nar(\\.[a-z0-9]+)?" url != null;
         in
@@ -172,7 +158,7 @@ let
       sys = pinned.sys or [ ];
       has = key: sources ? ${key};
       default = fetch "default";
-      repin = pin: hashes: read pin hashes file;
+      repin = pin: hashes: read pin hashes dir;
     };
 in
 read { } { }

@@ -1,0 +1,11 @@
+tag   = "v{version}"
+track = "github:Mic92/formatelf"
+fetch = { archive = true }
+with  = [ "cargo" ]
+
+[test]
+bin = [ "formatelf", "auto-formatelf" ]
+
+[links]
+"bin/auto-formatelf" = "formatelf"
+"bin/patchelf"       = "formatelf"

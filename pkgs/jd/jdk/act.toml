@@ -1,0 +1,20 @@
+fetch   = { url = "https://github.com/openjdk/jdk25u/archive/refs/tags/jdk-{version}-ga.tar.gz" }
+deps    = [ "zlib", "libpng", "freetype", "alsa-lib", "libffi", "cups-headers", "fontconfig-headers" ]
+tools   = [ "jdk-bootstrap", "autoconf", "bash", "zip", "unzip" ]
+exports = false
+
+[track]
+from = "github:openjdk/jdk25u"
+
+[track.watch] # -ga tags only. The API lists 600 build tags newest-build-first
+url   = "https://github.com/openjdk/jdk25u/tags"
+regex = "jdk-(25[0-9.]*)-ga"
+
+[test]
+bin = [ "java", "javac", "jar" ]
+
+[steps]
+phases = [ "jdk.configure", "jdk.build", "jdk.install" ]
+
+[only]
+cpu = [ "x86_64", "aarch64", "riscv64", "powerpc64le" ]

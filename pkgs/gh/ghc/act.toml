@@ -1,0 +1,29 @@
+fetch   = { url = "https://downloads.haskell.org/~ghc/{version}/ghc-{version}-src.tar.xz" }
+with    = [ "cabal" ]
+deps    = [ "gmp", "ncurses", "libffi" ]
+tools   = [ "cpython", "autoconf" ]
+exports = false
+
+[track]
+from = 'generic:ghc?url=https://downloads.haskell.org/~ghc/&regex=href="(\d+\.\d+\.\d{1,2})/"'
+
+[track.locks]
+hackage = "hadrian"
+
+[test]
+bin     = [ "ghc", "ghc-pkg", "runghc", "hsc2hs", "haddock" ]
+version = "--numeric-version"
+
+[steps]
+skip = [ "cabal.test" ]
+
+[steps.replace]
+"cabal.install" = [ "ghc.configure", "ghc.build", "ghc.install" ]
+
+[only]
+cross = false
+
+[cabal]
+exes  = [ "hadrian" ]
+flags = [ "--index-state=HEAD", "--flags=-selftest" ]
+root  = "hadrian"

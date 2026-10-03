@@ -1,0 +1,10 @@
+version = "1"
+
+[steps]
+phases = [ "libgcc-shim.build" ]
+
+[only]
+os = [ "linux" ]
+
+[exports]
+libs = [  ]

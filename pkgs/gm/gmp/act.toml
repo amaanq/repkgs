@@ -1,0 +1,7 @@
+track = "gnu:gmp"
+fetch = { url = "https://ftpmirror.gnu.org/gmp/gmp-{version}.tar.xz" }
+with  = [ "autotools" ]
+tools = [ "m4" ]
+
+[autotools]
+flags = [ "--enable-cxx", "--with-pic" ]

@@ -1,0 +1,10 @@
+tag   = "v{version}"
+track = "gitlab:libtiff/libtiff"
+fetch = { url = "https://download.osgeo.org/libtiff/tiff-{version}.tar.xz" }
+with  = [ "cmake" ]
+deps  = [ "zlib", "xz", "zstd", "libjpeg-turbo", "libwebp" ]
+
+[cmake.defs]
+jbig      = false
+lerc      = false
+tiff-docs = false

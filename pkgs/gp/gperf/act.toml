@@ -1,0 +1,4 @@
+track          = "gnu:gperf"
+fetch          = { url = "https://ftp.gnu.org/gnu/gperf/gperf-{version}.tar.gz" }
+with           = [ "autotools" ]
+bootstrapTools = true

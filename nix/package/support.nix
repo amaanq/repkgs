@@ -1,5 +1,5 @@
 # `supported` without forcing the derivation (docs/design.md): platforms.{cpu,os,abi,libc,posix,cross},
-# a per-cpu tarball in recipe.toml, and the dependencies' own verdicts. The reason, or null
+# a per-cpu tarball in act.toml, and the dependencies' own verdicts. The reason, or null
 {
   platform,
   buildSystems,
@@ -34,7 +34,7 @@ else if (wanted.cross or true) == false && platform.cross then
 else if systemReasons != [ ] then
   "${name}: ${head systemReasons}"
 else if sourceKey != null && !(sources.has sourceKey) then
-  "${name}: recipe.toml has no '${sourceKey}' source"
+  "${name}: act.toml has no '${sourceKey}' source"
 else if unsupportedDependencies != [ ] then
   "${name} -> ${(head unsupportedDependencies).unsupportedReason}"
 else

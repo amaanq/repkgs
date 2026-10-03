@@ -1,0 +1,10 @@
+tag   = "v{version}"
+track = "github:protocolbuffers/protobuf"
+fetch = { asset = "protobuf-{version}.tar.gz" }
+with  = [ "cmake" ]
+deps  = [ "googletest", "abseil-cpp", "zlib" ]
+
+[cmake.defs]
+protobuf_ABSL_PROVIDER      = "package"
+protobuf_BUILD_SHARED_LIBS  = true
+protobuf_USE_EXTERNAL_GTEST = true

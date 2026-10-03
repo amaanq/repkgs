@@ -1,4 +1,4 @@
-# One platform's package set, from pkgs/<xx>/<name>/recipe.toml:
+# One platform's package set, from pkgs/<xx>/<name>/act.toml:
 #   nix-build -A zlib                                  for this machine
 #   nix-build -A zlib --argstr platform riscv64-linux  for another, tools still built here
 {
@@ -9,7 +9,7 @@
   buildTools ? { },
   # a tree or a list of trees, { zlib.autotools.flags.append = [ … ]; } (nix/overrides.nix)
   overrides ? { },
-  # name -> directory with a recipe.toml or package.nix, replacing an in-tree name it shares
+  # name -> directory with an act.toml or package.nix, replacing an in-tree name it shares
   packages ? { },
   # feature values for every package declaring the name (nix/features.nix)
   features ? { },

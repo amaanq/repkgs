@@ -1,0 +1,8 @@
+tag   = "v{version}"
+track = "github:fribidi/fribidi"
+fetch = { asset = "fribidi-{version}.tar.xz" }
+with  = [ "meson" ]
+tools = [ "cpython" ]
+
+[meson.defs]
+docs = false

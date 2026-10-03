@@ -1,0 +1,15 @@
+fetch = { url = "https://hackage.haskell.org/package/cabal-install-{version}/cabal-install-{version}.tar.gz" }
+with  = [ "cabal" ]
+
+[track]
+from = "hackage:cabal-install"
+
+[track.locks]
+hackage = "."
+
+[test]
+run     = false
+version = "--numeric-version"
+
+[cabal]
+exes = [ "cabal" ]

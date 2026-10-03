@@ -1,0 +1,11 @@
+tag   = "v{version}"
+track = "github:Shopify/ruby-lsp"
+fetch = { archive = true }
+with  = [ "bundler" ]
+deps  = [ "ruby" ]
+
+[test]
+bin = [ "ruby-lsp", "ruby-lsp-check" ]
+
+[only]
+cpu = [ "x86_64" ]

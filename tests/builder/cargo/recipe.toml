@@ -1,6 +1,0 @@
-[build]
-systems = [ "cargo" ]
-version = "0.1.0"
-
-[build.check]
-version = "test-cargo"

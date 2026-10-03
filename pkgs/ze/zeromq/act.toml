@@ -1,0 +1,21 @@
+tag = "v{version}"
+track = "github:zeromq/libzmq"
+fetch = { asset = "zeromq-{version}.tar.gz" }
+with = [ "cmake" ]
+deps = [ "libsodium" ]
+patches = [
+  "upstream-nothrow-include-new.patch",
+  "upstream-afunix-on-windows.patch",
+  "algorithm-include.patch",
+]
+
+[test]
+parallel = false
+
+[cmake]
+skipTests = [ "test_mock_pub_sub" ]
+
+[cmake.defs]
+CMAKE_POLICY_VERSION_MINIMUM = "3.5"
+ENABLE_CURVE                 = true
+WITH_LIBSODIUM               = true

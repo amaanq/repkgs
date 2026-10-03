@@ -1,0 +1,5 @@
+with    = [ "cmake" ]
+version = "1.2"
+
+[test]
+version = "hello"

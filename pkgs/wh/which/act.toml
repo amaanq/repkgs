@@ -1,0 +1,9 @@
+track = "gnu:which"
+fetch = { url = "https://ftpmirror.gnu.org/which/which-{version}.tar.gz" }
+with  = [ "autotools" ]
+
+[only]
+os = [ "linux", "macos" ]
+
+[autotools]
+flags = [ "CFLAGS=-std=gnu17" ]

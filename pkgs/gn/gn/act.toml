@@ -1,0 +1,16 @@
+# act.lock's position is git rev-list --count initial-commit..<rev>, what --version prints
+track = "generic:generate-ninja?url=https://deb.debian.org/debian/pool/main/g/generate-ninja/&regex=generate-ninja_(0%5C.0~git%5Cd%2B%5C.%5B0-9a-f%5D%2B)%5C.orig%5C.tar%5C.gz"
+fetch = { url = "https://deb.debian.org/debian/pool/main/g/generate-ninja/generate-ninja_{version}.orig.tar.gz" }
+tools = [ "cpython", "ninja" ]
+
+[test]
+version = false
+
+[steps]
+phases = [ "gn.build" ]
+
+[only]
+posix = true
+
+[install]
+"bin/gn" = "../build/gn"

@@ -1,0 +1,11 @@
+track = 'generic:freetype?url=https://download.savannah.gnu.org/releases/freetype/&regex=freetype-(\d[0-9.]*)\.tar\.xz'
+fetch = { url = "https://download.savannah.gnu.org/releases/freetype/freetype-{version}.tar.xz" }
+with  = [ "meson" ]
+deps  = [ "zlib", "libpng", "bzip2" ]
+
+[meson.defs]
+brotli   = "disabled"
+bzip2    = "enabled"
+harfbuzz = "disabled"
+png      = "enabled"
+zlib     = "system"

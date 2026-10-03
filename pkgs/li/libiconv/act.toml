@@ -1,0 +1,6 @@
+track = "gnu:libiconv"
+fetch = { url = "https://ftpmirror.gnu.org/libiconv/libiconv-{version}.tar.gz" }
+with  = [ "autotools" ]
+
+[only]
+os = [ "windows" ]

@@ -1,0 +1,11 @@
+fetch = { url = "https://hackage.haskell.org/package/pandoc-cli-{version}/pandoc-cli-{version}.tar.gz" }
+with  = [ "cabal" ]
+
+[track]
+from = "hackage:pandoc-cli"
+
+[track.locks]
+hackage = "."
+
+[cabal]
+exes = [ "pandoc" ]

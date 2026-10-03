@@ -1,0 +1,8 @@
+tag   = "v{version}"
+track = "github:numactl/numactl"
+fetch = { asset = "numactl-{version}.tar.gz" }
+with  = [ "autotools" ]
+test  = false
+
+[only]
+os = [ "linux" ]

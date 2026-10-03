@@ -1,0 +1,8 @@
+tag   = "v{version}"
+track = "github:nlohmann/json"
+fetch = { asset = "json.tar.xz" }
+with  = [ "cmake" ]
+
+[cmake.defs]
+JSON_BuildTests      = false
+JSON_MultipleHeaders = true

@@ -1,0 +1,15 @@
+tag   = "v{version}"
+track = "github:git/git"
+fetch = { url = "https://www.kernel.org/pub/software/scm/git/git-{version}.tar.xz" }
+with  = [ "autotools", "cargo" ]
+deps  = [ "zlib", "curl", "expat", "pcre2", "openssl" ]
+
+[steps.phases]
+
+[only]
+posix = true
+
+[autotools]
+flags      = [ "--with-curl", "--with-expat", "--with-libpcre2", "--without-tcltk" ]
+outOfTree  = false
+testTarget = [ "-C", "t", "T=t0000-basic.sh" ]

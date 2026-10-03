@@ -1,0 +1,19 @@
+track          = "gnu:findutils"
+fetch          = { url = "https://ftp.gnu.org/gnu/findutils/findutils-{version}.tar.xz" }
+with           = [ "autotools" ]
+bootstrapTools = true
+
+[test]
+bin = [ "find", "xargs" ]
+run = false
+
+[only]
+posix = true
+
+[autotools]
+flags = [
+  "--without-selinux",
+  "--localstatedir=/tmp",
+  "ac_cv_path_SORT=sort",
+  "SORT_SUPPORTS_Z=true",
+]

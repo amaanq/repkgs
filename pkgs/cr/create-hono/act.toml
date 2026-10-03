@@ -1,0 +1,8 @@
+tag   = "v{version}"
+track = "github:honojs/create-hono"
+fetch = { archive = true }
+with  = [ "bun" ]
+
+[test]
+run     = false
+version = true

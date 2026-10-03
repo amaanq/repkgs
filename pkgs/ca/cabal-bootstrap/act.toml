@@ -1,0 +1,20 @@
+tag      = "cabal-install-v{version}"
+deps     = [ "gmp", "zlib" ]
+prebuilt = true
+
+[track]
+from  = "github:haskell/cabal"
+allow = "==3.16.*"
+
+[fetch.x86_64-linux]
+url = "https://downloads.haskell.org/~cabal/cabal-install-{version}/cabal-install-{version}-x86_64-linux-deb12.tar.xz"
+
+[fetch.aarch64-linux]
+url = "https://downloads.haskell.org/~cabal/cabal-install-{version}/cabal-install-{version}-aarch64-linux-deb12.tar.xz"
+
+[test]
+bin     = [ "cabal" ]
+version = "--numeric-version"
+
+[install]
+"bin/cabal" = "cabal"

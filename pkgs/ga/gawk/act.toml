@@ -1,0 +1,14 @@
+track          = "gnu:gawk"
+fetch          = { url = "https://ftp.gnu.org/gnu/gawk/gawk-{version}.tar.xz" }
+with           = [ "autotools" ]
+bootstrapTools = true
+
+[test]
+bin = [ "gawk", "awk" ]
+run = false
+
+[only]
+posix = true
+
+[autotools]
+flags = [ "--disable-mpfr" ]

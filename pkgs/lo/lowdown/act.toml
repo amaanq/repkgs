@@ -1,0 +1,18 @@
+tag   = "VERSION_{version_}"
+track = "github:kristapsdz/lowdown"
+fetch = { archive = true }
+with  = [ "make" ]
+
+[test]
+bin = [ "lowdown", "lowdown-diff" ]
+
+[steps.before]
+"make.build" = [ "lowdown.configure" ]
+
+[only]
+posix = true
+
+[make]
+configureScript = "none"
+installTarget   = [ "install", "install_shared" ]
+testTarget      = [ "regress" ]

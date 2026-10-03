@@ -1,0 +1,10 @@
+version = "25.0.4.1+1"
+
+[hash]
+aarch64-linux = "sha256-dyESeembVdBD65bEp3TswedOR55jpgSmtFbg9OiC/TE="
+riscv64-linux = "sha256-j0YxRbvXEPicQowRpHoPrYiFLkDCj5ac2u0DAF0cVMI="
+x86_64-linux  = "sha256-SUUM2/zU6yzZU5HP26VcaOZOeTVOnpOWH8BdNrK2m00="
+
+[vars]
+file = "25.0.4.1_1"
+path = "jdk-25.0.4.1%2B1"

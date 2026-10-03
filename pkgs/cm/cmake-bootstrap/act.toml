@@ -1,0 +1,14 @@
+tag   = "v{version}"
+track = "github:Kitware/CMake"
+fetch = { asset = "cmake-{version}.tar.gz" }
+with  = [ "make" ]
+
+[test]
+bin = [ "cmake", "ctest", "cpack" ]
+run = false
+
+[steps]
+phases = [ "boot.configure", "make.build", "make.install" ]
+
+[only]
+cross = false

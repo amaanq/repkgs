@@ -1,0 +1,8 @@
+track = "pypi:jinja2"
+fetch = { url = "https://files.pythonhosted.org/packages/source/j/jinja2/jinja2-{version}.tar.gz" }
+with  = [ "python" ]
+deps  = [ "python-markupsafe" ]
+
+[python]
+backend = "flit_core"
+module  = "jinja2"

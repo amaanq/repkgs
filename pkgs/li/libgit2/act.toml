@@ -1,0 +1,13 @@
+tag   = "v{version}"
+track = "github:libgit2/libgit2"
+fetch = { archive = true }
+with  = [ "cmake" ]
+deps  = [ "openssl", "pcre2", "zlib", "libssh2" ]
+tools = [ "pkgconf" ]
+test  = false
+
+[cmake.defs]
+BUILD_CLI     = false
+BUILD_TESTS   = false
+REGEX_BACKEND = "pcre2"
+USE_SSH       = "libssh2"

@@ -1,0 +1,7 @@
+track = "pypi:pyproject-hooks"
+fetch = { url = "https://files.pythonhosted.org/packages/source/p/pyproject_hooks/pyproject_hooks-{version}.tar.gz" }
+with  = [ "python" ]
+
+[python]
+backend = "flit_core"
+module  = "pyproject_hooks"

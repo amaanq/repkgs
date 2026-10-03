@@ -1,0 +1,4 @@
+tag   = "v{version}"
+track = "github:ToruNiina/toml11"
+fetch = { archive = true }
+with  = [ "cmake" ]

@@ -1,0 +1,8 @@
+track = "generic:acl?url=https://download.savannah.nongnu.org/releases/acl/"
+fetch = { url = "https://download.savannah.nongnu.org/releases/acl/acl-{version}.tar.gz" }
+with  = [ "autotools" ]
+deps  = [ "attr" ]
+test  = false
+
+[only]
+os = [ "linux" ]

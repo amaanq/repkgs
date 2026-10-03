@@ -1,21 +1,23 @@
 #!/usr/bin/env nu
-# Publishes peanut as a GitHub release and points recipe.toml at it. Run by hand. Each target is
+# Publishes peanut as a GitHub release and points act.toml and act.lock at it. Run by hand. Each target is
 # built on this machine from default.nix's `nar`, a directory holding <name>.nar.xz and nar-hash,
-# which is the SRI hash of the uncompressed NAR the recipe pins.
+# which is the SRI hash of the uncompressed NAR act.lock pins.
 
+# `key = value` lines aligned the way taplo aligns them, under `header` unless it is empty
 def render [header: string, fields: record] {
    let width = $fields | columns | each { str length } | math max
    let lines = $fields | transpose key value | each {|field|
       $"($field.key | fill --width $width) = ($field.value | to json --raw)"
    }
-   [$header ...$lines] | str join "\n"
+   if $header == "" { $lines | str join "\n" } else { [$header ...$lines] | str join "\n" }
 }
 
 def main [
    --systems: list<string> = [x86_64-linux aarch64-linux riscv64-linux] # the rest keep their entries
    --repo: string = "manic-systems/motley"
 ] {
-   let recipe = $env.FILE_PWD | path join recipe.toml
+   let act    = $env.FILE_PWD | path join act.toml
+   let lock   = $env.FILE_PWD | path join act.lock
    let local  = ^nix config show system | str trim
 
    let built = $systems | each {|system|
@@ -53,24 +55,24 @@ def main [
    }
    ^gh release upload $tag ...($built | get archive) --repo $repo --clobber
 
-   # the recipe only changes once the assets it names exist
-   let url = $"https://github.com/($repo)/releases/download/peanut-{version}/peanut-{version}"
+   # act.toml and act.lock only change once the assets they name exist
    let fresh = $built | each {|entry|
       {
-         key:    $entry.system
-         url:    $"($url)-($entry.system).nar.xz"
-         hash:   $entry.hash
-         unpack: true
-         name:   "peanut"
+         system: $entry.system
+         fetch:  { asset: $"peanut-{version}-($entry.system).nar.xz", unpack: true, name: "peanut" }
       }
    }
-   let kept   = open $recipe | get source | where key not-in $systems
+   let kept = open $act | get fetch | transpose system fetch | where system not-in $systems
    let tables = [
-      (render "[upstream]" { purl: $"pkg:github/($repo)" })
-      ...($fresh ++ $kept | each {|source| render "[[source]]" $source })
-      (render "[pin]" { version: $generation })
+      (render "" { tag: "peanut-{version}", track: $"github:($repo)" })
+      ...($fresh ++ $kept | each {|source| render $"[fetch.($source.system)]" $source.fetch })
    ]
-   $tables | str join "\n\n" | $in + "\n" | save --force $recipe
+   $tables | str join "\n\n" | $in + "\n" | save --force $act
 
-   print --stderr $"($tag): uploaded ($systems | str join ', ') to ($repo) and updated ($recipe)"
+   let hashes = $built
+      | reduce --fold (open --raw $lock | from toml | get hash) {|entry, hash| $hash | upsert $entry.system $entry.hash }
+      | sort
+   [(render "" { version: $generation }) (render "[hash]" $hashes)] | str join "\n\n" | $in + "\n" | save --force $lock
+
+   print --stderr $"($tag): uploaded ($systems | str join ', ') to ($repo) and updated ($act) and ($lock)"
 }

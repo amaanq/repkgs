@@ -1,0 +1,10 @@
+track          = "gnu:sed"
+fetch          = { url = "https://ftp.gnu.org/gnu/sed/sed-{version}.tar.xz" }
+with           = [ "autotools" ]
+bootstrapTools = true
+
+[test]
+separate = true
+
+[autotools]
+flags = [ "--disable-acl", "--without-selinux" ]

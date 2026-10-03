@@ -1,0 +1,41 @@
+with   = [  ]
+deps   = [  ]
+tools  = [  ]
+extras = "python"
+
+[track]
+from  = "github:python/cpython"
+allow = "==3.14.*"
+
+# PCbuild compiles its externals in from source (get_externals.bat's pins). bzip2, mpdecimal and
+# zstd are our packages' sources; liblzma.vcxproj is written against xz 5.2's file list,
+# sqlite3.vcxproj wants the amalgamation, and zlib-ng is not zlib
+[fetch.default]
+url = "https://www.python.org/ftp/python/{version}/Python-{version}.tar.xz"
+
+[fetch.zlib-ng]
+url = "https://github.com/python/cpython-source-deps/archive/refs/tags/zlib-ng-{zlib_ng}.tar.gz"
+
+[fetch.xz]
+url = "https://github.com/python/cpython-source-deps/archive/refs/tags/xz-{xz}.tar.gz"
+
+[fetch.sqlite]
+url = "https://github.com/python/cpython-source-deps/archive/refs/tags/sqlite-{sqlite}.tar.gz"
+
+[test]
+bin = [  ]
+run = false
+
+[steps.after]
+"autotools.install" = [  ]
+"vcxproj.install"   = [  ]
+
+[steps.before]
+"vcxproj.configure" = [  ]
+
+[only]
+libc = [ "glibc", "musl", "apple", "msvc" ]
+
+[links]
+
+[vcxproj]

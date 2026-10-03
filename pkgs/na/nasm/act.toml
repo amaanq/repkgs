@@ -1,0 +1,6 @@
+tag   = "nasm-{version}"
+track = "github:netwide-assembler/nasm"
+fetch = { url = "https://www.nasm.us/pub/nasm/releasebuilds/{version}/nasm-{version}.tar.xz" }
+with  = [ "autotools" ]
+tools = [ "perl" ]
+test  = false

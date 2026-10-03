@@ -1,0 +1,4 @@
+version = "0.26.11"
+date    = "2026-08-20"
+sys     = [ "libyaml" ]
+hash    = "sha256-dZc06dujrnUAlfZrwFOBas9EnBMo1qtrYQwLhWctyHg="

@@ -1,0 +1,11 @@
+tag   = "v{version}"
+track = "github:besser82/libxcrypt"
+fetch = { asset = "libxcrypt-{version}.tar.xz" }
+with  = [ "autotools" ]
+tools = [ "perl" ]
+
+[only]
+os = [ "linux", "macos" ]
+
+[autotools]
+flags = [ "--disable-werror" ]

@@ -1,0 +1,11 @@
+tag   = "v{version}"
+track = "github:copier-org/copier"
+fetch = { archive = true }
+with  = [ "pyapp" ]
+deps  = [ "cpython" ]
+
+[test]
+version = true
+
+[pyapp]
+check = [ "copier" ]

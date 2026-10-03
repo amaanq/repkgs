@@ -1,0 +1,2 @@
+track = "github:landley/toybox"
+fetch = { url = "https://landley.net/toybox/downloads/toybox-{version}.tar.gz" }

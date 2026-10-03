@@ -1,0 +1,23 @@
+fetch = { from = "cmake-bootstrap" }
+with  = [ "cmake" ]
+
+[test]
+bin = [ "cmake", "ctest", "cpack" ]
+run = false
+
+[cmake.defs]
+BUILD_TESTING                       = false
+CMAKE_USE_OPENSSL                   = false
+CMAKE_USE_SYSTEM_LIBRARY_BZIP2      = true
+CMAKE_USE_SYSTEM_LIBRARY_CPPDAP     = true
+CMAKE_USE_SYSTEM_LIBRARY_CURL       = true
+CMAKE_USE_SYSTEM_LIBRARY_EXPAT      = true
+CMAKE_USE_SYSTEM_LIBRARY_FORM       = true
+CMAKE_USE_SYSTEM_LIBRARY_JSONCPP    = true
+CMAKE_USE_SYSTEM_LIBRARY_LIBARCHIVE = true
+CMAKE_USE_SYSTEM_LIBRARY_LIBLZMA    = true
+CMAKE_USE_SYSTEM_LIBRARY_LIBRHASH   = true
+CMAKE_USE_SYSTEM_LIBRARY_LIBUV      = true
+CMAKE_USE_SYSTEM_LIBRARY_NGHTTP2    = true
+CMAKE_USE_SYSTEM_LIBRARY_ZLIB       = true
+CMAKE_USE_SYSTEM_LIBRARY_ZSTD       = true

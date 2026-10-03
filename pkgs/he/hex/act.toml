@@ -1,0 +1,10 @@
+tag   = "v{version}"
+track = "github:hexpm/hex"
+fetch = { archive = true }
+tools = [ "elixir" ]
+
+[test]
+bin = [  ]
+
+[steps]
+phases = [ "hex.archive" ]

@@ -1,0 +1,17 @@
+tag   = "v{version}"
+track = "github:madler/zlib"
+fetch = { asset = "zlib-{version}.tar.gz" }
+with  = [ "cmake" ]
+
+[test]
+parallel = false
+
+[cmake]
+tool      = "cmake-bootstrap"
+skipTests = [ "coverage" ]
+
+[cmake.defs]
+ZLIB_BUILD_EXAMPLES = false
+
+[on.cross.cmake]
+skipTests = [ "add_subdirectory", "find_package" ]

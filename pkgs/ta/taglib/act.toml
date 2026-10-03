@@ -1,0 +1,9 @@
+tag   = "v{version}"
+track = "github:taglib/taglib"
+fetch = { archive = true }
+with  = [ "cmake" ]
+deps  = [ "zlib", "utf8cpp" ]
+test  = false
+
+[cmake.defs]
+WITH_ZLIB = true

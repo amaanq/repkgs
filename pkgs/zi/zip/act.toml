@@ -1,0 +1,16 @@
+fetch = { url = "https://downloads.sourceforge.net/infozip/zip30.tar.gz" }
+
+[track]
+frozen = "Info-ZIP, last release 2009"
+
+[test]
+version = "-v"
+
+[steps]
+phases = [ "zip.build" ]
+
+[only]
+posix = true
+
+[install]
+"bin/zip" = "zip"

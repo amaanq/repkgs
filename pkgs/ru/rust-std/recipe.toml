@@ -1,9 +1,0 @@
-sources-from = "rust"
-
-[build]
-bin     = [  ]
-check   = false
-exports = false
-needs   = [  ]
-phases  = [ "rust.std-configure", "rust.std-build", "rust.std-install" ]
-tools   = [ "rust", "cpython" ]

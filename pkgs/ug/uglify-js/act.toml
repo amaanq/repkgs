@@ -1,0 +1,11 @@
+tag   = "v{version}"
+track = "github:mishoo/UglifyJS"
+fetch = { archive = true }
+with  = [ "npm" ]
+
+[test]
+bin = [ "uglifyjs" ]
+
+# plain JavaScript with nothing to build, and the tests take minutes
+[steps]
+phases = [ "npm.install" ]

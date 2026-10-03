@@ -1,0 +1,6 @@
+version = "1"
+
+[steps]
+phases = [
+  { name = "build", run = "mkdir $\"($c.out)/bin\"\nx cc tz.c -o $\"($c.out)/bin/tz\"\n" },
+]
