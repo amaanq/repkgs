@@ -1,5 +1,5 @@
-version = "0.0~git20260722.27a549cc"
-hash    = "sha256-HLkzKXmhE2QVyFrxO6N7nwPnrNgTt2ONiLS5AAzDD28="
+version = "0.0~git20260916.3c5809c3"
+hash    = "sha256-Aoyj5AdcElRLkHs3bH4bc7sXT4rUgV7YCYVBsaq0MO8="
 
 [vars]
-position = 2484
+position = 2572
