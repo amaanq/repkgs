@@ -1,3 +1,4 @@
+diff -ruN a/misc/Makefile.in b/misc/Makefile.in
 --- a/misc/Makefile.in
 +++ b/misc/Makefile.in
 @@ -181,7 +181,7 @@
@@ -9,13 +10,13 @@
  	$(SHELL) $(srcdir)/gen_edit.sh >$@
  
  $(BINDIR) \
+diff -ruN a/ncurses/tinfo/db_iterator.c b/ncurses/tinfo/db_iterator.c
 --- a/ncurses/tinfo/db_iterator.c
 +++ b/ncurses/tinfo/db_iterator.c
-@@ -44,6 +44,11 @@
+@@ -44,6 +44,10 @@
  #include <hashed_db.h>
  #endif
  
-+/* the compiled-in database is the one installed with this library, wherever that is */
 +#include <reloc.h>
 +#undef TERMINFO
 +#define TERMINFO RELOC("../share/terminfo")

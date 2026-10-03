@@ -1,13 +1,14 @@
+diff -ruN a/term-utils/agetty.c b/term-utils/agetty.c
 --- a/term-utils/agetty.c
 +++ b/term-utils/agetty.c
-@@ -39,6 +39,7 @@
- #include "all-io.h"
- #include "nls.h"
- #include "pathnames.h"
-+#include <reloc.h>
- #include "c.h"
- #include "cctype.h"
- #include "widechar.h"
+@@ -52,6 +52,7 @@
+ #endif
+ 
+ #include "logindefs.h"
++#include "reloc.h"
+ 
+ #ifdef USE_PLYMOUTH_SUPPORT
+ # include "plymouth-ctrl.h"
 @@ -1958,7 +1959,7 @@
  			     NULL,
  			     _PATH_SYSCONFDIR,

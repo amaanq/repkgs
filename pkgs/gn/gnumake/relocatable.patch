@@ -1,13 +1,14 @@
+diff -ruN a/src/main.c b/src/main.c
 --- a/src/main.c
 +++ b/src/main.c
-@@ -15,6 +15,7 @@
- this program.  If not, see <https://www.gnu.org/licenses/>.  */
+@@ -24,6 +24,7 @@
+ #include "rule.h"
+ #include "debug.h"
+ #include "getopt.h"
++#include "reloc.h"
+ #include "shuffle.h"
  
- #include "makeint.h"
-+#include <reloc.h>
- #include "os.h"
- #include "filedef.h"
- #include "dep.h"
+ #include <assert.h>
 @@ -1245,7 +1246,7 @@
    setlocale (LC_ALL, "");
    /* The cast to void shuts up compiler warnings on systems that
@@ -17,6 +18,7 @@
    (void)textdomain (PACKAGE);
  
  #ifdef  POSIX
+diff -ruN a/src/read.c b/src/read.c
 --- a/src/read.c
 +++ b/src/read.c
 @@ -107,9 +107,6 @@
@@ -29,6 +31,7 @@
  #ifndef _AMIGA
      "/usr/gnu/include",
      "/usr/local/include",
+diff -ruN a/src/remake.c b/src/remake.c
 --- a/src/remake.c
 +++ b/src/remake.c
 @@ -1700,7 +1700,6 @@

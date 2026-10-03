@@ -1,3 +1,4 @@
+diff -ruN a/locate/updatedb.sh b/locate/updatedb.sh
 --- a/locate/updatedb.sh
 +++ b/locate/updatedb.sh
 @@ -203,14 +203,14 @@

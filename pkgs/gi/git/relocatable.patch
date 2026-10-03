@@ -1,20 +1,21 @@
+diff -ruN a/exec-cmd.c b/exec-cmd.c
 --- a/exec-cmd.c
 +++ b/exec-cmd.c
-@@ -54,10 +54,12 @@
+@@ -54,10 +54,9 @@
  	    !(prefix = strip_path_suffix(executable_dirname, GIT_EXEC_PATH)) &&
  	    !(prefix = strip_path_suffix(executable_dirname, BINDIR)) &&
  	    !(prefix = strip_path_suffix(executable_dirname, "git"))) {
 -		prefix = FALLBACK_RUNTIME_PREFIX;
-+		prefix = strip_path_suffix(executable_dirname, "bin");
-+		if (!prefix)
-+			prefix = executable_dirname;
- 		trace_printf("RUNTIME_PREFIX requested, "
- 				"but prefix computation failed.  "
+-		trace_printf("RUNTIME_PREFIX requested, "
+-				"but prefix computation failed.  "
 -				"Using static fallback '%s'.\n", prefix);
-+				"Using '%s'.\n", prefix);
++		prefix = executable_dirname;
++		trace_printf("RUNTIME_PREFIX: no known suffix on %s, "
++				"treating it as the prefix\n", prefix);
  	}
  	return prefix;
  }
+diff -ruN a/git-sh-i18n.sh b/git-sh-i18n.sh
 --- a/git-sh-i18n.sh
 +++ b/git-sh-i18n.sh
 @@ -9,7 +9,7 @@

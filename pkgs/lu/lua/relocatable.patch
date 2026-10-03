@@ -1,23 +1,24 @@
+diff -ruN a/src/loadlib.c b/src/loadlib.c
 --- a/src/loadlib.c
 +++ b/src/loadlib.c
-@@ -103,6 +103,17 @@
- */
+@@ -55,7 +55,16 @@
+ #define LIB_FAIL	"open"
  
- #include <dlfcn.h>
-+#include <reloc.h>
+ 
++#if defined(LUA_DL_DLL)
+ #define setprogdir(L)           ((void)0)
++#else
++#include "reloc.h"
 +
-+/*
-+** LUA_EXEC_DIR ('!') in the default paths is the prefix this Lua lives under, as on Windows,
-+** found from the running binary or library.
-+*/
-+#undef setprogdir
 +static void setprogdir (lua_State *L) {
-+  luaL_gsub(L, lua_tostring(L, -1), LUA_EXEC_DIR "/", RELOC("../"));
-+  lua_remove(L, -2);  /* remove original string */
++  luaL_gsub(L, lua_tostring(L, -1), LUA_EXEC_DIR, RELOC("."));
++  lua_remove(L, -2);
 +}
++#endif
+ 
  
  /*
- ** Macro to convert pointer-to-void* to pointer-to-function. This cast
+diff -ruN a/src/luaconf.h b/src/luaconf.h
 --- a/src/luaconf.h
 +++ b/src/luaconf.h
 @@ -223,7 +223,7 @@
@@ -25,7 +26,7 @@
  #else			/* }{ */
  
 -#define LUA_ROOT	"/usr/local/"
-+#define LUA_ROOT	"!/"
++#define LUA_ROOT	LUA_EXEC_DIR "/../"
  #define LUA_LDIR	LUA_ROOT "share/lua/" LUA_VDIR "/"
  #define LUA_CDIR	LUA_ROOT "lib/lua/" LUA_VDIR "/"
  
