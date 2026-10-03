@@ -58,6 +58,10 @@ case $target_cpu in
   x86_64 | aarch64 | loongarch64 | powerpc64le) ac_cv_unaligned_access=yes ;;
 esac
 
+# libtool's file_magic test wants objdump to say pe-x86-64 where llvm-objdump says coff-x86-64, and
+# would otherwise reject import libraries such as libiconv.dll.a and build static only
+lt_cv_deplibs_check_method=pass_all
+
 if [ "$target_os" = windows ]; then
   gl_cv_func_pthread_mutex_timedlock_in_LIBMULTITHREAD=yes
 else
@@ -97,7 +101,6 @@ else
   ac_cv_printf_positional=yes
   ac_cv_snprintf_returns_bogus=no
   krb5_cv_attr_constructor_destructor=yes,yes
-  lt_cv_deplibs_check_method=pass_all
 
   gl_cv_double_slash_root=no
   gl_cv_struct_dirent_d_ino=yes
