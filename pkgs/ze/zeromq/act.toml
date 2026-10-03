@@ -19,3 +19,7 @@ skipTests = [ "test_mock_pub_sub" ]
 CMAKE_POLICY_VERSION_MINIMUM = "3.5"
 ENABLE_CURVE                 = true
 WITH_LIBSODIUM               = true
+
+# the select poller cannot carry IPC, which windows has over AF_UNIX, so use the bundled wepoll
+[on.windows.cmake.defs]
+POLLER = "epoll"

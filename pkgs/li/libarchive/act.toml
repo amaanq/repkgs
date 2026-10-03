@@ -8,6 +8,9 @@ deps  = [ "zlib", "bzip2", "xz", "zstd", "lz4", "expat" ]
 bin = [ "bsdtar", "bsdcpio", "bsdunzip" ]
 run = false
 
+[cmake]
+tool = "cmake-bootstrap"
+
 [cmake.defs]
 ENABLE_ACL     = false
 ENABLE_EXPAT   = true

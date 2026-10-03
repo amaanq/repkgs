@@ -10,3 +10,9 @@ version = "-V"
 
 [steps]
 phases = [ "rust.configure", "rust.build", "rust.install" ]
+
+[on.native]
+tools = [ "rust-bootstrap", "cpython", "cmake", "ninja", "pkgconf" ]
+
+[on.cross]
+tools = [ "llvm22", "rust-bootstrap", "cpython", "cmake", "ninja", "pkgconf" ]

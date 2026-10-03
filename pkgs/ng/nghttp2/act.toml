@@ -3,6 +3,9 @@ track = "github:nghttp2/nghttp2"
 fetch = { url = "https://github.com/nghttp2/nghttp2/releases/download/v{version}/nghttp2-{version}.tar.xz" }
 with  = [ "cmake" ]
 
+[cmake]
+tool = "cmake-bootstrap"
+
 [cmake.defs]
 BUILD_TESTING   = false
 ENABLE_LIB_ONLY = true

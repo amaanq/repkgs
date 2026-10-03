@@ -4,3 +4,15 @@ fetch = { archive = true }
 
 [steps]
 phases = [ "ninja.build" ]
+
+[on.native.install]
+"bin/ninja" = "../build/ninja"
+
+[on.linux.install]
+"bin/ninja" = "../build/ninja"
+
+[on.macos.install]
+"bin/ninja" = "../build/ninja"
+
+[on.windows.install]
+"bin/ninja.exe" = "../build/ninja.exe"

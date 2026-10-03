@@ -2,3 +2,9 @@ tag   = "v{version}"
 track = "github:libffi/libffi"
 fetch = { asset = "libffi-{version}.tar.gz" }
 with  = [ "autotools" ]
+
+[on.macos.autotools]
+flags = [ "--disable-symvers" ]
+
+[on.windows.autotools]
+flags = [ "--disable-symvers" ]

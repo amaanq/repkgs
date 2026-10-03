@@ -9,6 +9,9 @@ test  = false
 [steps.after]
 "cmake.install" = [ "curl.plain-cc" ]
 
+[cmake]
+tool = "cmake-bootstrap"
+
 [cmake.defs]
 BUILD_LIBCURL_DOCS  = false
 BUILD_MISC_DOCS     = false

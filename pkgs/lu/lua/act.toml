@@ -12,3 +12,31 @@ phases = [  ]
 [install]
 
 [make]
+
+[on.linux.make]
+buildTarget = [ "linux" ]
+
+[on.macos.make]
+buildTarget = [ "macosx" ]
+
+[on.mingw.install]
+"bin/" = [ "src/lua54.dll" ]
+
+[on.mingw.make]
+buildTarget = [ "mingw" ]
+
+[on.msvc.install]
+"bin/"          = [ "src/lua.exe", "src/luac.exe", "src/lua54.dll" ]
+"include/"      = [ "src/lua.h", "src/luaconf.h", "src/lualib.h", "src/lauxlib.h", "src/lua.hpp" ]
+"lib/lua54.lib" = "src/lua54.lib"
+
+[on.msvc.steps]
+phases = [ "lua.msvc" ]
+
+[on."!msvc"]
+with = [ "make" ]
+
+[on."!msvc".make]
+flags      = [ "MYCFLAGS=-fPIC", "INSTALL_TOP=$(prefix)" ]
+programs   = [ "lua", "luac" ]
+testTarget = [ "test" ]

@@ -12,3 +12,6 @@ os = [ "linux" ]
 [make]
 flags      = [ "lib=lib", "sbin=bin", "CC=cc", "GOLANG=no", "PAM_CAP=no", "RAISE_SETFCAP=no" ]
 testTarget = [ "-C", "libcap", "cap_test" ]
+
+[on.cross.make]
+flags = [ "BUILD_CC=cc-build" ]

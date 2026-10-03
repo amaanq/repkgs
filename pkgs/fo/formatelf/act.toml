@@ -9,3 +9,9 @@ bin = [ "formatelf", "auto-formatelf" ]
 [links]
 "bin/auto-formatelf" = "formatelf"
 "bin/patchelf"       = "formatelf"
+
+[on.native.cargo]
+tool = "rust-bootstrap"
+
+[on.linux.cargo]
+tool = "rust-bootstrap"

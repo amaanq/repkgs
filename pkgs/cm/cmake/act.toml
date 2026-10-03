@@ -5,6 +5,9 @@ with  = [ "cmake" ]
 bin = [ "cmake", "ctest", "cpack" ]
 run = false
 
+[cmake]
+tool = "cmake-bootstrap"
+
 [cmake.defs]
 BUILD_TESTING                       = false
 CMAKE_USE_OPENSSL                   = false
@@ -21,3 +24,32 @@ CMAKE_USE_SYSTEM_LIBRARY_LIBUV      = true
 CMAKE_USE_SYSTEM_LIBRARY_NGHTTP2    = true
 CMAKE_USE_SYSTEM_LIBRARY_ZLIB       = true
 CMAKE_USE_SYSTEM_LIBRARY_ZSTD       = true
+
+[on.msvc]
+deps = [ "cppdap", "expat", "jsoncpp", "libuv", "nghttp2", "zlib" ]
+
+[on.msvc.cmake.defs]
+CMAKE_USE_SYSTEM_LIBRARY_BZIP2      = false
+CMAKE_USE_SYSTEM_LIBRARY_CURL       = false
+CMAKE_USE_SYSTEM_LIBRARY_FORM       = false
+CMAKE_USE_SYSTEM_LIBRARY_LIBARCHIVE = false
+CMAKE_USE_SYSTEM_LIBRARY_LIBLZMA    = false
+CMAKE_USE_SYSTEM_LIBRARY_LIBRHASH   = false
+CMAKE_USE_SYSTEM_LIBRARY_ZSTD       = false
+
+[on."!msvc"]
+deps = [
+  "bzip2",
+  "cppdap",
+  "curl",
+  "expat",
+  "jsoncpp",
+  "libarchive",
+  "libuv",
+  "ncurses",
+  "nghttp2",
+  "rhash",
+  "xz",
+  "zlib",
+  "zstd",
+]
