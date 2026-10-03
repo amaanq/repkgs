@@ -1,8 +1,6 @@
-# Builder behaviour, one test per directory. Its test.nu runs under the bootstrap's nu with builder/
-# and lib/ on the include path and $env.fixtures naming the directory. A directory with a
-# act.toml or package.nix is first built as the out-of-tree package test-<name>, handed over as
-# $env.pkg and $env.debug, so each test needs only its own toolchain. `nix-build tests/builder -A
-# <name>` runs one and `motley test` all.
+# One check per directory, `nix-build tests/builder -A cmake`. test.nu runs under the bootstrap nu
+# with builder/ and lib/ on its include path and `fixtures` set to its directory. A directory that
+# describes a package is first built as `test-<name>` and handed over as `pkg` and `debug`.
 {
   system ? builtins.currentSystem,
   platform ? system,
@@ -11,25 +9,20 @@
   buildTools ? { },
 }:
 let
-  inherit (builtins)
-    attrNames
-    filter
-    fromJSON
-    listToAttrs
-    mapAttrs
-    pathExists
-    readDir
-    ;
-  here = removeAttrs (readDir ./.) [
-    "lib"
-    "default.nix"
-  ];
-  testDir = name: ./. + "/${name}";
-  built =
+  names = builtins.filter (name: name != "lib" && name != "default.nix") (
+    builtins.attrNames (builtins.readDir ./.)
+  );
+  pathOf = name: ./. + "/${name}";
+  builds =
     name:
-    pathExists (testDir name + "/package.nix")
-    || pathExists (testDir name + "/act.toml") && (import ../../nix/act.nix (testDir name)).isPackage;
-  # named test-<name>, since a bare `go` would replace the go that the go build system runs
+    let
+      dir = pathOf name;
+    in
+    builtins.pathExists (dir + "/package.nix")
+    || builtins.pathExists (dir + "/act.toml") && (import ../../nix/act.nix dir).isPackage;
+  built = builtins.filter builds names;
+
+  # prefixed so `go` does not replace the in-tree go the go build system uses
   set = import ../../nix/set.nix {
     inherit
       system
@@ -38,21 +31,21 @@ let
       rustToolchain
       buildTools
       ;
-    packages = listToAttrs (
+    packages = builtins.listToAttrs (
       map (name: {
         name = "test-${name}";
-        value = testDir name;
-      }) (filter built (attrNames here))
+        value = pathOf name;
+      }) built
     );
   };
-  inherit (set) tools;
-  # nu takes include dirs separated by \x1e
-  includes = "${../../builder}${fromJSON "\"\\u001e\""}${./lib}";
+  inherit (set.tools) nu bigtop;
+  # nushell takes several include directories joined by ASCII record separator
+  separator = builtins.fromJSON ''"\u001e"'';
+
   check =
-    name: _:
+    name:
     let
-      dir = testDir name;
-      pkg = set.pkgs."test-${name}";
+      dir = pathOf name;
     in
     derivation (
       {
@@ -61,21 +54,21 @@ let
         __contentAddressed = true;
         outputHashMode = "recursive";
         outputHashAlgo = "sha256";
-        builder = "${tools.nu}/bin/nu";
+        builder = "${nu}/bin/nu";
         args = [
           "--no-config-file"
-          "--include-path=${includes}"
+          "--include-path=${../../builder}${separator}${./lib}"
           "${dir}/test.nu"
         ];
-        PATH = "${tools.nu}/bin:${tools.bigtop}/bin:${set.bootstrap.peanut}/bin";
+        PATH = "${nu}/bin:${bigtop}/bin:${set.bootstrap.peanut}/bin";
         fixtures = dir;
         SYS_LIBS = ../../builder/sys-libs.json;
       }
       // (
-        if built name then
+        if builtins.elem name built then
           {
-            inherit pkg;
-            inherit (pkg) debug;
+            pkg = set.pkgs."test-${name}";
+            inherit (set.pkgs."test-${name}") debug;
             src = "${dir}/src";
           }
         else
@@ -83,4 +76,9 @@ let
       )
     );
 in
-mapAttrs check here
+builtins.listToAttrs (
+  map (name: {
+    inherit name;
+    value = check name;
+  }) names
+)

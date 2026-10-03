@@ -1,17 +1,15 @@
-# One platform's package set, from pkgs/<xx>/<name>/act.toml:
-#   nix-build -A zlib                                  for this machine
-#   nix-build -A zlib --argstr platform riscv64-linux  for another, tools still built here
+# One platform's packages, `nix-build -A zlib`, or `--argstr platform riscv64-linux` to target
+# another with the tools still built here. `overrides` edits recipes (nix/overrides.nix),
+# `packages` adds or replaces directories by name, and `features` sets values for every package
+# declaring them (nix/features.nix).
 {
   system ? builtins.currentSystem,
   platform ? system,
   peanut ? null,
   rustToolchain ? null,
   buildTools ? { },
-  # a tree or a list of trees, { zlib.autotools.flags.append = [ … ]; } (nix/overrides.nix)
   overrides ? { },
-  # name -> directory with an act.toml or package.nix, replacing an in-tree name it shares
   packages ? { },
-  # feature values for every package declaring the name (nix/features.nix)
   features ? { },
 }:
 (import ./nix/set.nix {
