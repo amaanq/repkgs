@@ -26,6 +26,7 @@ use shim::{
 
 use crate::{
    exports::{
+      closure,
       exports_of,
       record_dll_dirs,
    },
@@ -108,7 +109,14 @@ pub fn run(output: &Path, launch: &Path, sysroot: &Path, deps: &[String]) -> io:
       .into_iter()
       .filter(|path| path.is_file())
       .collect();
-   let needed = dll_directories(&pes, sysroot, deps)?;
+   // a DLL can arrive transitively (libssh2 through libgit2's pkg-config
+   // Requires), and unlike ELF there is no RUNPATH to find it, so every
+   // package in the closure is a provider
+   let roots = closure(deps)?
+      .into_iter()
+      .map(|entry| entry.root)
+      .collect::<Vec<_>>();
+   let needed = dll_directories(&pes, sysroot, &roots)?;
    let (mut environment, _) = runtime_env(deps, &out, &nix_store)?;
    let inject = !environment.is_empty();
    let prepended = match environment.remove("PATH") {
