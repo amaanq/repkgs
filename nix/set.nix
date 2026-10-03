@@ -36,7 +36,7 @@ let
 
   cross = platform != system;
   target = (import ./platforms.nix).byName.${platform} or (throw "no platform ${platform}");
-  stage = bootstrap.toolchain.${platform} (
+  stage = bootstrap.toolchain.${target.name} (
     on (target.libc == "msvc") {
       sdk = fetch.windowsSdk {
         manifest = (readSources ../pkgs/wi/windows-sdk/recipe.toml).fetch "default";
