@@ -10,4 +10,5 @@
     ];
   }
   (when (platform.os == "linux") { make.configureFlags = [ "enable-ktls" ]; })
+  (when (platform.abi == "msvc") { tools = [ "nasm" ]; })
 ]
