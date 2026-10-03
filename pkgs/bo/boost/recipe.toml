@@ -14,7 +14,7 @@ tag     = "boost-1.92.0"
 [build]
 check   = false
 needs   = [ "zlib", "bzip2", "zstd", "openssl" ]
-patches = [ "upstream-redis-cmath.patch" ]
+patches = [ "upstream-redis-cmath.patch", "upstream-cobalt-win32-libs.patch" ]
 systems = [ "cmake" ]
 
 [build.cc]
