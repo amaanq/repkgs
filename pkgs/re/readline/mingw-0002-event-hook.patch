@@ -1,8 +1,9 @@
-Console input without select(): poll the event hook (msys2 MINGW-packages).
+MSYS2 MINGW-packages mingw-w64-readline/0002-event-hook.patch, with its hunks refreshed for
+readline 8.3.
 
-diff -ur a/input.c b/input.c
---- a/input.c	2026-09-15 22:33:09.933853250 +0000
-+++ b/input.c	2026-09-15 22:33:09.968852801 +0000
+diff -ruN a/input.c b/input.c
+--- a/input.c
++++ b/input.c
 @@ -179,6 +179,14 @@
  static unsigned char ibuffer[512];
  static int ibuffer_len = sizeof (ibuffer) - 1;

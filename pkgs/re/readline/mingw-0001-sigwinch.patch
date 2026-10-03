@@ -1,8 +1,9 @@
-SIGWINCH does not exist on Windows (msys2 MINGW-packages).
+MSYS2 MINGW-packages mingw-w64-readline/0001-sigwinch.patch, with its hunks refreshed for
+readline 8.3.
 
-diff -ur a/readline.c b/readline.c
---- a/readline.c	2026-09-15 22:33:08.281874395 +0000
-+++ b/readline.c	2026-09-15 22:33:08.319873909 +0000
+diff -ruN a/readline.c b/readline.c
+--- a/readline.c
++++ b/readline.c
 @@ -1215,7 +1215,12 @@
        RL_SETSTATE(RL_STATE_INITIALIZED);
      }
@@ -17,9 +18,9 @@ diff -ur a/readline.c b/readline.c
  
    /* Initialize the current line information. */
    _rl_init_line_state ();
-diff -ur a/signals.c b/signals.c
---- a/signals.c	2026-09-15 22:33:08.282874383 +0000
-+++ b/signals.c	2026-09-15 22:33:08.320873897 +0000
+diff -ruN a/signals.c b/signals.c
+--- a/signals.c
++++ b/signals.c
 @@ -46,6 +46,11 @@
  
  #include "rlprivate.h"

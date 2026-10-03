@@ -1,8 +1,9 @@
-No struct winsize / TIOCGWINSZ on Windows (msys2 MINGW-packages).
+MSYS2 MINGW-packages mingw-w64-readline/0003-no-winsize.patch, with its hunks refreshed for
+readline 8.3.
 
-diff -ur a/rlwinsize.h b/rlwinsize.h
---- a/rlwinsize.h	2026-09-15 22:33:11.516832985 +0000
-+++ b/rlwinsize.h	2026-09-15 22:33:11.549832563 +0000
+diff -ruN a/rlwinsize.h b/rlwinsize.h
+--- a/rlwinsize.h
++++ b/rlwinsize.h
 @@ -55,6 +55,11 @@
  #  define tcflow(fd, action)	ioctl(fd, TCXONC, action)
  #endif

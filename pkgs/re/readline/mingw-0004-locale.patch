@@ -1,8 +1,9 @@
-setlocale based charset detection on Windows (msys2 MINGW-packages).
+MSYS2 MINGW-packages mingw-w64-readline/0004-locale.patch, with its hunks refreshed for
+readline 8.3.
 
-diff -ur a/nls.c b/nls.c
---- a/nls.c	2026-09-15 22:33:13.123812412 +0000
-+++ b/nls.c	2026-09-15 22:33:13.164811887 +0000
+diff -ruN a/nls.c b/nls.c
+--- a/nls.c
++++ b/nls.c
 @@ -49,6 +49,11 @@
  
  #include <ctype.h>
