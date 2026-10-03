@@ -1,8 +1,5 @@
-# The interpreter's `.env` and `.project`, attached by `extras = "python"` in its act.toml.
-# Both build pyapp packages over fetch.pythonDeps (tests/builder/pyproject):
-#   .env { src or lock, … }   every locked dependency and bin/python3
-#   .project { src, … }       { package, devEnv }, where devEnv's python also imports the checkout
-#                             $MOTLEY_PROJECT names
+# An interpreter's `.env` and `.project`, attached by `extras = "python"`. Both are pyapp packages
+# over fetch.pythonDeps, and the dev env's python also imports the project at $MOTLEY_PROJECT.
 {
   package,
   fetch,
@@ -11,129 +8,122 @@
   python,
 }:
 let
-  inherit (builtins)
-    attrNames
-    baseNameOf
-    concatMap
-    dirOf
-    elem
-    elemAt
-    filter
-    fromJSON
-    fromTOML
-    head
-    mapAttrs
-    match
-    pathExists
-    readFile
-    replaceStrings
-    toJSON
-    ;
-  # libraries, tools and settings PyPI packages need, by name (builder/sys-libs.nu)
-  hints = (fromJSON (readFile ../builder/sys-libs.json)).python;
-
-  copy =
-    path: name: filter:
-    builtins.path { inherit path name filter; };
-  everything = _: _: true;
-  checkout =
-    path: _:
-    !elem (baseNameOf path) [
-      ".git"
-      ".venv"
-      "result"
-      "__pycache__"
-      ".direnv"
-    ];
-
-  titleOf =
-    src: name:
-    let
-      pyproject = src + "/pyproject.toml";
-    in
-    if name != null then
-      name
-    else if pathExists pyproject then
-      replaceStrings [ "_" "." ] [ "-" "-" ] (fromTOML (readFile pyproject)).project.name
-    else
-      baseNameOf src;
-
-  # uv.lock gives a git dependency as url?query#commit with no content hash
-  pinnedGit =
-    entry:
-    let
-      parts = match "([^?#]+)(\\?[^#]*)?#(.*)" entry.source.git;
-    in
-    {
-      inherit (entry) name;
-      path = builtins.fetchGit {
-        url = head parts;
-        rev = elemAt parts 2;
-        allRefs = true;
-      };
-    };
+  hints = (builtins.fromJSON (builtins.readFile ../builder/sys-libs.json)).python;
+  ignored = [
+    ".git"
+    ".venv"
+    "result"
+    "__pycache__"
+    ".direnv"
+  ];
 
   build =
     mode:
     {
       src,
-      # a uv.lock outside src, which then only names the package
       lock ? null,
       name ? null,
       extras ? [ ],
-      # PEP 735 groups, for env and dev
       groups ? [ ],
-      # "wheel" or "sdist", wherever the lock offers both
       prefer ? "wheel",
-      # by PyPI name, { prefer, sys, tools, patches, env, run, configSettings } where run is nu
-      # run in the unpacked source
       overrides ? { },
       sys ? [ ],
       tools ? [ ],
-      # modules the result must import
       check ? [ ],
       env ? { },
-      # PEP 508 marker values to assume, { platform_release = "6.6"; }
       environ ? { },
     }:
     let
-      title = titleOf src name;
-      tree = copy src "${title}-src" checkout;
-      entries = (fromTOML (readFile (if lock == null then src + "/uv.lock" else lock))).package or [ ];
-      tuned = attrNames overrides;
-      hinted = filter (entry: hints ? ${entry}) (map (entry: entry.name) entries);
-      byOverride = field: concatMap (entry: overrides.${entry}.${field} or [ ]) tuned;
-      byHint = field: concatMap (entry: hints.${entry}.${field} or [ ]) hinted;
-      libraries = filter (library: pkgs ? ${library}) (
-        map (entry: hints.${entry}.pkg) (filter (entry: hints.${entry} ? pkg) hinted)
-      );
+      project = src + "/pyproject.toml";
+      label =
+        if name != null then
+          name
+        else if builtins.pathExists project then
+          builtins.replaceStrings [ "_" "." ] [ "-" "-" ]
+            (builtins.fromTOML (builtins.readFile project)).project.name
+        else
+          baseNameOf src;
+      source = builtins.path {
+        name = "${label}-src";
+        path = src;
+        filter = path: _: !builtins.elem (baseNameOf path) ignored;
+      };
+
+      locked =
+        (builtins.fromTOML (builtins.readFile (if lock != null then lock else src + "/uv.lock"))).package
+          or [ ];
+      hinted = builtins.filter (hint: hints ? ${hint}) (map (entry: entry.name) locked);
+      named = builtins.attrNames overrides;
+      fromOverrides = field: builtins.concatMap (name: overrides.${name}.${field} or [ ]) named;
+
+      # uv.lock pins git dependencies by commit alone, url[?query]#rev
+      git = map (
+        entry:
+        let
+          parts = builtins.match "([^?#]+)(\\?[^#]*)?#(.*)" entry.source.git;
+        in
+        {
+          inherit (entry) name;
+          path = builtins.fetchGit {
+            url = builtins.head parts;
+            rev = builtins.elemAt parts 2;
+            allRefs = true;
+          };
+        }
+      ) (builtins.filter (entry: entry ? source.git) locked);
     in
     package {
-      name = if mode == "project" then title else "${title}-${mode}";
-      source = tree;
-      inherit env;
+      name =
+        {
+          project = label;
+          env = "${label}-env";
+          dev = "${label}-dev";
+        }
+        .${mode};
+      inherit source env;
       version = "0";
       uses = [ "pyapp" ];
       pyapp = {
         inherit mode check;
         deps = fetch.pythonDeps {
-          inherit python extras prefer;
-          source = if lock == null then tree else copy (dirOf lock) "${title}-lock" everything;
+          inherit
+            python
+            extras
+            prefer
+            git
+            ;
+          source =
+            if lock == null then
+              source
+            else
+              builtins.path {
+                name = "${label}-lock";
+                path = dirOf lock;
+                filter = _: _: true;
+              };
           groups = if mode == "project" then [ ] else groups;
-          sdist = filter (entry: overrides.${entry}.prefer or prefer == "sdist") tuned;
-          git = map pinnedGit (filter (entry: entry ? source.git) entries);
-          environ = toJSON environ;
+          sdist = builtins.filter (name: overrides.${name}.prefer or prefer == "sdist") named;
+          environ = builtins.toJSON environ;
         };
-        overrides = mapAttrs (_: override: {
-          env = override.env or { };
-          patches = map toString (override.patches or [ ]);
-          run = override.run or "";
-          configSettings = override.configSettings or { };
+        overrides = builtins.mapAttrs (_: over: {
+          env = over.env or { };
+          patches = map toString (over.patches or [ ]);
+          run = over.run or "";
+          configSettings = over.configSettings or { };
         }) overrides;
       };
-      sys = sys ++ libraries ++ byOverride "sys";
+      sys =
+        sys
+        ++ builtins.filter (lib: pkgs ? ${lib}) (
+          builtins.concatMap (hint: if hints.${hint} ? pkg then [ hints.${hint}.pkg ] else [ ]) hinted
+        )
+        ++ fromOverrides "sys";
       buildDependencies = map (tool: buildPkgs.${tool}) (
-        tools ++ filter (tool: buildPkgs ? ${tool}) (byHint "tools") ++ byOverride "tools"
+        tools
+        ++ builtins.filter (tool: buildPkgs ? ${tool}) (
+          builtins.concatMap (hint: hints.${hint}.tools or [ ]) hinted
+        )
+        ++ fromOverrides "tools"
       );
       dependencies = [
         python
@@ -144,7 +134,7 @@ let
     };
 in
 {
-  env = args: build "env" (if args ? src then args else args // { src = dirOf args.lock; });
+  env = args: build "env" ({ src = dirOf args.lock; } // args);
   project = args: {
     package = build "project" args;
     devEnv = build "dev" args;
