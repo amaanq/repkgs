@@ -1,44 +1,46 @@
+diff -ruN a/Lib/sysconfig/__main__.py b/Lib/sysconfig/__main__.py
 --- a/Lib/sysconfig/__main__.py
 +++ b/Lib/sysconfig/__main__.py
-@@ -154,9 +154,15 @@
+@@ -153,10 +153,13 @@
+     return vars
  
  
- def _print_config_dict(d, stream):
-+    # the configured prefix is wherever this file ends up: written as an
-+    # expression over sys.base_prefix so the module is the same bytes anywhere
-+    prefix = d.get('prefix')
+-def _print_config_dict(d, stream):
++def _print_config_dict(d, stream, prefix=None):
      print ("{", file=stream)
      for k, v in sorted(d.items()):
 -        print(f"    {k!r}: {v!r},", file=stream)
 +        if prefix and isinstance(v, str) and prefix in v:
-+            print(f"    {k!r}: {v.replace(prefix, chr(0))!r}.replace(chr(0), _p),", file=stream)
++            print(f"    {k!r}: _p.join({v.split(prefix)!r}),", file=stream)
 +        else:
 +            print(f"    {k!r}: {v!r},", file=stream)
      print ("}", file=stream)
  
  
-@@ -227,6 +233,7 @@
+@@ -227,8 +230,9 @@
      with open(destfile, 'w', encoding='utf8') as f:
          f.write('# system configuration generated and used by'
                  ' the sysconfig module\n')
-+        f.write('import sys; _p = sys.base_prefix\n')
++        f.write('import sys\n_p = sys.base_prefix\n')
          f.write('build_time_vars = ')
-         _print_config_dict(vars, stream=f)
+-        _print_config_dict(vars, stream=f)
++        _print_config_dict(vars, stream=f, prefix=vars.get('prefix'))
  
-@@ -238,8 +245,12 @@
+     print(f'Written {destfile}')
+ 
+@@ -236,6 +240,11 @@
+     # Fix config vars to match the values after install (of the default environment)
+     install_vars['projectbase'] = install_vars['BINDIR']
      install_vars['srcdir'] = install_vars['LIBPL']
++    prefix = vars.get('prefix')
++    if prefix:
++        relative = os.path.relpath(prefix, install_vars['LIBDEST'])
++        install_vars = {k: v.replace(prefix, relative) if isinstance(v, str) else v
++                        for k, v in install_vars.items()}
      # Write a JSON file with the output of sysconfig.get_config_vars
      jsonfile = os.path.join(pybuilddir, _get_json_data_name())
-+    # relative to the prefix, CONFIG_ARGS and anything else naming it likewise
-+    prefix = vars['prefix']
-+    rel = {k: (v.replace(prefix + os.sep, '').replace(prefix, '.') if isinstance(v, str) else v)
-+           for k, v in install_vars.items()}
      with open(jsonfile, 'w') as f:
--        json.dump(install_vars, f, indent=2)
-+        json.dump(rel, f, indent=2)
- 
-     print(f'Written {jsonfile}')
- 
+diff -ruN a/Makefile.pre.in b/Makefile.pre.in
 --- a/Makefile.pre.in
 +++ b/Makefile.pre.in
 @@ -1010,7 +1010,7 @@
@@ -92,6 +94,7 @@
  	$(INSTALL_SCRIPT) python-config $(DESTDIR)$(BINDIR)/python$(LDVERSION)-config
  	$(INSTALL_SCRIPT) $(SCRIPT_IDLE) $(DESTDIR)$(BINDIR)/idle$(VERSION)
  	$(INSTALL_SCRIPT) $(SCRIPT_PYDOC) $(DESTDIR)$(BINDIR)/pydoc$(VERSION)
+diff -ruN a/Misc/python-config.sh.in b/Misc/python-config.sh.in
 --- a/Misc/python-config.sh.in
 +++ b/Misc/python-config.sh.in
 @@ -36,8 +36,8 @@
@@ -100,11 +103,12 @@
  # substitution, issue #22140.
 -prefix="@prefix@"
 -exec_prefix="@exec_prefix@"
-+prefix="${prefix_real}"
-+exec_prefix="${prefix_real}"
++prefix="$prefix_real"
++exec_prefix="$prefix_real"
  exec_prefix_real=${prefix_real}
  includedir=$(echo "@includedir@" | sed "s#$prefix#$prefix_real#")
  libdir=$(echo "@libdir@" | sed "s#$prefix#$prefix_real#")
+diff -ruN a/Modules/getpath.c b/Modules/getpath.c
 --- a/Modules/getpath.c
 +++ b/Modules/getpath.c
 @@ -797,6 +797,13 @@
@@ -112,15 +116,16 @@
          break;
      }
 +#elif defined(__linux__)
-+    char path[4096];
-+    ssize_t n = readlink("/proc/self/exe", path, sizeof(path) - 1);
-+    if (n > 0 && path[0] == SEP) {
-+        path[n] = '\0';
++    char path[MAXPATHLEN + 1];
++    ssize_t length = readlink("/proc/self/exe", path, MAXPATHLEN);
++    if (length > 0 && path[0] == SEP) {
++        path[length] = '\0';
 +        return decode_to_dict(dict, key, path);
 +    }
  #endif
      return PyDict_SetItemString(dict, key, Py_None) == 0;
  }
+diff -ruN a/Modules/getpath.py b/Modules/getpath.py
 --- a/Modules/getpath.py
 +++ b/Modules/getpath.py
 @@ -598,11 +598,6 @@
