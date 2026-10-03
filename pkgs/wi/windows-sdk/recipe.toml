@@ -20,4 +20,5 @@ exports = false
 "." = [ "crt", "sdk" ]
 
 [build.targets]
+abi = [ "msvc" ]
 cpu = [ "x86_64", "aarch64" ]
