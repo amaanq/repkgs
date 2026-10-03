@@ -12,8 +12,12 @@ date    = "2023-10-09"
 tag     = "v4.3.5"
 
 [build]
-needs   = [ "libsodium" ]
-patches = [ "upstream-nothrow-include-new.patch" ]
+needs = [ "libsodium" ]
+patches = [
+  "upstream-nothrow-include-new.patch",
+  "upstream-afunix-on-windows.patch",
+  "algorithm-include.patch",
+]
 systems = [ "cmake" ]
 
 [build.check]
