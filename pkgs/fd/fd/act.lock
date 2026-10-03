@@ -1,0 +1,3 @@
+version = "10.5.0"
+sys     = [ "jemalloc" ]
+hash    = "sha256-X3yrZUBieMO5bauUu2mskfvicLRdQcjbXouFTpz+0eQ="

@@ -1,0 +1,6 @@
+version = "2.9.7"
+date    = "2026-09-17"
+
+[hash]
+aarch64-linux = "sha256-LV0KSWb5et2PoTzKSszWyv5k74d4l0pJwyMFgEoBq2o="
+x86_64-linux  = "sha256-Cl52c5kKd5X+IjmNtTGTV7BewJwWsMuHatZeXgKW0DM="

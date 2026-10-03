@@ -1,0 +1,12 @@
+fetch = { url = "https://github.com/Cyan4973/xxHash/archive/refs/tags/v{version}.tar.gz" }
+with  = [ "cmake" ]
+
+[track]
+from = "github:Cyan4973/xxHash"
+
+[track.watch]
+url   = "https://github.com/Cyan4973/xxHash/tags"
+regex = 'v([0-9.]+)\.tar\.gz'
+
+[cmake]
+root = "cmake_unofficial"

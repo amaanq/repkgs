@@ -1,0 +1,13 @@
+tag   = "v{version}"
+track = "github:bdwgc/bdwgc"
+fetch = { url = "https://github.com/bdwgc/bdwgc/releases/download/v{version}/gc-{version}.tar.gz" }
+with  = [ "cmake" ]
+
+[cc]
+cflags = [ "-DINITIAL_MARK_STACK_SIZE=1048576" ]
+
+[cmake.defs]
+enable_cplusplus    = true
+enable_docs         = false
+enable_large_config = true
+enable_mmap         = true

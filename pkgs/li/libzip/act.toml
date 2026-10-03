@@ -1,0 +1,5 @@
+tag   = "v{version}"
+track = "github:nih-at/libzip"
+fetch = { url = "https://libzip.org/download/libzip-{version}.tar.xz" }
+with  = [ "cmake" ]
+deps  = [ "zlib", "bzip2", "xz", "zstd", "openssl" ]

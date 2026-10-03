@@ -1,0 +1,3 @@
+version = "3.11"
+sys     = [ "zlib" ]
+hash    = "sha256-KaYuBXNhVoN0lVNdVD6ikVF7FRyKKJm7zJxdXkObY0c="

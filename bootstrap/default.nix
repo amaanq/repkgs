@@ -19,7 +19,7 @@ let
     inherit system;
     buildSystem = system;
   };
-  # the peanut is the unpacker, so its own recipe.toml has to be read without one
+  # the peanut is the unpacker, so its own sources have to be read without one
   readerFor =
     name:
     if name == "peanut" then
@@ -30,7 +30,7 @@ let
         inherit (peanutBuild) mummer;
         inherit system;
       };
-  sourcesOf = name: readerFor name (pkg name + "/recipe.toml");
+  sourcesOf = name: readerFor name (pkg name);
   source = name: (sourcesOf name).default;
   peanutPath =
     if peanut == null then

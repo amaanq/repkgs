@@ -1,0 +1,10 @@
+with    = [ "python" ]
+deps    = [ "cpython" ]
+tools   = [ "python-setuptools" ]
+version = "0.3"
+
+[test]
+version = "tpy-hello"
+
+[python]
+module = "tpy"

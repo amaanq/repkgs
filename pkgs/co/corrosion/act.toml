@@ -1,0 +1,11 @@
+tag   = "v{version}"
+track = "github:corrosion-rs/corrosion"
+fetch = { archive = true }
+with  = [ "cmake" ]
+tools = [ "rust" ]
+
+[steps]
+skip = [ "cmake.test" ]
+
+[cmake.defs]
+CORROSION_BUILD_TESTS = false

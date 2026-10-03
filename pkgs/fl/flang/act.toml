@@ -1,0 +1,26 @@
+fetch = { from = "llvm" }
+with  = [ "cmake" ]
+deps  = [ "llvm", "zlib", "zstd", "clang", "mlir" ]
+tools = [ "cpython", "llvm" ]
+
+[test]
+bin     = [ "flang" ]
+run     = false
+version = true
+
+[steps]
+skip = [ "cmake.test" ]
+
+[only]
+cross = false
+
+[cmake]
+root = "flang"
+
+[cmake.defs]
+BUILD_SHARED_LIBS       = false
+FLANG_INCLUDE_DOCS      = false
+FLANG_INCLUDE_TESTS     = false
+LLVM_INCLUDE_TESTS      = false
+LLVM_LINK_LLVM_DYLIB    = true
+LLVM_PARALLEL_LINK_JOBS = 4

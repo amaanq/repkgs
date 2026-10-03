@@ -1,0 +1,6 @@
+tag   = "v{version}"
+track = "github:ninja-build/ninja"
+fetch = { archive = true }
+
+[steps]
+phases = [ "ninja.build" ]

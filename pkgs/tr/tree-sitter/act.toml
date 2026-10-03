@@ -1,0 +1,5 @@
+tag   = "v{version}"
+track = "github:tree-sitter/tree-sitter"
+fetch = { archive = true }
+with  = [ "make" ]
+test  = false

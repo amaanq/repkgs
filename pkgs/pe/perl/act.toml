@@ -1,0 +1,30 @@
+tag            = "v{version}"
+with           = [ "autotools" ]
+deps           = [ "zlib" ]
+patches        = [  ]
+test           = false
+bootstrapTools = true
+
+[track]
+from  = "github:Perl/perl5"
+allow = "==5.40.*"
+
+[fetch.default]
+url = "https://www.cpan.org/src/5.0/perl-{version}.tar.xz"
+
+[fetch.cross]
+url = "https://github.com/arsv/perl-cross/releases/download/{cross}/perl-cross-{cross}.tar.gz"
+
+[steps.after]
+"autotools.install" = "perl.scrub"
+
+[steps.replace]
+"autotools.configure" = "perl.configure"
+
+[only]
+posix = true
+
+[autotools]
+outOfTree = false
+
+[env]

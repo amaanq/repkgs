@@ -1,0 +1,3 @@
+version = "3.18.1.0"
+sys     = [ "zlib" ]
+hash    = "sha256-ApkI072VfH0Id3Fvp3IobAMbYGckn5vCpQfgm0B9ELQ="

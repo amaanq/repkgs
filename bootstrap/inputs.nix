@@ -1,4 +1,4 @@
-# What each bootstrap recipe reads besides its stage: sources from the packages' recipe.toml,
+# What each bootstrap recipe reads besides its stage: sources from the packages' acts,
 # the C sources of the target-side runtime, patches
 {
   pkg,
@@ -28,9 +28,7 @@ in
       (pkg "llvm" + "/upstream-x86-vastart-stack-probe.patch")
       (pkg "llvm" + "/mummer-absent-log.patch")
     ];
-    targets =
-      (builtins.fromTOML (builtins.readFile (pkg "llvm" + "/recipe.toml")))
-      .build.cmake.defs.LLVM_TARGETS_TO_BUILD;
+    targets = (import ../nix/act.nix (pkg "llvm")).act.cmake.defs.LLVM_TARGETS_TO_BUILD;
   };
   cmake.src = source "cmake-bootstrap";
   compiler-rt.src = llvm;

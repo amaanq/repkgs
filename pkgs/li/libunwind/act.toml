@@ -1,0 +1,11 @@
+tag   = "v{version}"
+track = "github:libunwind/libunwind"
+fetch = { asset = "libunwind-{version}.tar.gz" }
+with  = [ "autotools" ]
+deps  = [ "xz", "zlib" ]
+
+[only]
+os = [ "linux" ]
+
+[autotools]
+outOfTree = false

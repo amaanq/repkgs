@@ -1,4 +1,4 @@
-# What a package.nix wrote, after overrides, over what its recipe.toml supplies: version and source
+# What a package.nix wrote, after overrides, over what its act.toml supplies: version and source
 # unless the package sets them (local trees, demos)
 {
   platform,
@@ -11,7 +11,7 @@ let
   completions = import ./completions.nix;
   edited = if edit == null then written else edit written.name written;
   # an override may repin the package: `pin.merge = { version = "…"; }` plus
-  # `hash.merge = { default = "sha256-…"; }` re-read recipe.toml under the new [pin]
+  # `hash.merge = { default = "sha256-…"; }` re-read the sources under the new pin
   repinned = edit != null && sources != null && (edited ? pin || edited ? hash);
   pinned = if repinned then sources.repin (edited.pin or { }) (edited.hash or { }) else sources;
   fromSources = lib.on (pinned != null) {

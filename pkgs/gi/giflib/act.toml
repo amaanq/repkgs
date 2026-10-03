@@ -1,0 +1,18 @@
+track = "generic:giflib?url=https://sourceforge.net/projects/giflib/files/"
+fetch = { url = "https://downloads.sourceforge.net/giflib/giflib-{version}.tar.gz" }
+with  = [ "make" ]
+test  = false
+
+[make]
+buildTarget = [
+  "shared-lib",
+  "static-lib",
+  "gif2rgb",
+  "gifbuild",
+  "giftool",
+  "giftext",
+  "gifclrmp",
+  "giffix",
+]
+flags = [ "CC=cc", "SHARED_LIBS=$(LIBGIFSO)" ]
+installTarget = [ "install-bin", "install-include", "install-lib" ]

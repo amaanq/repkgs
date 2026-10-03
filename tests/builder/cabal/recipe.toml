@@ -1,9 +1,0 @@
-[build]
-systems = [ "cabal" ]
-version = "0.1.0.0"
-
-[build.cabal]
-exes = [ "test-cabal" ]
-
-[build.check]
-version = "test-cabal"

@@ -1,0 +1,7 @@
+track = "github:google/snappy"
+fetch = { archive = true }
+with  = [ "cmake" ]
+deps  = [ "googletest" ]
+
+[cmake.defs]
+SNAPPY_BUILD_BENCHMARKS = false

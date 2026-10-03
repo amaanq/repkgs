@@ -1,0 +1,11 @@
+tag   = "v{version}"
+track = "github:rust-lang/rust-bindgen"
+fetch = { archive = true }
+with  = [ "cargo" ]
+
+[test]
+bin = [ "bindgen" ]
+run = false
+
+[cargo]
+flags = [ "-p", "bindgen-cli" ]

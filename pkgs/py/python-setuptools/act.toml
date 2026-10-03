@@ -1,0 +1,6 @@
+track = "pypi:setuptools"
+fetch = { url = "https://files.pythonhosted.org/packages/source/s/setuptools/setuptools-{version}.tar.gz" }
+with  = [ "python" ]
+
+[python]
+module = "setuptools"

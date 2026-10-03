@@ -1,0 +1,8 @@
+tag   = "v{version}"
+track = "github:seccomp/libseccomp"
+fetch = { asset = "libseccomp-{version}.tar.gz" }
+with  = [ "autotools" ]
+tools = [ "gperf", "bash", "which", "util-linux" ]
+
+[only]
+os = [ "linux" ]

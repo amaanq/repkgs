@@ -1,0 +1,19 @@
+track    = 'generic:go?url=https://go.dev/dl/&regex=go(\d[0-9.]*)\.src\.tar\.gz'
+exports  = false
+prebuilt = "ldso"
+
+[fetch.linux-x86_64]
+url = "https://go.dev/dl/go{version}.linux-amd64.tar.gz"
+
+[fetch.linux-aarch64]
+url = "https://go.dev/dl/go{version}.linux-arm64.tar.gz"
+
+[fetch.linux-riscv64]
+url = "https://go.dev/dl/go{version}.linux-riscv64.tar.gz"
+
+[test]
+bin     = [ "go" ]
+version = "version"
+
+[install]
+"." = [ "bin", "pkg", "src", "lib", "go.env", "VERSION" ]

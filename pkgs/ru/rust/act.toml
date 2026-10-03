@@ -1,0 +1,12 @@
+track   = "github:rust-lang/rust"
+fetch   = { url = "https://static.rust-lang.org/dist/rustc-{version}-src.tar.xz" }
+deps    = [ "llvm22" ]
+exports = false
+
+[test]
+bin     = [ "rustc", "cargo" ]
+run     = false
+version = "-V"
+
+[steps]
+phases = [ "rust.configure", "rust.build", "rust.install" ]

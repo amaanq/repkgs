@@ -1,0 +1,18 @@
+track = "pypi:hatchling"
+fetch = { url = "https://files.pythonhosted.org/packages/source/h/hatchling/hatchling-{version}.tar.gz" }
+with = [ "python" ]
+deps = [
+  "cpython",
+  "python-packaging",
+  "python-pathspec",
+  "python-pluggy",
+  "python-trove-classifiers",
+]
+
+[test]
+bin     = [ "hatchling" ]
+version = false
+
+[python]
+backend = "hatchling"
+module  = "hatchling"

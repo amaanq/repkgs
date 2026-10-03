@@ -1,0 +1,11 @@
+fetch   = { from = "rust" }
+deps    = [  ]
+tools   = [ "rust", "cpython" ]
+exports = false
+
+[test]
+bin = [  ]
+run = false
+
+[steps]
+phases = [ "rust.std-configure", "rust.std-build", "rust.std-install" ]

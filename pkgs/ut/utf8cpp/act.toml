@@ -1,0 +1,7 @@
+tag   = "v{version}"
+track = "github:nemtrif/utfcpp"
+fetch = { archive = true }
+with  = [ "cmake" ]
+
+[steps]
+skip = [ "cmake.build", "cmake.test" ]

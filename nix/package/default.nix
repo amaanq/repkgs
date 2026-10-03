@@ -15,13 +15,12 @@
   relocTools,
   # overrides applied to a spec before validation: name -> spec -> spec (nix/overrides.nix)
   edit,
-  # [pin] sys in recipe.toml names packages of the set
+  # act.lock's sys names packages of the set
   pkgs,
   lib,
 }:
 let
   inherit (builtins)
-    all
     any
     attrValues
     concatMap
@@ -79,7 +78,7 @@ let
     };
   };
 in
-# sources: the package's recipe.toml (nix/sources.nix) or null
+# sources: the package's act.toml (nix/sources.nix) or null
 # dirs: where a phase prefix that is no build system finds <prefix>.nu, the package's own first
 {
   sources,
@@ -97,9 +96,9 @@ let
   fail = message: throw "${name}: ${message}";
   checked = validate { inherit args uses fail; };
   checks = lib.check name checked.errors;
-  valid = checked.valid;
+  inherit (checked) valid;
 
-  # `source` as a plain string names a recipe.toml key; a cpu the file has no tarball for is
+  # `source` as a plain string names an act.toml source; a cpu the file has no tarball for is
   # unsupported. Paths and derivations (strings with context) are the source itself
   sourceKey =
     let
@@ -154,7 +153,7 @@ let
   prebuilt = args.prebuilt or (any (system: buildSystems.${system}.prebuilt == true) uses);
   # DWARF goes to the `debug` output (bigtop finish). false when the build cannot be made to keep it
   debug = args.debug or (prebuilt == false);
-  # [pin] sys of recipe.toml. null: no recipe.toml, dependencies are all by hand
+  # act.lock's sys. null: no act.toml, dependencies are all by hand
   sys = args.sys or (if pinned == null then null else pinned.sys);
   options =
     system:
@@ -216,7 +215,7 @@ let
       tests = if separate then [ ] else testDependencies;
       base = if args.bootstrapTools or false then baseTools.bootstrap else baseTools.full;
     };
-    # [pin] sys: libraries the lock files can link (builder/sys-libs.json). Those the set lacks
+    # act.lock's sys: libraries the lock files can link (builder/sys-libs.json). Those the set lacks
     # here are left to the locked package (vendored copy or feature off)
     dependencies =
       (valid.dependencies or [ ])

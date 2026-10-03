@@ -1,0 +1,20 @@
+tag   = "v{version}"
+fetch = { archive = true }
+with  = [ "go" ]
+tools = [ "sqlite" ]
+
+[track]
+from = "github:amacneil/dbmate"
+
+[track.locks]
+go = "."
+
+[test]
+version = true
+
+[only]
+abi = [ "gnu", "apple" ]
+
+[go]
+packages     = [ "." ]
+testPackages = [ "./pkg/dbutil/...", "./pkg/driver/sqlite/..." ]

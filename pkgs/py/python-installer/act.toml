@@ -1,0 +1,7 @@
+track = "pypi:installer"
+fetch = { url = "https://files.pythonhosted.org/packages/source/i/installer/installer-{version}.tar.gz" }
+with  = [ "python" ]
+
+[python]
+backend = "flit_core"
+module  = "installer"

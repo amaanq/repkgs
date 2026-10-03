@@ -1,0 +1,12 @@
+tag   = "libevdev-{version}"
+track = "gitlab:libevdev/libevdev?repository_url=https://gitlab.freedesktop.org"
+fetch = { url = "https://www.freedesktop.org/software/libevdev/libevdev-{version}.tar.xz" }
+with  = [ "meson" ]
+tools = [ "cpython" ]
+
+[only]
+os = [ "linux" ]
+
+[meson.defs]
+documentation = "disabled"
+tests         = "disabled"

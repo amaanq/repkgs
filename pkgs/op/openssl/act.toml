@@ -1,0 +1,18 @@
+tag    = "openssl-{version}"
+track  = "github:openssl/openssl"
+fetch  = { asset = "openssl-{version}.tar.gz" }
+with   = [ "make" ]
+tools  = [ "perl" ]
+remove = [ "bin/c_rehash" ]
+
+[test]
+run     = false
+version = "version"
+
+[cc]
+cflags = [ "-DOSSL_RELOCATABLE" ]
+
+[make]
+configureScript = "Configure"
+installFlags    = [ "OPENSSLDIR=$(prefix)/etc/ssl" ]
+installTarget   = [ "install_sw", "install_ssldirs", "install_man_docs" ]

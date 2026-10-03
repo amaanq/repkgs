@@ -1,0 +1,5 @@
+version = "1.4.2"
+
+[hash]
+aarch64-linux = "sha256-E9EOo0ihjqTrVS7RffpXUBeqdkvRoYnXAmscz1BmNwo="
+x86_64-linux  = "sha256-Nq85/hrOkT7M4VJ9Uc7Kr9e+uNx8unD4d30RzaQlYxc="

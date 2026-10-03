@@ -1,0 +1,23 @@
+track    = "generic:zig?url=https://ziglang.org/download/index.json"
+fetch    = { url = "https://ziglang.org/download/{version}/zig-{version}.tar.xz" }
+with     = [ "cmake" ]
+deps     = [ "llvm21", "clang21", "lld21", "zlib", "zstd" ]
+prebuilt = true
+
+[test]
+run     = false
+version = "version"
+
+[steps.after]
+"cmake.build"     = "zig.store"
+"cmake.configure" = "zig.restore"
+
+[cmake.defs]
+CMAKE_BUILD_TYPE     = "RelWithDebInfo"
+ZIG_EXTRA_BUILD_ARGS = "--build-id=sha1"
+ZIG_PIE              = true
+ZIG_SHARED_LLVM      = true
+ZIG_TARGET_MCPU      = "baseline"
+
+[env]
+ZIG_GLOBAL_CACHE_DIR = "/build/zig-cache"

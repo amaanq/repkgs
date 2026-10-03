@@ -1,0 +1,24 @@
+track          = "gnu:bash"
+fetch          = { url = "https://ftp.gnu.org/gnu/bash/bash-{version}.tar.gz" }
+with           = [ "autotools" ]
+bootstrapTools = true
+
+[test]
+bin = [ "bash", "sh" ]
+run = false
+
+[only]
+posix = true
+
+[autotools]
+flags = [
+  "--without-bash-malloc",
+  "--disable-readline",
+  "bash_cv_func_strtoimax=y",
+  "bash_cv_getcwd_malloc=yes",
+  "bash_cv_job_control_missing=nomissing",
+  "bash_cv_sys_named_pipes=nomissing",
+]
+
+[links]
+"bin/sh" = "bash"

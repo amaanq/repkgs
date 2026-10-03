@@ -1,0 +1,22 @@
+fetch = { from = "llvm21" }
+with  = [ "cmake" ]
+deps  = [ "llvm21", "zlib", "zstd" ]
+tools = [ "cpython" ]
+
+[test]
+bin = [ "ld.lld", "lld" ]
+run = false
+# under wine ld.lld.exe resolves to lld.exe, which then picks no flavor from its name
+version = "lld -flavor gnu --version"
+
+[steps]
+skip = [ "cmake.test" ]
+
+[cmake]
+root = "lld"
+
+[cmake.defs]
+BUILD_SHARED_LIBS       = false
+LLVM_INCLUDE_TESTS      = false
+LLVM_LINK_LLVM_DYLIB    = true
+LLVM_PARALLEL_LINK_JOBS = 4

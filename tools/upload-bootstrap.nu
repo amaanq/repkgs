@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 # For cpus upstream ships no binaries for, cross builds our own <pkg> here, uploads its bundled
 # output as a nar to the GitHub release bootstrap-<pkg>-<version> and adds a <cpu> source to
-# <pkg>-bootstrap's recipe.toml. That set then fetches it like any upstream tarball, as a fixed
+# <pkg>-bootstrap's act.toml and act.lock. That set then fetches it like any upstream tarball, as a fixed
 # output with no tie to this machine's derivations.
 #   tools/upload-bootstrap.nu jdk [--cpus riscv64] [--repo manic-systems/motley] [--store-path /nix/store/…]
 
@@ -13,7 +13,7 @@ def main [
 ]: nothing -> nothing {
   let root = ($env.CURRENT_FILE | path dirname | path dirname)
   for pkg in $pkgs {
-    let manifest = (glob $"($root)/pkgs/*/($pkg)-bootstrap/recipe.toml" | first)
+    let dir      = (glob $"($root)/pkgs/*/($pkg)-bootstrap" | first)
     let version  = (^nix-instantiate --eval --strict --json $root -A $"($pkg).version" | from json)
     let tag      = $"bootstrap-($pkg)-($version)"
 
@@ -36,17 +36,21 @@ def main [
     }
     ^gh release upload $tag -R $repo --clobber ...($nars | get file)
 
-    let fresh = ($nars | each {|nar|
-      {
-        key: $nar.cpu
+    let act  = ($dir | path join act.toml)
+    let lock = ($dir | path join act.lock)
+    let fetch = ($nars | reduce --fold (open $act | get fetch) {|nar, fetch|
+      $fetch | upsert $nar.cpu {
         url: $"https://github.com/($repo)/releases/download/bootstrap-($pkg)-{version}/($pkg)-{version}-($nar.cpu)-linux.nar.xz"
-        hash: $nar.hash
         name: $pkg
       }
     })
-    let table = (open $manifest)
-    let untouched = ($table.source | where key not-in ($nars | get cpu))
-    $table | update source ($untouched ++ $fresh) | to toml | save -f $manifest
-    print -e $"($tag): uploaded ($nars | get cpu | str join ', '), wrote ($manifest)"
+    let hashes = ($nars | reduce --fold (open --raw $lock | from toml | get hash) {|nar, hash| $hash | upsert $nar.cpu $nar.hash })
+    let act_text  = (open $act | upsert fetch $fetch | to toml)
+    let lock_text = (open --raw $lock | from toml | upsert hash $hashes | to toml)
+    $act_text | save -f $act
+    $lock_text | save -f $lock
+    ^taplo format $act
+    ^taplo format --stdin-filepath act.toml - < $lock | save -f $lock
+    print -e $"($tag): uploaded ($nars | get cpu | str join ', '), wrote ($act) and ($lock)"
   }
 }

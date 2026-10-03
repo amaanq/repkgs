@@ -1,0 +1,8 @@
+with    = [ "go" ]
+version = "1"
+
+[test]
+version = "hello"
+
+[go]
+packages = [ "." ]

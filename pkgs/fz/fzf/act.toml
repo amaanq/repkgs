@@ -1,0 +1,13 @@
+tag   = "v{version}"
+fetch = { archive = true }
+with  = [ "go" ]
+
+[track]
+from = "github:junegunn/fzf"
+
+[track.locks]
+go = "."
+
+[go]
+packages     = [ "." ]
+testPackages = [ "./src/algo/...", "./src/util/...", "./src/tui/..." ]

@@ -1,0 +1,10 @@
+tag   = "v{version}"
+fetch = { archive = true }
+with  = [ "cmake" ]
+
+[track]
+from  = "github:lz4/lz4"
+allow = "<100"
+
+[cmake]
+root = "build/cmake"

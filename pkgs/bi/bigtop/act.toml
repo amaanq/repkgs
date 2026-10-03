@@ -1,0 +1,15 @@
+with    = [ "cargo" ]
+version = "1.0.0"
+
+[test]
+bin     = [ "bigtop" ]
+version = false
+
+[only]
+posix = true
+
+[cargo]
+flags = [ "-p", "bigtop" ]
+
+[env]
+MUMMER_STORE_DIR = "/nix/store"

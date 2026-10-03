@@ -1,9 +1,0 @@
-[build]
-phases  = [ "libgcc-shim.build" ]
-version = "1"
-
-[build.exports]
-libs = [  ]
-
-[build.targets]
-os = [ "linux" ]

@@ -1,0 +1,7 @@
+track = "pypi:pathspec"
+fetch = { url = "https://files.pythonhosted.org/packages/source/p/pathspec/pathspec-{version}.tar.gz" }
+with  = [ "python" ]
+
+[python]
+backend = "flit_core"
+module  = "pathspec"

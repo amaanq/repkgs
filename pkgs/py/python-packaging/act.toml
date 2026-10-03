@@ -1,0 +1,7 @@
+track = "pypi:packaging"
+fetch = { url = "https://files.pythonhosted.org/packages/source/p/packaging/packaging-{version}.tar.gz" }
+with  = [ "python" ]
+
+[python]
+backend = "flit_core"
+module  = "packaging"

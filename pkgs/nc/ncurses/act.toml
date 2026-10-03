@@ -1,0 +1,27 @@
+track = "gnu:ncurses"
+fetch = { url = "https://ftpmirror.gnu.org/ncurses/ncurses-{version}.tar.gz" }
+with  = [ "autotools" ]
+
+[test]
+bin     = [ "tic", "tput", "infocmp" ]
+run     = false
+version = "-V"
+
+[steps.after]
+"autotools.install" = [ "ncurses.narrow-names" ]
+
+[steps.before]
+"autotools.configure" = [ "ncurses.configure-env" ]
+
+[autotools]
+flags = [
+  "--with-shared",
+  "--without-debug",
+  "--without-ada",
+  "--enable-widec",
+  "--with-versioned-syms",
+  "--enable-pc-files",
+  "--disable-stripping",
+  "--with-terminfo-dirs=/etc/terminfo:/lib/terminfo:/usr/share/terminfo",
+  "--with-manpage-format=normal",
+]

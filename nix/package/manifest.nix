@@ -1,25 +1,15 @@
-# A package described by its recipe.toml and, where some of it depends on the platform or names
-# other packages, a recipe.nix. Besides [upstream], [[source]] and [pin] (nix/sources.nix) the
-# toml holds:
-#   sources-from = "<package>"  that package's sources instead of its own, for a subproject of
-#                               its tarball
-#   helpers = "python"          the interpreter also carries .env and .project (nix/python.nix)
-#   [build]                     recipe fields as plain data, `name` defaults to the directory
+# A package described by its act.toml (docs/act.md) and, where some of it needs Nix, an act.nix.
+# The identity keys (`name`, `tag`, `track`, `fetch`) are nix/act.nix's, the rest is the build:
+# renamed onto the fields bigtop reads, `[on.<when>]` overlays merged in name order on matching
+# platforms, then act.nix's changes in order. Tables merge, lists append, anything else replaces.
 #
-# recipe.nix is a function of { platform, pkgs, tools, toolchain, pin, source, file, fetch, tree,
-# when } to a list of changes, each a table of the same fields merged over [build] in order.
-# Tables merge, lists append, anything else is replaced. `pkgs` and `tools` are the target and
-# build sets, `source <key>` one of this package's sources, `file <name>` a file beside the
-# recipe, `fetch.<producer>` a nix/fetch.nix producer, `when <cond> <change>` the change or
-# nothing, and `tree { dir, name, exclude, files }` a local tree beside the recipe without the
-# `exclude`d names, and with `files` only the files whose name is listed or, for an entry starting
-# with ".", ends in it.
-#
-# Field names differ from the recipe the build systems take: `systems` is `uses`, `tools`
-# `buildDependencies`, `needs` `dependencies`, `targets` `platforms`, `after`, `before`, `skip` and
-# `replace` the `phases` table (`phases` itself where it lists every phase), and `check` is
-# `tests`, false for `tests.run = false`. Entries of `needs` and `check.needs` are target packages
-# by name, of `tools` build packages, and `patches` are files beside the recipe.
+# act.nix is a function of { platform, pkgs, tools, toolchain, pin, source, file, fetch, tree,
+# when } to a list of changes in act.toml's vocabulary. `pkgs` and `tools` are the target and
+# build sets, `source <key>` one of this package's sources, `file <name>` a file beside the act,
+# `fetch.<producer>` a nix/fetch.nix producer, `when <cond> <change>` the change or nothing, and
+# `tree { dir, name, exclude, files }` a local tree beside the act without the `exclude`d names,
+# and with `files` only the files whose name is listed or, for an entry starting with ".", ends
+# in it.
 {
   dir,
   name,
@@ -37,8 +27,8 @@
 }:
 let
   inherit (builtins)
+    all
     attrNames
-    concatStringsSep
     elem
     filter
     foldl'
@@ -46,22 +36,16 @@ let
     isBool
     isList
     isString
+    listToAttrs
     mapAttrs
+    match
     pathExists
+    readDir
     removeAttrs
+    split
+    substring
     ;
-  where = "${name}: recipe.toml";
-  known = [
-    "upstream"
-    "source"
-    "pin"
-    "watch"
-    "locks"
-    "build"
-    "sources-from"
-    "helpers"
-  ];
-  strays = filter (key: !elem key known) (attrNames table);
+  where = "${name}: act.toml";
 
   merge =
     base: top:
@@ -73,52 +57,104 @@ let
       top;
 
   renamed = {
-    systems = "uses";
+    "with" = "uses";
     tools = "buildDependencies";
-    needs = "dependencies";
-    targets = "platforms";
+    deps = "dependencies";
+    only = "platforms";
   };
-  phaseFields = {
+  stepFields = {
     after = "after";
     before = "before";
     skip = "remove";
     replace = "replace";
   };
-  checks =
+  tests =
     value:
     if isBool value then
       { run = value; }
     else
-      removeAttrs value [ "needs" ] // (if value ? needs then { dependencies = value.needs; } else { });
+      removeAttrs value [
+        "deps"
+        "bin"
+      ]
+      // (if value ? deps then { dependencies = value.deps; } else { });
   internal =
     change:
     let
-      phased = filter (key: change ? ${key}) (attrNames phaseFields);
-      plain = removeAttrs change (attrNames renamed ++ attrNames phaseFields ++ [ "check" ]);
+      steps = change.steps or { };
+      stepped = filter (key: steps ? ${key}) (attrNames stepFields);
+      test = change.test or { };
     in
-    plain
-    // builtins.listToAttrs (
+    removeAttrs change (
+      attrNames renamed
+      ++ [
+        "test"
+        "steps"
+      ]
+    )
+    // listToAttrs (
       map (key: {
         name = renamed.${key};
         value = change.${key};
       }) (filter (key: change ? ${key}) (attrNames renamed))
     )
-    // (if change ? check then { tests = checks change.check; } else { })
     // (
-      if phased == [ ] then
-        { }
+      if change ? test && (isBool test || removeAttrs test [ "bin" ] != { }) then
+        { tests = tests test; }
       else
+        { }
+    )
+    // (if isAttrs test && test ? bin then { inherit (test) bin; } else { })
+    // (
+      if stepped != [ ] then
         {
-          phases =
-            (change.phases or { })
-            // builtins.listToAttrs (
-              map (key: {
-                name = phaseFields.${key};
-                value = change.${key};
-              }) phased
-            );
+          phases = listToAttrs (
+            map (key: {
+              name = stepFields.${key};
+              value = steps.${key};
+            }) stepped
+          );
         }
+      else if steps ? phases then
+        { inherit (steps) phases; }
+      else
+        { }
     );
+
+  # `[on."windows+msvc"]`, `[on."!linux"]`, `[on.cross]`
+  holds =
+    term:
+    let
+      negated = substring 0 1 term == "!";
+      word = if negated then substring 1 (-1) term else term;
+      value =
+        if word == "cross" then
+          platform.cross
+        else if word == "native" then
+          !platform.cross
+        else
+          elem word [
+            platform.os
+            platform.cpu
+            platform.libc
+            platform.abi
+          ];
+    in
+    value != negated;
+  matching = when: all holds (filter isString (split "[+]" when));
+  overlays = map (when: table.on.${when}) (filter matching (attrNames (table.on or { })));
+
+  patchFiles = filter (file: match ".*[.]patch" file != null) (attrNames (readDir dir));
+  base =
+    removeAttrs table [
+      "name"
+      "tag"
+      "track"
+      "fetch"
+      "on"
+      "extras"
+    ]
+    // (if table ? patches || patchFiles == [ ] then { } else { patches = patchFiles; });
 
   tree =
     spec:
@@ -145,8 +181,8 @@ let
         !elem base exclude && (type == "directory" || !(spec ? files) || wanted base);
     };
   changes =
-    if pathExists (dir + "/recipe.nix") then
-      import (dir + "/recipe.nix") {
+    if pathExists (dir + "/act.nix") then
+      import (dir + "/act.nix") {
         inherit
           platform
           pkgs
@@ -162,15 +198,16 @@ let
       }
     else
       [ ];
-  fields = foldl' merge (internal (table.build or { })) (map internal changes);
+  fields = foldl' merge (internal base) (map internal (overlays ++ changes));
 
   byName =
     set: entry:
     if isString entry then set.${entry} or (throw "${where}: no package ${entry}") else entry;
+  inherit (builtins.fromJSON (builtins.readFile ../schema.json)) systems;
   resolved =
     fields
     // {
-      name = fields.name or name;
+      name = table.name or name;
     }
     // (
       if fields ? dependencies then { dependencies = map (byName pkgs) fields.dependencies; } else { }
@@ -191,12 +228,22 @@ let
       else
         { }
     )
-    // (if fields ? patches then { patches = map (file: dir + "/${file}") fields.patches; } else { });
-  inherit (builtins.fromJSON (builtins.readFile ../schema.json)) systems;
+    // (if fields ? patches then { patches = map (file: dir + "/${file}") fields.patches; } else { })
+    # a system's `tool` may name a package of the build set
+    // listToAttrs (
+      map
+        (system: {
+          name = system;
+          value = fields.${system} // {
+            tool = byName buildPkgs fields.${system}.tool;
+          };
+        })
+        (filter (system: isAttrs (fields.${system} or null) && fields.${system} ? tool) (attrNames systems))
+    );
   # a build system's table is emptied where `uses` does not list the system
   made = package (
     resolved
-    // builtins.listToAttrs (
+    // listToAttrs (
       map
         (system: {
           name = system;
@@ -209,9 +256,9 @@ let
     python = pythonProject package self;
   };
   self =
-    if !(table ? helpers) then
+    if !(table ? extras) then
       made
     else
-      made // helpers.${table.helpers} or (throw "${where}: no helpers ${table.helpers}");
+      made // helpers.${table.extras} or (throw "${where}: no extras ${table.extras}");
 in
-if strays != [ ] then throw "${where}: unknown table ${concatStringsSep ", " strays}" else self
+self

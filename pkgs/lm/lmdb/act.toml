@@ -1,0 +1,15 @@
+fetch = { url = "https://github.com/LMDB/lmdb/archive/refs/tags/LMDB_{version}.tar.gz" }
+with  = [ "make" ]
+
+[track]
+from = "github:LMDB/lmdb"
+
+[track.watch]
+url   = "https://github.com/LMDB/lmdb/tags"
+regex = 'LMDB_(0\.9\.[0-9]+)\.tar\.gz'
+
+[make]
+flags      = [ "CC=cc", "AR=llvm-ar" ]
+programs   = [ "mdb_stat", "mdb_copy", "mdb_dump", "mdb_load" ]
+root       = "libraries/liblmdb"
+testTarget = [ "test" ]

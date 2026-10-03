@@ -1,0 +1,28 @@
+fetch = { from = "llvm" }
+with  = [ "cmake" ]
+tools = [ "cpython" ]
+
+[test]
+bin = [ "gfortran" ]
+run = false
+
+[steps]
+skip = [ "cmake.test" ]
+
+[steps.after]
+"cmake.install" = [ "flang-rt.driver", "flang-rt.hello" ]
+
+[only]
+os = [ "linux" ]
+
+[cmake]
+root = "runtimes"
+
+[cmake.defs]
+BUILD_SHARED_LIBS            = false
+CMAKE_Fortran_COMPILER_WORKS = true
+FLANG_RT_INCLUDE_TESTS       = false
+LLVM_ENABLE_RUNTIMES         = "flang-rt"
+LLVM_INCLUDE_TESTS           = false
+LLVM_LINK_LLVM_DYLIB         = true
+LLVM_PARALLEL_LINK_JOBS      = 4

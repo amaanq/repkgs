@@ -1,0 +1,3 @@
+track = "gnu:gsl"
+fetch = { url = "https://ftpmirror.gnu.org/gsl/gsl-{version}.tar.gz" }
+with  = [ "autotools" ]

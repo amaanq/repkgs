@@ -1,0 +1,12 @@
+track          = "gnu:grep"
+fetch          = { url = "https://ftp.gnu.org/gnu/grep/grep-{version}.tar.xz" }
+with           = [ "autotools" ]
+bootstrapTools = true
+remove         = [ "bin/egrep", "bin/fgrep" ]
+
+[test]
+separate = true
+
+[autotools]
+flags     = [ "--disable-perl-regexp" ]
+makeFlags = [ "SHELL=$(CONFIG_SHELL)" ]

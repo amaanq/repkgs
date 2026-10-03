@@ -1,0 +1,11 @@
+tag   = "libssh2-{version}"
+track = "github:libssh2/libssh2"
+fetch = { url = "https://www.libssh2.org/download/libssh2-{version}.tar.gz" }
+with  = [ "cmake" ]
+deps  = [ "openssl", "zlib" ]
+test  = false
+
+[cmake.defs]
+BUILD_EXAMPLES          = false
+CRYPTO_BACKEND          = "OpenSSL"
+ENABLE_ZLIB_COMPRESSION = true

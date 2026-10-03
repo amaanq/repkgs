@@ -1,0 +1,8 @@
+with    = [ "cabal" ]
+version = "0.1.0.0"
+
+[test]
+version = "test-cabal"
+
+[cabal]
+exes = [ "test-cabal" ]

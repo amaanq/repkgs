@@ -74,14 +74,14 @@ pub fn wanted_for(attrs: &Attrs, ecosystem: &str, names: &[String]) -> io::Resul
    Ok(syslibs::wanted_for(&tables(attrs)?, ecosystem, names))
 }
 
-// our packages the lock files in `dir` can link, sorted, what [pin] sys should
-// say
+// our packages the lock files in `dir` can link, sorted, what act.lock's sys
+// should say
 pub fn wanted(attrs: &Attrs, dir: &Path) -> io::Result<Vec<String>> {
    syslibs::wanted(&tables(attrs)?, dir)
 }
 
-// the lock can link libraries [pin] sys does not name, the pin is stale. None
-// means no recipe.toml, dependencies are by hand
+// the lock can link libraries act.lock's sys does not name, the pin is stale.
+// None means no act.toml, dependencies are by hand
 pub fn check(attrs: &Attrs, dir: &Path, sys: Option<&[String]>) -> io::Result<()> {
    check_names(&wanted(attrs, dir)?, sys, "rehash")
 }
@@ -99,8 +99,8 @@ pub fn check_names(wanted: &[String], sys: Option<&[String]>, command: &str) -> 
       return Ok(());
    }
    Err(io::Error::other(format!(
-      "sys-libs: the lock can link {}, missing from [pin] sys in recipe.toml. `motley update \
-       {command} <pkg>` rewrites it",
+      "sys-libs: the lock can link {}, missing from act.lock's sys. `motley update {command} \
+       <pkg>` rewrites it",
       missing.join(", ")
    )))
 }

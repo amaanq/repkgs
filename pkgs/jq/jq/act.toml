@@ -1,0 +1,12 @@
+tag   = "jq-{version}"
+track = "github:jqlang/jq"
+fetch = { asset = "jq-{version}.tar.gz" }
+with  = [ "autotools" ]
+deps  = [ "oniguruma" ]
+
+[test]
+separate = true
+
+[autotools]
+flags      = [ "--with-oniguruma=yes", "--disable-docs", "--disable-maintainer-mode" ]
+testTarget = [ "check", "TESTS=tests/jqtest" ]

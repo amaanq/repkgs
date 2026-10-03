@@ -1,0 +1,21 @@
+tag   = "llvmorg-{version}"
+fetch = { asset = "llvm-project-{version}.src.tar.xz" }
+with  = [ "cmake" ]
+tools = [ "cpython" ]
+test  = false
+
+[track]
+from  = "github:llvm/llvm-project"
+allow = ">=23"
+
+[cmake]
+root = "runtimes"
+
+[cmake.defs]
+LIBOMP_INSTALL_ALIASES     = false
+LIBOMP_OMPD_SUPPORT        = false
+LLVM_ENABLE_RUNTIMES       = "openmp"
+LLVM_INCLUDE_TESTS         = false
+OPENMP_ENABLE_LIBOMPTARGET = false
+OPENMP_ENABLE_OMPT_TOOLS   = false
+OPENMP_ENABLE_TESTING      = false

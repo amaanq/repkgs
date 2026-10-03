@@ -1,0 +1,10 @@
+track = "generic:attr?url=https://download.savannah.nongnu.org/releases/attr/"
+fetch = { url = "https://download.savannah.nongnu.org/releases/attr/attr-{version}.tar.gz" }
+with  = [ "autotools" ]
+
+[test]
+bin = [ "getfattr", "setfattr", "attr" ]
+run = false
+
+[only]
+os = [ "linux" ]

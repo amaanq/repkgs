@@ -1,0 +1,10 @@
+tag   = "release-{version}"
+track = "github:libevent/libevent"
+fetch = { url = "https://github.com/libevent/libevent/releases/download/release-{version}/libevent-{version}.tar.gz" }
+with  = [ "cmake" ]
+deps  = [ "openssl" ]
+test  = false
+
+[cmake.defs]
+CMAKE_POLICY_VERSION_MINIMUM = "3.5"
+EVENT__LIBRARY_TYPE          = "SHARED"

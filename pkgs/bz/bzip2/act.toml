@@ -1,0 +1,11 @@
+track = "generic:bzip2?url=https://sourceware.org/pub/bzip2/"
+fetch = { url = "https://sourceware.org/pub/bzip2/bzip2-{version}.tar.gz" }
+with  = [ "make" ]
+
+[only]
+abi = [ "gnu", "apple" ]
+
+[make]
+buildTarget = [ "libbz2.a", "bzip2", "bzip2recover" ]
+flags       = [ "CC=cc", "AR=llvm-ar", "RANLIB=llvm-ranlib", "CFLAGS=-O2 -fPIC" ]
+programs    = [ "bzip2", "bzip2recover" ]

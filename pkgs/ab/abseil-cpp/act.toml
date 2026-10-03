@@ -1,0 +1,10 @@
+track = "github:abseil/abseil-cpp"
+fetch = { asset = "abseil-cpp-{tag}.tar.gz" }
+with  = [ "cmake" ]
+deps  = [ "googletest" ]
+
+[cmake.defs]
+ABSL_BUILD_TESTING           = true
+ABSL_PROPAGATE_CXX_STD       = true
+ABSL_USE_EXTERNAL_GOOGLETEST = true
+CMAKE_CXX_STANDARD           = "17"

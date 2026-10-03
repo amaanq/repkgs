@@ -1,0 +1,14 @@
+track = "generic:pixman?url=https://cairographics.org/releases/"
+fetch = { url = "https://cairographics.org/releases/pixman-{version}.tar.gz" }
+with  = [ "meson" ]
+deps  = [ "libpng" ]
+
+[test]
+separate = true
+
+[meson]
+skipTests = [ "stress-test", "tolerance-test", "composite" ]
+
+[meson.defs]
+libpng = "enabled"
+tests  = "enabled"

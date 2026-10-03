@@ -1,0 +1,7 @@
+tag   = "v{version}"
+track = "github:microsoft/mimalloc"
+fetch = { archive = true }
+with  = [ "cmake" ]
+
+[cmake.defs]
+MI_INSTALL_TOPLEVEL = true

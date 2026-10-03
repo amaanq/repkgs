@@ -1,0 +1,4 @@
+tag   = "v{version}"
+track = "github:google/googletest"
+fetch = { asset = "googletest-{version}.tar.gz" }
+with  = [ "cmake" ]

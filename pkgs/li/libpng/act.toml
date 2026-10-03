@@ -1,0 +1,8 @@
+track = "github:pnggroup/libpng"
+fetch = { url = "https://downloads.sourceforge.net/libpng/libpng-{version}.tar.xz" }
+with  = [ "cmake" ]
+deps  = [ "zlib" ]
+
+[cmake.defs]
+PNG_STATIC = false
+PNG_TOOLS  = true

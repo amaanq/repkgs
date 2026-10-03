@@ -1,0 +1,8 @@
+track = "pypi:meson"
+fetch = { url = "https://files.pythonhosted.org/packages/source/m/meson/meson-{version}.tar.gz" }
+with  = [ "python" ]
+deps  = [ "cpython" ]
+tools = [ "python-setuptools" ]
+
+[python]
+module = "mesonbuild"

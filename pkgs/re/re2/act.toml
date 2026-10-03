@@ -1,0 +1,8 @@
+tag   = "*"
+track = "github:google/re2"
+fetch = { asset = "re2-{tag}.tar.gz" }
+with  = [ "cmake" ]
+deps  = [ "abseil-cpp", "googletest" ]
+
+[cmake.defs]
+RE2_TEST = true

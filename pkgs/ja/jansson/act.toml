@@ -1,0 +1,7 @@
+tag   = "v{version}"
+track = "github:akheron/jansson"
+fetch = { asset = "jansson-{version}.tar.bz2" }
+with  = [ "autotools" ]
+
+[autotools]
+outOfTree = false

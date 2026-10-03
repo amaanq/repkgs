@@ -14,8 +14,8 @@ def main [installable: string = ".#bootstrap-llvm", --rust, --mrustc]: nothing -
       hash: $archive.hash
     }
   } | sort-by name)
-  let rust_version = (open ($env.FILE_PWD | path join ../pkgs/ru/rust/recipe.toml) | get pin.version)
-  let nu_version = (open ($env.FILE_PWD | path join ../pkgs/nu/nushell/recipe.toml) | get pin.version)
+  let rust_version = (open --raw ($env.FILE_PWD | path join ../pkgs/ru/rust/act.lock) | from toml | get version)
+  let nu_version = (open --raw ($env.FILE_PWD | path join ../pkgs/nu/nushell/act.lock) | from toml | get version)
   let mummer_crates = (open --raw ($env.FILE_PWD | path join ../pkgs/mu/mummer/src/Cargo.lock) | from toml
     | get package | where source? == "registry+https://github.com/rust-lang/crates.io-index"
     | each {|crate| $"($crate.name)-($crate.version)" })

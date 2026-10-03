@@ -1,0 +1,2 @@
+track = "generic:dash?url=http://gondor.apana.org.au/~herbert/dash/files/"
+fetch = { url = "http://gondor.apana.org.au/~herbert/dash/files/dash-{version}.tar.gz" }

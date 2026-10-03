@@ -1,0 +1,7 @@
+track = "pypi:trove-classifiers"
+fetch = { url = "https://files.pythonhosted.org/packages/source/t/trove-classifiers/trove_classifiers-{version}.tar.gz" }
+with  = [ "python" ]
+tools = [ "python-setuptools" ]
+
+[python]
+module = "trove_classifiers"

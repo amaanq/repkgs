@@ -1,4 +1,4 @@
-# pkgs/<first two letters>/<name>/ with a package.nix, or a recipe.toml with a [build] table,
+# pkgs/<first two letters>/<name>/ with a package.nix, or an act.toml with build keys,
 # attribute name == directory name, then the
 # out-of-tree `packages`, then the unversioned aliases of pkgs/aliases.toml
 {
@@ -11,12 +11,10 @@ let
     attrNames
     concatMap
     filter
-    fromTOML
     listToAttrs
     mapAttrs
     pathExists
     readDir
-    readFile
     substring
     ;
   root = ../../pkgs;
@@ -33,7 +31,7 @@ let
   isPackage =
     dir:
     pathExists (dir + "/package.nix")
-    || pathExists (dir + "/recipe.toml") && fromTOML (readFile (dir + "/recipe.toml")) ? build;
+    || pathExists (dir + "/act.toml") && (import ../act.nix dir).isPackage;
   # unversioned names for the default line of multi-version packages (pkgs/aliases.toml)
   aliases = mapAttrs (
     alias: target:

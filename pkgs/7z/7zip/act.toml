@@ -1,0 +1,12 @@
+track = "github:ip7z/7zip"
+fetch = { archive = true }
+
+[test]
+bin     = [ "7zz" ]
+version = "7zz --help"
+
+[steps]
+phases = [ "sevenzip.build" ]
+
+[only]
+posix = true

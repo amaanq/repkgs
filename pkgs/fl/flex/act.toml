@@ -1,0 +1,10 @@
+tag            = "v{version}"
+track          = "github:westes/flex"
+fetch          = { asset = "flex-{version}.tar.gz" }
+with           = [ "autotools" ]
+deps           = [ "m4" ]
+test           = false
+bootstrapTools = true
+
+[only]
+posix = true

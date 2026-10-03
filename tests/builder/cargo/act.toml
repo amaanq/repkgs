@@ -1,0 +1,5 @@
+with    = [ "cargo" ]
+version = "0.1.0"
+
+[test]
+version = "test-cargo"

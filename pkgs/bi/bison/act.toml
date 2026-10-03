@@ -1,0 +1,14 @@
+track          = "gnu:bison"
+fetch          = { url = "https://ftp.gnu.org/gnu/bison/bison-{version}.tar.xz" }
+with           = [ "autotools" ]
+deps           = [ "m4" ]
+bootstrapTools = true
+
+[test]
+separate = true
+
+[steps.before]
+"autotools.test" = [ "bison.glr-dir" ]
+
+[autotools]
+makeFlags = [ "TESTSUITEFLAGS=-j$(NIX_BUILD_CORES) 1-763 765-776" ]

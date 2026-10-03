@@ -1,0 +1,10 @@
+tag   = "v{version}"
+track = "github:localtunnel/localtunnel"
+fetch = { archive = true }
+with  = [ "yarn" ]
+
+[test]
+bin = [ "lt" ]
+
+[steps]
+phases = [ "yarn.install" ]

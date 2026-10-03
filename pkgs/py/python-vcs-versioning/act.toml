@@ -1,0 +1,8 @@
+track = "pypi:vcs-versioning"
+fetch = { url = "https://files.pythonhosted.org/packages/source/v/vcs-versioning/vcs_versioning-{version}.tar.gz" }
+with  = [ "python" ]
+deps  = [ "python-packaging" ]
+tools = [ "python-setuptools" ]
+
+[python]
+module = "vcs_versioning"

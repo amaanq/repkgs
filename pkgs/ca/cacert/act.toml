@@ -1,0 +1,12 @@
+track = "github:certifi/python-certifi"
+fetch = { url = "https://github.com/certifi/python-certifi/archive/refs/tags/{version}.tar.gz" }
+
+[exports]
+libDirs = [  ]
+libs    = [  ]
+
+[exports.env]
+SSL_CERT_FILE = "{root}/etc/ssl/certs/ca-bundle.crt"
+
+[install]
+"etc/ssl/certs/ca-bundle.crt" = "certifi/cacert.pem"

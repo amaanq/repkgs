@@ -1,4 +1,4 @@
-# bigtop syslibs over the lock files beside this script, which is what spieler records as [pin] sys.
+# bigtop syslibs over the lock files beside this script, which is what spieler records as act.lock's sys.
 # The build-time half (check, env, go tags, gem flags) runs in every cargo, go, python and gems build
 use checks.nu *
 

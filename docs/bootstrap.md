@@ -27,7 +27,7 @@ URLs of fixed-output inputs for inspection. Run it after changing the nixpkgs pi
 build dependencies.
 
 These checks identify dependency mistakes. They do not inspect the contents of source
-archives or prove that a compiler is correct. The source hash in `pkgs/ll/llvm/recipe.toml`
+archives or prove that a compiler is correct. The source hash in `pkgs/ll/llvm/act.lock`
 is shared with the normal package set.
 
 ## Trust boundary
@@ -76,7 +76,7 @@ nix build .#bootstrap-peanut -L
 The Rust audit checks the intermediate source URLs and hashes against the manifest and
 rejects Rust binary toolchains in the build dependencies. Nix generates the bootstrap config
 directly, since its general TOML converter needs Rust. The normal package set still uses
-`pkgs/ru/rust-bootstrap/recipe.toml`. The source peanut build does not depend on that manifest.
+`pkgs/ru/rust-bootstrap/act.lock`. The source peanut build does not depend on that manifest.
 
 Peanut assembly takes Nu from this build and strips its binaries with the source-built LLVM.
 It removes store references from the tool binaries and copied data, including Python's build

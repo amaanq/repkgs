@@ -1,0 +1,12 @@
+tag   = "v{version}"
+track = "github:rhash/RHash"
+fetch = { url = "https://github.com/rhash/RHash/archive/refs/tags/v{version}.tar.gz" }
+with  = [ "make" ]
+
+[only]
+abi = [ "gnu", "apple" ]
+
+[make]
+buildTarget    = [ "lib-shared" ]
+configureFlags = [ "--enable-lib-shared", "--disable-gettext" ]
+installTarget  = [ "-C", "librhash", "install-lib-shared", "install-lib-headers" ]

@@ -1,0 +1,4 @@
+tag   = "v{version}"
+track = "github:google/brotli"
+fetch = { url = "https://github.com/google/brotli/archive/refs/tags/v{version}.tar.gz" }
+with  = [ "cmake" ]

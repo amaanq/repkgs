@@ -1,0 +1,15 @@
+tag     = "v{version}"
+track   = "github:elixir-lang/elixir"
+fetch   = { archive = true }
+with    = [ "make" ]
+deps    = [ "erlang", "coreutils", "sed" ]
+exports = false
+
+[test]
+bin = [ "elixir", "elixirc", "mix", "iex" ]
+
+[env]
+ERL_COMPILER_OPTIONS = "deterministic"
+
+[make]
+testTarget = [ "test_stdlib" ]

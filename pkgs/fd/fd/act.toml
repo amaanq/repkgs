@@ -1,0 +1,4 @@
+tag   = "v{version}"
+track = "github:sharkdp/fd"
+fetch = { archive = true }
+with  = [ "cargo" ]

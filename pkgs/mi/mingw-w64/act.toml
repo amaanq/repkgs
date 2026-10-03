@@ -1,0 +1,2 @@
+track = "generic:mingw-w64?url=https://www.mingw-w64.org/changelog/"
+fetch = { url = "https://downloads.sourceforge.net/project/mingw-w64/mingw-w64/mingw-w64-release/mingw-w64-v{version}.tar.bz2" }

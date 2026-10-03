@@ -1,7 +1,7 @@
 //! The lock side of builder/sys-libs.json.
 //!
 //! Locked third-party packages that link a C library and which package of
-//! ours provides it. spieler decides `[pin] sys` from the lock files of a
+//! ours provides it. spieler decides act.lock's `sys` from the lock files of a
 //! tree with it, bigtop checks the pin at build time.
 
 use std::{
@@ -93,7 +93,7 @@ pub fn wanted_for(tables: &Tables, ecosystem: &str, names: &[String]) -> Vec<Str
    found
 }
 
-/// Our packages the lock files in `dir` can link, sorted, what `[pin] sys`
+/// Our packages the lock files in `dir` can link, sorted, what act.lock's `sys`
 /// should say.
 #[inline]
 pub fn wanted(tables: &Tables, dir: &Path) -> io::Result<Vec<String>> {

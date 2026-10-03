@@ -425,7 +425,7 @@ fn generic(purl: &Purl) -> io::Result<Vec<Candidate>> {
 
 /// `pkg:visualstudio/<major>`: the release channel names the current
 /// VisualStudio.vsman. Its URL is not derivable from the version, so the path
-/// below download/pr/ rides in [pin] as `pr`.
+/// below download/pr/ rides in act.lock as `pr`.
 fn visualstudio(purl: &Purl) -> io::Result<Vec<Candidate>> {
    let doc = fetch_json(
       &format!("https://aka.ms/vs/{}/release/channel", purl.name),
@@ -461,7 +461,7 @@ const SUCATALOG: &str = "https://swscan.apple.com/content/catalogs/others/index-
 /// `pkg:applesdk/CLTools_macOSNMOS_SDK`: every product in the macOS software
 /// update catalog that ships that package. The version is the Command Line
 /// Tools release in its .pkm metadata, `path` (the part of the URL after
-/// content/downloads/) rides in [pin] since it is not derivable.
+/// content/downloads/) rides in act.lock since it is not derivable.
 fn applesdk(purl: &Purl) -> io::Result<Vec<Candidate>> {
    let catalog = fetch(SUCATALOG, "apple sucatalog", Duration::from_secs(12 * HOUR))?.body;
    let listed = Regex::new(&format!(

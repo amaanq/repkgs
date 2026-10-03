@@ -1,0 +1,6 @@
+track = 'generic:capstone?url=https://github.com/capstone-engine/capstone/tags&regex=/([0-9.]+)\.tar\.gz'
+fetch = { url = "https://github.com/capstone-engine/capstone/archive/refs/tags/{version}.tar.gz" }
+with  = [ "cmake" ]
+
+[cmake.defs]
+CAPSTONE_BUILD_MACOS_THIN = true

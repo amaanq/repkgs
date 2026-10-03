@@ -1,7 +1,0 @@
-sources-from = "rust-bootstrap"
-
-[build]
-exports  = false
-phases   = [ "rust-bootstrap-std.install" ]
-prebuilt = "ldso"
-source   = "rust-std-x86_64"

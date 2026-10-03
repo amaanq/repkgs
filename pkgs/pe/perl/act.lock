@@ -1,0 +1,8 @@
+version = "5.40.5"
+
+[hash]
+cross   = "sha256-6BQWltgzuR5bUab1AjuqhrhHuwquo3/HlHjGWJ51Jp4="
+default = "sha256-SjrMeroh+58iYrXgeJ9nIsFnrVBpIiXsUg/Pm9mfqr8="
+
+[vars]
+cross = "1.6.5"

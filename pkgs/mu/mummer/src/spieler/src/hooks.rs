@@ -1,4 +1,4 @@
-//! `update.nu` beside a recipe.toml may export `resolve`, `files` or
+//! `update.nu` beside an act.toml may export `resolve`, `files` or
 //! `verify` to replace that stage for its package.
 //!
 //! It runs in its own nu with this binary's directory on PATH (so
