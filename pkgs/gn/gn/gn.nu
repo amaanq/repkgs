@@ -8,7 +8,7 @@ export def build []: nothing -> nothing {
          --allow-warnings $"--out-path=($c.build)")
    }
    # gen.py reads these from git history, which a tarball has none of
-   let position = {number: 2484, commit: "27a549cc"}
+   let position = {number: 2572, commit: "3c5809c3"}
    [
       $"#define LAST_COMMIT_POSITION_NUM ($position.number)"
       $"#define LAST_COMMIT_POSITION \"($position.number) \(($position.commit)\)\""
