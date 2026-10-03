@@ -5,60 +5,60 @@
 # per package and follows the run.
 const REPO = "manic-systems/motley"
 const RUNNERS = {
-  x86_64-windows-gnu: windows-latest
-  x86_64-windows-msvc: windows-latest
-  aarch64-windows-msvc: windows-11-arm
-  aarch64-macos: macos-latest
-  x86_64-macos: macos-13
-  aarch64-linux: ubuntu-24.04-arm
-  aarch64-linux-musl: ubuntu-24.04-arm
+   x86_64-windows-gnu: windows-latest
+   x86_64-windows-msvc: windows-latest
+   aarch64-windows-msvc: windows-11-arm
+   aarch64-macos: macos-latest
+   x86_64-macos: macos-13
+   aarch64-linux: ubuntu-24.04-arm
+   aarch64-linux-musl: ubuntu-24.04-arm
 }
 
 # the command that checks one package, the way bigtop finish checks versions: the spec's `bin`, else
 # bin/<name> when the build made one, and a plain listing for a library
 def version-check [platform: string, attr: string, out: string, here: closure]: nothing -> string {
-  let exe = if $platform =~ windows { ".exe" } else { "" }
-  let query = $"with import ./. { platform = \"($platform)\"; }; { version = ($attr).version; check = ($attr).spec.tests.version or true; bin = ($attr).spec.bin or []; }"
-  let spec = (^nix-instantiate --eval --json --strict -E $query | from json)
-  let own = (do $here $"test -e ($out)/bin/($attr)($exe)" | complete).exit_code == 0
-  let bin = if ($spec.bin | is-empty) and $own { [$attr] } else { $spec.bin }
-  if $spec.check == false or ($bin | is-empty) { return $"ls ($out)" }
+   let exe = if $platform =~ windows { ".exe" } else { "" }
+   let query = $"with import ./. { platform = \"($platform)\"; }; { version = ($attr).version; check = ($attr).spec.tests.version or true; bin = ($attr).spec.bin or []; }"
+   let spec = (^nix-instantiate --eval --json --strict -E $query | from json)
+   let own = (do $here $"test -e ($out)/bin/($attr)($exe)" | complete).exit_code == 0
+   let bin = if ($spec.bin | is-empty) and $own { [$attr] } else { $spec.bin }
+   if $spec.check == false or ($bin | is-empty) { return $"ls ($out)" }
 
-  let words = if $spec.check == true { [($bin | first) --version] } else { $spec.check | split row " " }
-  let words = if $words.0 in $bin { $words } else { [($bin | first) ...$words] }
-  let release = ($spec.version | str replace -r '-r[0-9]+$' '')
-  $"($out)/bin/($words.0)($exe) ($words | skip 1 | str join ' ') | grep -F ($release)"
+   let words = if $spec.check == true { [($bin | first) --version] } else { $spec.check | split row " " }
+   let words = if $words.0 in $bin { $words } else { [($bin | first) ...$words] }
+   let release = ($spec.version | str replace -r '-r[0-9]+$' '')
+   $"($out)/bin/($words.0)($exe) ($words | skip 1 | str join ' ') | grep -F ($release)"
 }
 
 # --remote builds and packs on that host, with the repo rsynced to /scratch/$USER/<basename> and
 # $NIX_BUILD as its nix-build command
 def main [platform: string, --remote (-r): string, ...attrs: string] {
-  let runner = ($RUNNERS | get $platform)
-  let here = {|command: string|
-    if $remote == null { ^bash -c $command } else { ^ssh $remote $"cd /scratch/($env.USER)/(pwd | path basename) && ($command)" }
-  }
+   let runner = ($RUNNERS | get $platform)
+   let here = {|command: string|
+      if $remote == null { ^bash -c $command } else { ^ssh $remote $"cd /scratch/($env.USER)/(pwd | path basename) && ($command)" }
+   }
 
-  let build = $"($env.NIX_BUILD? | default nix-build) . ($attrs | each {|attr| $'-A ($attr)' } | str join ' ') --argstr platform ($platform) --no-out-link"
-  let outs = (do $here $build | lines | where $it =~ '^/nix/store')
-  if ($outs | length) != ($attrs | length) { error make {msg: $"only ($outs | length) of ($attrs | length) packages built"} }
-  let checks = ($attrs | zip $outs | each {|pair| version-check $platform $pair.0 $pair.1 $here })
+   let build = $"($env.NIX_BUILD? | default nix-build) . ($attrs | each {|attr| $'-A ($attr)' } | str join ' ') --argstr platform ($platform) --no-out-link"
+   let outs = (do $here $build | lines | where $it =~ '^/nix/store')
+   if ($outs | length) != ($attrs | length) { error make {msg: $"only ($outs | length) of ($attrs | length) packages built"} }
+   let checks = ($attrs | zip $outs | each {|pair| version-check $platform $pair.0 $pair.1 $here })
 
-  let archive = $"/tmp/target-test-($platform).tar.gz"
-  let pack = $"nix-store -qR ($outs | str join ' ') | grep -v -- '-debug$' | tar -C / -czf - -T -"
-  ^bash -c (if $remote == null { $"($pack) > ($archive)" } else { $"ssh ($remote) ($pack | to json) > ($archive)" })
+   let archive = $"/tmp/target-test-($platform).tar.gz"
+   let pack = $"nix-store -qR ($outs | str join ' ') | grep -v -- '-debug$' | tar -C / -czf - -T -"
+   ^bash -c (if $remote == null { $"($pack) > ($archive)" } else { $"ssh ($remote) ($pack | to json) > ($archive)" })
 
-  let tag = "target-test"
-  if (^gh release view $tag -R $REPO | complete).exit_code != 0 {
-    ^gh release create $tag -R $REPO --prerelease --notes "payloads for .github/workflows/target-test.yaml" --title $tag
-  }
-  ^gh release upload $tag $archive -R $REPO --clobber
-  let url = $"https://github.com/($REPO)/releases/download/($tag)/($archive | path basename)"
+   let tag = "target-test"
+   if (^gh release view $tag -R $REPO | complete).exit_code != 0 {
+      ^gh release create $tag -R $REPO --prerelease --notes "payloads for .github/workflows/target-test.yaml" --title $tag
+   }
+   ^gh release upload $tag $archive -R $REPO --clobber
+   let url = $"https://github.com/($REPO)/releases/download/($tag)/($archive | path basename)"
 
-  print ($checks | str join "\n")
-  ^gh workflow run target-test.yaml -R $REPO -f $"runner=($runner)" -f $"url=($url)" -f $"commands=($checks | str join "\n")"
-  sleep 5sec
-  let id = (^gh run list -R $REPO -w target-test.yaml -L 1 --json databaseId | from json | get 0.databaseId)
-  print $"https://github.com/($REPO)/actions/runs/($id)"
-  ^gh run watch $id -R $REPO --exit-status
-  ^gh run view $id -R $REPO --log | lines | where $it =~ '\brun\b' | each { str replace -r '^\S+\s+\S+\s+\S+\s' '' } | print
+   print ($checks | str join "\n")
+   ^gh workflow run target-test.yaml -R $REPO -f $"runner=($runner)" -f $"url=($url)" -f $"commands=($checks | str join "\n")"
+   sleep 5sec
+   let id = (^gh run list -R $REPO -w target-test.yaml -L 1 --json databaseId | from json | get 0.databaseId)
+   print $"https://github.com/($REPO)/actions/runs/($id)"
+   ^gh run watch $id -R $REPO --exit-status
+   ^gh run view $id -R $REPO --log | lines | where $it =~ '\brun\b' | each { str replace -r '^\S+\s+\S+\s+\S+\s' '' } | print
 }

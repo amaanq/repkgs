@@ -9,7 +9,7 @@
 use core.nu *
 
 export def main [context: record, dir?: path]: nothing -> nothing {
-  let target = ($dir | default $context.out)
-  let stub   = if $target == $context.out { [--stub $context.platform.relocStub] } else { [] }
-  ^bigtop implant $target --interp $context.platform.interp ...$stub ...(attrs).dependencies
+   let target = ($dir | default $context.out)
+   let stub   = if $target == $context.out { [--stub $context.platform.relocStub] } else { [] }
+   ^bigtop implant $target --interp $context.platform.interp ...$stub ...(attrs).dependencies
 }

@@ -2,15 +2,15 @@
 use checks.nu *
 
 let cache = [
-  "# comment"
-  "//help text"
-  "FOO:INTERNAL=1"
-  "BAR:STRING=not internal"
-  '"odd:key":INTERNAL=a=b;c'
-  "TRAIL:INTERNAL='v '"
-  "P:INTERNAL=/nix/store/x/include;/nix/store/y/include"
-  "E:INTERNAL="
-  "CR:INTERNAL=z\r"
+   "# comment"
+   "//help text"
+   "FOO:INTERNAL=1"
+   "BAR:STRING=not internal"
+   '"odd:key":INTERNAL=a=b;c'
+   "TRAIL:INTERNAL='v '"
+   "P:INTERNAL=/nix/store/x/include;/nix/store/y/include"
+   "E:INTERNAL="
+   "CR:INTERNAL=z\r"
 ] | str join "\n"
 let file = (mktemp)
 $cache + "\n" | save -f $file
