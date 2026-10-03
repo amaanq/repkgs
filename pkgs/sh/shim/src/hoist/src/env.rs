@@ -22,6 +22,7 @@ use serde::{
    Serialize,
 };
 use serde_json::Value;
+use shim::files::glob;
 
 use crate::{
    attrs::{
@@ -81,6 +82,7 @@ pub fn compute(
    toolchain(&mut env, attrs, spec, deps, &top, &bins)?;
    let platform = Platform::deserialize(&attrs.platform)?;
    package_cc(&mut env, spec, &platform, deps, &bins)?;
+   python_path(&mut env, &attrs.build_dependencies)?;
    for root in &attrs.build_dependencies {
       for (name, value) in exports_of(Path::new(root))?.env {
          env.insert(name, Value::String(value));
@@ -96,6 +98,26 @@ pub fn compute(
       compiler_caches(&mut env, &bins);
    }
    Ok(env)
+}
+
+// a build tool written in python imports modules that other build dependencies
+// installed, and only the python build systems put those on sys.path themselves
+fn python_path(env: &mut BTreeMap<String, Value>, build_dependencies: &[String]) -> io::Result<()> {
+   let mut sites = Vec::new();
+   for entry in closure(build_dependencies)? {
+      sites.extend(glob(&format!("{}/lib/python3*/site-packages", entry.root))?);
+   }
+   if sites.is_empty() {
+      return Ok(());
+   }
+
+   let joined = sites
+      .iter()
+      .map(|site| site.to_string_lossy())
+      .collect::<Vec<_>>()
+      .join(":");
+   set(env, "PYTHONPATH", joined);
+   Ok(())
 }
 
 fn set(env: &mut BTreeMap<String, Value>, name: &str, value: impl Into<String>) {
