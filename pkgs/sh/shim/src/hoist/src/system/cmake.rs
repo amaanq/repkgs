@@ -172,6 +172,16 @@ impl Cmake {
             Def::Text(platform.os_names.cmake),
          );
          Self::upsert(&mut defs, "CMAKE_SYSTEM_PROCESSOR", Def::Text(platform.cpu));
+
+         // a hand-set CMAKE_SYSTEM_NAME leaves the version empty, and projects
+         // such as zeromq derive _WIN32_WINNT from it
+         if platform.os == "windows" {
+            Self::upsert(
+               &mut defs,
+               "CMAKE_SYSTEM_VERSION",
+               Def::Text("10.0".to_owned()),
+            );
+         }
       }
       if platform.os == "macos" {
          Self::upsert(
