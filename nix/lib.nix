@@ -10,4 +10,11 @@
     else
       [ ];
   join = builtins.concatStringsSep;
+  # true when every list is empty, else one error naming them all
+  check =
+    context: errors:
+    let
+      found = builtins.concatLists errors;
+    in
+    found == [ ] || throw "${context}: ${builtins.concatStringsSep "; " found}";
 }

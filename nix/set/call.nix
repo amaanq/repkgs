@@ -36,10 +36,13 @@ let
     fn (given {
       features = resolved;
       package =
-        if edit0 == null then
-          package sources dirs resolved fn
-        else
-          spec: package sources dirs resolved fn (edit0 spec);
+        let
+          build = package {
+            inherit sources dirs fn;
+            features = resolved;
+          };
+        in
+        if edit0 == null then build else spec: build (edit0 spec);
       # another package's spec under this name, edited with override verbs: this function
       # again with the base's package.nix. Own recipe.toml when the directory has one
       # (llvm22: another pin), else the base's (rust-std: same tarball). A list of trees merges

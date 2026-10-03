@@ -23,22 +23,23 @@ let
   inherit (builtins)
     all
     any
-    attrNames
     attrValues
     concatMap
     elem
     filter
     hasContext
     head
-    isList
     isString
     listToAttrs
     mapAttrs
     tail
     ;
   inherit (lib) join;
-  schema = import ../schema.nix;
-  completions = import ./completions.nix;
+  resolve = import ./resolve.nix { inherit platform lib edit; };
+  validate = import ./validate.nix {
+    inherit platform buildSystems lib;
+    schema = import ../schema.nix;
+  };
   elf = platform.binfmt == "elf";
 
   # the builder modules every script imports: one string for the set
@@ -78,100 +79,25 @@ let
     };
   };
 in
-# sources: the package's recipe.toml (nix/sources.nix) or null. It supplies version and source
-# unless package.nix sets them (local trees, demos)
+# sources: the package's recipe.toml (nix/sources.nix) or null
 # dirs: where a phase prefix that is no build system finds <prefix>.nu, the package's own first
-sources0: dirs: features: fn: written:
+{
+  sources,
+  dirs,
+  features,
+  fn,
+}:
+written:
 let
-  edited = if edit == null then written else edit written.name written;
-  # an override may repin the package: `pin.merge = { version = "…"; }` plus
-  # `hash.merge = { default = "sha256-…"; }` re-read recipe.toml under the new [pin]
-  repinned = edit != null && sources0 != null && (edited ? pin || edited ? hash);
-  sources = if repinned then sources0.repin (edited.pin or { }) (edited.hash or { }) else sources0;
-  fromSources =
-    if sources == null then
-      { }
-    else
-      {
-        inherit (sources) version;
-        # one tarball for all, or one per platform ("x86_64-linux", "aarch64-macos")
-        source = if sources.has "default" then "default" else "${platform.cpu}-${platform.os}";
-      };
-  args =
-    fromSources
-    // (
-      if repinned then
-        removeAttrs edited [
-          "pin"
-          "hash"
-        ]
-      else
-        edited
-    )
-    // (
-      if edited ? completions then
-        { install = completions edited.completions // (edited.install or { }); }
-      else
-        { }
-    );
+  resolved = resolve { inherit sources written; };
+  inherit (resolved) args;
+  pinned = resolved.sources;
   inherit (args) name;
   uses = args.uses or [ ];
   fail = message: throw "${name}: ${message}";
-
-  # `<bs> = on cond { … }` for a build system used on some platforms only leaves { } on the others
-  inactive = filter (key: !(elem key schema.recipeFields) && args.${key} == { }) (attrNames args);
-  badFields = schema.validateRecipe {
-    value = removeAttrs args (uses ++ inactive);
-    mode = "keys";
-  };
-  badOptions = concatMap (
-    system:
-    buildSystems.${system}.validate {
-      value = args.${system} or { };
-      mode = "keys";
-    }
-  ) uses;
-  # the shape is the schema's, values from outside are checked where they are resolved (nix/features.nix)
-  badFeatures = filter (
-    feature:
-    let
-      declared = args.features.${feature};
-      defaults = if isList declared.default then declared.default else [ declared.default ];
-    in
-    declared ? values && !all (value: elem value declared.values) defaults
-  ) (attrNames (args.features or { }));
-  # a library among the build tools or a tool among the libraries: natively both platforms
-  # coincide and nothing would notice, so it is checked here
-  wrongPlatform =
-    map (dependency: "dependencies: ${dependency.pname} is built for ${dependency.platform}") (
-      filter (dependency: (dependency.platform or platform.name) != platform.name) (
-        args.dependencies or [ ]
-      )
-    )
-    ++ map (dependency: "buildDependencies: ${dependency.pname} is built for ${dependency.platform}") (
-      filter (dependency: (dependency.platform or platform.system) != platform.system) (
-        args.buildDependencies or [ ]
-      )
-    );
-  checks =
-    if badFields != [ ] then
-      fail (join "; " badFields)
-    else if badFeatures != [ ] then
-      fail "features ${toString badFeatures}: the default is not among the values"
-    else if badOptions != [ ] then
-      fail (join "; " badOptions)
-    else if wrongPlatform != [ ] then
-      fail (join "; " wrongPlatform)
-    else
-      true;
-  # fully checked only where read, since an interpolated string forces its dependency
-  valid = mapAttrs (
-    field: value:
-    let
-      errors = schema.checkField "deep" field value;
-    in
-    if !(elem field schema.recipeFields) || errors == [ ] then value else fail (join "; " errors)
-  ) args;
+  checked = validate { inherit args uses fail; };
+  checks = lib.check name checked.errors;
+  valid = checked.valid;
 
   # `source` as a plain string names a recipe.toml key; a cpu the file has no tarball for is
   # unsupported. Paths and derivations (strings with context) are the source itself
@@ -180,7 +106,7 @@ let
       source = args.source or null;
     in
     if isString source && !hasContext source then source else null;
-  src = if sourceKey != null then sources.fetch sourceKey else valid.source;
+  src = if sourceKey != null then pinned.fetch sourceKey else valid.source;
   unsupportedReason = import ./support.nix {
     inherit
       platform
@@ -188,9 +114,9 @@ let
       name
       args
       uses
-      sources
       sourceKey
       ;
+    sources = pinned;
     dependencies =
       common.dependencies
       ++ (args.buildDependencies or [ ])
@@ -229,7 +155,7 @@ let
   # DWARF goes to the `debug` output (jib finish). false when the build cannot be made to keep it
   debug = args.debug or (prebuilt == false);
   # [pin] sys of recipe.toml. null: no recipe.toml, dependencies are all by hand
-  sys = args.sys or (if sources == null then null else sources.sys);
+  sys = args.sys or (if pinned == null then null else pinned.sys);
   options =
     system:
     mapAttrs (
@@ -352,7 +278,7 @@ drv
   platform = platform.name;
   # what package.nix wrote and read, for `variant`
   args = written;
-  sources = sources0;
+  inherit sources;
   decl = written.features or { };
   inherit (phases) script;
   inherit
