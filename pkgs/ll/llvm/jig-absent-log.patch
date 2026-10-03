@@ -1,63 +1,72 @@
-diff --git a/clang/lib/Frontend/CompilerInvocation.cpp b/clang/lib/Frontend/CompilerInvocation.cpp
-index 8898e63..e395359 100644
+diff -ruN a/clang/lib/Frontend/CompilerInvocation.cpp b/clang/lib/Frontend/CompilerInvocation.cpp
 --- a/clang/lib/Frontend/CompilerInvocation.cpp
 +++ b/clang/lib/Frontend/CompilerInvocation.cpp
-@@ -5502,10 +5502,58 @@ clang::createVFSFromCompilerInvocation(const CompilerInvocation &CI,
-                                          llvm::vfs::getRealFileSystem());
+@@ -67,6 +67,7 @@
+ #include "llvm/Support/Error.h"
+ #include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Support/ErrorOr.h"
++#include "llvm/Support/Errc.h"
+ #include "llvm/Support/FileSystem.h"
+ #include "llvm/Support/HashBuilder.h"
+ #include "llvm/Support/MathExtras.h"
+@@ -5495,6 +5496,51 @@
+   getHeaderSearchOpts().ModuleCachePruneAfter = 31 * 24 * 60 * 60;
  }
  
 +namespace {
-+// Appends every path the compiler looked up and did not find to the file named
-+// by $JIG_ABSENT_LOG, one per line. A compile cache that records which files
-+// were read (the depfile) cannot otherwise tell that a header appearing
-+// earlier on the search path would change the result.
-+class AbsentPathLogger final : public llvm::vfs::ProxyFileSystem {
-+  llvm::raw_fd_ostream Log;
++/// Appends every path a lookup finds missing to $JIG_ABSENT_LOG, one per
++/// line. jig keys cached compiles on them, so a header that later appears
++/// earlier on the search path invalidates the entry.
++class AbsentPathLogger
++    : public llvm::RTTIExtends<AbsentPathLogger, llvm::vfs::ProxyFileSystem> {
++  std::unique_ptr<llvm::raw_fd_ostream> Log;
 +
-+  template <typename T> T note(const Twine &Path, T Result) {
-+    if (!Result &&
-+        Result.getError() == llvm::errc::no_such_file_or_directory) {
-+      SmallString<256> Line;
-+      Path.toVector(Line);
-+      Line.push_back('\n');
-+      Log.write(Line.data(), Line.size()); // one write(2): O_APPEND atomic
-+    }
-+    return Result;
++  void noteMissing(const llvm::Twine &Path, std::error_code EC) {
++    if (Log && EC == llvm::errc::no_such_file_or_directory)
++      *Log << (Path + "\n").str();
 +  }
 +
 +public:
++  inline static const char ID = 0;
++
 +  AbsentPathLogger(IntrusiveRefCntPtr<llvm::vfs::FileSystem> FS,
-+                   StringRef LogPath, std::error_code &EC)
-+      : ProxyFileSystem(std::move(FS)),
-+        Log(LogPath, EC, llvm::sys::fs::OF_Append) {
-+    Log.SetUnbuffered();
++                   StringRef LogPath)
++      : RTTIExtends(std::move(FS)) {
++    std::error_code EC;
++    Log = std::make_unique<llvm::raw_fd_ostream>(LogPath, EC,
++                                                 llvm::sys::fs::OF_Append);
++    if (EC)
++      Log.reset();
++    else
++      Log->SetUnbuffered();
 +  }
-+  llvm::ErrorOr<llvm::vfs::Status> status(const Twine &Path) override {
-+    return note(Path, ProxyFileSystem::status(Path));
++
++  llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine &Path) override {
++    auto Result = ProxyFileSystem::status(Path);
++    if (!Result)
++      noteMissing(Path, Result.getError());
++    return Result;
 +  }
++
 +  llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>>
-+  openFileForRead(const Twine &Path) override {
-+    return note(Path, ProxyFileSystem::openFileForRead(Path));
-+  }
-+  bool exists(const Twine &Path) override {
-+    return static_cast<bool>(status(Path));
++  openFileForRead(const llvm::Twine &Path) override {
++    auto Result = ProxyFileSystem::openFileForRead(Path);
++    if (!Result)
++      noteMissing(Path, Result.getError());
++    return Result;
 +  }
 +};
 +} // namespace
 +
  IntrusiveRefCntPtr<llvm::vfs::FileSystem>
+ clang::createVFSFromCompilerInvocation(const CompilerInvocation &CI,
+                                        DiagnosticsEngine &Diags) {
+@@ -5506,6 +5552,8 @@
  clang::createVFSFromCompilerInvocation(
      const CompilerInvocation &CI, DiagnosticsEngine &Diags,
      IntrusiveRefCntPtr<llvm::vfs::FileSystem> BaseFS) {
-+  if (std::optional<std::string> LogPath =
-+          llvm::sys::Process::GetEnv("JIG_ABSENT_LOG")) {
-+    std::error_code EC;
-+    auto Logger = llvm::makeIntrusiveRefCnt<AbsentPathLogger>(
-+        std::move(BaseFS), *LogPath, EC);
-+    if (EC)
-+      llvm::report_fatal_error(Twine("JIG_ABSENT_LOG: ") + EC.message());
-+    BaseFS = std::move(Logger);
-+  }
++  if (const char *Log = ::getenv("JIG_ABSENT_LOG"); Log && *Log)
++    BaseFS = llvm::makeIntrusiveRefCnt<AbsentPathLogger>(std::move(BaseFS), Log);
    return createVFSFromOverlayFiles(CI.getHeaderSearchOpts().VFSOverlayFiles,
                                     Diags, std::move(BaseFS));
  }
