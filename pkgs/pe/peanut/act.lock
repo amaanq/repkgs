@@ -1,6 +1,6 @@
 version = "4"
 
 [hash]
-aarch64-linux = "sha256-r7/5oMnwIjWD5BnNpIbK46ux4GnYI9esD+fpCXEwuP4="
-riscv64-linux = "sha256-KjyA8Xkw4ZHqdnZRFoO0Bi+BN6rlGkJZpmUzNrIWwa8="
-x86_64-linux  = "sha256-SeXFfroI8UhfUiw2fpx/0UL/ZbuxRwYpK0aMSZ8e7NA="
+aarch64-linux = "sha256-2/hiEIo3mRufrkPn9d4+t2YTSKglxAboIsaFVSbiYQA="
+riscv64-linux = "sha256-WZLSJN0zyvV1ZaP65E2EyYbo9gp/CzRtPPVx8iNi3g8="
+x86_64-linux  = "sha256-SIVvksdJg9O78acXzl1f3QzO6hbLcM5YTzcfd9BuO3k="
