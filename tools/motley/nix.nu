@@ -75,9 +75,8 @@ export def mummerd-socket []: nothing -> any {
 # maps the socket into the sandbox, which takes a trusted user, and keeps the build here
 export def cache-args []: nothing -> list<string> {
    let socket = (mummerd-socket)
-   if $socket != null { return [--option extra-sandbox-paths $"($SANDBOX_SOCKET)=($socket)" --builders ""] }
-   print -e "motley: no mummerd socket, building uncached (motley cache start)"
-   []
+   if $socket == null { fail "no mummerd socket, start the cache with `motley cache start`" }
+   [--option extra-sandbox-paths $"($SANDBOX_SOCKET)=($socket)" --builders ""]
 }
 
 export def drv [attr: string, p, peanut: any, toolchain: any]: nothing -> string { eval $"(pkg-expr $attr $p $peanut $toolchain).drvPath" }
