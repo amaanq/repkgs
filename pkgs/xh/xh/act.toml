@@ -3,3 +3,6 @@ track = "github:ducaale/xh"
 fetch = { archive = true }
 with  = [ "cargo" ]
 tools = [ "cacert" ]
+
+[cargo]
+withoutFeatures = [ "online-tests" ]
