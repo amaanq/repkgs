@@ -20,6 +20,7 @@ use std::{
 };
 
 use glob::glob;
+use mummer::store::on_path;
 
 use crate::{
    attrs::{
@@ -212,41 +213,30 @@ fn rename_quoted(text: &str, rename: impl Fn(&str) -> Option<String>) -> String 
    renamed
 }
 
-/// `<stem>-<digits>`, a versioned LLVM tool.
-fn versioned(word: &str, stem: &str) -> bool {
-   word
-      .strip_prefix(stem)
-      .and_then(|rest| rest.strip_prefix('-'))
-      .is_some_and(|version| {
-         !version.is_empty() && version.bytes().all(|byte| byte.is_ascii_digit())
-      })
-}
-
 /// Debian's tool names in GHC's settings (x86_64-linux-gnu-gcc, llc-21) as
-/// ours.
+/// whichever of their unprefixed, unversioned names is on PATH.
 fn our_tools(text: &str) -> String {
-   let suffixes = [
-      ("-gcc", "cc"),
-      ("-g++", "c++"),
-      ("-ld", "ld"),
-      ("-ar", "ar"),
-      ("-ranlib", "ranlib"),
-   ];
-   let gnu = suffixes
-      .iter()
-      .fold(text.to_owned(), |edited, &(suffix, tool)| {
-         rename_quoted(&edited, |word| {
-            word.ends_with(suffix).then(|| tool.to_owned())
+   let found = |name: &str| on_path(name) != Path::new(name);
+   rename_quoted(text, |word| {
+      if word.is_empty() || word.contains(char::is_whitespace) || found(word) {
+         return None;
+      }
+      let unversioned = word
+         .rsplit_once('-')
+         .filter(|&(_, version)| {
+            !version.is_empty() && version.bytes().all(|byte| byte.is_ascii_digit())
          })
-      });
-   let llvm = rename_quoted(&gnu, |word| {
-      ["llc", "opt"]
+         .map_or(word, |(stem, _)| stem);
+      let mut candidates = vec![unversioned];
+      candidates.extend(
+         unversioned
+            .match_indices('-')
+            .map(|(at, _)| &unversioned[at + 1..]),
+      );
+      candidates
          .into_iter()
-         .find(|stem| versioned(word, stem))
+         .find(|&candidate| !candidate.is_empty() && found(candidate))
          .map(str::to_owned)
-   });
-   rename_quoted(&llvm, |word| {
-      versioned(word, "clang").then(|| "clang".to_owned())
    })
 }
 
