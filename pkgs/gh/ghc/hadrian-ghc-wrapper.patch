@@ -1,8 +1,7 @@
 Subject: [PATCH] hadrian: run Haskell compiles under $GHC_WRAPPER
 
 Lets a compile cache sit in front of every module compile, the way
-RUSTC_WRAPPER does for cargo. Read untracked, Shake refuses a tracked
-getEnv inside withResource.
+RUSTC_WRAPPER does for cargo.
 ---
 --- a/hadrian/src/Builder.hs
 +++ b/hadrian/src/Builder.hs
