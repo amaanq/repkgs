@@ -308,13 +308,17 @@ fn request_key(store: &Store, compiler: &str, invocation: &Invocation) -> io::Re
    for external in &invocation.externs {
       field(&mut hasher, store.input_id(external)?);
    }
-   let mut libraries = read_dir(target_libdir(compiler, invocation)?)?
-      .map(|entry| canonicalize(entry?.path()))
-      .collect::<io::Result<Vec<_>>>()?;
+   // empty while the rust build compiles core and std themselves
+   let mut libraries = match read_dir(target_libdir(compiler, invocation)?) {
+      Ok(entries) => {
+         entries
+            .map(|entry| canonicalize(entry?.path()))
+            .collect::<io::Result<Vec<_>>>()?
+      },
+      Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
+      Err(error) => return Err(error),
+   };
    libraries.retain(|library| library.is_file());
-   if libraries.is_empty() {
-      return Err(io::Error::other("rustc's target libdir is empty"));
-   }
    libraries.sort_unstable();
    for library in libraries {
       field(&mut hasher, store.input_id(&library.to_string_lossy())?);
