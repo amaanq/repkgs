@@ -42,8 +42,10 @@ use std::{
       Builder,
       JoinHandle,
       available_parallelism,
+      sleep,
    },
    time::{
+      Duration,
       SystemTime,
       UNIX_EPOCH,
    },
@@ -64,6 +66,11 @@ use rustix::{
       poll,
    },
    io::Errno,
+   process::{
+      Resource,
+      getrlimit,
+      setrlimit,
+   },
 };
 #[cfg(target_os = "linux")]
 use rustix::{
@@ -205,6 +212,12 @@ fn main() -> Result<()> {
       bail!("--slots must be positive");
    }
 
+   // every pack and hint stays open beside one descriptor per client, which
+   // outgrows the usual soft limit of 1024 long before the hard one
+   let mut files = getrlimit(Resource::Nofile);
+   files.current = files.maximum;
+   setrlimit(Resource::Nofile, files).wrap_err("could not raise the open file limit")?;
+
    let store = Store::open(tiers).wrap_err("could not open cache")?;
    let socket = Socket::bind(options.socket).wrap_err("could not bind socket")?;
    let stopped = Arc::new(AtomicBool::new(false));
@@ -327,6 +340,19 @@ fn serve(
       let stream = match listener.accept() {
          Ok((stream, _)) => stream,
          Err(error) if error.kind() == io::ErrorKind::WouldBlock => continue,
+         // out of descriptors or an aborted client is no reason to drop every build's cache
+         Err(error)
+            if matches!(
+               Errno::from_io_error(&error),
+               Some(
+                  Errno::MFILE | Errno::NFILE | Errno::CONNABORTED | Errno::NOMEM | Errno::NOBUFS
+               )
+            ) =>
+         {
+            warn(format_args!("could not accept a client with {error}"));
+            sleep(Duration::from_millis(100));
+            continue;
+         },
          Err(error) => return Err(error),
       };
       #[cfg(target_os = "linux")]
