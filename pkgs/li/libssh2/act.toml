@@ -5,6 +5,10 @@ with  = [ "cmake" ]
 deps  = [ "openssl", "zlib" ]
 test  = false
 
+# curl links libssh2, and the full cmake links curl
+[cmake]
+tool = "cmake-bootstrap"
+
 [cmake.defs]
 BUILD_EXAMPLES          = false
 CRYPTO_BACKEND          = "OpenSSL"
