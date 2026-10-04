@@ -615,6 +615,7 @@ fn write_lock(
    pin: &Map<String, Value>,
    hashes: &BTreeMap<String, String>,
    sys: &[String],
+   vendored: &BTreeMap<String, String>,
 ) -> io::Result<()> {
    let version = pin.get("version").and_then(Value::as_str);
    let spelled = match (package.template(), version) {
@@ -660,6 +661,14 @@ fn write_lock(
    if !vars.is_empty() {
       text.push_str("\n[vars]\n");
       text.push_str(&aligned(&vars));
+   }
+   if !vendored.is_empty() {
+      let listed = vendored
+         .iter()
+         .map(|(entry, file)| (key_text(entry), toml_text(&json!(file))))
+         .collect::<Vec<_>>();
+      text.push_str("\n[patches]\n");
+      text.push_str(&aligned(&listed));
    }
    write(&package.file, text)
 }
@@ -711,7 +720,23 @@ fn with_hashes(
    if !sys.is_empty() {
       nix::say(&format!("  sys: {}", sys.join(" ")));
    }
-   write_lock(package, pin, &hashes, &sys)
+   write_lock(package, pin, &hashes, &sys, &package.vendored)
+}
+
+/// act.lock's `[patches]` = `vendored`, everything else as it stands.
+pub fn set_vendored(package: &Package, vendored: &BTreeMap<String, String>) -> io::Result<()> {
+   let hashes = package
+      .source
+      .iter()
+      .filter_map(|source| Some((source.key.clone(), source.hash.clone()?)))
+      .collect();
+   write_lock(
+      package,
+      &package.pin,
+      &hashes,
+      &pinned_sys(package),
+      vendored,
+   )
 }
 
 /// act.lock's sys = `sys` for ecosystems whose lock lives outside the source.
@@ -725,7 +750,7 @@ pub fn set_sys(package: &Package, sys: &[String]) -> io::Result<()> {
       .iter()
       .filter_map(|source| Some((source.key.clone(), source.hash.clone()?)))
       .collect();
-   write_lock(package, &package.pin, &hashes, sys)
+   write_lock(package, &package.pin, &hashes, sys, &package.vendored)
 }
 
 /// Re-prefetch every source at the current pin (after editing a url, or for

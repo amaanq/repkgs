@@ -86,7 +86,11 @@ Every other key is a field of the package record as bigtop reads it (`install`, 
 `links`, `prebuilt`, `bootstrapTools`, …). Wherever a package is expected a string names one, from
 the build set for `tools` and a system's `tool`, from the target set everywhere else.
 
-Without `patches`, every `*.patch` beside the act applies, sorted by name.
+Without `patches`, every `*.patch` beside the act applies, sorted by name. An entry of `patches` is
+a file beside the act, or a pull request or commit url on GitHub, GitLab, Forgejo or Gitea
+(`github:owner/repo/pull/123` works too), or any https url serving a diff. `spieler patch` downloads
+the url entries beside the act as they are and records which file each became, and the build only
+reads those files.
 
 `[on.<when>]` tables merge over the build keys on matching platforms, in the name order of their
 conditions. `<when>` is `cross`, `native`, or a value of the platform's `os`, `cpu`, `libc` or
@@ -113,4 +117,5 @@ hash    = "sha256-tKLefmGqB2HVUMILJ7Gqa0v9GH7fqv64d5S5kK1tcYU="
 
 `version`, and `date`, `rev` and `tag` where they apply (`tag` only when act.toml's can not
 produce it). One source has `hash`, several a `[hash]` table by name. `sys` lists the set's
-libraries the package's lock files link, and `[vars]` the other values its urls use.
+libraries the package's lock files link, `[vars]` the other values its urls use, and `[patches]`
+the file each url entry of `patches` was downloaded as.

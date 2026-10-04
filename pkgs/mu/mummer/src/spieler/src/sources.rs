@@ -117,9 +117,10 @@ enum Fetch {
 // the build keys of act.toml are nix/package/manifest.nix's to read and check
 #[derive(Deserialize)]
 struct Act {
-   tag:   Option<String>,
-   track: Option<Track>,
-   fetch: Option<Fetch>,
+   tag:     Option<String>,
+   track:   Option<Track>,
+   fetch:   Option<Fetch>,
+   patches: Option<Vec<String>>,
 }
 
 /// A package as its act.toml and act.lock describe it, what every stage passes
@@ -141,6 +142,10 @@ pub struct Package {
    pub tag:      Option<String>,
    /// One inline `fetch`, so act.lock holds `hash` rather than `[hash]`.
    pub single:   bool,
+   /// act.toml's `patches` in order, or every `*.patch` beside it sorted.
+   pub patches:  Vec<String>,
+   /// act.lock's `[patches]`, remote entry -> the file it was vendored as.
+   pub vendored: BTreeMap<String, String>,
 }
 
 impl Package {
@@ -263,6 +268,34 @@ fn pin_of(mut lock: Map<String, Value>, tag: Option<&Template>) -> Map<String, V
    pin
 }
 
+/// act.lock's `[patches]`, remote entry -> vendored file.
+fn vendored_of(recorded: Option<Value>) -> BTreeMap<String, String> {
+   match recorded {
+      Some(Value::Object(listed)) => {
+         listed
+            .into_iter()
+            .filter_map(|(entry, name)| name.as_str().map(|text| (entry, text.to_owned())))
+            .collect()
+      },
+      _ => BTreeMap::new(),
+   }
+}
+
+/// Every `*.patch` beside the act, sorted, the order patches apply in without
+/// an explicit list.
+fn patch_files(dir: &Path) -> io::Result<Vec<String>> {
+   let mut found = read_dir(dir)?
+      .map(|child| Ok(child?.file_name().to_string_lossy().into_owned()))
+      .collect::<io::Result<Vec<_>>>()?;
+   found.retain(|name| {
+      Path::new(name)
+         .extension()
+         .is_some_and(|ext| ext == "patch")
+   });
+   found.sort();
+   Ok(found)
+}
+
 fn parse(file: &Path) -> io::Result<Option<Package>> {
    let fail = |message: String| io::Error::other(format!("{}: {message}", file.display()));
    let act: Act =
@@ -319,6 +352,8 @@ fn parse(file: &Path) -> io::Result<Option<Package>> {
       .map(str::parse::<Template>)
       .transpose()
       .map_err(|error| fail(error.to_string()))?;
+   let vendored = vendored_of(lock.remove("patches"));
+   let patches = act.patches.map_or_else(|| patch_files(&dir), Ok)?;
    let pin = pin_of(lock, template.as_ref());
 
    // in-tree sources have nothing to track but may still lock dependencies.
@@ -369,6 +404,8 @@ fn parse(file: &Path) -> io::Result<Option<Package>> {
       locks: table.locks,
       tag: act.tag,
       single,
+      patches,
+      vendored,
    }))
 }
 

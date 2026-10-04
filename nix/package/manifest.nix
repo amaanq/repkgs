@@ -145,6 +145,13 @@ let
   overlays = map (when: table.on.${when}) (filter matching (attrNames (table.on or { })));
 
   patchFiles = filter (file: match ".*[.]patch" file != null) (attrNames (readDir dir));
+  patchFile =
+    entry:
+    if match "(https://|github:|gitlab:).*" entry == null then
+      entry
+    else
+      (import ../act.nix dir).vendored.${entry}
+        or (throw "${where}: patch ${entry} is not vendored, run `spieler patch ${name}`");
   base =
     removeAttrs table [
       "name"
@@ -228,7 +235,12 @@ let
       else
         { }
     )
-    // (if fields ? patches then { patches = map (file: dir + "/${file}") fields.patches; } else { })
+    // (
+      if fields ? patches then
+        { patches = map (entry: dir + "/${patchFile entry}") fields.patches; }
+      else
+        { }
+    )
     # a system's `tool` may name a package of the build set
     // listToAttrs (
       map

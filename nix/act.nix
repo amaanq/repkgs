@@ -65,7 +65,10 @@ in
     // removeAttrs lock [
       "hash"
       "vars"
+      "patches"
     ];
+  # remote patch -> the file spieler vendored it as
+  vendored = lock.patches or { };
   sources = mapAttrs (
     name: source:
     removeAttrs source [

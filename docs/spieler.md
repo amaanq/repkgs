@@ -93,10 +93,12 @@ its version, so decide also proposes an update whenever the rev differs from the
 new version with its sources, pins and lock work, or a reason to skip. `check --json` prints the
 plan, and `apply --plan` takes one back, edited or not.
 
-**apply** substitutes the new pin into every URL, prefetches, writes act.lock, and runs the lock
-stage for packages with `[track] locks`. That stage fetches the pinned source through the tree and
-records what the ecosystem's own lock cannot give Nix in `$SPIELER_LOCKS/<eco>.toml`
-(`<root>/locks/` by default, and another tree passes its own table to the fetcher):
+**apply** substitutes the new pin into every URL, prefetches, writes act.lock, checks the package's
+patches still apply to the new source (a patch the source already contains, or one that no longer
+applies, puts act.lock back and names the patch), and runs the lock stage for packages with `[track]
+locks`. That stage fetches the pinned source through the tree and records what the ecosystem's own
+lock cannot give Nix in `$SPIELER_LOCKS/<eco>.toml` (`<root>/locks/` by default, and another tree
+passes its own table to the fetcher):
 
 - **go**: go.sum's `h1:` is a directory hash, so the table maps `module@version` to the sha256 of
   the proxy's `.mod` and `.zip`.
@@ -145,6 +147,7 @@ spieler apply [names] [--plan f]         write act.lock, hook files and locks fo
 spieler verify [names]                   build at the current pin
 spieler rehash [names]                   prefetch again at the current pin, after a url edit
 spieler lock [names] [--prune]           resolve the `[track] locks` of packages into locks/<eco>.toml
+spieler patch [names] [--update]         download url patches beside the act and check they apply
 spieler init <dir> <purl> <url-template> a new act.toml pinned to the newest release
 spieler normalize                        rewrite locks/<eco>.toml in normal form
 spieler versions <purl>                  a datasource's candidates as JSON, for hooks
