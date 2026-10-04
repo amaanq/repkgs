@@ -229,13 +229,21 @@ let
       allowedReferences = [ ];
     };
 
-  # every member keeps its main.rs so the workspace resolves, and edits to the
-  # others leave mummer's source, and so the whole bootstrap, unchanged
   mummer = crate "mummer" (
     relative:
     builtins.match "(bigtop|jape|spieler)/src/.+" relative != null && baseNameOf relative != "main.rs"
   );
-  bigtop = crate "bigtop" (_: false);
+
+  bigtop =
+    (crate "bigtop" (
+      relative:
+      builtins.match "(mummerd|jape|spieler)/src/.+" relative != null && baseNameOf relative != "main.rs"
+    )).overrideAttrs
+      {
+        __contentAddressed = true;
+        outputHashMode = "recursive";
+        outputHashAlgo = "sha256";
+      };
 
   nu =
     let
