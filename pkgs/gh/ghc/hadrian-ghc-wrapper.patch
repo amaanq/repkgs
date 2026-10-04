@@ -1,0 +1,27 @@
+Subject: [PATCH] hadrian: run Haskell compiles under $GHC_WRAPPER
+
+Lets a compile cache sit in front of every module compile, the way
+RUSTC_WRAPPER does for cargo. Read untracked, Shake refuses a tracked
+getEnv inside withResource.
+---
+--- a/hadrian/src/Builder.hs
++++ b/hadrian/src/Builder.hs
+@@ -27,6 +27,7 @@
+ import Hadrian.Oracles.TextFile
+ import Hadrian.Utilities
+ import Oracles.Setting (bashPath, targetStage)
++import System.Environment (lookupEnv)
+ import System.Exit
+ import System.IO (stderr)
+ 
+@@ -389,6 +390,10 @@
+                   when (code /= ExitSuccess) $ do
+                     fail "tests failed"
+ 
++                Ghc CompileHs _ -> do
++                    wrapper <- liftIO $ lookupEnv "GHC_WRAPPER"
++                    cmd' (maybe [] pure wrapper ++ [path]) buildArgs buildOptions
++
+                 _  -> cmd' [path] buildArgs buildOptions
+ 
+ -- | Invoke @haddock@ given a path to it and a list of arguments. The arguments

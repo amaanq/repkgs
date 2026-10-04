@@ -319,6 +319,9 @@ fn compiler_caches(env: &mut BTreeMap<String, Value>, bins: &[PathBuf]) {
       }
       set(env, "CARGO_INCREMENTAL", "0");
    }
+   if let Some(wrapper) = find_tool(bins, "ghcwrap") {
+      set(env, "GHC_WRAPPER", wrapper.to_string_lossy());
+   }
    if find_tool(bins, "go").is_some()
       && let Some(program) = find_tool(bins, "gocacheprog")
    {

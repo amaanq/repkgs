@@ -44,6 +44,8 @@ pub enum Mode {
    /// rustc with the crate cache in front, `mummer rustcwrap <rustc>
    /// <args...>`.
    Rustcwrap,
+   /// ghc with the module cache in front, `mummer ghcwrap <ghc> <args...>`.
+   Ghcwrap,
    /// one object or directory tree in the cache, exit 1 on a miss and 2 without
    /// a daemon.
    Cache {
@@ -98,6 +100,7 @@ impl Mode {
             return Ok(Self::Cxx);
          },
          "rustcwrap" => return Ok(Self::Rustcwrap),
+         "ghcwrap" => return Ok(Self::Ghcwrap),
          "slot" => return Ok(Self::Slot),
          "header-key" => return Ok(Self::HeaderKey),
          _ => {},

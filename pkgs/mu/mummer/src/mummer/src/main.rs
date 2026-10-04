@@ -3,6 +3,7 @@ mod cc;
 mod cli;
 mod driver;
 mod fetch;
+mod ghc;
 mod gocache;
 mod header;
 mod manifest;
@@ -83,6 +84,7 @@ fn run(mode: Mode, name: &str, args: &[OsString], socket: &Path) -> Result<i32> 
    match mode {
       Mode::Cc | Mode::Cxx => return Ok(cc::run_cc(name, &text_arguments(args)?, socket)?),
       Mode::Rustcwrap => return Ok(rustc::run_rustc(&text_arguments(args)?, socket)?),
+      Mode::Ghcwrap => return Ok(ghc::run_ghc(&text_arguments(args)?, socket)?),
       Mode::Cache {
          operation,
          key,

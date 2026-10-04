@@ -17,6 +17,7 @@ arguments through untouched, every other mode parses them and fails on an unknow
 | `cc`, `gcc`, `clang`, `cc-build`, `gcc-build`, any other name              | C driver, `cc`                                 |
 | `c++`, `g++`, `clang++`, any name containing `++`                          | C++ driver, same code with C++ defaults        |
 | `mummer rustcwrap <rustc> <args…>`                                            | rustc wrapper, set as cargo's `RUSTC`          |
+| `mummer ghcwrap <ghc> <args…>`                                                | ghc wrapper, set as hadrian's `GHC_WRAPPER`    |
 | `mummer cache get\|put <key> <file>`                                          | one object, exit 1 on a miss, 2 with no daemon |
 | `mummer cache get-dir\|put-dir <key> <directory>`                             | a directory tree, same exits                   |
 | `mummer slot <program> [args…]`                                               | run under a build slot                         |
@@ -326,7 +327,34 @@ on the wire, hex in keys. `go/a/<action hex>` holds the 32 output id bytes, `go/
 holds the output. Bodies are materialised under `GOCACHEPROG_DIR`. Without a daemon every get
 is a miss and every put is a local write.
 
-### 5.6 Directories
+### 5.6 GHC modules
+
+`mummer ghcwrap` serves hadrian's per module `ghc -c`, which a local hadrian patch runs under
+`$GHC_WRAPPER`. Cacheable when there is `-c`, one `.hs`, `.lhs`, `.hs-boot` or `.lhs-boot`
+source, a relative `-o` ending in the object suffix, and none of `-dyno`, `-dynohi`, `-hidir`,
+`-odir`, `-hiedir`, `-stubdir`, `-dumpdir`, `-fwrite-ide-info` or `-ddump*`.
+
+```
+request = "hs-module/" + hash(
+   field(input_id(canonical ghc)) field(key(ghc --info))
+   field(key(cwd))
+   for each argument a: field(key(a))
+   for each of GHC_PACKAGE_PATH GHC_ENVIRONMENT SOURCE_DATE_EPOCH LANG LC_ALL:
+      field(name) field(value or "")
+   field("source") field(source bytes))
+```
+
+The manifest inputs come from the nearest `.dependencies` above the object. They are its line,
+then the lines of every object whose interface it lists, transitively, plus the source and any
+file named by an argument (`-optP…`, `-optc…`, `-ghcversion-file=…`). Interfaces of other
+packages are taken as they are, a change below them shows in their own bytes. Files a Template
+Haskell splice reads are not tracked.
+
+The artifacts are the object, its interface, their `dyn_` pair under `-dynamic-too`, and the
+`_stub.h` when one was written. `o/<result>` holds `[ { "path", "mode", "hash" } ]` with paths
+relative to the working directory, `b/` and `e/` are as in §5.3.
+
+### 5.7 Directories
 
 `put-dir` uploads a tree as content addressed blobs plus one listing under the caller's key.
 Each regular file is stored with `mask` applied when it is NUL free UTF-8, so the blob hash is of
