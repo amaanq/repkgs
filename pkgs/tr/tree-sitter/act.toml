@@ -1,5 +1,10 @@
 tag   = "v{version}"
 track = "github:tree-sitter/tree-sitter"
 fetch = { archive = true }
-with  = [ "make" ]
-test  = false
+with  = [ "cargo", "make" ]
+
+[steps.before]
+"cargo.build" = [ "make.build", "make.install" ]
+
+[steps.replace]
+"cargo.test" = [ "tree-sitter.test" ]

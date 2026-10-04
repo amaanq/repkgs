@@ -1,4 +1,81 @@
 version = "0.27.0"
 date    = "2026-08-30"
 sys     = [ "clang" ]
-hash    = "sha256-X5Hd0zcw7hxj7w7Jp1QBxLzsRSH9NgV2KquEvGdo3pE="
+
+[hash]
+default                   = "sha256-X5Hd0zcw7hxj7w7Jp1QBxLzsRSH9NgV2KquEvGdo3pE="
+fixture-bash              = "sha256-vRaN/mNfpR+hdv2HVS1bzaW0o+HGjizRFsk3iinICJE="
+fixture-c                 = "sha256-Juuf57GQI7OAP6O03KtSzyKJAoXtGKjyYJ+sTM1A4mU="
+fixture-cpp               = "sha256-tP5Tu747V8QMCEBYwOEmMQUm8OjojpJdlRmjcJTbe2k="
+fixture-embedded-template = "sha256-nBQain0Lc21jOgQFfvkyq615ZmT8qdMxtqIoUcOcO3A="
+fixture-go                = "sha256-y7bTET8ypPczPnMVlCaiZuswcA7vFrDOc2jlbfVk5Sk="
+fixture-html              = "sha256-Pd5Me1twLGOrRB3pSMVX9M8VKenTK0896aoLznjNkGo="
+fixture-java              = "sha256-OvEO1BLZLjP3jt4gar18kiXderksFKO0WFXDQqGLRIY="
+fixture-javascript        = "sha256-2Jj/SUG+k8lHlGSuPZvHjJojvQFgDiZHZzH8xLu7suE="
+fixture-jsdoc             = "sha256-Azzb2zBjAfwbEmAEO1YqhpaxtzbXmRjfIzRla2Hx+24="
+fixture-json              = "sha256-DNZC2cTy1C8OaMOpEHM6NoRtOIbLaBf0CLXXWCKODlw="
+fixture-php               = "sha256-jqxL0J7vMzDFnLAI7oVrP6CU1YJrXJzEthkWApr1ivw="
+fixture-python            = "sha256-71Od4sUsxGEvTwmXX8hBvzqD55hnXkVJublrhp1GICg="
+fixture-ruby              = "sha256-iu3MVJl0Qr/Ba+aOttmEzMiVY6EouGi5wGOx5ofROzA="
+fixture-rust              = "sha256-y3sJURlSTM7LRRN5WGIAeslsdRZU522Tfcu6dnXH/XQ="
+fixture-typescript        = "sha256-CU55+YoFJb6zWbJnbd38B7iEGkhukSVpBN7sli6GkGY="
+
+[sources.fixture-bash]
+url  = "https://github.com/tree-sitter/tree-sitter-bash/archive/refs/tags/v0.25.0.tar.gz"
+name = "tree-sitter-bash-v0.25.0"
+
+[sources.fixture-c]
+url  = "https://github.com/tree-sitter/tree-sitter-c/archive/refs/tags/v0.24.2.tar.gz"
+name = "tree-sitter-c-v0.24.2"
+
+[sources.fixture-cpp]
+url  = "https://github.com/tree-sitter/tree-sitter-cpp/archive/refs/tags/v0.23.4.tar.gz"
+name = "tree-sitter-cpp-v0.23.4"
+
+[sources.fixture-embedded-template]
+url  = "https://github.com/tree-sitter/tree-sitter-embedded-template/archive/refs/tags/v0.25.0.tar.gz"
+name = "tree-sitter-embedded-template-v0.25.0"
+
+[sources.fixture-go]
+url  = "https://github.com/tree-sitter/tree-sitter-go/archive/refs/tags/v0.25.0.tar.gz"
+name = "tree-sitter-go-v0.25.0"
+
+[sources.fixture-html]
+url  = "https://github.com/tree-sitter/tree-sitter-html/archive/refs/tags/v0.23.2.tar.gz"
+name = "tree-sitter-html-v0.23.2"
+
+[sources.fixture-java]
+url  = "https://github.com/tree-sitter/tree-sitter-java/archive/refs/tags/v0.23.5.tar.gz"
+name = "tree-sitter-java-v0.23.5"
+
+[sources.fixture-javascript]
+url  = "https://github.com/tree-sitter/tree-sitter-javascript/archive/refs/tags/v0.25.0.tar.gz"
+name = "tree-sitter-javascript-v0.25.0"
+
+[sources.fixture-jsdoc]
+url  = "https://github.com/tree-sitter/tree-sitter-jsdoc/archive/refs/tags/v0.23.2.tar.gz"
+name = "tree-sitter-jsdoc-v0.23.2"
+
+[sources.fixture-json]
+url  = "https://github.com/tree-sitter/tree-sitter-json/archive/refs/tags/v0.24.8.tar.gz"
+name = "tree-sitter-json-v0.24.8"
+
+[sources.fixture-php]
+url  = "https://github.com/tree-sitter/tree-sitter-php/archive/e8074c9943298d30a1af9ff84c2b61a6dc600d86.tar.gz"
+name = "tree-sitter-php-upstream_test_fixture"
+
+[sources.fixture-python]
+url  = "https://github.com/tree-sitter/tree-sitter-python/archive/refs/tags/v0.23.6.tar.gz"
+name = "tree-sitter-python-v0.23.6"
+
+[sources.fixture-ruby]
+url  = "https://github.com/tree-sitter/tree-sitter-ruby/archive/refs/tags/v0.23.1.tar.gz"
+name = "tree-sitter-ruby-v0.23.1"
+
+[sources.fixture-rust]
+url  = "https://github.com/tree-sitter/tree-sitter-rust/archive/refs/tags/v0.24.0.tar.gz"
+name = "tree-sitter-rust-v0.24.0"
+
+[sources.fixture-typescript]
+url  = "https://github.com/tree-sitter/tree-sitter-typescript/archive/refs/tags/v0.23.2.tar.gz"
+name = "tree-sitter-typescript-v0.23.2"
