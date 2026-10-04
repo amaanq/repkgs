@@ -9,3 +9,6 @@ version = true
 
 [pyapp]
 check = [ "copier" ]
+
+[env]
+SETUPTOOLS_SCM_PRETEND_VERSION = "{version}"

@@ -11,3 +11,4 @@ go = "."
 [go]
 packages     = [ "." ]
 testPackages = [ "./src/algo/...", "./src/util/...", "./src/tui/..." ]
+ldflags      = [ "-X main.version={version}", "-X main.revision=nix1" ]

@@ -218,7 +218,19 @@ let
       }
     else
       [ ];
-  fields = foldl' merge (internal base) (map internal (overlays ++ changes));
+  expand =
+    value:
+    if sources == null then
+      value
+    else if isString value then
+      sources.expand value
+    else if isList value then
+      map expand value
+    else if isAttrs value then
+      mapAttrs (_: expand) value
+    else
+      value;
+  fields = foldl' merge (internal (expand base)) (map internal (map expand overlays ++ changes));
 
   byName =
     set: entry:
