@@ -15,12 +15,12 @@ use std::{
       self,
       Write as _,
    },
-   iter::once,
    os::unix::fs::PermissionsExt as _,
    path::{
       Path,
       PathBuf,
    },
+   process::Command,
    time::Instant,
 };
 
@@ -41,7 +41,6 @@ use mummer::{
    store::{
       Store,
       field,
-      on_path,
    },
 };
 use serde::{
@@ -309,42 +308,12 @@ fn request_key(store: &Store, compiler: &str, invocation: &Invocation) -> io::Re
    for external in &invocation.externs {
       field(&mut hasher, store.input_id(external)?);
    }
-   let path = canonicalize(on_path(compiler))?;
-   let root = path
-      .parent()
-      .and_then(Path::parent)
-      .ok_or_else(|| io::Error::other("rustc has no installation root"))?;
-   let mut libraries = Vec::new();
-
-   for library_root in once(root).chain(invocation.sysroot.as_deref()) {
-      let targets = match read_dir(library_root.join("lib/rustlib")) {
-         Ok(entries) => entries,
-         Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
-         Err(error) => return Err(error),
-      };
-
-      for target in targets {
-         let directory = target?.path().join("lib");
-
-         if !directory.is_dir() {
-            continue;
-         }
-
-         for library in read_dir(directory)? {
-            let entry = library?;
-            let name = entry.file_name();
-            let text = name.to_string_lossy();
-
-            if (text.starts_with("libstd-") || text.starts_with("libcore-"))
-               && text.ends_with(".rlib")
-            {
-               libraries.push(canonicalize(entry.path())?);
-            }
-         }
-      }
-   }
+   let mut libraries = read_dir(target_libdir(compiler, invocation)?)?
+      .map(|entry| canonicalize(entry?.path()))
+      .collect::<io::Result<Vec<_>>>()?;
+   libraries.retain(|library| library.is_file());
    if libraries.is_empty() {
-      return Err(io::Error::other("rustc standard libraries were not found"));
+      return Err(io::Error::other("rustc's target libdir is empty"));
    }
    libraries.sort_unstable();
    for library in libraries {
@@ -363,6 +332,33 @@ fn request_key(store: &Store, compiler: &str, invocation: &Invocation) -> io::Re
       field(&mut hasher, var(name).unwrap_or_default());
    }
    Ok(format!("rs/{}", &hasher.finalize().to_hex()[..32]))
+}
+
+/// The standard library rustc links for this invocation, as rustc itself
+/// reports it, since a toolchain's bin/ may be a launcher elsewhere.
+fn target_libdir(compiler: &str, invocation: &Invocation) -> io::Result<PathBuf> {
+   let mut print = Command::new(compiler);
+   print.args(["--print", "target-libdir"]);
+   if let Some(target) = invocation
+      .key_args
+      .iter()
+      .find_map(|argument| argument.strip_prefix("--target="))
+   {
+      print.arg(format!("--target={target}"));
+   }
+   if let Some(ref sysroot) = invocation.sysroot {
+      print.arg("--sysroot").arg(sysroot);
+   }
+   let output = print.output()?;
+   if !output.status.success() {
+      return Err(io::Error::other(format!(
+         "rustc --print target-libdir failed: {}",
+         String::from_utf8_lossy(&output.stderr).trim()
+      )));
+   }
+   Ok(PathBuf::from(
+      String::from_utf8_lossy(&output.stdout).trim(),
+   ))
 }
 
 fn store_result(
