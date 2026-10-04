@@ -1,0 +1,38 @@
+From cbe12767ea73d1006edc75fcd61c0b0d2a88f34e Mon Sep 17 00:00:00 2001
+From: Alexei Podtelezhnikov <apodtele@gmail.com>
+Date: Sat, 2 May 2026 15:17:35 -0400
+Subject: [PATCH] * src/base/ftobjs.c (FT_Render_Glyph_Internal): Protect
+ FT_LOAD_COLOR.
+
+Now only *scalable* COLRv0 layers can be rendered with FT_LOAD_COLOR,
+in accordance with Chromium. Fixes #1425, also see !424.
+---
+ src/base/ftobjs.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/base/ftobjs.c b/src/base/ftobjs.c
+index b4dc9a0e6..fb19052a5 100644
+--- a/src/base/ftobjs.c
++++ b/src/base/ftobjs.c
+@@ -4741,7 +4741,8 @@
+ 
+ 
+     /* try to render colored glyph layers as a special case */
+-    if ( slot->internal->load_flags & FT_LOAD_COLOR )
++    if ( slot->internal->load_flags & FT_LOAD_COLOR &&
++         slot->format == FT_GLYPH_FORMAT_OUTLINE    )
+     {
+       FT_LayerIterator  iterator;
+ 
+@@ -4777,7 +4778,7 @@
+             load_flags &= ~FT_LOAD_COLOR;
+ 
+             /* render into the new `face->glyph' glyph slot */
+-            load_flags |= FT_LOAD_RENDER;
++            load_flags |= FT_LOAD_RENDER | FT_LOAD_NO_BITMAP;
+ 
+             error = FT_Load_Glyph( face, glyph_index, load_flags );
+             if ( error )
+-- 
+GitLab
+

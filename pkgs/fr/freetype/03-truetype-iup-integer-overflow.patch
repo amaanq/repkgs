@@ -1,0 +1,38 @@
+From 7974be74d8b5a2fbf99aa88f0461d1f80af51cee Mon Sep 17 00:00:00 2001
+From: Alexei Podtelezhnikov <apodtele@gmail.com>
+Date: Wed, 22 Apr 2026 16:04:14 -0400
+Subject: [PATCH] * src/truetype/ttinterp.c (Ins_IUP): Use unsigned counter.
+
+Fixes #1421.
+---
+ src/truetype/ttinterp.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/src/truetype/ttinterp.c b/src/truetype/ttinterp.c
+index da21e1b85..fc7fccdf3 100644
+--- a/src/truetype/ttinterp.c
++++ b/src/truetype/ttinterp.c
+@@ -6191,14 +6191,14 @@
+     IUP_WorkerRec  V;
+     FT_Byte        mask;
+ 
+-    FT_UInt   first_point;   /* first point of contour        */
+-    FT_UInt   end_point;     /* end point (last+1) of contour */
++    FT_UInt  first_point;   /* first point of contour        */
++    FT_UInt  end_point;     /* end point (last+1) of contour */
+ 
+-    FT_UInt   first_touched; /* first touched point in contour   */
+-    FT_UInt   cur_touched;   /* current touched point in contour */
++    FT_UInt  first_touched; /* first touched point in contour   */
++    FT_UInt  cur_touched;   /* current touched point in contour */
+ 
+-    FT_UInt   point;         /* current point   */
+-    FT_Short  contour;       /* current contour */
++    FT_UInt  point;         /* current point   */
++    FT_UInt  contour;       /* current contour */
+ 
+ 
+ #ifdef TT_SUPPORT_SUBPIXEL_HINTING_MINIMAL
+-- 
+GitLab
+
