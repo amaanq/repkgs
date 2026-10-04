@@ -1,3 +1,14 @@
 version = "1.11.1"
 date    = "2024-10-16"
 hash    = "sha256-EZ4pbvGLjoYoO0ChKmM+dIcfWhJh48542frYTP+uZb4="
+
+[patches]
+"https://github.com/JuliaPackaging/Yggdrasil/raw/9404aa5dd96c945a790c425a5f49af19ed2a93b0/L/LibSSH2/LibSSH2%401.11/bundled/patches/CVE-2026-58051-a9758da.patch" = "CVE-2026-58051-a9758da.patch"
+"https://salsa.debian.org/debian/libssh2/-/raw/1d4906e6ebe85a9da2931ba33677ead96a61f07f/debian/patches/CVE-2025-15661.patch"                                     = "CVE-2025-15661.patch"
+"https://salsa.debian.org/debian/libssh2/-/raw/1d4906e6ebe85a9da2931ba33677ead96a61f07f/debian/patches/CVE-2026-55199.patch"                                     = "CVE-2026-55199.patch"
+"https://salsa.debian.org/debian/libssh2/-/raw/1d4906e6ebe85a9da2931ba33677ead96a61f07f/debian/patches/CVE-2026-55200.patch"                                     = "CVE-2026-55200.patch"
+"https://salsa.debian.org/debian/libssh2/-/raw/1d4906e6ebe85a9da2931ba33677ead96a61f07f/debian/patches/libssh-unconst-backport.patch"                            = "libssh-unconst-backport.patch"
+"https://salsa.debian.org/debian/libssh2/-/raw/fe2e3c0848f8501bf729d61790360761a20c75f2/debian/patches/CVE-2026-66032.patch"                                     = "CVE-2026-66032.patch"
+"https://salsa.debian.org/debian/libssh2/-/raw/fe2e3c0848f8501bf729d61790360761a20c75f2/debian/patches/CVE-2026-66033.patch"                                     = "CVE-2026-66033.patch"
+"https://salsa.debian.org/debian/libssh2/-/raw/fe2e3c0848f8501bf729d61790360761a20c75f2/debian/patches/CVE-2026-66034.patch"                                     = "CVE-2026-66034.patch"
+"https://salsa.debian.org/debian/libssh2/-/raw/fe2e3c0848f8501bf729d61790360761a20c75f2/debian/patches/CVE-2026-66035.patch"                                     = "CVE-2026-66035.patch"

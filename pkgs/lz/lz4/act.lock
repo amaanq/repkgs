@@ -1,2 +1,5 @@
 version = "1.10.0"
 hash    = "sha256-/dG1n59SKBaEBg72pAWltAtVmJ2cXxlFFhP+klrkTos="
+
+[patches]
+"https://github.com/lz4/lz4/commit/f64efec011c058bd70348576438abac222fe6c82.patch" = "f64efec011c0.patch"

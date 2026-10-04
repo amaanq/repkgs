@@ -1,7 +1,7 @@
 tag     = "v{version}"
 fetch   = { archive = true }
 with    = [ "cmake" ]
-patches = [ "CVE-2025-62813.patch" ]
+patches = [ "https://github.com/lz4/lz4/commit/f64efec011c058bd70348576438abac222fe6c82.patch" ]
 
 [track]
 from  = "github:lz4/lz4"
