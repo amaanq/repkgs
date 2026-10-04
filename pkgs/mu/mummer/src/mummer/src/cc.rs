@@ -1,6 +1,7 @@
 use std::{
    env::{
       current_dir,
+      current_exe,
       temp_dir,
       var,
    },
@@ -298,10 +299,9 @@ impl Invocation {
       }
    }
 
-   /// clang reopens the headers a .pch names, so a precompile is reused only
-   /// where every store path is the same, and drops the header mtimes it
-   /// would otherwise check them against.
-   fn store(&mut self) -> Store {
+   /// clang reopens the headers a .pch names, so a precompile matches them
+   /// exactly.
+   fn manifest_store(&mut self) -> Store {
       if self.action != Action::Precompile {
          return Store::new();
       }
@@ -415,20 +415,23 @@ impl Invocation {
          Action::Precompile => "precompile",
          Action::Compile | Action::Assembly | Action::Preprocess | Action::Other => "compile",
       });
+      // the toolchain's own paths move with every mummer build
+      let toolchain = current_exe()
+         .ok()
+         .and_then(|exe| Some(exe.parent()?.parent()?.to_string_lossy().into_owned()));
       for argument in &self.key_args {
          let mut bytes = argument.as_bytes().to_vec();
          store.mask_output(&mut bytes, false);
          let masked = String::from_utf8_lossy(&bytes);
          let embedded =
             self.links() && (argument.contains("dynamic-linker") || argument.contains("rpath"));
-         field(
-            &mut hasher,
-            if embedded {
-               masked.into_owned()
-            } else {
-               store.key(&masked)
+         field(&mut hasher, match toolchain {
+            Some(ref root) if self.action == Action::Precompile => {
+               masked.replace(root.as_str(), "<toolchain>")
             },
-         );
+            _ if embedded => masked.into_owned(),
+            _ => store.key(&masked),
+         });
       }
       for name in [
          "CPATH",
@@ -507,7 +510,8 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       invocation.cacheable = false;
    }
    invocation.args = driver.arguments(language, &invocation.args);
-   let mut store = invocation.store();
+   let mut store = Store::new();
+   let mut manifest_store = invocation.manifest_store();
    invocation.key_injected(&user);
    let subject = if invocation.source.is_empty() {
       invocation.output.to_string_lossy().into_owned()
@@ -557,7 +561,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       log_uncached(outcome, &user);
       return Ok(result.status);
    };
-   let hit = lookup(&mut cache, &mut store, &request)
+   let hit = lookup(&mut cache, &mut manifest_store, &request)
       .and_then(|key| cached(&mut cache, &store, &invocation, &key));
    let miss = match hit {
       Ok(status) => {
@@ -698,7 +702,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       inputs.dedup();
       let absent_text = read_to_string(absent_log.path())?;
       let absent = absent_text.lines().map(str::to_owned).collect::<Vec<_>>();
-      let manifest = Manifest::build(&mut cache, &mut store, &inputs, &[], &absent)?;
+      let manifest = Manifest::build(&mut cache, &mut manifest_store, &inputs, &[], &absent)?;
       let key = manifest.result_key(&request)?;
       if result.status == 0_i32 {
          let mut object = read(output_path)?;
