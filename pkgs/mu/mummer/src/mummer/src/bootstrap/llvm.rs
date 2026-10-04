@@ -295,7 +295,7 @@ impl Recipe for Llvm {
 
       let shell_arg = format!("SHELL={}", tool("sh")?.display());
       run_in(&build, "make", &["-j", &cores().to_string(), &shell_arg])?;
-      run_in(&build, "make", &["install", &shell_arg])?;
+      run_in(&build, "make", &["install/fast", &shell_arg])?;
       Self::install_tools(stage)?;
       let version = capture(&format!("{}/bin/clang", stage.out()), &["--version"])?;
       say(version.lines().next().unwrap_or_default());
