@@ -217,10 +217,7 @@ impl Driver {
             arg.as_str(),
             "-c" | "-E" | "-S" | "-M" | "-MM" | "-fsyntax-only" | "-###"
          );
-         no_policy |= matches!(
-            arg.as_str(),
-            "-static" | "-static-pie" | "-r" | "-Wl,-r"
-         );
+         no_policy |= matches!(arg.as_str(), "-static" | "-static-pie" | "-r" | "-Wl,-r");
          no_startup |= arg == "-nostartfiles";
          shared |= arg == "-shared" || arg == "-dynamiclib";
          have_input |= !arg.starts_with('-');
@@ -433,7 +430,9 @@ pub fn settle_runpath(output: &Path, dependencies: &str) -> io::Result<Option<us
       if !is_store_path(&input) || !shared_object(Path::new(&input))? {
          continue;
       }
-      let Some(parent) = canonicalize(&input)?.parent().map(Path::to_path_buf) else {
+      // the directory the linker found it in, not where its symlink leads, so
+      // libc keeps the sysroot's libunwind beside it for $ORIGIN
+      let Some(parent) = Path::new(&input).parent().map(canonicalize).transpose()? else {
          continue;
       };
       let directory = parent.to_string_lossy().into_owned();
