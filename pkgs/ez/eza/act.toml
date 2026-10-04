@@ -1,0 +1,4 @@
+tag   = "v{version}"
+track = "github:eza-community/eza"
+fetch = { archive = true }
+with  = [ "cargo" ]

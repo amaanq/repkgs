@@ -1,0 +1,4 @@
+tag   = "v{version}"
+track = "github:sharkdp/hyperfine"
+fetch = { archive = true }
+with  = [ "cargo" ]
