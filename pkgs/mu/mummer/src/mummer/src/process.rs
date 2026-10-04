@@ -125,10 +125,26 @@ pub fn log_uncached(outcome: &str, args: &[String]) {
 impl RunResult {
    #[must_use]
    #[inline]
-   pub fn deterministic(&self) -> bool {
+   /// The compiler exited by itself and placed an error at a source line,
+   /// `file:line[:column]: error:`. Anything else, a full disk or a crash, is
+   /// the machine and not the source.
+   pub fn reported_error(&self) -> bool {
       self.status < 128
-         && !String::from_utf8_lossy(&self.stderr).contains("unable to execute command")
-         && !String::from_utf8_lossy(&self.stderr).contains("PLEASE submit a bug report")
+         && String::from_utf8_lossy(&self.stderr).lines().any(|line| {
+            let Some((place, _)) = line
+               .split_once(": error:")
+               .or_else(|| line.split_once(": fatal error:"))
+            else {
+               return false;
+            };
+            let number =
+               |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+            match *place.rsplitn(3, ':').collect::<Vec<_>>() {
+               [column, row, file] if number(column) && number(row) => !file.is_empty(),
+               [row, file, ..] if number(row) => !file.is_empty(),
+               _ => false,
+            }
+         })
    }
 }
 

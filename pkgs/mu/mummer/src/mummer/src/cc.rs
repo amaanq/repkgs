@@ -707,7 +707,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
          && (invocation.links()
             || inputs.is_empty()
             || String::from_utf8_lossy(&result.stderr).contains("file not found")
-            || !result.deterministic())
+            || !result.reported_error())
       {
          return Ok(false);
       }
