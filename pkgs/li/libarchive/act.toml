@@ -2,7 +2,7 @@ tag   = "v{version}"
 track = "github:libarchive/libarchive"
 fetch = { url = "https://github.com/libarchive/libarchive/releases/download/v{version}/libarchive-{version}.tar.xz" }
 with  = [ "cmake" ]
-deps  = [ "zlib", "bzip2", "xz", "zstd", "lz4", "expat" ]
+deps  = [ "zlib", "bzip2", "xz", "zstd", "lz4", "expat", "libxml2", "openssl" ]
 
 [test]
 bin = [ "bsdtar", "bsdcpio", "bsdunzip" ]
@@ -14,7 +14,14 @@ tool = "cmake-bootstrap"
 [cmake.defs]
 ENABLE_ACL     = false
 ENABLE_EXPAT   = true
-ENABLE_LIBXML2 = false
-ENABLE_OPENSSL = false
+ENABLE_LIBXML2 = true
+ENABLE_OPENSSL = true
 ENABLE_TEST    = false
 ENABLE_XATTR   = false
+
+[on.linux]
+deps = [ "acl", "attr" ]
+
+[on.linux.cmake.defs]
+ENABLE_ACL   = true
+ENABLE_XATTR = true
