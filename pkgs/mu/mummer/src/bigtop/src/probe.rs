@@ -52,7 +52,7 @@ where
    sorted.sort();
    let files = sorted
       .iter()
-      .map(|path| Ok(hex(&read(path)?)))
+      .map(|path| Ok(format!("{path}={}", hex(&read(path)?))))
       .collect::<io::Result<Vec<_>>>()?;
    let cc = match var("PKGS_CC") {
       Ok(flags) => serde_json::from_str::<BTreeMap<String, Value>>(&flags)?,
@@ -76,7 +76,7 @@ where
       "out": if no_out { None } else { Some(&ctx.out) },
    });
    Ok(format!(
-      "probe/v8/{kind}/{}",
+      "probe/v9/{kind}/{}",
       hex(&serde_json::to_vec(&record)?)
    ))
 }
