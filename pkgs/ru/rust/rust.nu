@@ -51,6 +51,8 @@ def write-config [c: record, build: record, rust: closure, rest: record]: nothin
 
 export def --env configure []: nothing -> nothing {
    let c = (ctx)
+   # targets such as wasm32-unknown-unknown name rustup's bundled rust-lld, which this build does not ship
+   for spec in (files compiler/rustc_target/src/spec/*/*.rs) { edit $spec { str replace --all '"rust-lld"' '"lld"' } }
    load-env ({PKG_CONFIG_ALLOW_CROSS: "1"} | merge (^bigtop system sys-env cargo | from json))
    let triple = $c.platform.rustTriple
    let llvm   = (dep-root llvm22 libLLVM)
