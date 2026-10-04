@@ -574,7 +574,7 @@ That is `spec.install` and `spec.links`, `--keep-tree`, the `bin` check, `prune`
 relocated copy under `env -i`, and the `mummer:` cache summary. `--tests` writes the tests
 derivation's `result.json` instead.
 
-`probe key <kind> <scripts…> [--extra <json>] [--no-out]` prints `probe/v5/<kind>/<hash>` over
+`probe key <kind> <scripts…> [--extra <json>] [--no-out]` prints `probe/v6/<kind>/<hash>` over
 the scripts' contents, `extra`, the full store roots, mummer's injected flags (`PKGS_CC`) and `$out`
 unless `--no-out`. Store hashes remain in the key because configure results can depend on
 absolute paths, and `$out` pins every other input of the derivation. `restore` and `store` move unchanged file bytes through

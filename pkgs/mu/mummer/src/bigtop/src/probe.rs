@@ -57,7 +57,7 @@ where
       "out": if no_out { None } else { Some(&ctx.out) },
    });
    Ok(format!(
-      "probe/v5/{kind}/{}",
+      "probe/v6/{kind}/{}",
       hex(&serde_json::to_vec(&record)?)
    ))
 }

@@ -5,6 +5,7 @@ use std::{
       copy,
       metadata,
       read,
+      remove_file,
    },
    io::{
       self,
@@ -196,14 +197,37 @@ impl Autotools {
          ("INSTALL", &install),
          ("CONFIG_SITE", &config_site),
       ];
-      run(&var("CONFIG_SHELL").unwrap_or_default(), &args, &env)?;
-      probe::store(&key, Path::new(&cache), socket)?;
-      if !platform.posix {
-         let workdir = if options.out_of_tree {
-            PathBuf::from(&ctx.build)
-         } else {
-            ctx.project_dir(&options.root)
+      let shell = var("CONFIG_SHELL").unwrap_or_default();
+      let workdir = if options.out_of_tree {
+         PathBuf::from(&ctx.build)
+      } else {
+         ctx.project_dir(&options.root)
+      };
+      run(&shell, &args, &env)?;
+
+      let status = workdir.join("config.status");
+      let reusable = restored
+         || !ctx.cache
+         || match read(&status) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => true,
+            Err(error) => return Err(error),
+            Ok(first) => {
+               run(&shell, &args, &env)?;
+               read(&status)? == first
+            },
          };
+      if reusable {
+         probe::store(&key, Path::new(&cache), socket)?;
+      } else {
+         note(
+            "config.cache",
+            "answers change what configure writes, not cached",
+         );
+         remove_file(&cache)?;
+         run(&shell, &args, &env)?;
+      }
+
+      if !platform.posix {
          Self::stub_gnulib_tests(&workdir, &platform.os)?;
       }
       Ok(())
