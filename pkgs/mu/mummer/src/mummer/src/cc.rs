@@ -824,7 +824,8 @@ fn run_uncached(
    compiler: &str,
    slot_socket: Option<&Path>,
 ) -> io::Result<RunResult> {
-   if !invocation.links() || format != BinaryFormat::Elf {
+   let linking = invocation.links() || invocation.action == Action::Other;
+   if invocation.query || !linking || format != BinaryFormat::Elf {
       return run_slotted(OsStr::new(compiler), &invocation.args, slot_socket, false);
    }
    let scratch = Builder::new()
@@ -869,7 +870,7 @@ where
    Link: FnMut(&[String]) -> io::Result<RunResult>,
 {
    let result = link(args)?;
-   if result.status != 0_i32 {
+   if result.status != 0_i32 || !output.is_file() || !dependencies.is_file() {
       return Ok(result);
    }
    let Some(room) = settle_runpath(output, &read_to_string(dependencies)?)? else {
