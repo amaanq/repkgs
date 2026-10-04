@@ -1,13 +1,13 @@
-# spieler built by nixpkgs' rust for the development shell and nuff, so a tree check does not
-# start the package set. The set's own build is pkgs/sp/spieler.
-{ pkgs }:
+# A workspace crate built by nixpkgs' rust for the development shell, nuff and the mummerd service,
+# so none of them start the package set.
+{ pkgs, crate }:
 pkgs.rustPlatform.buildRustPackage {
-  pname = "spieler";
+  pname = crate;
   version =
     (builtins.fromTOML (builtins.readFile ../pkgs/mu/mummer/src/Cargo.toml)).workspace.package.version;
   src = builtins.path {
     path = ../pkgs/mu/mummer/src;
-    name = "spieler-rust-src";
+    name = "${crate}-rust-src";
     filter =
       path: type:
       (type == "directory" && baseNameOf path != "target")
@@ -20,7 +20,7 @@ pkgs.rustPlatform.buildRustPackage {
   cargoLock.lockFile = ../pkgs/mu/mummer/src/Cargo.lock;
   cargoBuildFlags = [
     "-p"
-    "spieler"
+    crate
   ];
   auditable = false;
   doCheck = false;

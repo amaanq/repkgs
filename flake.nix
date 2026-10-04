@@ -53,6 +53,8 @@
 
       checks = each (system: import ./nix/checks.nix { inherit system nixpkgs; });
 
+      nixosModules.mummerd = ./nix/module.nix;
+
       formatter = each (system: import ./nix/format.nix { pkgs = nixpkgs.legacyPackages.${system}; });
 
       devShells = each (

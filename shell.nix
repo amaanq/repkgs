@@ -17,7 +17,10 @@ pkgs.mkShell {
   packages = [
     rom
     (import ./nix/format.nix { inherit pkgs; })
-    (import ./nix/spieler.nix { inherit pkgs; })
+    (import ./nix/crate.nix {
+      inherit pkgs;
+      crate = "spieler";
+    })
     # spieler prefetches with bsdtar so archives unpack as nix/sources.nix unpacks them, and
     # formats act.lock with taplo as nuff does
     pkgs.libarchive
