@@ -3,13 +3,11 @@ fetch = { url = "http://www.dest-unreach.org/socat/download/socat-{version}.tar.
 with  = [ "autotools" ]
 deps  = [ "openssl", "readline" ]
 
-# install copies socat-chain.sh without $(srcdir)
 [autotools]
 outOfTree = false
 
 [test]
 version = "-V"
 
-# no check target, and its test.sh opens network sockets the sandbox does not have
 [steps]
 skip = [ "autotools.test" ]
