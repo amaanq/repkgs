@@ -1,0 +1,12 @@
+tag   = "*"
+track = "github:tmux/tmux"
+fetch = { asset = "tmux-{tag}.tar.gz" }
+with  = [ "autotools" ]
+deps  = [ "libevent", "ncurses" ]
+
+[test]
+version = "-V"
+
+[autotools]
+outOfTree = false
+flags     = [ "--enable-sixel" ]
