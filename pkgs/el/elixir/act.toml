@@ -2,7 +2,7 @@ tag     = "v{version}"
 track   = "github:elixir-lang/elixir"
 fetch   = { archive = true }
 with    = [ "make" ]
-deps    = [ "erlang", "coreutils", "sed" ]
+deps    = [ "erlang", "coreutils", "sed", "curl", "bash" ]
 exports = false
 
 [test]

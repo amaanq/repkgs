@@ -2,7 +2,7 @@ tag     = "OTP-{version}"
 track   = "github:erlang/otp"
 fetch   = { url = "https://github.com/erlang/otp/releases/download/OTP-{version}/otp_src_{version}.tar.gz" }
 with    = [ "autotools" ]
-deps    = [ "ncurses", "openssl", "zlib" ]
+deps    = [ "ncurses", "openssl", "zlib", "gawk", "sed", "bash" ]
 tools   = [ "perl" ]
 patches = [ "upstream-cstdlib.patch", "erl-dirname.patch" ]
 exports = false
