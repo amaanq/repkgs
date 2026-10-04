@@ -2,6 +2,7 @@ track          = "gnu:bash"
 fetch          = { url = "https://ftp.gnu.org/gnu/bash/bash-{version}.tar.gz" }
 with           = [ "autotools" ]
 bootstrapTools = true
+patches        = [ "relocatable.patch" ]
 
 [test]
 bin = [ "bash", "sh" ]

@@ -1,7 +1,8 @@
-tag   = "VERSION_{version_}"
-track = "github:kristapsdz/lowdown"
-fetch = { archive = true }
-with  = [ "make" ]
+tag     = "VERSION_{version_}"
+track   = "github:kristapsdz/lowdown"
+fetch   = { archive = true }
+with    = [ "make" ]
+patches = [ "upstream-portable-make.patch" ]
 
 [test]
 bin = [ "lowdown", "lowdown-diff" ]

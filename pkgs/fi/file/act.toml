@@ -1,7 +1,8 @@
-track = "generic:file?url=https://astron.com/pub/file/"
-fetch = { url = "https://astron.com/pub/file/file-{version}.tar.gz" }
-with  = [ "autotools" ]
-deps  = [ "zlib", "bzip2", "xz", "zstd" ]
+track   = "generic:file?url=https://astron.com/pub/file/"
+fetch   = { url = "https://astron.com/pub/file/file-{version}.tar.gz" }
+with    = [ "autotools" ]
+deps    = [ "zlib", "bzip2", "xz", "zstd" ]
+patches = [ "relocatable.patch", "upstream-mingw-timespec.patch" ]
 
 [on.cross]
 tools = [ "file" ]

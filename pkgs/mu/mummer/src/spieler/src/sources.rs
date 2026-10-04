@@ -142,7 +142,7 @@ pub struct Package {
    pub tag:      Option<String>,
    /// One inline `fetch`, so act.lock holds `hash` rather than `[hash]`.
    pub single:   bool,
-   /// act.toml's `patches` in order, or every `*.patch` beside it sorted.
+   /// act.toml's `patches`, in the order they apply.
    pub patches:  Vec<String>,
    /// act.lock's `[patches]`, remote entry -> the file it was vendored as.
    pub vendored: BTreeMap<String, String>,
@@ -281,21 +281,6 @@ fn vendored_of(recorded: Option<Value>) -> BTreeMap<String, String> {
    }
 }
 
-/// Every `*.patch` beside the act, sorted, the order patches apply in without
-/// an explicit list.
-fn patch_files(dir: &Path) -> io::Result<Vec<String>> {
-   let mut found = read_dir(dir)?
-      .map(|child| Ok(child?.file_name().to_string_lossy().into_owned()))
-      .collect::<io::Result<Vec<_>>>()?;
-   found.retain(|name| {
-      Path::new(name)
-         .extension()
-         .is_some_and(|ext| ext == "patch")
-   });
-   found.sort();
-   Ok(found)
-}
-
 fn parse(file: &Path) -> io::Result<Option<Package>> {
    let fail = |message: String| io::Error::other(format!("{}: {message}", file.display()));
    let act: Act =
@@ -353,7 +338,7 @@ fn parse(file: &Path) -> io::Result<Option<Package>> {
       .transpose()
       .map_err(|error| fail(error.to_string()))?;
    let vendored = vendored_of(lock.remove("patches"));
-   let patches = act.patches.map_or_else(|| patch_files(&dir), Ok)?;
+   let patches = act.patches.unwrap_or_default();
    let pin = pin_of(lock, template.as_ref());
 
    // in-tree sources have nothing to track but may still lock dependencies.

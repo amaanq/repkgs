@@ -1,9 +1,10 @@
-tag    = "openssl-{version}"
-track  = "github:openssl/openssl"
-fetch  = { asset = "openssl-{version}.tar.gz" }
-with   = [ "make" ]
-tools  = [ "perl" ]
-remove = [ "bin/c_rehash" ]
+tag     = "openssl-{version}"
+track   = "github:openssl/openssl"
+fetch   = { asset = "openssl-{version}.tar.gz" }
+with    = [ "make" ]
+tools   = [ "perl" ]
+remove  = [ "bin/c_rehash" ]
+patches = [ "relocatable.patch" ]
 
 [test]
 run     = false

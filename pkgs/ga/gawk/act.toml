@@ -2,6 +2,7 @@ track          = "gnu:gawk"
 fetch          = { url = "https://ftp.gnu.org/gnu/gawk/gawk-{version}.tar.xz" }
 with           = [ "autotools" ]
 bootstrapTools = true
+patches        = [ "relocatable.patch", "upstream-node-struct-without-mpfr.patch" ]
 
 [test]
 bin = [ "gawk", "awk" ]

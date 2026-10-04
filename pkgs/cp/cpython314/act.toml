@@ -1,7 +1,8 @@
-with   = [  ]
-deps   = [  ]
-tools  = [  ]
-extras = "python"
+with    = [  ]
+deps    = [  ]
+tools   = [  ]
+extras  = "python"
+patches = [ "relocatable.patch", "upstream-darwin-cross-xopen.patch" ]
 
 [track]
 from  = "github:python/cpython"

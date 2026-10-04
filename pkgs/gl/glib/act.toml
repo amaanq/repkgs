@@ -1,6 +1,7 @@
-fetch = { url = "https://download.gnome.org/sources/glib/{major}.{minor}/glib-{version}.tar.xz" }
-with  = [ "meson" ]
-deps  = [ "pcre2", "libffi", "zlib", "cpython" ]
+fetch   = { url = "https://download.gnome.org/sources/glib/{major}.{minor}/glib-{version}.tar.xz" }
+with    = [ "meson" ]
+deps    = [ "pcre2", "libffi", "zlib", "cpython" ]
+patches = [ "relocatable.patch" ]
 
 [track]
 from = "generic:glib"

@@ -1,7 +1,8 @@
-track = "gnu:tar"
-fetch = { url = "https://ftp.gnu.org/gnu/tar/tar-{version}.tar.xz" }
-with  = [ "autotools" ]
-deps  = [ "acl" ]
+track   = "gnu:tar"
+fetch   = { url = "https://ftp.gnu.org/gnu/tar/tar-{version}.tar.xz" }
+with    = [ "autotools" ]
+deps    = [ "acl" ]
+patches = [ "acl-2.4-names.patch" ]
 
 [autotools]
 flags = [ "--without-selinux", "--with-rmt=/usr/sbin/rmt" ]

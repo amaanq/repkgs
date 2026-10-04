@@ -1,7 +1,8 @@
-track = "generic:giflib?url=https://sourceforge.net/projects/giflib/files/"
-fetch = { url = "https://downloads.sourceforge.net/giflib/giflib-{version}.tar.gz" }
-with  = [ "make" ]
-test  = false
+track   = "generic:giflib?url=https://sourceforge.net/projects/giflib/files/"
+fetch   = { url = "https://downloads.sourceforge.net/giflib/giflib-{version}.tar.gz" }
+with    = [ "make" ]
+test    = false
+patches = [ "upstream-darwin-install-name.patch" ]
 
 [make]
 buildTarget = [

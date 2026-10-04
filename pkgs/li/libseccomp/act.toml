@@ -1,8 +1,9 @@
-tag   = "v{version}"
-track = "github:seccomp/libseccomp"
-fetch = { asset = "libseccomp-{version}.tar.gz" }
-with  = [ "autotools" ]
-tools = [ "gperf", "bash", "which", "util-linux" ]
+tag     = "v{version}"
+track   = "github:seccomp/libseccomp"
+fetch   = { asset = "libseccomp-{version}.tar.gz" }
+with    = [ "autotools" ]
+tools   = [ "gperf", "bash", "which", "util-linux" ]
+patches = [ "upstream-tests-tail-pid.patch" ]
 
 [only]
 os = [ "linux" ]

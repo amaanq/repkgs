@@ -1,4 +1,10 @@
 fetch = { url = "https://downloads.sourceforge.net/infozip/zip30.tar.gz" }
+patches = [
+  "01-zipnote-freeze.patch",
+  "02-cve-2018-13410.patch",
+  "03-fix-command-injection.patch",
+  "upstream-format-security.patch",
+]
 
 [track]
 frozen = "Info-ZIP, last release 2009"

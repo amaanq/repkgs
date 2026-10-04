@@ -1,9 +1,10 @@
-tag   = "v{version}"
-track = "github:taglib/taglib"
-fetch = { archive = true }
-with  = [ "cmake" ]
-deps  = [ "zlib", "utf8cpp" ]
-test  = false
+tag     = "v{version}"
+track   = "github:taglib/taglib"
+fetch   = { archive = true }
+with    = [ "cmake" ]
+deps    = [ "zlib", "utf8cpp" ]
+test    = false
+patches = [ "relocatable.patch" ]
 
 [cmake.defs]
 WITH_ZLIB = true

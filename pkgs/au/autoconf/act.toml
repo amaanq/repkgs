@@ -1,8 +1,9 @@
-track = "gnu:autoconf"
-fetch = { url = "https://ftp.gnu.org/gnu/autoconf/autoconf-{version}.tar.xz" }
-with  = [ "autotools" ]
-deps  = [ "m4", "perl", "bash" ]
-test  = false
+track   = "gnu:autoconf"
+fetch   = { url = "https://ftp.gnu.org/gnu/autoconf/autoconf-{version}.tar.xz" }
+with    = [ "autotools" ]
+deps    = [ "m4", "perl", "bash" ]
+test    = false
+patches = [ "relocatable.patch" ]
 
 [steps.after]
 "autotools.install" = [ "autoconf.retarget-tools" ]

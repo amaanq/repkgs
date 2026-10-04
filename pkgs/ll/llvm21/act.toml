@@ -1,9 +1,14 @@
-tag   = "llvmorg-{version}"
+tag = "llvmorg-{version}"
 track = "github:llvm/llvm-project"
 fetch = { asset = "llvm-project-{version}.src.tar.xz" }
-with  = [ "cmake" ]
-deps  = [ "zlib", "zstd" ]
+with = [ "cmake" ]
+deps = [ "zlib", "zstd" ]
 tools = [ "cpython" ]
+patches = [
+  "sdag-freeze-condition-in-select-of-load-fold.patch",
+  "upstream-rdf-std-specializations.patch",
+  "upstream-x86-vastart-stack-probe.patch",
+]
 
 [test]
 bin = [ "llvm-config" ]

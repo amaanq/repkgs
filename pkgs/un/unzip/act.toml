@@ -1,5 +1,17 @@
 fetch = { url = "https://downloads.sourceforge.net/infozip/unzip60.tar.gz" }
-deps  = [ "bzip2" ]
+deps = [ "bzip2" ]
+patches = [
+  "08-CVE-2014-9913.patch",
+  "09-CVE-2016-9844.patch",
+  "10-CVE-2018-18384.patch",
+  "11-CVE-2019-13232-1.patch",
+  "12-CVE-2019-13232-2.patch",
+  "13-CVE-2019-13232-2-rebased.patch",
+  "14-CVE-2019-13232-3.patch",
+  "15-initialize-the-symlink-flag.patch",
+  "16-CVE-2022-0529-and-CVE-2022-0530.patch",
+  "17-CVE-2021-4217.patch",
+]
 
 [track]
 frozen = "Info-ZIP, last release 2009"

@@ -1,7 +1,8 @@
-track = "gnu:gmp"
-fetch = { url = "https://ftpmirror.gnu.org/gmp/gmp-{version}.tar.xz" }
-with  = [ "autotools" ]
-tools = [ "m4" ]
+track   = "gnu:gmp"
+fetch   = { url = "https://ftpmirror.gnu.org/gmp/gmp-{version}.tar.xz" }
+with    = [ "autotools" ]
+tools   = [ "m4" ]
+patches = [ "upstream-loongarch-int128.patch" ]
 
 [autotools]
 flags = [ "--enable-cxx", "--with-pic" ]

@@ -1,9 +1,10 @@
-track = "generic:postgresql?url=https://ftp.postgresql.org/pub/source/&regex=v([0-9.]+)/"
-fetch = { url = "https://ftp.postgresql.org/pub/source/v{version}/postgresql-{version}.tar.bz2" }
-with  = [ "meson" ]
-deps  = [ "openssl", "zlib", "readline", "icu", "util-linux", "lz4", "zstd", "libxml2" ]
-tools = [ "bison", "flex", "perl" ]
-test  = false
+track   = "generic:postgresql?url=https://ftp.postgresql.org/pub/source/&regex=v([0-9.]+)/"
+fetch   = { url = "https://ftp.postgresql.org/pub/source/v{version}/postgresql-{version}.tar.bz2" }
+with    = [ "meson" ]
+deps    = [ "openssl", "zlib", "readline", "icu", "util-linux", "lz4", "zstd", "libxml2" ]
+tools   = [ "bison", "flex", "perl" ]
+test    = false
+patches = [ "tzdir-etc-zoneinfo.patch" ]
 
 [steps.after]
 "meson.install" = [ "postgresql.relocate-pgxs" ]

@@ -1,8 +1,9 @@
-track = 'generic:util-linux?url=https://github.com/util-linux/util-linux/tags&regex=v([0-9.]+)\.tar\.gz'
-fetch = { url = "https://www.kernel.org/pub/linux/utils/util-linux/v{major}.{minor}/util-linux-{version}.tar.xz" }
-with  = [ "meson" ]
-deps  = [ "ncurses", "zlib", "readline", "sqlite", "libxcrypt", "libcap" ]
-tools = [ "bison", "flex" ]
+track   = 'generic:util-linux?url=https://github.com/util-linux/util-linux/tags&regex=v([0-9.]+)\.tar\.gz'
+fetch   = { url = "https://www.kernel.org/pub/linux/utils/util-linux/v{major}.{minor}/util-linux-{version}.tar.xz" }
+with    = [ "meson" ]
+deps    = [ "ncurses", "zlib", "readline", "sqlite", "libxcrypt", "libcap" ]
+tools   = [ "bison", "flex" ]
+patches = [ "01-CVE-2026-78408.patch", "02-libmount-build-fix.patch", "relocatable.patch" ]
 
 [only]
 os = [ "linux" ]

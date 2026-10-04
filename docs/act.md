@@ -76,7 +76,7 @@ reason) to keep its hash when the version moves.
 | `deps`          | packages of the target set the package links or runs                    |
 | `tools`         | packages of the build set it runs while building                        |
 | `only`          | platform constraints, `{ os = […], abi = […], cross = false, … }`       |
-| `patches`       | patches in the order they apply, when the default order does not do     |
+| `patches`       | the patches that apply, in order                                        |
 | `[test]`        | `false` to skip tests, or `bin`, `version`, `deps`, `dlopen`, …         |
 | `[steps]`       | `after`, `before`, `skip` and `replace` around the systems' phases, or `phases` for all of them |
 | `[<system>]`    | a build system's options, `[cmake]`, `[cargo]`, …                       |
@@ -86,8 +86,8 @@ Every other key is a field of the package record as bigtop reads it (`install`, 
 `links`, `prebuilt`, `bootstrapTools`, …). Wherever a package is expected a string names one, from
 the build set for `tools` and a system's `tool`, from the target set everywhere else.
 
-Without `patches`, every `*.patch` beside the act applies, sorted by name. An entry of `patches` is
-a file beside the act, or a pull request or commit url on GitHub, GitLab, Forgejo or Gitea
+`patches` names every patch that applies, in order, and a `*.patch` beside the act that neither it
+nor act.nix names fails evaluation. An entry is a file beside the act, or a pull request or commit url on GitHub, GitLab, Forgejo or Gitea
 (`github:owner/repo/pull/123` works too), or any https url serving a diff. `spieler patch` downloads
 the url entries beside the act as they are and records which file each became, and the build only
 reads those files.

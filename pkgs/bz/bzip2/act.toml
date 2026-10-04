@@ -1,6 +1,7 @@
-track = "generic:bzip2?url=https://sourceware.org/pub/bzip2/"
-fetch = { url = "https://sourceware.org/pub/bzip2/bzip2-{version}.tar.gz" }
-with  = [ "make" ]
+track   = "generic:bzip2?url=https://sourceware.org/pub/bzip2/"
+fetch   = { url = "https://sourceware.org/pub/bzip2/bzip2-{version}.tar.gz" }
+with    = [ "make" ]
+patches = [ "CVE-2026-42250.patch" ]
 
 [only]
 abi = [ "gnu", "apple" ]

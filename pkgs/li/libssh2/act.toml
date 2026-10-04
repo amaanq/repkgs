@@ -6,6 +6,18 @@ deps  = [ "openssl", "zlib" ]
 test  = false
 
 # curl links libssh2, and the full cmake links curl
+patches = [
+  "01-CVE-2026-7598.patch",
+  "02-libssh-unconst-backport.patch",
+  "03-CVE-2025-15661.patch",
+  "04-CVE-2026-55199.patch",
+  "05-CVE-2026-55200.patch",
+  "07-CVE-2026-58051.patch",
+  "08-CVE-2026-66032.patch",
+  "09-CVE-2026-66033.patch",
+  "10-CVE-2026-66034.patch",
+  "11-CVE-2026-66035.patch",
+]
 [cmake]
 tool = "cmake-bootstrap"
 

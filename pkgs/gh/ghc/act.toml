@@ -3,6 +3,7 @@ with    = [ "cabal" ]
 deps    = [ "gmp", "ncurses", "libffi" ]
 tools   = [ "cpython", "autoconf" ]
 exports = false
+patches = [ "upstream-hadrian-autoreconf-exec.patch" ]
 
 [track]
 from = 'generic:ghc?url=https://downloads.haskell.org/~ghc/&regex=href="(\d+\.\d+\.\d{1,2})/"'
