@@ -163,7 +163,7 @@ pub fn linked(
       };
       let mut exported = HashSet::new();
       for directory in &dep.lib_dirs {
-         for entry in walk(Path::new(directory))?
+         for entry in walk(&Path::new(&dep.root).join(directory))?
             .into_iter()
             .filter(|entry| entry.kind == 'f')
          {
