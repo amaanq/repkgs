@@ -21,19 +21,8 @@ export def configure []: nothing -> nothing {
    x sh ./configure $"--prefix=($c.out)" --with-system-libffi ...$libraries GHC=ghc $"AutoreconfCmd=(tool autoconf)" ...(^bigtop system ghc-toolchain | lines)
 }
 
-# leaves $out out of the key since it moves with every recipe edit, and _build never embeds it
-def cache-key []: nothing -> string {
-   let given = (attrs)
-   ^bigtop probe key $"hadrian/($given.src | path basename)" ...$given.patches --no-out
-}
-
 export def build []: nothing -> nothing {
-   let tree     = $"((ctx).src)/_build"
-   let key      = (cache-key)
-   let restored = (^bigtop probe restore-dir $key $tree | complete).exit_code == 0
-   note hadrian-cache (if $restored { "restored" } else { "cold" })
    hadrian binary-dist-dir
-   ^bigtop probe store-dir $key $tree
 }
 
 export def install []: nothing -> nothing {

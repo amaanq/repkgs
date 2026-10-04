@@ -266,6 +266,7 @@ impl Recipe for Cc {
          "reloc-fixup",
          "gocacheprog",
          "rustcwrap",
+         "ghcwrap",
       ] {
          symlink("mummer", format!("{out}/bin/{name}"))?;
       }
