@@ -340,7 +340,27 @@ impl Invocation {
       if let Some(ref depfile) = self.depfile {
          job = job.replace(depfile.to_string_lossy().as_ref(), "<depfile>");
       }
-      Ok(job)
+      // a preprocessed .S hands cc1as a file named <stem>-<6 random>.<ext> in TMPDIR
+      let scratch = format!("\"{}/", temp_dir().display());
+      let mut masked = String::with_capacity(job.len());
+      let mut rest = job.as_str();
+      while let Some(start) = rest.find(&scratch) {
+         let begin = start + scratch.len();
+         masked.push_str(&rest[..begin]);
+         let end = rest[begin..].find('"').map_or(rest.len(), |length| begin + length);
+         let name = &rest[begin..end];
+         match name.rsplit_once('-') {
+            Some((stem, tail)) if !name.contains('/') && tail.find('.') == Some(6) => {
+               masked.push_str(stem);
+               masked.push_str("-<temp>");
+               masked.push_str(&tail[6..]);
+            },
+            _ => masked.push_str(name),
+         }
+         rest = &rest[end..];
+      }
+      masked.push_str(rest);
+      Ok(masked)
    }
 
    const fn links(&self) -> bool {
