@@ -3,7 +3,10 @@ use std::{
       BTreeMap,
       HashMap,
    },
-   env::var,
+   env::{
+      current_exe,
+      var,
+   },
    fs::{
       canonicalize,
       metadata,
@@ -70,10 +73,14 @@ impl Store {
          Vec::new()
       };
       let mut roots = BTreeMap::new();
+      let toolchain = current_exe()
+         .ok()
+         .and_then(|exe| Some(exe.parent()?.parent()?.to_string_lossy().into_owned()))
+         .unwrap_or_default();
       for root in var("MUMMER_STORE_ROOTS")
          .unwrap_or_default()
          .split_whitespace()
-         .chain([output.as_str()])
+         .chain([output.as_str(), toolchain.as_str()])
       {
          if !is_store_path(root) {
             continue;
