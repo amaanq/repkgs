@@ -79,7 +79,6 @@ the compiler. Fortran invocations require a configured `fc`.
 | `libc`       | libc store path, `<libc>/lib` closes every RUNPATH and holds the interpreter       |
 | `interp`     | interpreter file name under `<libc>/lib`, default `ld-linux-x86-64.so.2`           |
 | `crt`        | `crt_interp` object, present when executables get the relocatable interpreter stub |
-| `runtimes`   | directory added to RUNPATH when the link pulls a C++ or unwind runtime             |
 | `flags`      | argument array, first on C and C++ command lines                                  |
 | `cxxflags`   | argument array, after `flags` for C++                                             |
 | `fflags`     | Fortran arguments, with `@/` paths resolved against the installation root         |
@@ -501,21 +500,17 @@ The per format filter drops `-Wl,--dynamic-linker*` and `-Wl,-dynamic-linker*` f
 `-fPIC` `-fpic` `-fPIE` `-fpie` `-fno-PIC` `-fno-pic` `-pie` and raises `-std=c++98|03|0x|11`
 and the `gnu++` spellings to 14 for COFF, and keeps everything for Mach-O.
 
-**ELF link policy.** The RUNPATH is the user's rpath entries not under `/usr`, `/lib` or `/opt`,
-verbatim, then one entry per store directory that satisfied a `-l` (a `-L` directory containing
-`lib<x>.so` or `lib<x>.dylib`, or the directory of a store library named on the command line),
-read from the linker command `<compiler> -###` prints for the link, so the libraries clang adds
-itself count too, or from the arguments when `-###` fails,
-then `runtimes` when the link names `c++`, `stdc++`, `gcc_s`, `unwind` or `:libunwind.so` and
-did not say `-nostdlib` or `-nostdlib++` (C++ links always), then `<libc>/lib`. Each store
-entry is written as `<dir>/.:` and the path ends with `/` and `48 × max(entries, 1) + 80 ×
-libraries`, rounded up to a power of two and at least 1024, less one underscores, which is the
-slack `reloc-fixup` rewrites into. The rounding keeps a small change in the count from moving
-every output's bytes. The linker gets
-`-Wl,--undefined-version`, `-Wl,-rpath,<that>` and `-Wl,--enable-new-dtags`. Executables
-(not `-shared`) get `-Wl,--dynamic-linker=<libc>/lib/<interp>`, or with `crt` set, `-x none
-<crt>`, the same interpreter spelled with twelve `./` segments so the stub can be written over
-it, and `-Wl,--export-dynamic-symbol=__reloc_start`.
+**ELF link policy.** The linker gets `-Wl,--undefined-version`, `-Wl,-rpath,/` followed by 4095
+underscores, and `-Wl,--enable-new-dtags`, and the user's own rpaths go through as given. After a
+link that succeeds, mummer reads the linker's dependency file, the one the arguments name or
+`-Wl,--dependency-file=<scratch>` it adds, and rewrites the output's RUNPATH in place: the user's
+entries not under `/usr`, `/lib` or `/opt`, then `<dir>/.:` for each store directory holding a
+shared library the linker opened, then `/` and underscores to the end, the slack `reloc-fixup` rewrites into. When `48 × max(entries, 1) + 80 × needed` does not
+fit, the link runs again with that much room rounded up to a power of two, so an output's bytes
+depend on what it links and never on how mummer reads its arguments. Executables (not `-shared`)
+get `-Wl,--dynamic-linker=<libc>/lib/<interp>`, or with `crt` set, `-x none <crt>`, the same
+interpreter spelled with twelve `./` segments so the stub can be written over it, and
+`-Wl,--export-dynamic-symbol=__reloc_start`.
 
 **Mach-O** links get `-Wl,-headerpad_max_install_names`. **COFF** links get nothing.
 

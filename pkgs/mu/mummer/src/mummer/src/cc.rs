@@ -27,6 +27,7 @@ use blake3::Hasher;
 use mummer::{
    files::write_file,
    process::{
+      RunResult,
       Slot,
       diagnostic,
       expand_response_files,
@@ -49,6 +50,8 @@ use crate::{
       BinaryFormat,
       Driver,
       Language,
+      reserve,
+      settle_runpath,
    },
    manifest::{
       Manifest,
@@ -545,7 +548,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    };
    let Some((request, mut cache)) = connected else {
       let slot_socket = (!invocation.query).then_some(socket);
-      let result = run_slotted(OsStr::new(compiler), &invocation.args, slot_socket, false)?;
+      let result = run_uncached(&invocation, driver.format(), compiler, slot_socket)?;
       let outcome = if invocation.query {
          "query"
       } else if !invocation.cacheable {
@@ -652,13 +655,27 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
          link_dependency.path().display()
       ));
    }
-   let result = run(
-      OsStr::new(compiler),
-      &arguments,
-      Slot::acquire(&mut cache).ok().flatten(),
-      true,
-      &[("MUMMER_ABSENT_LOG", absent_log.path().as_os_str())],
-   )?;
+   let result = {
+      let mut link = |args: &[String]| {
+         run(
+            OsStr::new(compiler),
+            args,
+            Slot::acquire(&mut cache).ok().flatten(),
+            true,
+            &[("MUMMER_ABSENT_LOG", absent_log.path().as_os_str())],
+         )
+      };
+      if invocation.links() && driver.format() == BinaryFormat::Elf {
+         settled_link(
+            &invocation.output,
+            &mut arguments,
+            link_dependency.path(),
+            &mut link,
+         )?
+      } else {
+         link(&arguments)?
+      }
+   };
    io::stderr().lock().write_all(&result.stderr)?;
    if invocation.stdout {
       io::stdout().lock().write_all(&read(output_path)?)?;
@@ -749,6 +766,73 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    };
    log("cc", outcome, &explained, started);
    Ok(result.status)
+}
+
+fn run_uncached(
+   invocation: &Invocation,
+   format: BinaryFormat,
+   compiler: &str,
+   slot_socket: Option<&Path>,
+) -> io::Result<RunResult> {
+   if !invocation.links() || format != BinaryFormat::Elf {
+      return run_slotted(OsStr::new(compiler), &invocation.args, slot_socket, false);
+   }
+   let scratch = Builder::new()
+      .prefix(".mummer-")
+      .suffix(".link.d")
+      .tempfile()?;
+   let mut arguments = invocation.args.clone();
+   let dependencies = link_depfile(&mut arguments, scratch.path());
+   settled_link(&invocation.output, &mut arguments, &dependencies, |args| {
+      run_slotted(OsStr::new(compiler), args, slot_socket, false)
+   })
+}
+
+/// The linker dependency file `args` already name, or `ours`, added to them.
+fn link_depfile(args: &mut Vec<String>, ours: &Path) -> PathBuf {
+   for (index, arg) in args.iter().enumerate() {
+      let given = arg
+         .strip_prefix("-Wl,--dependency-file=")
+         .or_else(|| arg.strip_prefix("-Wl,--dependency-file,"))
+         .or_else(|| {
+            (index > 0 && args[index - 1] == "-Xlinker")
+               .then(|| arg.strip_prefix("--dependency-file="))
+               .flatten()
+         });
+      if let Some(path) = given {
+         return PathBuf::from(path);
+      }
+   }
+   args.push(format!("-Wl,--dependency-file={}", ours.display()));
+   ours.to_path_buf()
+}
+
+/// Links, then settles the output's RUNPATH from what the linker opened,
+/// linking once more with the room the output turned out to need.
+fn settled_link<Link>(
+   output: &Path,
+   args: &mut [String],
+   dependencies: &Path,
+   mut link: Link,
+) -> io::Result<RunResult>
+where
+   Link: FnMut(&[String]) -> io::Result<RunResult>,
+{
+   let result = link(args)?;
+   if result.status != 0_i32 {
+      return Ok(result);
+   }
+   let Some(room) = settle_runpath(output, &read_to_string(dependencies)?)? else {
+      return Ok(result);
+   };
+   reserve(args, room);
+   let again = link(args)?;
+   if again.status == 0_i32 && settle_runpath(output, &read_to_string(dependencies)?)?.is_some() {
+      return Err(io::Error::other(
+         "RUNPATH does not fit even after relinking",
+      ));
+   }
+   Ok(again)
 }
 
 fn cached(
