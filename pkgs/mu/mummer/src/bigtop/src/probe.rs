@@ -1,11 +1,16 @@
 use std::{
+   collections::BTreeMap,
    env::var,
    fs::{
+      canonicalize,
+      create_dir_all,
       read,
       read_to_string,
+      remove_dir_all,
    },
    io,
    path::Path,
+   process::Command,
 };
 
 use mummer::{
@@ -14,7 +19,10 @@ use mummer::{
       put_directory,
    },
    files::write_file,
-   tree::note,
+   tree::{
+      note,
+      walk,
+   },
 };
 use serde::Serialize;
 use serde_json::{
@@ -38,28 +46,88 @@ pub fn key<Extra>(
 where
    Extra: Serialize,
 {
-   let ctx = Ctx::load(&build_top()?)?;
+   let top = build_top()?;
+   let ctx = Ctx::load(&top)?;
    let mut sorted = scripts.to_vec();
    sorted.sort();
    let files = sorted
       .iter()
       .map(|path| Ok(hex(&read(path)?)))
       .collect::<io::Result<Vec<_>>>()?;
-   let cc: Value = match var("PKGS_CC") {
-      Ok(flags) => serde_json::from_str(&flags)?,
-      Err(_) => Value::Null,
+   let cc = match var("PKGS_CC") {
+      Ok(flags) => serde_json::from_str::<BTreeMap<String, Value>>(&flags)?,
+      Err(_) => BTreeMap::new(),
    };
+   let toolchains = cc
+      .keys()
+      .map(|root| toolchain(root, &top))
+      .collect::<io::Result<Vec<_>>>()?;
+   let roots = ctx
+      .roots
+      .iter()
+      .filter(|root| !cc.contains_key(root.as_str()))
+      .collect::<Vec<_>>();
    let record = json!({
       "files": files,
       "args": extra,
-      "roots": ctx.roots,
-      "cc": cc,
+      "roots": roots,
+      "cc": cc.values().collect::<Vec<_>>(),
+      "toolchains": toolchains,
       "out": if no_out { None } else { Some(&ctx.out) },
    });
    Ok(format!(
-      "probe/v6/{kind}/{}",
+      "probe/v8/{kind}/{}",
       hex(&serde_json::to_vec(&record)?)
    ))
+}
+
+/// The cc toolchain's files and a program it links, its own path masked and
+/// its mummer binary left out, so a driver change re-runs probes and a
+/// cache-only one does not.
+fn toolchain(root: &str, top: &str) -> io::Result<String> {
+   let wrapper = canonicalize(Path::new(root).join("bin/cc"))?;
+   let sample = Path::new(top).join(".probe-sample");
+   create_dir_all(&sample)?;
+   write_file(
+      &sample.join("main.c"),
+      b"int main(void) { return 0; }\n",
+      None,
+   )?;
+   let linked = Command::new(Path::new(root).join("bin/cc"))
+      .args(["main.c", "-o", "main"])
+      .current_dir(&sample)
+      .output()?;
+   if !linked.status.success() {
+      return Err(io::Error::other(format!(
+         "cc could not link the probe sample: {}",
+         String::from_utf8_lossy(&linked.stderr).trim()
+      )));
+   }
+   let mut hasher = blake3::Hasher::new();
+   let mut masked = |bytes: &[u8]| {
+      let mut rest = bytes;
+      while let Some(position) = rest
+         .windows(root.len())
+         .position(|window| window == root.as_bytes())
+      {
+         hasher.update(&rest[..position]);
+         hasher.update(b"/cc");
+         rest = &rest[position + root.len()..];
+      }
+      hasher.update(rest);
+   };
+   masked(&read(sample.join("main"))?);
+   remove_dir_all(&sample)?;
+   for entry in walk(Path::new(root))? {
+      if Path::new(&entry.path) == wrapper {
+         continue;
+      }
+      masked(format!("{}:{}:{}\0", entry.kind, entry.rel, entry.target).as_bytes());
+      if entry.kind == 'f' {
+         masked(&read(&entry.path)?);
+      }
+   }
+   Ok(hasher.finalize().to_hex().to_string())
 }
 
 fn hex(bytes: &[u8]) -> String {
