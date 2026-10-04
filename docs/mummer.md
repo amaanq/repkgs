@@ -112,7 +112,7 @@ the value when the flag is absent. `mummerd --help` lists them.
 | flag          | variable         | meaning                                                   |
 | ------------- | ---------------- | --------------------------------------------------------- |
 |               | `XDG_CACHE_HOME` | packs live in `<it>/mummerd/packs`, default `$HOME/.cache`   |
-| `--size`      | `MUMMERD_SIZE`      | tier 0 budget in GiB, default 50, 0 means unlimited       |
+| `--size`      | `MUMMERD_SIZE`      | tier 0 budget in GiB, default 100, 0 means unlimited      |
 | `--cold`      | `MUMMERD_COLD`      | a second tier directory that takes what tier 0 pushes out |
 | `--cold-size` | `MUMMERD_COLD_SIZE` | its budget in GiB, default unlimited                      |
 | `--slots`     | `MUMMERD_SLOTS`     | concurrent compiler slots, default the CPU count          |
