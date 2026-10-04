@@ -17,4 +17,9 @@ export def split-debug [file: string] {
    expect $"($file) has DWARF in ($separate | path basename)" (($separate | path exists) and (^llvm-readelf -S $separate | str contains .debug_info))
 }
 
+export def runpath [file: string]: nothing -> list<string> {
+   let origin = ($"($env.pkg)/($file)" | path dirname)
+   ^llvm-readelf -d $"($env.pkg)/($file)" | parse -r 'runpath: \[([^\]]*)\]' | get -o capture0.0 | default '' | split row ':' | each { str replace '$ORIGIN' $origin }
+}
+
 export def pass [] { mkdir $env.out }
