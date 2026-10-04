@@ -11,3 +11,4 @@ go = "."
 
 [go]
 packages = [ "./cmd/shfmt" ]
+ldflags  = [ "-X main.version=v{version}" ]

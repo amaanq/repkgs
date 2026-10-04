@@ -124,6 +124,7 @@ let
     in
     {
       inherit version tag fetch;
+      expand = fill pinned version tag;
       sys = pinned.sys or [ ];
       has = key: sources ? ${key};
       default = fetch "default";

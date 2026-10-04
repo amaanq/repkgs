@@ -10,3 +10,4 @@ go = "."
 
 [go]
 packages = [ "./cmd/age", "./cmd/age-keygen" ]
+ldflags  = [ "-X main.Version={version}" ]

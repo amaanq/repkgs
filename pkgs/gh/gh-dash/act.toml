@@ -10,3 +10,4 @@ go = "."
 
 [go]
 packages = [ "." ]
+ldflags  = [ "-X github.com/dlvhdr/gh-dash/v4/cmd.Version={version}" ]

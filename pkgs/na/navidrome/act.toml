@@ -14,7 +14,11 @@ phases = [ "npm.build", "go.build", "go.install" ]
 
 [go]
 packages = [ "." ]
-tags     = [ "netgo", "sqlite_fts5" ]
+tags = [ "netgo", "sqlite_fts5" ]
+ldflags = [
+  "-X github.com/navidrome/navidrome/consts.gitTag=v{version}",
+  "-X github.com/navidrome/navidrome/consts.gitSha=nix",
+]
 
 [npm]
 root = "ui"
