@@ -41,6 +41,7 @@ use mummer::{
    store::{
       Store,
       field,
+      mask_random_names,
       on_path,
    },
 };
@@ -532,7 +533,7 @@ impl Invocation {
       }
       if self.action != Action::Link {
          field(&mut hasher, "source");
-         field(&mut hasher, self.source.as_bytes());
+         field(&mut hasher, mask_random_names(&self.source));
          let mut bytes = read(&self.source)?;
          store.mask_output(&mut bytes, false);
          field(&mut hasher, bytes);
@@ -597,6 +598,8 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    invocation.args = driver.arguments(language, &invocation.args);
    let mut store = Store::new();
    let mut manifest_store = invocation.manifest_store();
+   store.learn_random(&invocation.args);
+   manifest_store.learn_random(&invocation.args);
    invocation.key_injected(&user);
    let subject = if invocation.source.is_empty() {
       invocation.output.to_string_lossy().into_owned()
@@ -802,7 +805,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
          store.mask_output(&mut object, false);
          cache.put(&format!("o/{key}"), &object)?;
          if invocation.depfile.is_some() {
-            let mut dep_bytes = store.mask_for_replay(&dependencies).into_bytes();
+            let mut dep_bytes = store.mask_text(&dependencies).into_bytes();
             store.mask_output(&mut dep_bytes, false);
             cache.put(&format!("d/{key}"), &dep_bytes)?;
          }
@@ -812,7 +815,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
             let body = text
                .strip_prefix(&target)
                .map_or_else(|| text.clone(), |rest| format!("<output>:{rest}"));
-            let mut link_bytes = store.mask_for_replay(&body).into_bytes();
+            let mut link_bytes = store.mask_text(&body).into_bytes();
             store.mask_output(&mut link_bytes, false);
             cache.put(&format!("l/{key}"), &link_bytes)?;
          }
