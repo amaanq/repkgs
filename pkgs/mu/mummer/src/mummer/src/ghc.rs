@@ -302,10 +302,6 @@ pub fn run_ghc(args: &[String], socket: &Path) -> io::Result<i32> {
       log("ghc", "failed", &explained, started);
       return Ok(result.status);
    }
-   if !result.deterministic() {
-      log("ghc", "compiled-unstored", &explained, started);
-      return Ok(0);
-   }
 
    let mut paths = dependencies;
    paths.push(invocation.source.clone());
