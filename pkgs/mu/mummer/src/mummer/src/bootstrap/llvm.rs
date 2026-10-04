@@ -243,7 +243,6 @@ impl Recipe for Llvm {
          "-DCMAKE_CXX_COMPILER=c++",
          "-DCMAKE_INSTALL_RPATH=$ORIGIN/../lib",
          "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
-         "-DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON",
          "-DLLVM_ENABLE_PROJECTS=clang;lld",
          "-DLLVM_LINK_LLVM_DYLIB=ON",
          "-DLLVM_BUILD_LLVM_DYLIB=ON",

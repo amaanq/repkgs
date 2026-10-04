@@ -213,7 +213,7 @@ every argument except `-o <x>`, `-o<x>`, `-MF <x>`, `-MT <x>`, `-MQ <x>`, `-MD`,
 request = "cc/" + hash(
    field(tool_id(cc))
    field(key(cwd))
-   field("link" | "link-one" | "compile")
+   field("link" | "link-one" | "precompile" | "compile")
    for each key_arg a: field(links && (a contains "dynamic-linker" || a contains "rpath")
                               ? placeholder(a) : key(placeholder(a)))
    for each of CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH OBJC_INCLUDE_PATH LIBRARY_PATH
@@ -228,11 +228,19 @@ The source argument preserves its spelling because `file.c` and `./file.c` produ
 `placeholder` is the §3.4 substitution. An invocation is cacheable when it has exactly one
 source for compile, assemble or preprocess, or is a link of objects, is not a query
 (`-M`, `-MM`, `-E` without a source, `-v`, `--version`, `-###`, `-fsyntax-only`, `-print*`,
-`--print*`, `-dump*`), does not write `/dev/null`, `.pch` or `.gch`, and carries none of the
-markers `@file`, `,@`, `-header`, `-Map`, `--print-map`, `--dependency-file`, `--out-implib`,
+`--print*`, `-dump*`), does not write `/dev/null`, `.gch`, or a `.pch` outside a precompile, and
+carries none of the markers `@file`, `,@`, `-Map`, `--print-map`, `--dependency-file`, `--out-implib`,
 `--trace`, `--verbose`, `--print-gc-sections`, `--stats`, `-save-temps`, `-ftime-trace`,
-`-fprofile`, `--coverage`, `-fmodules`, `-include-pch`, `-MJ`, `-serialize-diagnostics`,
-`-gsplit-dwarf`, `,-M`, `,-t`. Links are cacheable for ELF only.
+`-fprofile`, `--coverage`, `-fmodules`, `-MJ`, `-serialize-diagnostics`, `-gsplit-dwarf`,
+`,-M`, `,-t`. A `-header` language is cacheable only as a precompile. Links are cacheable for ELF only.
+
+A precompile is clang's `-Xclang -emit-pch` with a `-header` language and a `.pch` output, as
+CMake writes it. mummer adds `-Xclang -fno-pch-timestamp`, cached or not, since clang would
+otherwise refuse a restored `.pch` whose headers carry other mtimes, and keys it with exact store
+paths (§3.2 path identity whatever the mode), since a `.pch` names the absolute headers clang
+reopens. A compile reading `-include-pch <file>` takes the `.pch` as an object-style input, its
+bytes in the request key and its identity in the manifest. Its depfile lists the headers inside
+the `.pch` but not the file itself.
 
 The compiler, explicitly selected linker, and their sibling LLVM, clang-cpp and lld libraries
 also contribute their identities to the request key. Patching a tool at the same version must miss.

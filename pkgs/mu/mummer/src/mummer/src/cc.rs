@@ -61,6 +61,7 @@ use crate::{
 #[derive(Clone, Copy, PartialEq)]
 enum Action {
    Compile,
+   Precompile,
    Assembly,
    Preprocess,
    LinkSource,
@@ -102,6 +103,8 @@ impl Invocation {
          stdout: false,
       };
       let mut sources = 0_i32;
+      let mut header = false;
+      let mut emit_pch = false;
       let mut wants_deps = false;
       let mut objects = false;
       let mut index = 0;
@@ -149,9 +152,7 @@ impl Invocation {
             | "-isysroot" | "--sysroot" | "-L" | "-l" | "-x" | "-D" | "-U" | "-target"
             | "--target" => {
                if let Some(ref value) = next {
-                  if arg == "-x" && value.ends_with("-header") {
-                     invocation.cacheable = false;
-                  }
+                  header |= arg == "-x" && value.ends_with("-header");
                   consumed = true;
                }
             },
@@ -182,12 +183,13 @@ impl Invocation {
                   invocation.inputs.push(arg.clone());
                   objects = true;
                }
+               emit_pch |= arg == "-emit-pch";
+               header |= arg.ends_with("-header");
                invocation.query |= arg.starts_with("-print")
                   || arg.starts_with("--print")
                   || arg.starts_with("-dump");
                invocation.cacheable &= !arg.starts_with('@')
                   && !arg.contains(",@")
-                  && !arg.ends_with("-header")
                   && ![
                      "-Map",
                      "--print-map",
@@ -202,7 +204,6 @@ impl Invocation {
                      "-fprofile",
                      "--coverage",
                      "-fmodules",
-                     "-include-pch",
                      "-MJ",
                      "-serialize-diagnostics",
                      "-gsplit-dwarf",
@@ -223,7 +224,7 @@ impl Invocation {
       }
       if matches!(
          invocation.action,
-         Action::Compile | Action::Assembly | Action::Preprocess
+         Action::Compile | Action::Precompile | Action::Assembly | Action::Preprocess
       ) {
          invocation.cacheable &= sources == 1_i32;
          invocation.query |= invocation.action == Action::Preprocess && sources == 0_i32;
@@ -253,17 +254,61 @@ impl Invocation {
             invocation.output = PathBuf::from("a.out");
          }
       }
+      let extension = invocation.output.extension();
+      if emit_pch
+         && header
+         && invocation.action == Action::Compile
+         && extension.is_some_and(|found| found == "pch")
+      {
+         invocation.action = Action::Precompile;
+      }
+      let precompile = invocation.action == Action::Precompile;
       invocation.cacheable &= !invocation.query
          && invocation.output != Path::new("/dev/null")
          && invocation.action != Action::Other
-         && !invocation
-            .output
-            .extension()
-            .is_some_and(|extension| extension == "pch" || extension == "gch");
+         && (!header || precompile)
+         && (precompile || !extension.is_some_and(|found| found == "pch" || found == "gch"));
+      invocation.read_precompiled();
       if wants_deps && invocation.depfile.is_none() {
          invocation.depfile = Some(invocation.output.with_extension("d"));
       }
       invocation
+   }
+
+   /// Every `-include-pch` file is an input. The depfile lists the headers
+   /// inside it but not the .pch itself.
+   fn read_precompiled(&mut self) {
+      for (position, arg) in self.args.iter().enumerate() {
+         if arg != "-include-pch" {
+            continue;
+         }
+         let after = if self
+            .args
+            .get(position + 1)
+            .is_some_and(|next| next == "-Xclang")
+         {
+            position + 2
+         } else {
+            position + 1
+         };
+         match self.args.get(after) {
+            Some(pch) => self.inputs.push(pch.clone()),
+            None => self.cacheable = false,
+         }
+      }
+   }
+
+   /// clang reopens the headers a .pch names, so a precompile is reused only
+   /// where every store path is the same, and drops the header mtimes it
+   /// would otherwise check them against.
+   fn store(&mut self) -> Store {
+      if self.action != Action::Precompile {
+         return Store::new();
+      }
+      self
+         .args
+         .extend(["-Xclang".to_owned(), "-fno-pch-timestamp".to_owned()]);
+      Store::exact()
    }
 
    const fn links(&self) -> bool {
@@ -367,6 +412,7 @@ impl Invocation {
       field(&mut hasher, match self.action {
          Action::Link => "link",
          Action::LinkSource => "link-one",
+         Action::Precompile => "precompile",
          Action::Compile | Action::Assembly | Action::Preprocess | Action::Other => "compile",
       });
       for argument in &self.key_args {
@@ -461,8 +507,8 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       invocation.cacheable = false;
    }
    invocation.args = driver.arguments(language, &invocation.args);
+   let mut store = invocation.store();
    invocation.key_injected(&user);
-   let mut store = Store::new();
    let subject = if invocation.source.is_empty() {
       invocation.output.to_string_lossy().into_owned()
    } else {
