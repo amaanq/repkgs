@@ -1,3 +1,6 @@
 track = "gnu:gsl"
 fetch = { url = "https://ftpmirror.gnu.org/gsl/gsl-{version}.tar.gz" }
 with  = [ "autotools" ]
+
+[on.x86_64.cc]
+cflags = [ "-mno-fma" ]
