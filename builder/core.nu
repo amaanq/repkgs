@@ -87,3 +87,15 @@ export def write-launcher [name: string, program: string, args: list<string>, va
 export def fix-shebangs [dir: path, --undo]: nothing -> nothing {
    ^bigtop shebangs $dir ...(if $undo { [--undo] } else { [] })
 }
+
+# a locale for a test suite under ./locale, LOCPATH pointing there. glibc's tools keep their
+# build-time interpreter, so the sysroot's localedef runs under the sysroot's loader
+export def --env test-locale [locale: string, charmap: string]: nothing -> nothing {
+   let sysroot = (ctx).platform.sysroot
+   mkdir locale
+   with-env {I18NPATH: $"($sysroot)/share/i18n"} {
+      (x $"($sysroot)/lib/((ctx).platform.interp | path basename)" --library-path $"($sysroot)/lib"
+         $"($sysroot)/bin/localedef" --no-archive -i $locale -f $charmap $"./locale/($locale).($charmap)")
+   }
+   $env.LOCPATH = $"($env.PWD)/locale"
+}
