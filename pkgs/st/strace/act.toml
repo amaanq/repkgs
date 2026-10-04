@@ -1,0 +1,14 @@
+tag   = "v{version}"
+track = "github:strace/strace"
+fetch = { asset = "strace-{version}.tar.xz" }
+with  = [ "autotools" ]
+
+[test]
+version = "-V"
+
+[autotools]
+flags = [ "--enable-mpers=check", "CFLAGS=-Wno-unused-but-set-global" ]
+
+# 147 of 1489 tests fail on the host kernel and the sandbox, not on strace itself
+[steps]
+skip = [ "autotools.test" ]
