@@ -1,0 +1,20 @@
+fetch = { from = "bash" }
+with  = [ "autotools" ]
+deps  = [ "readline", "ncurses" ]
+
+[test]
+bin = [ "bash" ]
+run = false
+
+[only]
+posix = true
+
+[autotools]
+flags = [
+  "--without-bash-malloc",
+  "--with-installed-readline",
+  "bash_cv_func_strtoimax=y",
+  "bash_cv_getcwd_malloc=yes",
+  "bash_cv_job_control_missing=nomissing",
+  "bash_cv_sys_named_pipes=nomissing",
+]
