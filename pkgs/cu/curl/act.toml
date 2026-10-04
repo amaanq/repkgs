@@ -2,7 +2,7 @@ tag   = "curl-{version_}"
 track = "github:curl/curl"
 fetch = { url = "https://curl.se/download/curl-{version}.tar.xz" }
 with  = [ "cmake" ]
-deps  = [ "openssl", "zlib", "zstd" ]
+deps  = [ "openssl", "zlib", "zstd", "nghttp2", "brotli", "libssh2" ]
 tools = [ "perl" ]
 test  = false
 
@@ -19,6 +19,8 @@ CURL_CA_BUNDLE      = "/etc/ssl/certs/ca-certificates.crt"
 CURL_CA_PATH        = "/etc/ssl/certs"
 CURL_CA_SEARCH_SAFE = true
 CURL_USE_LIBPSL     = false
-CURL_USE_LIBSSH2    = false
+CURL_BROTLI         = true
+CURL_USE_LIBSSH2    = true
 CURL_USE_OPENSSL    = true
 ENABLE_CURL_MANUAL  = false
+USE_NGHTTP2         = true
