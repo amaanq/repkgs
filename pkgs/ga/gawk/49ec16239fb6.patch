@@ -1,3 +1,14 @@
+From bf85f8a3175af703597082d4c7e0abc2066a44d3 Mon Sep 17 00:00:00 2001
+From: "Arnold D. Robbins" <arnold@skeeve.com>
+Date: Tue, 14 Jul 2026 10:14:50 +0300
+Subject: Workaround fix for systems without MPFR and GMP.
+
+---
+ awk.h | 23 ++++++++++++++---------
+ 1 file changed, 14 insertions(+), 9 deletions(-)
+
+(limited to 'awk.h')
+
 diff --git a/awk.h b/awk.h
 index dbad0d81..f4a84300 100644
 --- a/awk.h
@@ -45,3 +56,6 @@ index dbad0d81..f4a84300 100644
  #define typed_re	sub.val.typre
  
  /*
+-- 
+cgit v1.3
+

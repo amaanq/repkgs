@@ -1,2 +1,5 @@
 version = "3.0"
 hash    = "sha256-10O+PGEw/qc1PXLB1RidFuy8oc3erFNh2sfphZtykkM="
+
+[patches]
+"https://sources.debian.org/data/main/z/zip/3.0-16/debian/patches/hardening-build-fix-1.patch" = "hardening-build-fix-1.patch"

@@ -2,7 +2,7 @@ track   = "github:abseil/abseil-cpp"
 fetch   = { asset = "abseil-cpp-{tag}.tar.gz" }
 with    = [ "cmake" ]
 deps    = [ "googletest" ]
-patches = [ "upstream-cctz-sync.patch" ]
+patches = [ "github:abseil/abseil-cpp/commit/ddbdebc6c8fd305597fe03a0fc00411cf09801b0" ]
 
 [cmake.defs]
 ABSL_BUILD_TESTING           = true

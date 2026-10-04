@@ -2,7 +2,7 @@ fetch   = { url = "https://github.com/openjdk/jdk25u/archive/refs/tags/jdk-{vers
 deps    = [ "zlib", "libpng", "freetype", "alsa-lib", "libffi", "cups-headers", "fontconfig-headers" ]
 tools   = [ "jdk-bootstrap", "autoconf", "bash", "zip", "unzip" ]
 exports = false
-patches = [ "upstream-riscv-float-type.patch" ]
+patches = [ "github:openjdk/jdk/commit/c61f5b7ad8f6f9a00bf0161e4c2c6e6e5c6b3463" ]
 
 [track]
 from = "github:openjdk/jdk25u"

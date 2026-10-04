@@ -1,2 +1,5 @@
 version = "25.0.4.1"
 hash    = "sha256-i5PZZbIcHviwOQ5I41LDJxjbS64AOXudk1cXXFUypUo="
+
+[patches]
+"github:openjdk/jdk/commit/c61f5b7ad8f6f9a00bf0161e4c2c6e6e5c6b3463" = "c61f5b7ad8f6.patch"
