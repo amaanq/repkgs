@@ -418,7 +418,7 @@ pub fn settle_runpath(output: &Path, dependencies: &str) -> io::Result<Option<us
    let given = text
       .value
       .split(':')
-      .filter(|entry| !entry.is_empty() && !is_placeholder(entry) && !host_directory(entry))
+      .filter(|entry| !is_placeholder(entry) && !host_directory(entry))
       .collect::<Vec<_>>();
    let mut path = String::new();
    for entry in &given {
