@@ -6,7 +6,7 @@ tools = [ "cpython" ]
 patches = [
   "../llvm/upstream-x86-vastart-stack-probe.patch",
   "../llvm/mummer-absent-log.patch",
-  "sdag-freeze-condition-in-select-of-load-fold.patch",
+  "https://github.com/rust-lang/llvm-project/commit/abcef279cd33492fe8301c8873fc535fa4dbf0d5.patch",
 ]
 
 [track]

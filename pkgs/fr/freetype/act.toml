@@ -3,12 +3,12 @@ fetch = { url = "https://download.savannah.gnu.org/releases/freetype/freetype-{v
 with = [ "meson" ]
 deps = [ "zlib", "libpng", "bzip2" ]
 patches = [
-  "01-truetype-shz-limit-heap-buffer-overflow-part1.patch",
-  "02-truetype-shz-limit-heap-buffer-overflow-part2.patch",
-  "03-truetype-iup-integer-overflow.patch",
-  "04-truetype-variation-handling-signedness-mismatch.patch",
-  "05-ftobjs-formatting.patch",
-  "06-sub-byte-bitmaps-heap-buffer-over-read.patch",
+  "https://gitlab.freedesktop.org/freetype/freetype/-/commit/1803559c4ee407d0bcbf2a67dbe96690cee869d2.patch",
+  "https://gitlab.freedesktop.org/freetype/freetype/-/commit/7d600a022e1d813e85a8c94ffd395f6135872267.patch",
+  "https://gitlab.freedesktop.org/freetype/freetype/-/commit/7974be74d8b5a2fbf99aa88f0461d1f80af51cee.patch",
+  "https://gitlab.freedesktop.org/freetype/freetype/-/commit/0d45c7f1911bc6db0bf072eea0c8cdccd77bc6b3.patch",
+  "https://gitlab.freedesktop.org/freetype/freetype/-/commit/590b77014bd920d0bdf64c039fddbce89a288b83.patch",
+  "https://gitlab.freedesktop.org/freetype/freetype/-/commit/cbe12767ea73d1006edc75fcd61c0b0d2a88f34e.patch",
 ]
 
 [meson.defs]

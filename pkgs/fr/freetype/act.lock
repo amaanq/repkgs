@@ -1,2 +1,10 @@
 version = "2.14.3"
 hash    = "sha256-AQKiXuGitV2OM650gwybyrApUi3s+D+EX4faoxPAQDg="
+
+[patches]
+"https://gitlab.freedesktop.org/freetype/freetype/-/commit/0d45c7f1911bc6db0bf072eea0c8cdccd77bc6b3.patch" = "0d45c7f1911b.patch"
+"https://gitlab.freedesktop.org/freetype/freetype/-/commit/1803559c4ee407d0bcbf2a67dbe96690cee869d2.patch" = "1803559c4ee4.patch"
+"https://gitlab.freedesktop.org/freetype/freetype/-/commit/590b77014bd920d0bdf64c039fddbce89a288b83.patch" = "590b77014bd9.patch"
+"https://gitlab.freedesktop.org/freetype/freetype/-/commit/7974be74d8b5a2fbf99aa88f0461d1f80af51cee.patch" = "7974be74d8b5.patch"
+"https://gitlab.freedesktop.org/freetype/freetype/-/commit/7d600a022e1d813e85a8c94ffd395f6135872267.patch" = "7d600a022e1d.patch"
+"https://gitlab.freedesktop.org/freetype/freetype/-/commit/cbe12767ea73d1006edc75fcd61c0b0d2a88f34e.patch" = "cbe12767ea73.patch"
