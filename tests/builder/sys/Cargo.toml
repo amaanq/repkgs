@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 openssl-sys = { path = "crates/openssl-sys" }
-zstd-sys    = { path = "crates/zstd-sys", optional = true }
+zstd-sys    = { optional = true, path = "crates/zstd-sys" }
 
 [dev-dependencies]
 libz-sys = { path = "crates/libz-sys" }

@@ -1,4 +1,9 @@
-{ platform, source, file, ... }:
+{
+  platform,
+  source,
+  file,
+  ...
+}:
 let
   fixtures = builtins.attrNames (builtins.fromTOML (builtins.readFile (file "act.lock"))).sources;
 in
