@@ -12,6 +12,7 @@ use std::{
    io,
    path::PathBuf,
    process::Command,
+   thread::sleep,
    time::{
       Duration,
       SystemTime,
@@ -86,11 +87,19 @@ struct Header {
 }
 
 fn get(agent: &Agent, url: &str, headers: &[Header]) -> io::Result<HttpResponse<Body>> {
-   let mut request = agent.get(url);
-   for header in headers {
-      request = request.header(header.name, header.value.as_str());
+   let mut attempt = 0_u32;
+   loop {
+      let mut request = agent.get(url);
+      for header in headers {
+         request = request.header(header.name, header.value.as_str());
+      }
+      let response = request.call().map_err(io::Error::other)?;
+      if attempt == 3 || !matches!(response.status().as_u16(), 502..=504) {
+         return Ok(response);
+      }
+      attempt += 1;
+      sleep(Duration::from_secs(1 << attempt));
    }
-   request.call().map_err(io::Error::other)
 }
 
 fn host(url: &str) -> &str {
