@@ -4,6 +4,8 @@ with = [ "autotools" ]
 deps = [ "openssl" ]
 tools = [ "bison", "perl" ]
 patches = [
+  "CVE-2026-11850.patch",
+  "CVE-2026-40355-and-CVE-2026-40356.patch",
   "upstream-libdb2-test-dictionary-file.patch",
   "upstream-kpropd-loopback-only-listen.patch",
   "relocatable.patch",
@@ -24,6 +26,7 @@ flags = [
   "--sysconfdir=/etc",
   "--localstatedir=/var",
   "--runstatedir=/run",
+  "CFLAGS=-std=gnu17",
   "krb5_cv_cc_flag__dash_Werror_eq_incompatible_dash_pointer_dash_types=no",
 ]
 outOfTree = false
