@@ -4,9 +4,10 @@ use core.nu *
 export def test-scripts []: nothing -> nothing {
    let c      = (ctx)
    let python = (tool python3)
+   let bash   = (tool bash)
 
    fix-shebangs $c.src
    for file in (glob $"($c.src)/testsuite/*.py") {
-      edit $file { str replace --regex '^#!/usr/bin/env python3' $"#!($python)" }
+      edit $file { str replace --all '#!/usr/bin/env python3' $"#!($python)" | str replace --all '#!/usr/bin/env bash' $"#!($bash)" }
    }
 }
