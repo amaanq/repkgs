@@ -1,0 +1,4 @@
+version = "0.26.1"
+date    = "2025-12-02"
+sys     = [ "libgit2", "oniguruma", "zlib" ]
+hash    = "sha256-IbTvFT37BFo0tKOiApDL9sT+/nMD33MO3TXuho+lF2c="

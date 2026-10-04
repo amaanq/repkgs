@@ -1,0 +1,4 @@
+version = "0.23.5"
+date    = "2026-07-09"
+sys     = [ "libgit2", "openssl", "zlib" ]
+hash    = "sha256-4XgPePl90mnQxmTUJfOvIsCcTRSYNBuRUNOb/3kmO1k="
