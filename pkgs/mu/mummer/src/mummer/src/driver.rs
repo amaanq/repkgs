@@ -384,7 +384,11 @@ impl Driver {
          path.push_str(directory);
          path.push_str("/.:");
       }
-      let slack = entries.max(1) * RUNPATH_SLACK + libraries.len() * 80;
+      // rounded up so a small change in what the link names leaves every
+      // output's bytes as they were
+      let slack = (entries.max(1) * RUNPATH_SLACK + libraries.len() * 80)
+         .next_power_of_two()
+         .max(1024);
       path.push('/');
       path.push_str(&"_".repeat(slack - 1));
       output.extend([

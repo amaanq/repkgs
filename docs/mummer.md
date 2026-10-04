@@ -504,10 +504,14 @@ and the `gnu++` spellings to 14 for COFF, and keeps everything for Mach-O.
 **ELF link policy.** The RUNPATH is the user's rpath entries not under `/usr`, `/lib` or `/opt`,
 verbatim, then one entry per store directory that satisfied a `-l` (a `-L` directory containing
 `lib<x>.so` or `lib<x>.dylib`, or the directory of a store library named on the command line),
+read from the linker command `<compiler> -###` prints for the link, so the libraries clang adds
+itself count too, or from the arguments when `-###` fails,
 then `runtimes` when the link names `c++`, `stdc++`, `gcc_s`, `unwind` or `:libunwind.so` and
 did not say `-nostdlib` or `-nostdlib++` (C++ links always), then `<libc>/lib`. Each store
 entry is written as `<dir>/.:` and the path ends with `/` and `48 × max(entries, 1) + 80 ×
-libraries − 1` underscores, which is the slack `reloc-fixup` rewrites into. The linker gets
+libraries`, rounded up to a power of two and at least 1024, less one underscores, which is the
+slack `reloc-fixup` rewrites into. The rounding keeps a small change in the count from moving
+every output's bytes. The linker gets
 `-Wl,--undefined-version`, `-Wl,-rpath,<that>` and `-Wl,--enable-new-dtags`. Executables
 (not `-shared`) get `-Wl,--dynamic-linker=<libc>/lib/<interp>`, or with `crt` set, `-x none
 <crt>`, the same interpreter spelled with twelve `./` segments so the stub can be written over
