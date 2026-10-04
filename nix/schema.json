@@ -1253,6 +1253,18 @@
           "system": "cargo"
         },
         {
+          "name": "withoutFeatures",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "default features to leave out, the rest of the package's default set stays on",
+          "system": "cargo"
+        },
+        {
           "name": "flags",
           "type": {
             "kind": "list",

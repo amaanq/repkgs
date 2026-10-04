@@ -3,6 +3,7 @@ use std::{
    env::var,
    fmt::Write as _,
    fs::{
+      canonicalize,
       copy,
       create_dir_all,
       read_dir,
@@ -23,6 +24,7 @@ use mummer::{
    store::on_path,
    tree::note,
 };
+use serde::Deserialize;
 
 use crate::{
    attrs::{
@@ -56,6 +58,8 @@ options! {
          => "--features",
       no_default_features ("noDefaultFeatures"): bool = false
          => "--no-default-features",
+      without_features ("withoutFeatures"): Vec<String> = Vec::new()
+         => "default features to leave out, the rest of the package's default set stays on",
       flags ("flags"): Vec<String> = Vec::new()
          => "extra arguments for cargo build and cargo test",
       skip_tests ("skipTests"): Vec<String> = Vec::new()
@@ -105,7 +109,7 @@ impl System for Cargo {
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
       let options: Options = ctx.options("cargo")?;
-      let extra = Self::arguments(&options);
+      let extra = Self::arguments(ctx, &options)?;
       match verb {
          "build" => {
             let mut args = vec!["build", "--release", "--offline"];
@@ -129,16 +133,73 @@ impl System for Cargo {
 }
 
 impl Cargo {
-   fn arguments(options: &Options) -> Vec<String> {
+   fn arguments(ctx: &Ctx, options: &Options) -> io::Result<Vec<String>> {
       let mut args = Vec::new();
-      if options.no_default_features {
+      let mut features = options.features.clone();
+      if options.no_default_features || !options.without_features.is_empty() {
          args.push("--no-default-features".to_owned());
       }
-      if !options.features.is_empty() {
-         args.push(format!("--features={}", options.features.join(",")));
+      if !options.without_features.is_empty() {
+         features.extend(Self::kept_defaults(
+            &ctx.project_dir(&options.root),
+            &options.without_features,
+         )?);
+      }
+      if !features.is_empty() {
+         args.push(format!("--features={}", features.join(",")));
       }
       args.extend(options.flags.iter().cloned());
-      args
+      Ok(args)
+   }
+
+   /// The package's own default features minus `without`, as cargo reads
+   /// them, so a feature a new release adds to the default set stays on.
+   fn kept_defaults(project: &Path, without: &[String]) -> io::Result<Vec<String>> {
+      #[derive(Deserialize)]
+      struct Metadata {
+         packages: Vec<Package>,
+      }
+      #[derive(Deserialize)]
+      struct Package {
+         manifest_path: PathBuf,
+         features:      BTreeMap<String, Vec<String>>,
+      }
+
+      let output = Command::new("cargo")
+         .args([
+            "metadata",
+            "--no-deps",
+            "--offline",
+            "--format-version",
+            "1",
+         ])
+         .current_dir(project)
+         .output()?;
+      if !output.status.success() {
+         return Err(io::Error::other(format!(
+            "cargo metadata failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+         )));
+      }
+      let manifest = canonicalize(project.join("Cargo.toml"))?;
+      let package = serde_json::from_slice::<Metadata>(&output.stdout)?
+         .packages
+         .into_iter()
+         .find(|package| package.manifest_path == manifest)
+         .ok_or_else(|| {
+            io::Error::other(format!("cargo metadata lists no {}", manifest.display()))
+         })?;
+      let defaults = package.features.get("default").cloned().unwrap_or_default();
+      if let Some(missing) = without.iter().find(|name| !defaults.contains(name)) {
+         return Err(io::Error::other(format!(
+            "withoutFeatures names {missing}, which is not among the default features {}",
+            defaults.join(", ")
+         )));
+      }
+      Ok(defaults
+         .into_iter()
+         .filter(|name| !without.contains(name))
+         .collect())
    }
 
    fn quoted(value: &str) -> String {
