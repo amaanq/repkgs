@@ -19,6 +19,8 @@ export def test []: nothing -> nothing {
       ^cp -r --no-preserve=mode ($given | where name == $fixture.name | first | get path) $"($grammars)/($fixture.grammar)"
    }
    cd $c.src
+   mkdir target
+   ^ln -s $"($env.CARGO_TARGET_DIR)/($env.CARGO_BUILD_TARGET)/release" target/release
    x cargo run --release --offline --package xtask -- generate-fixtures
    x cargo test --release --offline --workspace -- --test-threads $"($c.njobs)"
 }
