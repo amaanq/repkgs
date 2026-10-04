@@ -13,11 +13,26 @@ phases = [  ]
 
 [make]
 
+[on.linux]
+deps = [ "ncurses", "readline" ]
+
 [on.linux.make]
-buildTarget = [ "linux" ]
+buildTarget = [ "linux-readline" ]
+flags = [
+  "LUA_SO=liblua.so",
+  "TO_LIB=liblua.a liblua.so liblua.so.5.4",
+  "INSTALL_DATA=cp -d",
+  "MYLIBS=-lncurses",
+]
+
+[on.linux.steps.after]
+"make.install" = [ "lua.pc" ]
 
 [on.macos.make]
 buildTarget = [ "macosx" ]
+
+[on.macos.steps.after]
+"make.install" = [ "lua.pc" ]
 
 [on.mingw.install]
 "bin/" = [ "src/lua54.dll" ]
