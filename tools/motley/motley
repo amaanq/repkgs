@@ -176,7 +176,7 @@ def wait-for [deadline: datetime, ready: closure, late: closure]: nothing -> not
 # start, stop or report on the compile cache daemon
 def "main cache" [
    action: string # one of start, stop, status
-   --size: int = 50 # GiB kept before whole packs are evicted, for start
+   --size: int = 100 # GiB kept before whole packs are evicted, for start
    --daemon: path
    --peanut: path
    --rust-toolchain: path

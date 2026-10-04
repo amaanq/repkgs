@@ -104,7 +104,7 @@ struct Options {
    /// The Unix socket to listen on.
    socket:    PathBuf,
    /// Cache budget in GiB, zero means unlimited.
-   #[pound(long, env = "MUMMERD_SIZE", default = "50")]
+   #[pound(long, env = "MUMMERD_SIZE", default = "100")]
    size:      u64,
    /// A second, slower pack directory that takes what the budget pushes out.
    #[pound(long, env = "MUMMERD_COLD")]
