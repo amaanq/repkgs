@@ -68,6 +68,7 @@ use crate::{
       pe,
    },
    prepare::succeed,
+   system::syslibs,
 };
 
 const CACHED: [&str; 4] = ["cached", "cached-error", "hit", "compile-hit"];
@@ -101,6 +102,12 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    }
    prune(out)?;
    layout_check(out)?;
+   syslibs::linked(
+      spec.sys.as_deref().unwrap_or_default(),
+      &ctx.deps,
+      out,
+      platform.binfmt,
+   )?;
    shebangs(out, true)?;
    let debug = attrs
       .outputs

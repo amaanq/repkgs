@@ -1,19 +1,36 @@
 use std::{
-   collections::BTreeMap,
+   collections::{
+      BTreeMap,
+      HashSet,
+   },
+   fs::read,
    io,
    path::Path,
 };
 
-use mummer::syslibs::{
-   self,
-   CargoBuild,
-   Tables,
-   load,
+use mummer::{
+   elf::{
+      defined_symbols,
+      is_elf,
+      sections,
+   },
+   image::Image,
+   syslibs::{
+      self,
+      CargoBuild,
+      Tables,
+      load,
+   },
+   tree::{
+      note,
+      walk,
+   },
 };
 
 use crate::{
    attrs::Attrs,
    exports::Exports,
+   hardening::BinaryFormat,
 };
 
 pub fn tables(attrs: &Attrs) -> io::Result<Tables> {
@@ -108,5 +125,73 @@ pub fn check_names(wanted: &[String], sys: Option<&[String]>, command: &str) -> 
       "sys-libs: the lock can link {}, missing from act.lock's sys. `motley update {command} \
        <pkg>` rewrites it",
       missing.join(", ")
+   )))
+}
+
+/// Every `sys` package among the dependencies must be what the outputs link,
+/// since a vendored copy defines the functions the system library exports.
+pub fn linked(
+   sys: &[String],
+   deps: &[Exports],
+   out: &Path,
+   format: BinaryFormat,
+) -> io::Result<()> {
+   if sys.is_empty() {
+      return Ok(());
+   }
+   if format != BinaryFormat::Elf {
+      note("sys", "linkage not checked, bigtop reads only ELF symbols");
+      return Ok(());
+   }
+   let symbols = |path: &Path, kind: u32| -> io::Result<Option<Vec<String>>> {
+      let image = Image { bytes: read(path)? };
+      if !is_elf(&image) {
+         return Ok(None);
+      }
+      Ok(Some(defined_symbols(&image, &sections(&image)?, kind)?))
+   };
+   let mut outputs = Vec::new();
+   for entry in walk(out)?.into_iter().filter(|entry| entry.kind == 'f') {
+      if let Some(defined) = symbols(Path::new(&entry.path), 2)? {
+         outputs.push((entry.rel, defined));
+      }
+   }
+   let mut vendored = Vec::new();
+   for name in sys {
+      let Some(dep) = deps.iter().find(|dep| dep.name == *name) else {
+         continue;
+      };
+      let mut exported = HashSet::new();
+      for directory in &dep.lib_dirs {
+         for entry in walk(Path::new(directory))?
+            .into_iter()
+            .filter(|entry| entry.kind == 'f')
+         {
+            exported.extend(symbols(Path::new(&entry.path), 11)?.unwrap_or_default());
+         }
+      }
+      for output in &outputs {
+         let copied = output
+            .1
+            .iter()
+            .filter(|symbol| exported.contains(symbol.as_str()))
+            .take(3)
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+         if !copied.is_empty() {
+            vendored.push(format!(
+               "{} builds in its own {name} ({})",
+               output.0,
+               copied.join(", ")
+            ));
+         }
+      }
+   }
+   if vendored.is_empty() {
+      return Ok(());
+   }
+   Err(io::Error::other(format!(
+      "sys lists packages the outputs do not link:\n{}",
+      vendored.join("\n")
    )))
 }
