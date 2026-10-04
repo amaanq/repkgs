@@ -1,0 +1,167 @@
+diff -ru a/Pod-Simple-Texinfo/pod2texi.pl b/Pod-Simple-Texinfo/pod2texi.pl
+--- a/Pod-Simple-Texinfo/pod2texi.pl	2026-10-04 02:30:12.957285501 -0400
++++ b/Pod-Simple-Texinfo/pod2texi.pl	2026-10-04 02:30:13.112542327 -0400
+@@ -40,9 +40,9 @@
+      = fileparse($0, '.pl');
+   my $updir = File::Spec->updir();
+ 
+-  my $datadir = '@datadir@';
++  my $datadir = join('/', ($command_directory, File::Spec->updir(), 'share'));
+   my $converter = '@CONVERTER@';
+-  my $libdir = '@libdir@';
++  my $libdir = join('/', ($command_directory, File::Spec->updir(), 'lib'));
+   my $xsdir;
+ 
+   my $in_source = 0;
+@@ -54,7 +54,7 @@
+   if (defined($ENV{'TEXINFO_DEV_SOURCE'})
+       and $ENV{'TEXINFO_DEV_SOURCE'} ne '0') {
+     $in_source = 1;
+-  } elsif ($datadir eq '@' .'datadir@') {
++  } elsif ('@CONVERTER@' eq '@' .'CONVERTER@') {
+     if ($0 =~ /\.pl$/) {
+       $in_source = 1;
+     } else {
+diff -ru a/texindex/texindex.in b/texindex/texindex.in
+--- a/texindex/texindex.in	2026-10-04 02:30:12.984177453 -0400
++++ b/texindex/texindex.in	2026-10-04 02:30:13.112707205 -0400
+@@ -71,13 +71,6 @@
+ test -z "$ti_script" && test -s "$mydir/texindex.awk" \
+ && ti_script=$mydir/texindex.awk
+ #
+-# else look for script in pkgdatadir.
+-if test -z "$ti_script"; then
+-  pkgdatadir_configured="@pkgdatadir@"
+-  test -s "$pkgdatadir_configured/texindex.awk" \
+-  && ti_script=$pkgdatadir_configured/texindex.awk
+-fi
+-#
+ # look relative to $mydir, to allow the installed tree to be moved.
+ if test -z "$ti_script"; then
+   relative_dir=$mydir/../share/texinfo
+@@ -91,8 +84,7 @@
+   echo "$0: could not locate texindex.awk script file, quitting." >&2
+   echo "$0: (checked envvar TEXINDEX_SCRIPT ($TEXINDEX_SCRIPT)," >&2
+   echo "$0:  executable dir ($mydir)," >&2
+-  echo "$0:  share dir relative to binary ($relative_dir)," >&2
+-  echo "$0:  and configured pkgdatadir ($pkgdatadir_configured).)"  >&2
++  echo "$0:  and share dir relative to binary ($relative_dir).)" >&2
+   exit 1
+ fi
+ 
+diff -ru a/tta/perl/load_txi_modules.pl b/tta/perl/load_txi_modules.pl
+--- a/tta/perl/load_txi_modules.pl	2026-10-04 02:30:12.936917577 -0400
++++ b/tta/perl/load_txi_modules.pl	2026-10-04 02:30:13.111927958 -0400
+@@ -28,7 +28,7 @@
+ 
+ # Through rules in Makefile.am, directory paths set through configure are
+ # substituted directly in strings in the code, for example
+-#   $datadir = '@datadir@';
++#   $converter = '@CONVERTER@';
+ # We always use these strings as byte string, therefore we explicitly
+ # set no utf8 to be sure that strings in code will never be considered as
+ # character strings by Perl.
+@@ -58,21 +58,21 @@
+   my $updir = File::Spec->updir();
+ 
+   # These are substituted by the Makefile to create "load_txi_modules".
+-  my $libdir = '@libdir@';
++  my $libdir = join('/', ($command_directory, File::Spec->updir(), 'lib'));
+   my $converter_libdir;
+ 
+-  if ('@datadir@' eq '@' .'datadir@'
++  if ('@CONVERTER@' eq '@' .'CONVERTER@'
+       or defined($ENV{'TEXINFO_DEV_SOURCE'})
+          and $ENV{'TEXINFO_DEV_SOURCE'} ne '0')
+   {
+     # use installed path for datadir, even if uninstalled.  datadir,
+     # however, is only used for some directories.
+-    if ('@datadir@' eq '@' .'datadir@') {
++    if ('@CONVERTER@' eq '@' .'CONVERTER@') {
+       my $fallback_prefix
+          = File::Spec->rootdir() . join('/', ('usr', 'local'));
+       $datadir = "$fallback_prefix/share";
+     } else {
+-      $datadir = '@datadir@';
++      $datadir = join('/', ($command_directory, File::Spec->updir(), 'share'));
+     }
+ 
+     # Use uninstalled modules
+@@ -88,7 +88,7 @@
+     Texinfo::ModulePath::init(undef, undef, undef, 'updirs' => 1);
+   } else {
+     # Look for modules in their installed locations.
+-    $datadir = '@datadir@';
++    $datadir = join('/', ($command_directory, File::Spec->updir(), 'share'));
+     my $converter = '@CONVERTER@';
+     my $modules_dir = join('/', ($datadir, $converter));
+     # look for package data in the installed location.
+@@ -142,8 +142,8 @@
+ 
+ # The @ delimited strings are substituted by the Makefile to create
+ # "load_txi_modules".
+-if ('@sysconfdir@' ne '@' . 'sysconfdir@') {
+-  $sysconfdir = '@sysconfdir@';
++if ('@CONVERTER@' ne '@' . 'CONVERTER@') {
++  $sysconfdir = join('/', ($command_directory, File::Spec->updir(), 'etc'));
+ } else {
+   $sysconfdir = "$fallback_prefix/etc";
+ }
+diff -ru a/tta/perl/texi2any.pl b/tta/perl/texi2any.pl
+--- a/tta/perl/texi2any.pl	2026-10-04 02:30:12.909245467 -0400
++++ b/tta/perl/texi2any.pl	2026-10-04 02:30:13.111119680 -0400
+@@ -49,7 +49,7 @@
+ 
+ # Through rules in Makefile.am, directory paths set through configure are
+ # substituted directly in strings in the code, for example
+-#   $datadir = '@datadir@';
++#   $converter = '@CONVERTER@';
+ # We always use these strings as byte string, therefore we explicitly
+ # set no utf8 to be sure that strings in code will never be considered as
+ # character strings by Perl.
+@@ -98,21 +98,21 @@
+   my $updir = File::Spec->updir();
+ 
+   # These are substituted by the Makefile to create "texi2any".
+-  my $libdir = '@libdir@';
++  my $libdir = join('/', ($command_directory, File::Spec->updir(), 'lib'));
+   my $converter_libdir;
+ 
+-  if ('@datadir@' eq '@' .'datadir@'
++  if ('@CONVERTER@' eq '@' .'CONVERTER@'
+       or defined($ENV{'TEXINFO_DEV_SOURCE'})
+          and $ENV{'TEXINFO_DEV_SOURCE'} ne '0')
+   {
+     # use installed path for datadir, even if uninstalled.  datadir,
+     # however, is only used for some directories.
+-    if ('@datadir@' eq '@' .'datadir@') {
++    if ('@CONVERTER@' eq '@' .'CONVERTER@') {
+       my $fallback_prefix
+          = File::Spec->rootdir() . join('/', ('usr', 'local'));
+       $datadir = "$fallback_prefix/share";
+     } else {
+-      $datadir = '@datadir@';
++      $datadir = join('/', ($command_directory, File::Spec->updir(), 'share'));
+     }
+ 
+     # Use uninstalled modules
+@@ -142,7 +142,7 @@
+     Texinfo::ModulePath::init(undef, undef, undef, 'updirs' => 1);
+   } else {
+     # Look for modules in their installed locations.
+-    $datadir = '@datadir@';
++    $datadir = join('/', ($command_directory, File::Spec->updir(), 'share'));
+     my $converter = '@CONVERTER@';
+     my $modules_dir = join('/', ($datadir, $converter));
+     # look for package data in the installed location.
+@@ -203,8 +203,8 @@
+ my $fallback_prefix = File::Spec->rootdir() . join('/', ('usr', 'local'));
+ 
+ # The @ delimited strings are substituted by the Makefile to create "texi2any".
+-if ('@sysconfdir@' ne '@' . 'sysconfdir@') {
+-  $sysconfdir = '@sysconfdir@';
++if ('@CONVERTER@' ne '@' . 'CONVERTER@') {
++  $sysconfdir = join('/', ($command_directory, File::Spec->updir(), 'etc'));
+ } else {
+   $sysconfdir = "$fallback_prefix/etc";
+ }
