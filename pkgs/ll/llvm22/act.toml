@@ -1,9 +1,13 @@
-tag     = "llvmorg-{version}"
-fetch   = { asset = "llvm-project-{version}.src.tar.xz" }
-with    = [ "cmake" ]
-deps    = [ "zlib", "zstd" ]
-tools   = [ "cpython" ]
-patches = [ "../llvm/upstream-x86-vastart-stack-probe.patch", "../llvm/mummer-absent-log.patch" ]
+tag = "llvmorg-{version}"
+fetch = { asset = "llvm-project-{version}.src.tar.xz" }
+with = [ "cmake" ]
+deps = [ "zlib", "zstd" ]
+tools = [ "cpython" ]
+patches = [
+  "../llvm/upstream-x86-vastart-stack-probe.patch",
+  "../llvm/mummer-absent-log.patch",
+  "sdag-freeze-condition-in-select-of-load-fold.patch",
+]
 
 [track]
 from  = "github:llvm/llvm-project"
