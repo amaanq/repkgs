@@ -7,7 +7,7 @@ export def test-scripts []: nothing -> nothing {
    let bash   = (tool bash)
 
    fix-shebangs $c.src
-   for file in (glob $"($c.src)/testsuite/*.py") {
+   for file in (files $"($c.src)/testsuite/*.py") {
       edit $file { str replace --all '#!/usr/bin/env python3' $"#!($python)" | str replace --all '#!/usr/bin/env bash' $"#!($bash)" }
    }
 }
