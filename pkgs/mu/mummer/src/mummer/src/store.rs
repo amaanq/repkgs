@@ -47,7 +47,18 @@ impl Store {
    #[must_use]
    #[inline]
    pub fn new() -> Self {
-      let content = var("MUMMER_STORE_IDENTITY").is_ok_and(|value| value == "content");
+      Self::identified(var("MUMMER_STORE_IDENTITY").is_ok_and(|value| value == "content"))
+   }
+
+   /// Store paths identified by path, never masked, for outputs that embed
+   /// the paths they read.
+   #[must_use]
+   #[inline]
+   pub fn exact() -> Self {
+      Self::identified(false)
+   }
+
+   fn identified(content: bool) -> Self {
       let output = var("out").unwrap_or_default();
       let output_hash = if content && is_store_path(&output) {
          output
