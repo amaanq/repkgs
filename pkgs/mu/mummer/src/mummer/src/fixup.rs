@@ -119,16 +119,16 @@ pub fn run(
       directories: BTreeSet::new(),
       loader:      loader
          .map(|path| {
-            let real = canonicalize(path)?;
-            let name = real
+            let name = path
                .file_name()
                .ok_or_else(|| io::Error::other("the loader has no file name"))?
                .to_string_lossy()
                .into_owned();
-            let directory = real
-               .parent()
-               .ok_or_else(|| io::Error::other("the loader has no directory"))?
-               .to_path_buf();
+            let directory = canonicalize(
+               path
+                  .parent()
+                  .ok_or_else(|| io::Error::other("the loader has no directory"))?,
+            )?;
             io::Result::Ok((name, directory))
          })
          .transpose()?,
