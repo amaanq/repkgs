@@ -12,3 +12,12 @@ cxxflags = [ "-Wno-pragma-clang-attribute" ]
 [cmake.defs]
 BOOST_ENABLE_MPI    = false
 BOOST_ENABLE_PYTHON = false
+
+[on.gnu]
+deps = [ "xz" ]
+
+[on.apple]
+deps = [ "xz" ]
+
+[on.native]
+deps = [ "icu" ]
