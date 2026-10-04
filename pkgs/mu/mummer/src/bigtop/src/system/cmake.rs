@@ -208,13 +208,7 @@ impl Cmake {
       let srcdir = ctx.project_dir(&options.root);
       let scripts: Vec<String> = walk(&srcdir)?
          .into_iter()
-         .filter(|entry| {
-            entry.kind == 'f'
-               && (entry.rel.ends_with("CMakeLists.txt")
-                  || Path::new(&entry.rel)
-                     .extension()
-                     .is_some_and(|extension| extension.eq_ignore_ascii_case("cmake")))
-         })
+         .filter(|entry| entry.kind == 'f')
          .map(|entry| entry.path)
          .collect();
       let key = probe::key(
