@@ -1,10 +1,8 @@
 //! The repo-wide `locks/<eco>.toml`, its format and filling it from packages'
 //! `[locks]`.
 //!
-//! `[<eco>]` then one `"<key>" = { ... }` line per entry, sorted.
-//! Line-oriented so concurrent additions merge textually (.gitattributes:
-//! merge=union), `write` is the normal form, `normalize` repairs what a union
-//! merge leaves (order, duplicate lines).
+//! One sorted `"<key>" = { ... }` line per entry, so additions merge as text
+//! (merge=union in .gitattributes).
 
 use std::{
    collections::BTreeMap,
@@ -84,19 +82,20 @@ pub fn read(directory: &Path, eco: &str) -> io::Result<Entries> {
 }
 
 fn render(eco: &str, entries: &Entries) -> String {
-   let mut text = format!("[{eco}]\n");
-   for (key, fields) in entries {
-      let rendered: Vec<String> = fields
-         .iter()
-         .map(|(field, item)| format!("{field} = \"{item}\""))
-         .collect();
-      text.push('"');
-      text.push_str(key);
-      text.push_str("\" = { ");
-      text.push_str(&rendered.join(", "));
-      text.push_str(" }\n");
-   }
-   text
+   let width = entries.keys().map(|key| key.len() + 2).max().unwrap_or(0);
+   let lines = entries
+      .iter()
+      .map(|(key, fields)| {
+         let rendered = fields
+            .iter()
+            .map(|(field, item)| format!("{field} = \"{item}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+         format!("{:<width$} = {{ {rendered} }}\n", format!("\"{key}\""))
+      })
+      .collect::<Vec<_>>()
+      .concat();
+   format!("[{eco}]\n{lines}")
 }
 
 /// Replaces `<dir>/<eco>.toml` with `entries` in normal form.
@@ -105,9 +104,8 @@ pub fn write_entries(directory: &Path, eco: &str, entries: &Entries) -> io::Resu
    write(directory.join(format!("{eco}.toml")), render(eco, entries))
 }
 
-/// Rewrites a locks file in normal form. Duplicate lines from a union merge
-/// are dropped before parsing (TOML rejects duplicate keys), differing values
-/// for one key stay an error.
+/// A union merge can leave an entry twice with different padding, which TOML
+/// rejects, so those lines are read one by one and equal repeats dropped.
 pub fn normalize(file: &Path) -> io::Result<()> {
    let eco = file
       .file_stem()
@@ -117,13 +115,23 @@ pub fn normalize(file: &Path) -> io::Result<()> {
    let entries = if let Ok(parsed) = parse(&raw, &eco) {
       parsed
    } else {
-      let mut seen: Vec<&str> = Vec::new();
-      for line in raw.lines() {
-         if !seen.contains(&line) {
-            seen.push(line);
+      let mut merged = Entries::new();
+      for line in raw.lines().filter(|line| line.starts_with('"')) {
+         for (key, fields) in parse(&format!("[{eco}]\n{line}"), &eco)? {
+            match merged.get(&key) {
+               Some(known) if *known != fields => {
+                  return Err(io::Error::other(format!(
+                     "{}: {key} has two different entries",
+                     file.display()
+                  )));
+               },
+               _ => {
+                  merged.insert(key, fields);
+               },
+            }
          }
       }
-      parse(&seen.join("\n"), &eco)?
+      merged
    };
    let normal = render(&eco, &entries);
    if normal != raw {
