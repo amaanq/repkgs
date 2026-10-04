@@ -134,6 +134,7 @@ pub fn linked(
    sys: &[String],
    deps: &[Exports],
    out: &Path,
+   build: &Path,
    format: BinaryFormat,
 ) -> io::Result<()> {
    if sys.is_empty() {
@@ -170,6 +171,7 @@ pub fn linked(
             exported.extend(symbols(Path::new(&entry.path), 11)?.unwrap_or_default());
          }
       }
+      let mut found = Vec::new();
       for output in &outputs {
          let copied = output
             .1
@@ -179,12 +181,15 @@ pub fn linked(
             .map(String::as_str)
             .collect::<Vec<_>>();
          if !copied.is_empty() {
-            vendored.push(format!(
+            found.push(format!(
                "{} builds in its own {name} ({})",
                output.0,
                copied.join(", ")
             ));
          }
+      }
+      if !found.is_empty() && !searched_by_build_script(build, &dep.root)? {
+         vendored.extend(found);
       }
    }
    if vendored.is_empty() {
@@ -194,4 +199,36 @@ pub fn linked(
       "sys lists packages the outputs do not link:\n{}",
       vendored.join("\n")
    )))
+}
+
+/// A cargo build script that put the dependency on the link search path,
+/// as `pkg-config` does for a crate that links the system library statically.
+fn searched_by_build_script(build: &Path, root: &str) -> io::Result<bool> {
+   if !build.is_dir() {
+      return Ok(false);
+   }
+   for entry in walk(build)? {
+      let path = Path::new(&entry.path);
+      let script_output = entry.kind == 'f'
+         && path.file_name().is_some_and(|name| name == "output")
+         && path
+            .parent()
+            .and_then(Path::parent)
+            .and_then(Path::file_name)
+            .is_some_and(|name| name == "build");
+      if !script_output {
+         continue;
+      }
+      let searched = String::from_utf8_lossy(&read(path)?).lines().any(|line| {
+         line
+            .strip_prefix("cargo::rustc-link-search=")
+            .or_else(|| line.strip_prefix("cargo:rustc-link-search="))
+            .map(|value| value.split_once('=').map_or(value, |pair| pair.1))
+            .is_some_and(|directory| directory.starts_with(root))
+      });
+      if searched {
+         return Ok(true);
+      }
+   }
+   Ok(false)
 }

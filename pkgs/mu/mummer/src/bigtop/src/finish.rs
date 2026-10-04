@@ -106,6 +106,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
       spec.sys.as_deref().unwrap_or_default(),
       &ctx.deps,
       out,
+      Path::new(&ctx.build),
       platform.binfmt,
    )?;
    shebangs(out, true)?;
