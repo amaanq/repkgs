@@ -135,7 +135,7 @@ impl System for Bundler {
          ("GEM_HOME".to_owned(), format!("{}/gem-home", ctx.build)),
          ("MAKEFLAGS".to_owned(), format!("-j{}", ctx.njobs)),
       ]);
-      syslibs::check(attrs, Path::new(&app), ctx.spec()?.sys.as_deref())?;
+      syslibs::check(attrs, Path::new(&app), ctx.spec()?.sys.as_deref(), None)?;
       env.extend(syslibs::active(attrs, "gems", &ctx.deps)?.env);
       gem_build_env(attrs, ctx, &mut env)?;
       cross_rbconfig(ctx, &mut env)?;

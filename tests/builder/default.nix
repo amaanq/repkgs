@@ -60,7 +60,7 @@ let
           "--include-path=${../../builder}${separator}${./lib}"
           "${dir}/test.nu"
         ];
-        PATH = "${nu}/bin:${bigtop}/bin:${set.bootstrap.peanut}/bin";
+        PATH = "${nu}/bin:${bigtop}/bin:${set.bootstrap.peanut}/bin:${set.pkgs.rust-bootstrap}/bin";
         fixtures = dir;
         SYS_LIBS = ../../builder/sys-libs.json;
       }

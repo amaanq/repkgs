@@ -76,6 +76,7 @@ impl System for Go {
          attrs,
          &ctx.project_dir(&options.root),
          ctx.spec()?.sys.as_deref(),
+         None,
       )?;
       Ok([
          ("GOCACHE", format!("{}/go-cache", ctx.build)),

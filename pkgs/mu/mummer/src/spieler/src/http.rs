@@ -58,12 +58,18 @@ pub fn now() -> u64 {
       .map_or(0, |since| since.as_secs())
 }
 
+/// spieler's directory under `$XDG_CACHE_HOME`.
+pub fn cache_dir() -> PathBuf {
+   var("XDG_CACHE_HOME")
+      .map_or_else(
+         |_unset| PathBuf::from(var("HOME").unwrap_or_default()).join(".cache"),
+         PathBuf::from,
+      )
+      .join("spieler")
+}
+
 fn cache_file(url: &str) -> io::Result<PathBuf> {
-   let base = var("XDG_CACHE_HOME").map_or_else(
-      |_unset| PathBuf::from(var("HOME").unwrap_or_default()).join(".cache"),
-      PathBuf::from,
-   );
-   let dir = base.join("spieler");
+   let dir = cache_dir();
    create_dir_all(&dir)?;
    Ok(dir.join(blake3::hash(url.as_bytes()).to_hex().as_str()))
 }

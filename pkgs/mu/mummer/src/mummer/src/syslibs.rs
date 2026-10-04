@@ -8,17 +8,24 @@ use std::{
    collections::{
       BTreeMap,
       BTreeSet,
+      HashMap,
    },
    fs::{
-      read_dir,
+      canonicalize,
       read_to_string,
    },
    io,
-   path::Path,
+   path::{
+      Path,
+      PathBuf,
+   },
+   process::Command,
 };
 
-use serde::Deserialize;
-use toml::Table;
+use serde::{
+   Deserialize,
+   Serialize,
+};
 
 #[derive(Deserialize)]
 pub struct Entry {
@@ -101,18 +108,19 @@ pub fn wanted_for(tables: &Tables, ecosystem: &str, names: &[String]) -> Vec<Str
 }
 
 /// Our packages the lock files in `dir` can link, sorted, what act.lock's `sys`
-/// should say.
+/// should say. A Cargo.lock counts only with `cargo`, the build it is resolved
+/// for.
 #[inline]
-pub fn wanted(tables: &Tables, dir: &Path) -> io::Result<Vec<String>> {
+pub fn wanted(tables: &Tables, dir: &Path, cargo: Option<&CargoBuild>) -> io::Result<Vec<String>> {
    let mut found = Vec::new();
    for (ecosystem, file) in LOCKS {
       let Ok(text) = read_to_string(dir.join(file)) else {
          continue;
       };
-      let names = if ecosystem == "cargo" {
-         shipped_crates(dir, &text)?
-      } else {
-         locked(ecosystem, &text)
+      let names = match (ecosystem, cargo) {
+         ("cargo", Some(build)) => shipped_crates(dir, build)?,
+         ("cargo", None) => continue,
+         _ => locked(ecosystem, &text),
       };
       for pkg in wanted_for(tables, ecosystem, &names) {
          if !found.contains(&pkg) {
@@ -124,121 +132,169 @@ pub fn wanted(tables: &Tables, dir: &Path) -> io::Result<Vec<String>> {
    Ok(found)
 }
 
-#[derive(Deserialize)]
-struct CargoLock {
+/// What a cargo build turns on, from its recipe's `[cargo]` options, and the
+/// `CARGO_HOME` whose config already points at vendored crates, if any.
+#[derive(Clone, Default, Deserialize, Serialize)]
+pub struct CargoBuild {
    #[serde(default)]
-   package: Vec<LockedCrate>,
+   pub features:   Vec<String>,
+   #[serde(default, rename = "noDefaultFeatures")]
+   pub no_default: bool,
+   #[serde(default, rename = "withoutFeatures")]
+   pub without:    Vec<String>,
+   #[serde(skip)]
+   pub home:       Option<PathBuf>,
 }
 
 #[derive(Deserialize)]
-struct LockedCrate {
-   name:         String,
-   version:      String,
-   source:       Option<String>,
-   #[serde(default)]
-   dependencies: Vec<String>,
+struct Metadata {
+   packages:          Vec<MetadataPackage>,
+   workspace_members: Vec<String>,
+   resolve:           Option<Resolve>,
 }
 
-/// Cargo.lock names minus the crates only a workspace member's
-/// `[dev-dependencies]` reach, which never link into what gets installed.
-fn shipped_crates(dir: &Path, text: &str) -> io::Result<Vec<String>> {
-   let lock = toml::from_str::<CargoLock>(text).map_err(io::Error::other)?;
-   let manifests = member_manifests(dir, 3)?;
-   let mut reached = BTreeSet::new();
-   let mut pending = Vec::new();
+#[derive(Deserialize)]
+struct MetadataPackage {
+   id:            String,
+   name:          String,
+   manifest_path: PathBuf,
+   features:      BTreeMap<String, Vec<String>>,
+}
 
-   for member in lock.package.iter().filter(|krate| krate.source.is_none()) {
-      let dev_only = manifests
-         .get(&member.name)
-         .map(dev_only_names)
-         .unwrap_or_default();
-      reached.insert((member.name.as_str(), member.version.as_str()));
-      for dependency in &member.dependencies {
-         if !dev_only.contains(dependency.split(' ').next().unwrap_or_default()) {
-            pending.push(dependency.as_str());
-         }
-      }
+#[derive(Deserialize)]
+struct Resolve {
+   nodes: Vec<Node>,
+}
+
+#[derive(Deserialize)]
+struct Node {
+   id:   String,
+   deps: Vec<NodeDep>,
+}
+
+#[derive(Deserialize)]
+struct NodeDep {
+   pkg:       String,
+   dep_kinds: Vec<DepKind>,
+}
+
+#[derive(Deserialize)]
+struct DepKind {
+   kind: Option<String>,
+}
+
+fn metadata(dir: &Path, flags: &[String], build: &CargoBuild) -> io::Result<Metadata> {
+   let mut command = Command::new("cargo");
+   command
+      .args(["metadata", "--format-version", "1", "--locked"])
+      .args(flags)
+      .current_dir(dir);
+   if let Some(ref home) = build.home {
+      command.env("CARGO_HOME", home);
    }
+   let output = command.output()?;
+   if !output.status.success() {
+      return Err(io::Error::other(format!(
+         "cargo metadata in {} failed: {}",
+         dir.display(),
+         String::from_utf8_lossy(&output.stderr).trim()
+      )));
+   }
+   Ok(serde_json::from_slice(&output.stdout)?)
+}
 
-   while let Some(dependency) = pending.pop() {
-      let mut parts = dependency.split(' ');
-      let name = parts.next().unwrap_or_default();
-      let version = parts.next();
-      for krate in lock
-         .package
-         .iter()
-         .filter(|krate| krate.name == name && version.is_none_or(|wanted| krate.version == wanted))
+/// cargo's flags for `build`, `without` taken out of the package's own
+/// default set as cargo reads it.
+///
+/// # Errors
+///
+/// When cargo cannot read the package, or `without` names a feature that is
+/// not a default one.
+#[inline]
+pub fn feature_flags(dir: &Path, build: &CargoBuild) -> io::Result<Vec<String>> {
+   let mut flags = Vec::new();
+   let mut features = build.features.clone();
+   if build.no_default || !build.without.is_empty() {
+      flags.push("--no-default-features".to_owned());
+   }
+   if !build.without.is_empty() {
+      let manifest = canonicalize(dir.join("Cargo.toml"))?;
+      let found = metadata(dir, &["--no-deps".to_owned()], build)?;
+      let package = found
+         .packages
+         .into_iter()
+         .find(|package| package.manifest_path == manifest)
+         .ok_or_else(|| {
+            io::Error::other(format!("cargo metadata lists no {}", manifest.display()))
+         })?;
+      let defaults = package.features.get("default").cloned().unwrap_or_default();
+      if let Some(missing) = build.without.iter().find(|name| !defaults.contains(name)) {
+         return Err(io::Error::other(format!(
+            "withoutFeatures names {missing}, which is not among the default features {}",
+            defaults.join(", ")
+         )));
+      }
+      features.extend(
+         defaults
+            .into_iter()
+            .filter(|name| !build.without.contains(name)),
+      );
+   }
+   if !features.is_empty() {
+      flags.push(format!("--features={}", features.join(",")));
+   }
+   Ok(flags)
+}
+
+/// The crates the build compiles, from cargo's resolve with its features:
+/// what the workspace members need, their dev-dependencies left out.
+fn shipped_crates(dir: &Path, build: &CargoBuild) -> io::Result<Vec<String>> {
+   let found = metadata(dir, &feature_flags(dir, build)?, build)?;
+   let names = found
+      .packages
+      .iter()
+      .map(|package| (package.id.as_str(), package.name.as_str()))
+      .collect::<HashMap<_, _>>();
+   let nodes = found
+      .resolve
+      .as_ref()
+      .map(|resolve| {
+         resolve
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect::<HashMap<_, _>>()
+      })
+      .unwrap_or_default();
+   let mut reached = BTreeSet::new();
+   let mut pending = found
+      .workspace_members
+      .iter()
+      .map(String::as_str)
+      .collect::<Vec<_>>();
+
+   while let Some(id) = pending.pop() {
+      if !reached.insert(id) {
+         continue;
+      }
+      let member = found.workspace_members.iter().any(|member| member == id);
+      for dependency in nodes
+         .get(id)
+         .map(|node| node.deps.as_slice())
+         .unwrap_or_default()
       {
-         if reached.insert((krate.name.as_str(), krate.version.as_str())) {
-            pending.extend(krate.dependencies.iter().map(String::as_str));
+         let dev_only = dependency
+            .dep_kinds
+            .iter()
+            .all(|kind| kind.kind.as_deref() == Some("dev"));
+         if !(member && dev_only) {
+            pending.push(&dependency.pkg);
          }
       }
    }
 
    Ok(reached
       .into_iter()
-      .map(|(name, _)| name.to_owned())
+      .filter_map(|id| names.get(id).map(|&name| name.to_owned()))
       .collect())
-}
-
-/// Package name to manifest for every Cargo.toml within `depth` levels of
-/// `dir`.
-fn member_manifests(dir: &Path, depth: u32) -> io::Result<BTreeMap<String, Table>> {
-   let mut found = BTreeMap::new();
-   if let Ok(text) = read_to_string(dir.join("Cargo.toml")) {
-      let manifest = toml::from_str::<Table>(&text).map_err(io::Error::other)?;
-      if let Some(name) = manifest
-         .get("package")
-         .and_then(|package| package.get("name"))
-         .and_then(toml::Value::as_str)
-      {
-         found.insert(name.to_owned(), manifest);
-      }
-   }
-   if depth == 0 {
-      return Ok(found);
-   }
-   for entry in read_dir(dir)? {
-      let path = entry?.path();
-      let skipped = path
-         .file_name()
-         .and_then(|name| name.to_str())
-         .is_none_or(|name| name.starts_with('.') || matches!(name, "target" | "vendor"));
-      if path.is_dir() && !skipped {
-         found.extend(member_manifests(&path, depth - 1)?);
-      }
-   }
-   Ok(found)
-}
-
-/// Crates a manifest names under `[dev-dependencies]` and nowhere else.
-fn dev_only_names(manifest: &Table) -> BTreeSet<String> {
-   let names = |kind: &str| {
-      let mut tables = vec![manifest.get(kind)];
-      if let Some(targets) = manifest.get("target").and_then(toml::Value::as_table) {
-         tables.extend(targets.values().map(|target| target.get(kind)));
-      }
-      tables
-         .into_iter()
-         .flatten()
-         .filter_map(toml::Value::as_table)
-         .flat_map(|table| {
-            table.iter().map(|(key, value)| {
-               value
-                  .get("package")
-                  .and_then(toml::Value::as_str)
-                  .unwrap_or(key)
-                  .to_owned()
-            })
-         })
-         .collect::<BTreeSet<_>>()
-   };
-   let linked = names("dependencies")
-      .union(&names("build-dependencies"))
-      .cloned()
-      .collect::<BTreeSet<_>>();
-   names("dev-dependencies")
-      .into_iter()
-      .filter(|name| !linked.contains(name))
-      .collect()
 }
