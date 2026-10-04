@@ -6,4 +6,9 @@ deps  = [ "zlib" ]
 test  = false
 
 [make]
-configureFlags = [ "--enable-all", "--enable-column-metadata" ]
+# sqlx and other async users block on locks with sqlite3_unlock_notify
+configureFlags = [
+  "--enable-all",
+  "--enable-column-metadata",
+  "CFLAGS=-DSQLITE_ENABLE_UNLOCK_NOTIFY",
+]
