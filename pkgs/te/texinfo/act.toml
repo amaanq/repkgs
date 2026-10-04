@@ -10,6 +10,7 @@ bin = [ "makeinfo", "texi2any", "texindex" ]
 
 [steps.before]
 "autotools.configure" = [ "texinfo.keep-man" ]
+"autotools.test"      = [ "texinfo.locale" ]
 
 [autotools]
 outOfTree = false
