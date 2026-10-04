@@ -1,0 +1,49 @@
+Upstream reads the module version from Go build info, which spells "(devel)"
+for archive builds with no VCS stamp. Read a link-time variable instead so the
+release version survives.
+
+diff --git a/cmd/shfmt/main.go b/cmd/shfmt/main.go
+index 77acf04..c1f4945 100644
+--- a/cmd/shfmt/main.go
++++ b/cmd/shfmt/main.go
+@@ -12,11 +12,10 @@ import (
+ 	"io"
+ 	"io/fs"
+ 	"os"
+ 	"path/filepath"
+ 	"regexp"
+-	"runtime/debug"
+ 	"strings"
+ 
+ 	maybeio "github.com/google/renameio/v2/maybe"
+ 	diffpkg "github.com/rogpeppe/go-internal/diff"
+ 	"golang.org/x/term"
+@@ -154,18 +153,11 @@ For more information and to report bugs, see https://github.com/mvdan/sh.
+ `)
+ 	}
+ 	flag.Parse()
+ 
+ 	if versionFlag.val {
+-		version := "(unknown)"
+-		if info, ok := debug.ReadBuildInfo(); ok {
+-			mod := &info.Main
+-			if mod.Replace != nil {
+-				mod = mod.Replace
+-			}
+-			version = mod.Version
+-		}
++		version := version
+ 		fmt.Println(version)
+ 		return
+ 	}
+ 	if posix.val && lang.val != syntax.LangAuto {
+ 		fmt.Fprintf(os.Stderr, "-p and -ln=lang cannot coexist\n")
+diff --git a/cmd/shfmt/version.go b/cmd/shfmt/version.go
+new file mode 100644
+index 0000000..e775334
+--- /dev/null
++++ b/cmd/shfmt/version.go
+@@ -0,0 +1,3 @@
++package main
++
++var version = "(devel)"

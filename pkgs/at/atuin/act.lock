@@ -1,0 +1,4 @@
+version = "18.23.0"
+date    = "2026-09-22"
+sys     = [ "openssl", "sqlite", "zstd" ]
+hash    = "sha256-NBn7C9ssLSXYrHWv5qWM5dZ2E8URbRJZOOCvHaNgxW4="

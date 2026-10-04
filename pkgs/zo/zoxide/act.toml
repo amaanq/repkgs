@@ -1,0 +1,4 @@
+tag   = "v{version}"
+track = "github:ajeetdsouza/zoxide"
+fetch = { archive = true }
+with  = [ "cargo" ]

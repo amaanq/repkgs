@@ -1,0 +1,4 @@
+version = "0.71.0"
+date    = "2026-09-18"
+sys     = [ "jemalloc" ]
+hash    = "sha256-xJdR/t6O8PavCKBiKnueiLR01g7nWGUHp9bcjOuDDA8="

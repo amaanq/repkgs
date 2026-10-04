@@ -1,0 +1,5 @@
+tag   = "v{version}"
+track = "github:ducaale/xh"
+fetch = { archive = true }
+with  = [ "cargo" ]
+tools = [ "cacert" ]

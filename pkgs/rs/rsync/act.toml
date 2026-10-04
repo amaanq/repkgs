@@ -1,0 +1,22 @@
+track = 'generic:rsync?url=https://download.samba.org/pub/rsync/src/'
+fetch = { url = "https://download.samba.org/pub/rsync/src/rsync-{version}.tar.gz" }
+with  = [ "autotools" ]
+deps  = [ "zstd", "lz4", "openssl", "xxhash", "acl" ]
+# the tests need ctypes, which the peanut python lacks
+tools = [ "cpython", "bash" ]
+
+[autotools]
+flags = [
+  "--with-included-zlib=no",
+  "--with-nobody-group=nogroup",
+  "--disable-idn",
+  "--enable-ipv6",
+]
+# the sandbox refuses setuid bits and user xattrs and has no fs.protected_regular
+testTarget = [
+  "check",
+  "CHECK_J=8 --exclude=chmod-option,chmod-setid,variety,variety-symlink-traversal,chown-fake,fake-super-backup-fifo-regression,protected-regular",
+]
+
+[steps.before]
+"autotools.test" = [ "rsync.test-scripts" ]

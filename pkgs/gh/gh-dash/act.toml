@@ -1,0 +1,12 @@
+tag   = "v{version}"
+fetch = { archive = true }
+with  = [ "go" ]
+
+[track]
+from = "github:dlvhdr/gh-dash"
+
+[track.locks]
+go = "."
+
+[go]
+packages = [ "." ]

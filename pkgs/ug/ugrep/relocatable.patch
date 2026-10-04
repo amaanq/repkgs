@@ -1,0 +1,32 @@
+Look for the bundled patterns relative to the installed binary instead of a
+compiled-in data directory, which would name the store path.
+
+--- a/src/ugrep.cpp
++++ b/src/ugrep.cpp
+@@ -75,6 +75,7 @@
+ */
+ 
+ #include "ugrep.hpp"
++#include "reloc.h"
+ #include "glob.hpp"
+ #include "mmap.hpp"
+ #include "output.hpp"
+@@ -8440,7 +8441,7 @@
+ #ifdef GREP_PATH
+       if (file == NULL)
+       {
+-        if (fopen_smart(&file, std::string(GREP_PATH).append(PATHSEPSTR).append(filename).c_str(), "r") != 0)
++        if (fopen_smart(&file, std::string(RELOC("../share/ugrep/patterns")).append(PATHSEPSTR).append(filename).c_str(), "r") != 0)
+           file = NULL;
+       }
+ #endif
+@@ -14281,7 +14282,8 @@
+             exist, the GREP_PATH environment variable is used as path to FILE.\n"
+ #ifdef GREP_PATH
+             "\
+-            If that fails, looks for FILE in " GREP_PATH ".\n"
++            If that fails, looks for FILE in share/ugrep/patterns of the\n\
++            ugrep installation.\n"
+ #endif
+             "\
+             When FILE is a `-', standard input is read.  Empty files contain no\n\

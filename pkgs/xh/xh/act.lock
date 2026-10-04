@@ -1,0 +1,4 @@
+version = "0.26.2"
+date    = "2026-07-26"
+sys     = [ "oniguruma", "openssl" ]
+hash    = "sha256-EiwK5/+mAQc8P120E6gQa/6h5t4tijy7PcdF3RYQ10U="
