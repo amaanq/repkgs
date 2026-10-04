@@ -49,10 +49,9 @@ struct Config<'stage> {
 
 #[derive(Serialize)]
 struct ElfPolicy<'stage> {
-   libc:     &'stage str,
-   interp:   &'stage str,
-   crt:      String,
-   runtimes: String,
+   libc:   &'stage str,
+   interp: &'stage str,
+   crt:    String,
 }
 
 const STUB_LD: &str = "SECTIONS {
@@ -205,10 +204,9 @@ impl Cc {
       ])?;
 
       Ok(ElfPolicy {
-         libc:     sysroot,
-         interp:   &stage.interp,
-         crt:      crt_out,
-         runtimes: format!("{sysroot}/lib"),
+         libc:   sysroot,
+         interp: &stage.interp,
+         crt:    crt_out,
       })
    }
 

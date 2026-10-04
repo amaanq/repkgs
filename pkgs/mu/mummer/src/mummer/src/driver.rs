@@ -5,23 +5,35 @@ use std::{
       var,
    },
    fs::{
+      File,
       canonicalize,
+      metadata,
+      read,
       read_to_string,
    },
-   io,
-   mem,
+   io::{
+      self,
+      Read as _,
+   },
+   os::unix::fs::PermissionsExt as _,
    path::Path,
-   process::Command,
 };
 
 use mummer::{
    elf::{
       RUNPATH_SLACK,
-      shared_library,
+      is_elf,
+      needed,
+      runpath_text,
+      segments,
    },
+   files::write_file,
+   image::Image,
    store::is_store_path,
 };
 use serde::Deserialize;
+
+use crate::manifest::parse_depfile;
 
 #[derive(Clone, Copy, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -91,7 +103,6 @@ pub struct Driver {
    #[serde(rename = "interp")]
    interpreter: String,
    crt:         String,
-   runtimes:    String,
    flags:       Vec<String>,
    cxxflags:    Vec<String>,
    fflags:      Vec<String>,
@@ -111,7 +122,6 @@ impl Default for Driver {
          libc:        String::new(),
          interpreter: "ld-linux-x86-64.so.2".to_owned(),
          crt:         String::new(),
-         runtimes:    String::new(),
          flags:       Vec::new(),
          cxxflags:    Vec::new(),
          fflags:      Vec::new(),
@@ -127,35 +137,6 @@ impl Driver {
          Language::Cc | Language::Cxx => &self.compiler,
          Language::Fortran => &self.fc,
       }
-   }
-
-   /// The linker command clang would run for `args`, which also names the
-   /// libraries clang adds itself.
-   fn linker_command(&self, language: Language, args: &[String]) -> Option<Vec<String>> {
-      let printed = Command::new(self.compiler(language))
-         .arg("-###")
-         .args(args)
-         .output()
-         .ok()?;
-      let text = String::from_utf8_lossy(&printed.stderr);
-      let line = text.lines().rev().find(|line| line.starts_with(" \""))?;
-      let mut words = Vec::new();
-      let mut word = String::new();
-      let mut quoted = false;
-      let mut characters = line.chars();
-      while let Some(character) = characters.next() {
-         match character {
-            '"' if quoted => {
-               words.push(mem::take(&mut word));
-               quoted = false;
-            },
-            '"' => quoted = true,
-            '\\' if quoted => word.extend(characters.next()),
-            _ if quoted => word.push(character),
-            _ => {},
-         }
-      }
-      Some(words)
    }
 
    pub const fn format(&self) -> BinaryFormat {
@@ -208,12 +189,8 @@ impl Driver {
    }
 
    #[expect(
-      clippy::cognitive_complexity,
-      reason = "compiler mode rewrite is linear, each case is in one place"
-   )]
-   #[expect(
       clippy::too_many_lines,
-      reason = "compiler mode rewrite tracks arguments and runpath in one pass"
+      reason = "compiler mode rewrite is linear, each case is in one place"
    )]
    pub fn arguments(&self, language: Language, raw: &[String]) -> Vec<String> {
       if !self.configured {
@@ -222,7 +199,6 @@ impl Driver {
       let cxx = language == Language::Cxx;
       let fortran = language == Language::Fortran;
       let mut user = Vec::new();
-      let mut runpath = Runpath::default();
       let mut linking = true;
       let mut have_input = false;
       let mut shared = false;
@@ -231,16 +207,6 @@ impl Driver {
       let mut sets_fortify = false;
       let mut index = 0;
       while index < raw.len() {
-         if self.format == BinaryFormat::Elf
-            && let Some((value, consumed)) = take_rpath(&raw[index..])
-         {
-            for part in value.split(':').filter(|part| !host_directory(part)) {
-               runpath.verbatim.push_str(part);
-               runpath.verbatim.push(':');
-            }
-            index += consumed;
-            continue;
-         }
          let arg = &raw[index];
          index += 1;
          let Some(kept) = self.format.keeps(arg) else {
@@ -324,71 +290,7 @@ impl Driver {
          BinaryFormat::Coff => return output,
       }
 
-      let link_args = self.linker_command(language, &output).unwrap_or_else(|| {
-         let mut given = user;
-         given.extend_from_slice(&self.package.ldflags);
-         given
-      });
-      let mut directories = Vec::new();
-      let mut libraries = Vec::new();
-      let mut runtime = cxx;
-      for (position, arg) in link_args.iter().enumerate() {
-         let value = |flag: &str| {
-            let tail = arg.strip_prefix(flag)?;
-            if tail.is_empty() {
-               link_args.get(position + 1).map(String::as_str)
-            } else {
-               Some(tail)
-            }
-         };
-         if let Some(directory) = value("-L") {
-            directories.push(directory);
-         } else if let Some(library) = value("-l") {
-            runtime |= matches!(
-               library,
-               "c++" | "stdc++" | "gcc_s" | "unwind" | ":libunwind.so"
-            );
-            libraries.push(library);
-         } else if is_store_path(arg)
-            && Path::new(arg)
-               .file_name()
-               .is_some_and(|name| shared_library(&name.to_string_lossy()))
-         {
-            let real = canonicalize(arg).unwrap_or_else(|_| Path::new(arg).to_path_buf());
-            if let Some(parent) = real.parent() {
-               runpath.add(parent.to_string_lossy().into_owned());
-            }
-         }
-         if matches!(arg.as_str(), "-nostdlib++" | "-nostdlib") {
-            runtime = false;
-         }
-      }
-      for directory in directories {
-         let real = canonicalize(directory).unwrap_or_else(|_| Path::new(directory).to_path_buf());
-         if is_store_path(&real.to_string_lossy())
-            && libraries.iter().any(|library| {
-               real.join(format!("lib{library}.so")).exists()
-                  || real.join(format!("lib{library}.dylib")).exists()
-            })
-         {
-            runpath.add(real.to_string_lossy().into_owned());
-         }
-      }
-      if runtime && !self.runtimes.is_empty() {
-         runpath.add(self.runtimes.clone());
-      }
-      runpath.add(format!("{}/lib", self.libc));
-      let entries = runpath.entries.len() + runpath.verbatim.matches(':').count();
-      let mut path = runpath.verbatim;
-      for directory in &runpath.entries {
-         path.push_str(directory);
-         path.push_str("/.:");
-      }
-      let slack = (entries.max(1) * RUNPATH_SLACK + libraries.len() * 80)
-         .next_power_of_two()
-         .max(1024);
-      path.push('/');
-      path.push_str(&"_".repeat(slack - 1));
+      let path = placeholder(RUNPATH_RESERVE);
       output.extend([
          "-Wl,--undefined-version".to_owned(),
          format!("-Wl,-rpath,{path}"),
@@ -458,20 +360,6 @@ impl Driver {
    }
 }
 
-#[derive(Default)]
-struct Runpath {
-   entries:  Vec<String>,
-   verbatim: String,
-}
-
-impl Runpath {
-   fn add(&mut self, directory: String) {
-      if !host_directory(&directory) && !self.entries.contains(&directory) {
-         self.entries.push(directory);
-      }
-   }
-}
-
 fn host_directory(path: &str) -> bool {
    ["/usr", "/lib", "/opt"]
       .iter()
@@ -485,22 +373,97 @@ fn fortify(arg: &str) -> bool {
       || arg.starts_with("-Wp,-U_FORTIFY_SOURCE")
 }
 
-fn take_rpath(args: &[String]) -> Option<(&str, usize)> {
-   let first = args.first()?;
-   if matches!(first.as_str(), "-Wl,-rpath" | "-Wl,--rpath") {
-      return args.get(1)?.strip_prefix("-Wl,").map(|value| (value, 2));
-   }
-   for spelling in ["-Wl,-rpath,", "-Wl,--rpath,", "-Wl,-rpath=", "-Wl,--rpath="] {
-      if let Some(value) = first.strip_prefix(spelling) {
-         return Some((value, 1));
+/// The space a link reserves for its RUNPATH, enough for most outputs. One
+/// that needs more is linked again with room for exactly what it needs.
+const RUNPATH_RESERVE: usize = 4096;
+
+/// The RUNPATH entry a link reserves, padding `settle_runpath` fills in.
+fn placeholder(room: usize) -> String {
+   format!("/{}", "_".repeat(room - 1))
+}
+
+fn is_placeholder(entry: &str) -> bool {
+   entry.len() > 1 && entry.starts_with('/') && entry[1..].bytes().all(|byte| byte == b'_')
+}
+
+/// Gives the placeholder in `args` `room` bytes, for a second link.
+pub fn reserve(args: &mut [String], room: usize) {
+   for arg in args {
+      if arg.strip_prefix("-Wl,-rpath,").is_some_and(is_placeholder) {
+         *arg = format!("-Wl,-rpath,{}", placeholder(room));
       }
    }
-   if let [ref linker, ref flag, ref second, ref value, ..] = *args
-      && linker == "-Xlinker"
-      && matches!(flag.as_str(), "-rpath" | "--rpath")
-      && second == "-Xlinker"
-   {
-      return Some((value, 4));
+}
+
+/// Rewrites the output's RUNPATH as the rpaths the link was given, less host
+/// directories, then the directories of the shared libraries the linker
+/// opened, as its dependency file names them, so a library the link named but
+/// `--as-needed` dropped still loads by name, keeping the padding reloc-fixup
+/// rewrites into. Some(room) when the placeholder is too small for the output's
+/// `DT_NEEDED` count, the link to redo with `reserve`.
+pub fn settle_runpath(output: &Path, dependencies: &str) -> io::Result<Option<usize>> {
+   let mut image = Image {
+      bytes: read(output)?,
+   };
+   if !is_elf(&image) {
+      return Ok(None);
    }
-   None
+   let segments = segments(&image)?;
+   let Some(text) = runpath_text(&image, &segments)? else {
+      return Ok(None);
+   };
+   if !text.value.split(':').any(is_placeholder) {
+      return Ok(None);
+   }
+   let given = text
+      .value
+      .split(':')
+      .filter(|entry| !entry.is_empty() && !is_placeholder(entry) && !host_directory(entry))
+      .collect::<Vec<_>>();
+   let mut path = String::new();
+   for entry in &given {
+      path.push_str(entry);
+      path.push(':');
+   }
+   let needed = needed(&image, &segments)?;
+   let mut directories = Vec::new();
+   for input in parse_depfile(dependencies) {
+      if !is_store_path(&input) || !shared_object(Path::new(&input))? {
+         continue;
+      }
+      let Some(parent) = canonicalize(&input)?.parent().map(Path::to_path_buf) else {
+         continue;
+      };
+      let directory = parent.to_string_lossy().into_owned();
+      if !host_directory(&directory) && !directories.contains(&directory) {
+         directories.push(directory);
+      }
+   }
+   for directory in &directories {
+      path.push_str(directory);
+      path.push_str("/.:");
+   }
+   let entries = directories.len() + given.len();
+   let wanted = path.len() + 1 + entries.max(1) * RUNPATH_SLACK + needed.len() * 80;
+   if wanted >= text.capacity {
+      return Ok(Some((wanted + 1).next_power_of_two()));
+   }
+   path.push('/');
+   path.push_str(&"_".repeat(text.capacity - 1 - path.len()));
+   image.write(text.offset, path.as_bytes())?;
+   let mode = metadata(output)?.permissions().mode();
+   write_file(output, &image.bytes, Some(mode & 0o7777))?;
+   Ok(None)
+}
+
+/// An ELF shared object, what the dynamic loader finds by RUNPATH.
+fn shared_object(path: &Path) -> io::Result<bool> {
+   let mut header = [0_u8; 18];
+   match File::open(path).and_then(|mut file| file.read_exact(&mut header)) {
+      Ok(()) => {
+         Ok(header.starts_with(b"\x7fELF") && u16::from_le_bytes([header[16], header[17]]) == 3)
+      },
+      Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => Ok(false),
+      Err(error) => Err(error),
+   }
 }
