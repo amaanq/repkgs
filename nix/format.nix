@@ -31,7 +31,10 @@ let
     pkgs.ruff
     pkgs.taplo
     pkgs.ast-grep
-    (import ./spieler.nix { inherit pkgs; })
+    (import ./crate.nix {
+      inherit pkgs;
+      crate = "spieler";
+    })
   ];
 in
 pkgs.writeShellScriptBin "nuff" ''
