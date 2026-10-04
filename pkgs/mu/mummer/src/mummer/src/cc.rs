@@ -925,6 +925,7 @@ fn cached(
          None
       };
       store.mask_output(&mut bytes, true);
+      store.resolve_bytes(&mut bytes);
       if invocation.stdout {
          io::stdout().lock().write_all(&bytes)?;
       } else {

@@ -30,6 +30,7 @@ pub const STORE_DIR: &str = match option_env!("MUMMER_STORE_DIR") {
 };
 const OUTPUT_PLACEHOLDER: &[u8] = b"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const PATH_ENDS: &str = " \t\n\\:\"';,)]}>";
+const HASH_ALPHABET: &[u8] = b"0123456789abcdfghijklmnpqrsvwxyz";
 
 pub struct Store {
    content:     bool,
@@ -183,6 +184,42 @@ impl Store {
       resolved
    }
 
+   /// Store paths in a replayed output moved in place to the roots of the same
+   /// name, since content keys let it come from a build against other hashes.
+   #[inline]
+   pub fn resolve_bytes(&self, data: &mut [u8]) {
+      if !self.content {
+         return;
+      }
+      let prefix = format!("{STORE_DIR}/");
+      let mut offset = 0;
+      while let Some(position) = data[offset..]
+         .windows(prefix.len())
+         .position(|window| window == prefix.as_bytes())
+      {
+         let start = offset + position + prefix.len();
+         offset = start;
+         let named = data.get(start..start + 33).is_some_and(|hash| {
+            hash[32] == b'-' && hash[..32].iter().all(|byte| HASH_ALPHABET.contains(byte))
+         });
+         if !named {
+            continue;
+         }
+         let end = data[start + 33..]
+            .iter()
+            .position(|&byte| byte == b'/' || byte == 0 || PATH_ENDS.as_bytes().contains(&byte))
+            .map_or(data.len(), |length| start + 33 + length);
+         let Ok(name) = str::from_utf8(&data[start + 33..end]) else {
+            continue;
+         };
+         if let Some(root) = self.roots.get(&format!("{STORE_DIR}/*-{name}")) {
+            data[start..start + 32]
+               .copy_from_slice(&root.as_bytes()[prefix.len()..prefix.len() + 32]);
+         }
+         offset = end;
+      }
+   }
+
    #[must_use]
    #[inline]
    pub fn daemon_may_identify(&self, path: &str) -> bool {
@@ -261,7 +298,7 @@ pub fn mask_hashes(text: &str) -> String {
       if tail.as_bytes().get(32) == Some(&b'-')
          && tail.as_bytes()[..32]
             .iter()
-            .all(|byte| b"0123456789abcdfghijklmnpqrsvwxyz".contains(byte))
+            .all(|byte| HASH_ALPHABET.contains(byte))
       {
          output.push('*');
          remaining = &tail[32..];
