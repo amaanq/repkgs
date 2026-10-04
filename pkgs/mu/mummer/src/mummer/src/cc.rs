@@ -44,7 +44,10 @@ use mummer::{
    },
 };
 use tempfile::Builder;
-use tightrope::client::Client;
+use tightrope::{
+   client::Client,
+   identity::Identity,
+};
 
 use crate::{
    driver::{
@@ -444,6 +447,13 @@ impl Invocation {
          Action::Precompile => "precompile",
          Action::Compile | Action::Assembly | Action::Preprocess | Action::Other => "compile",
       });
+      if self.links() {
+         // mummer settles a link's RUNPATH itself
+         field(
+            &mut hasher,
+            Identity::of(&read(current_exe()?)?).to_string(),
+         );
+      }
       // the toolchain's own paths move with every mummer build
       let toolchain = current_exe()
          .ok()
