@@ -164,6 +164,10 @@ impl Cmake {
          ),
          ("BUILD_SHARED_LIBS".to_owned(), Def::Flag(true)),
          ("BUILD_TESTING".to_owned(), Def::Flag(ctx.tests_run)),
+         (
+            "CMAKE_DISABLE_PRECOMPILE_HEADERS".to_owned(),
+            Def::Flag(true),
+         ),
       ];
       if platform.cross {
          Self::upsert(
