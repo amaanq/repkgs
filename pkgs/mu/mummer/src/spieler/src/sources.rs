@@ -127,25 +127,27 @@ struct Act {
 /// on. `file` is the act.lock spieler writes.
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Package {
-   pub name:     String,
-   pub dir:      PathBuf,
-   pub file:     PathBuf,
-   pub tracked:  bool,
-   pub hook:     Option<PathBuf>,
-   pub hooks:    Vec<String>,
-   pub upstream: Upstream,
-   pub source:   Vec<Source>,
-   pub pin:      Map<String, Value>,
-   pub watch:    Watch,
-   pub locks:    BTreeMap<String, String>,
+   pub name:      String,
+   pub dir:       PathBuf,
+   pub file:      PathBuf,
+   pub tracked:   bool,
+   pub hook:      Option<PathBuf>,
+   pub hooks:     Vec<String>,
+   pub upstream:  Upstream,
+   pub source:    Vec<Source>,
+   pub pin:       Map<String, Value>,
+   pub watch:     Watch,
+   pub locks:     BTreeMap<String, String>,
    /// act.toml's tag template, `v{version}`.
-   pub tag:      Option<String>,
+   pub tag:       Option<String>,
    /// One inline `fetch`, so act.lock holds `hash` rather than `[hash]`.
-   pub single:   bool,
+   pub single:    bool,
    /// act.toml's `patches`, in the order they apply.
-   pub patches:  Vec<String>,
+   pub patches:   Vec<String>,
    /// act.lock's `[patches]`, remote entry -> the file it was vendored as.
-   pub vendored: BTreeMap<String, String>,
+   pub vendored:  BTreeMap<String, String>,
+   /// act.lock's `[sources]`, what the `sources` hook named for the pin.
+   pub generated: Vec<Source>,
 }
 
 impl Package {
@@ -215,13 +217,9 @@ fn purl_of(short: &str) -> String {
    format!("pkg:{}", short.replacen(':', "/", 1))
 }
 
-/// `fetch` as sources by name, with the hashes act.lock records for them.
-fn sources_of(
-   fetch: Option<Fetch>,
-   recorded: Option<Value>,
-   purl: Option<&str>,
-) -> Result<Vec<Source>, String> {
-   let hashes = match recorded {
+/// act.lock's `hash`, or its `[hash]` table by source.
+fn hashes_of(recorded: Option<Value>) -> BTreeMap<String, String> {
+   match recorded {
       Some(Value::String(hash)) => BTreeMap::from([("default".to_owned(), hash)]),
       Some(Value::Object(listed)) => {
          listed
@@ -230,13 +228,50 @@ fn sources_of(
             .collect()
       },
       _ => BTreeMap::new(),
+   }
+}
+
+/// act.lock's `[sources]`, or a `sources` hook's answer, name -> `{ url, name
+/// }`.
+pub fn generated_of(
+   recorded: Option<Value>,
+   hashes: &BTreeMap<String, String>,
+) -> Result<Vec<Source>, String> {
+   let listed = match recorded {
+      Some(Value::Object(listed)) => listed,
+      None => return Ok(Vec::new()),
+      Some(other) => return Err(format!("sources must be a table, not {other}")),
    };
-   let declared = match fetch {
+   listed
+      .into_iter()
+      .map(|(key, entry)| {
+         let field = |name: &str| entry.get(name).and_then(Value::as_str).map(str::to_owned);
+         Ok(Source {
+            url: field("url").ok_or_else(|| format!("source {key} has no url"))?,
+            name: field("name"),
+            hash: hashes.get(&key).cloned(),
+            unpack: None,
+            frozen: None,
+            key,
+         })
+      })
+      .collect()
+}
+
+/// `fetch` and then act.lock's `[sources]` as sources by name, with the
+/// hashes act.lock records for them, taken out of `lock`.
+fn sources_of(
+   fetch: Option<Fetch>,
+   lock: &mut Map<String, Value>,
+   purl: Option<&str>,
+) -> Result<(Vec<Source>, Vec<Source>), String> {
+   let hashes = hashes_of(lock.remove("hash"));
+   let tables = match fetch {
       Some(Fetch::One(one)) if one.from.is_none() => vec![("default".to_owned(), one)],
       Some(Fetch::Many(many)) => many.into_iter().collect(),
       Some(Fetch::One(_)) | None => Vec::new(),
    };
-   declared
+   let declared = tables
       .into_iter()
       .map(|(key, fetched)| {
          Ok(Source {
@@ -248,7 +283,8 @@ fn sources_of(
             frozen: fetched.frozen,
          })
       })
-      .collect()
+      .collect::<Result<Vec<_>, String>>()?;
+   Ok((declared, generated_of(lock.remove("sources"), &hashes)?))
 }
 
 /// act.lock's values as one map, `[vars]` among them, with the tag act.toml's
@@ -281,6 +317,10 @@ fn vendored_of(recorded: Option<Value>) -> BTreeMap<String, String> {
    }
 }
 
+#[expect(
+   clippy::too_many_lines,
+   reason = "one linear read of act.toml and act.lock into a Package"
+)]
 fn parse(file: &Path) -> io::Result<Option<Package>> {
    let fail = |message: String| io::Error::other(format!("{}: {message}", file.display()));
    let act: Act =
@@ -328,8 +368,8 @@ fn parse(file: &Path) -> io::Result<Option<Package>> {
    };
 
    let single = matches!(act.fetch, Some(Fetch::One(ref one)) if one.from.is_none());
-   let source =
-      sources_of(act.fetch, lock.remove("hash"), upstream.purl.as_deref()).map_err(fail)?;
+   let (source, generated) =
+      sources_of(act.fetch, &mut lock, upstream.purl.as_deref()).map_err(fail)?;
 
    let template = act
       .tag
@@ -391,6 +431,7 @@ fn parse(file: &Path) -> io::Result<Option<Package>> {
       single,
       patches,
       vendored,
+      generated,
    }))
 }
 

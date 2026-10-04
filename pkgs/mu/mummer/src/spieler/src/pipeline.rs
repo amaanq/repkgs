@@ -59,7 +59,11 @@ use crate::{
    http,
    nix,
    purl::Purl,
-   sources::Package,
+   sources::{
+      Package,
+      Source,
+      generated_of,
+   },
    version,
 };
 
@@ -616,7 +620,9 @@ fn write_lock(
    hashes: &BTreeMap<String, String>,
    sys: &[String],
    vendored: &BTreeMap<String, String>,
+   generated: &[Source],
 ) -> io::Result<()> {
+   let single = package.single && generated.is_empty();
    let version = pin.get("version").and_then(Value::as_str);
    let spelled = match (package.template(), version) {
       (Some(template), Some(release)) => template.spell(release),
@@ -638,13 +644,11 @@ fn write_lock(
    if !sys.is_empty() {
       top.push(("sys".to_owned(), toml_text(&json!(sys))));
    }
-   if package.single
-      && let Some(hash) = hashes.get("default")
-   {
+   if single && let Some(hash) = hashes.get("default") {
       top.push(("hash".to_owned(), toml_text(&json!(hash))));
    }
    let mut text = aligned(&top);
-   if !package.single && !hashes.is_empty() {
+   if !single && !hashes.is_empty() {
       let listed = hashes
          .iter()
          .map(|(key, hash)| (key_text(key), toml_text(&json!(hash))))
@@ -670,6 +674,16 @@ fn write_lock(
       text.push_str("\n[patches]\n");
       text.push_str(&aligned(&listed));
    }
+   for source in generated {
+      let mut fields = vec![("url".to_owned(), toml_text(&json!(source.url)))];
+      if let Some(ref name) = source.name {
+         fields.push(("name".to_owned(), toml_text(&json!(name))));
+      }
+      text.push_str("\n[sources.");
+      text.push_str(&key_text(&source.key));
+      text.push_str("]\n");
+      text.push_str(&aligned(&fields));
+   }
    write(&package.file, text)
 }
 
@@ -680,6 +694,7 @@ fn with_hashes(
    package: &Package,
    pin: &Map<String, Value>,
    known: &Map<String, Value>,
+   generated: &[Source],
 ) -> io::Result<()> {
    let mut sys: Vec<String> = Vec::new();
    let mut hashes = BTreeMap::new();
@@ -711,6 +726,16 @@ fn with_hashes(
          }
       }
    }
+   // a generated url names one release of its own, so an unchanged one keeps
+   // its hash
+   for source in generated {
+      nix::say(&format!("  {}", source.url));
+      let hash = match source.hash {
+         Some(ref hash) => hash.clone(),
+         None => prefetch(&source.url, source.unpacks())?.hash,
+      };
+      hashes.insert(source.key.clone(), hash);
+   }
    sys.sort();
    // [track] locks hackage: no lock file in the tree, sys is the lock step's
    // (set-sys) and kept here
@@ -720,22 +745,73 @@ fn with_hashes(
    if !sys.is_empty() {
       nix::say(&format!("  sys: {}", sys.join(" ")));
    }
-   write_lock(package, pin, &hashes, &sys, &package.vendored)
+   write_lock(package, pin, &hashes, &sys, &package.vendored, generated)
+}
+
+/// The downloads the release at `pin` names beyond act.toml's, from the
+/// `sources` hook, or act.lock's as they stand without one.
+fn generated(package: &Package, pin: &Map<String, Value>) -> io::Result<Vec<Source>> {
+   let Some(ref hook) = package.hook else {
+      return Ok(package.generated.clone());
+   };
+   if !package.has_hook("sources") {
+      return Ok(package.generated.clone());
+   }
+   let mut record = pin.clone();
+   if !record.contains_key("tag")
+      && let (Some(template), Some(version)) = (
+         package.template(),
+         pin.get("version").and_then(Value::as_str),
+      )
+      && let Some(tag) = template.spell(version)
+   {
+      record.insert("tag".to_owned(), Value::String(tag));
+   }
+   let fail = |message: String| io::Error::other(format!("{} sources: {message}", hook.display()));
+   let mut found = generated_of(
+      Some(hooks::run(hook, "sources", &record)?),
+      &BTreeMap::new(),
+   )
+   .map_err(fail)?;
+   for source in &mut found {
+      if package
+         .source
+         .iter()
+         .any(|declared| declared.key == source.key)
+      {
+         return Err(fail(format!(
+            "{} is already a source in act.toml",
+            source.key
+         )));
+      }
+      source.hash = package
+         .generated
+         .iter()
+         .find(|old| old.key == source.key && old.url == source.url)
+         .and_then(|old| old.hash.clone());
+   }
+   Ok(found)
+}
+
+/// act.lock's hashes as they stand, act.toml's sources and the generated ones.
+fn recorded_hashes(package: &Package) -> BTreeMap<String, String> {
+   package
+      .source
+      .iter()
+      .chain(&package.generated)
+      .filter_map(|source| Some((source.key.clone(), source.hash.clone()?)))
+      .collect()
 }
 
 /// act.lock's `[patches]` = `vendored`, everything else as it stands.
 pub fn set_vendored(package: &Package, vendored: &BTreeMap<String, String>) -> io::Result<()> {
-   let hashes = package
-      .source
-      .iter()
-      .filter_map(|source| Some((source.key.clone(), source.hash.clone()?)))
-      .collect();
    write_lock(
       package,
       &package.pin,
-      &hashes,
+      &recorded_hashes(package),
       &pinned_sys(package),
       vendored,
+      &package.generated,
    )
 }
 
@@ -745,12 +821,14 @@ pub fn set_sys(package: &Package, sys: &[String]) -> io::Result<()> {
       return Ok(());
    }
    nix::say(&format!("  sys: {}", sys.join(" ")));
-   let hashes = package
-      .source
-      .iter()
-      .filter_map(|source| Some((source.key.clone(), source.hash.clone()?)))
-      .collect();
-   write_lock(package, &package.pin, &hashes, sys, &package.vendored)
+   write_lock(
+      package,
+      &package.pin,
+      &recorded_hashes(package),
+      sys,
+      &package.vendored,
+      &package.generated,
+   )
 }
 
 /// Re-prefetch every source at the current pin (after editing a url, or for
@@ -762,7 +840,12 @@ pub fn rehash(package: &Package) -> io::Result<()> {
          package.file.display()
       )));
    }
-   with_hashes(package, &package.pin, &Map::new())
+   with_hashes(
+      package,
+      &package.pin,
+      &Map::new(),
+      &generated(package, &package.pin)?,
+   )
 }
 
 /// Write hashes and the pin for the decided update into act.lock, then the
@@ -784,7 +867,12 @@ pub fn apply(entry: &Entry) -> io::Result<()> {
          }
       }
    }
-   with_hashes(&entry.package, pin, &known)?;
+   with_hashes(
+      &entry.package,
+      pin,
+      &known,
+      &generated(&entry.package, pin)?,
+   )?;
    if let Some(ref hook) = entry.package.hook
       && entry.package.has_hook("files")
    {

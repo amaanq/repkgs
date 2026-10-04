@@ -48,6 +48,8 @@ let
       act.fetch
     else
       { };
+  # what a `sources` hook named for the pin, after act.toml's
+  generated = lock.sources or { };
   hashes = if isString (lock.hash or null) then { default = lock.hash; } else lock.hash or { };
 
   identity = [
@@ -66,6 +68,7 @@ in
       "hash"
       "vars"
       "patches"
+      "sources"
     ];
   # remote patch -> the file spieler vendored it as
   vendored = lock.patches or { };
@@ -80,7 +83,7 @@ in
       url = url source;
     }
     // (if hashes ? ${name} then { hash = hashes.${name}; } else { })
-  ) declared;
+  ) (declared // generated);
   # the tag act.toml's template spells for `pinned`, or the one spieler recorded for a `*`
   tagOf =
     pinned:
