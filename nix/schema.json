@@ -630,6 +630,13 @@
               "kind": "string"
             }
           },
+          "debugInfo": {
+            "kind": "enum",
+            "values": [
+              "full",
+              "lines"
+            ]
+          },
           "hardening": {
             "kind": "union",
             "variants": [
@@ -673,6 +680,7 @@
         },
         "optional": [
           "hardening",
+          "debugInfo",
           "cflags",
           "cxxflags",
           "ldflags"

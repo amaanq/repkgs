@@ -28,6 +28,7 @@ use crate::{
    attrs::{
       Attrs,
       Cc,
+      DebugInfo,
       Platform,
       Spec,
       build_top,
@@ -264,10 +265,11 @@ fn package_cc(
    let cc = spec.cc.as_ref();
    let choice = cc.and_then(|found| found.hardening.as_ref());
    let harden = |line| hardening_flags(platform.binfmt, &platform.hardening, choice, line);
-   let (debug_flag, cargo_debug) = if spec.debug {
-      ("-g", "full")
-   } else {
-      ("-g0", "none")
+   let lines = cc.and_then(|found| found.debug_info) == Some(DebugInfo::Lines);
+   let (debug_flag, cargo_debug) = match (spec.debug, lines) {
+      (false, _) => ("-g0", "none"),
+      (true, true) => ("-gline-tables-only", "line-tables-only"),
+      (true, false) => ("-g", "full"),
    };
    let given = |field: fn(&Cc) -> &[String]| cc.map(field).unwrap_or_default().to_vec();
    let mut cflags: Vec<String> = dirs(deps, |dep| &dep.include_dirs)
