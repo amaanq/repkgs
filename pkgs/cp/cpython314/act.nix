@@ -74,6 +74,13 @@
       "expat"
       "sqlite"
       "mpdecimal"
+      "ncurses"
+      "readline"
+      "zstd"
+    ];
+    autotools.flags = [
+      "--enable-shared"
+      "--with-tzpath=/etc/zoneinfo:/usr/share/zoneinfo:/usr/lib/zoneinfo:/usr/share/lib/zoneinfo"
     ];
     "with" = [ "autotools" ];
   })
