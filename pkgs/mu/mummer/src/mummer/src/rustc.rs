@@ -66,6 +66,8 @@ struct Invocation {
    name:      String,
    suffix:    String,
    externs:   Vec<String>,
+   search:    Vec<PathBuf>,
+   statics:   Vec<String>,
    sysroot:   Option<PathBuf>,
    cacheable: bool,
    query:     bool,
@@ -84,6 +86,8 @@ impl Invocation {
          name:      String::new(),
          suffix:    String::new(),
          externs:   Vec::new(),
+         search:    Vec::new(),
+         statics:   Vec::new(),
          sysroot:   None,
          cacheable: true,
          query:     false,
@@ -153,6 +157,7 @@ impl Invocation {
                         .split(',')
                         .all(|kind| matches!(kind, "lib" | "rlib" | "staticlib"));
                   },
+                  "-L" | "-l" => invocation.link(flag, setting),
                   "-C" => {
                      if let Some(suffix) = setting.strip_prefix("extra-filename=") {
                         suffix.clone_into(&mut invocation.suffix);
@@ -171,6 +176,12 @@ impl Invocation {
                invocation.key_args.push(format!("-C={setting}"));
             }
             invocation.cacheable &= !setting.starts_with("incremental=");
+         } else if let Some(setting) = argument
+            .strip_prefix("-L")
+            .or_else(|| argument.strip_prefix("-l"))
+         {
+            invocation.link(&argument[..2], setting);
+            invocation.key_args.push(argument.clone());
          } else if !argument.starts_with('-')
             && Path::new(argument)
                .extension()
@@ -194,6 +205,44 @@ impl Invocation {
          && !invocation.out_dir.as_os_str().is_empty()
          && !invocation.name.is_empty();
       invocation
+   }
+
+   /// Native search directories and static libraries, which an rlib bundles
+   /// into itself without rustc's dep-info naming them.
+   fn link(&mut self, flag: &str, setting: &str) {
+      let (prefix, value) = setting.split_once('=').unwrap_or(("", setting));
+      if flag == "-L" {
+         if matches!(prefix, "" | "native" | "all") {
+            self.search.push(PathBuf::from(value));
+         }
+         return;
+      }
+      let (kind, modifiers) = prefix.split_once(':').unwrap_or((prefix, ""));
+      if kind != "static" {
+         return;
+      }
+      let name = value.split_once(':').map_or(value, |(name, _)| name);
+      if modifiers.split(',').any(|modifier| modifier == "+verbatim") {
+         self.statics.push(name.to_owned());
+      } else {
+         self.statics.push(format!("lib{name}.a"));
+         self.statics.push(format!("{name}.lib"));
+      }
+   }
+
+   fn static_archives(&self) -> Vec<String> {
+      self
+         .statics
+         .iter()
+         .filter_map(|file| {
+            self
+               .search
+               .iter()
+               .map(|directory| directory.join(file))
+               .find(|path| path.is_file())
+         })
+         .map(|path| path.to_string_lossy().into_owned())
+         .collect()
    }
 }
 
@@ -378,6 +427,7 @@ fn store_result(
    let text = read_to_string(&dep_path)?;
    let mut inputs = parse_depfile(&text);
    inputs.extend_from_slice(&invocation.externs);
+   inputs.extend(invocation.static_archives());
    inputs.push(invocation.source.clone());
    inputs.sort_unstable();
    inputs.dedup();
