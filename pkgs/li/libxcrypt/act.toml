@@ -8,4 +8,4 @@ tools = [ "perl" ]
 os = [ "linux", "macos" ]
 
 [autotools]
-flags = [ "--disable-werror" ]
+flags = [ "--disable-werror", "--enable-obsolete-api=glibc" ]
