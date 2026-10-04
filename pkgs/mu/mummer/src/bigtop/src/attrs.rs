@@ -19,6 +19,7 @@ use mummer::store::{
 use serde::{
    Deserialize,
    Serialize,
+   Serializer,
    de::DeserializeOwned,
 };
 use serde_json::{
@@ -250,10 +251,58 @@ impl OptionType for VersionCheck {
    }
 }
 
+/// How much DWARF a compile keeps when the package has a debug output.
+#[derive(Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(try_from = "String")]
+pub enum DebugInfo {
+   Full,
+   Lines,
+}
+
+impl DebugInfo {
+   const ALL: [Self; 2] = [Self::Full, Self::Lines];
+
+   const fn name(self) -> &'static str {
+      match self {
+         Self::Full => "full",
+         Self::Lines => "lines",
+      }
+   }
+}
+
+impl TryFrom<String> for DebugInfo {
+   type Error = io::Error;
+
+   fn try_from(value: String) -> io::Result<Self> {
+      Self::ALL
+         .into_iter()
+         .find(|level| level.name() == value)
+         .ok_or_else(|| io::Error::other(format!("unknown debugInfo {value}")))
+   }
+}
+
+impl Serialize for DebugInfo {
+   fn serialize<Encoder>(&self, serializer: Encoder) -> Result<Encoder::Ok, Encoder::Error>
+   where
+      Encoder: Serializer,
+   {
+      serializer.serialize_str(self.name())
+   }
+}
+
+impl OptionType for DebugInfo {
+   fn kind() -> Type {
+      Type::Enum {
+         values: Self::ALL.map(|level| level.name().to_owned()).to_vec(),
+      }
+   }
+}
+
 record! {
    pub Cc {
       optional {
          hardening ("hardening"): Choice,
+         debug_info ("debugInfo"): DebugInfo,
          cflags ("cflags"): Vec<String>,
          cxxflags ("cxxflags"): Vec<String>,
          ldflags ("ldflags"): Vec<String>,
