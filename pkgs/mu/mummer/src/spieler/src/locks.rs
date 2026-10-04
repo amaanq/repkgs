@@ -142,7 +142,7 @@ pub fn normalize(file: &Path) -> io::Result<()> {
 
 /// The package's source at its current pin, a built derivation or an in-tree
 /// path (source = ./src).
-fn source_of(package: &Package) -> io::Result<PathBuf> {
+pub fn source_of(package: &Package) -> io::Result<PathBuf> {
    let built = nix::capture("nix-build", [
       root().as_os_str(),
       OsStr::new("-A"),

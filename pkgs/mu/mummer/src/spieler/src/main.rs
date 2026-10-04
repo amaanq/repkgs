@@ -6,6 +6,7 @@ mod http;
 mod locks;
 mod luarocks;
 mod nix;
+mod patch;
 mod pipeline;
 mod purl;
 mod sources;
@@ -30,6 +31,7 @@ use std::{
       Command,
       ExitCode,
    },
+   slice,
    time::Duration,
 };
 
@@ -106,6 +108,14 @@ enum Mode {
       /// version range to stay in, e.g. "==3.12.*".
       #[pound(long)]
       allow: Option<String>,
+   },
+   /// download the url entries of act.toml's `patches` beside the act and check
+   /// the list applies at the current pin.
+   Patch {
+      names:  Vec<String>,
+      /// download every url entry again, not only the missing ones.
+      #[pound(long)]
+      update: bool,
    },
    /// rewrite locks/<eco>.toml files in normal form, the treefmt entry point.
    Normalize { files: Vec<PathBuf> },
@@ -276,7 +286,15 @@ fn apply_entry(entry: &Entry) -> io::Result<()> {
       entry.from.as_deref().unwrap_or_default(),
       entry.to.as_deref().unwrap_or_default()
    ));
+   let before = read_to_string(&entry.package.file)?;
    pipeline::apply(entry)?;
+   // a patch that stops applying holds the package at the version it had
+   for updated in selected(slice::from_ref(&entry.package.name), true)? {
+      if let Err(error) = check_patches(&updated, &updated.vendored) {
+         write(&entry.package.file, before)?;
+         return Err(error);
+      }
+   }
    locks::add(&entry.package)?;
    // a solver input changed (the compiler a version set was solved for): redo
    // every lock of that ecosystem
@@ -429,6 +447,83 @@ fn lock(names: &[String], prune: bool) -> io::Result<()> {
    Ok(())
 }
 
+fn vendor_patches(names: &[String], update: bool) -> io::Result<()> {
+   for package in selected(names, true)? {
+      let mut vendored = BTreeMap::new();
+      let mut fetched = Vec::new();
+      for entry in &package.patches {
+         let Some(remote) = patch::Remote::parse(entry)? else {
+            continue;
+         };
+         let target = package.dir.join(&remote.file);
+         let kept = !update && package.vendored.get(entry) == Some(&remote.file) && target.exists();
+         if !kept {
+            let response = http::cached(&remote.download, Duration::ZERO)?;
+            if response.status != 200 {
+               return Err(io::Error::other(format!(
+                  "{}: {} answered {}",
+                  package.name, remote.download, response.status
+               )));
+            }
+            write(&target, response.body)?;
+            say(&format!("{}: {} -> {}", package.name, entry, remote.file));
+            fetched.push(target);
+         }
+         vendored.insert(entry.clone(), remote.file);
+      }
+      if vendored.is_empty() && package.vendored.is_empty() {
+         continue;
+      }
+      // the source is read through the tree, which already wants the new
+      // files named, and nothing stays vendored unless the whole list applies
+      let before = read_to_string(&package.file)?;
+      pipeline::set_vendored(&package, &vendored)?;
+      if let Err(error) = check_patches(&package, &vendored) {
+         write(&package.file, before)?;
+         for file in &fetched {
+            remove_file(file)?;
+         }
+         return Err(error);
+      }
+      for (entry, file) in &package.vendored {
+         if !vendored.contains_key(entry) && !vendored.values().any(|kept| kept == file) {
+            remove_file(package.dir.join(file))?;
+         }
+      }
+   }
+   Ok(())
+}
+
+/// Fails unless the package's patches apply, in order, to its source at the
+/// current pin.
+fn check_patches(package: &Package, vendored: &BTreeMap<String, String>) -> io::Result<()> {
+   if package.patches.is_empty() {
+      return Ok(());
+   }
+   let files = package
+      .patches
+      .iter()
+      .map(|entry| package.dir.join(vendored.get(entry).unwrap_or(entry)))
+      .collect::<Vec<_>>();
+   match patch::check(&locks::source_of(package)?, &files)? {
+      Ok(()) => Ok(()),
+      Err(patch::Refusal::Contained(file)) => {
+         Err(io::Error::other(format!(
+            "{}: {} is already in the source, drop it from patches",
+            package.name,
+            file.display()
+         )))
+      },
+      Err(patch::Refusal::Conflict(file)) => {
+         Err(io::Error::other(format!(
+            "{}: {} no longer applies",
+            package.name,
+            file.display()
+         )))
+      },
+   }
+}
+
 fn init(dir: &PathBuf, purl: &str, url: &str, allow: Option<&str>) -> io::Result<()> {
    purl.parse::<Purl>()?;
    let file = dir.join("act.toml");
@@ -500,6 +595,7 @@ fn run(mode: Mode) -> io::Result<i32> {
       Mode::Verify { names } => verify(&names)?,
       Mode::Rehash { names } => rehash(&names)?,
       Mode::Lock { names, prune } => lock(&names, prune)?,
+      Mode::Patch { names, update } => vendor_patches(&names, update)?,
       Mode::Init {
          dir,
          purl,
