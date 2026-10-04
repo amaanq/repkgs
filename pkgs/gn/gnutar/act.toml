@@ -1,0 +1,7 @@
+track = "gnu:tar"
+fetch = { url = "https://ftp.gnu.org/gnu/tar/tar-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "acl" ]
+
+[autotools]
+flags = [ "--without-selinux", "--with-rmt=/usr/sbin/rmt" ]

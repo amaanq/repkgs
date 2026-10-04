@@ -1,0 +1,7 @@
+track = "github:htop-dev/htop"
+fetch = { asset = "htop-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "ncurses", "libcap" ]
+
+[autotools]
+flags = [ "--sysconfdir=/etc", "--enable-capabilities", "--enable-affinity" ]
