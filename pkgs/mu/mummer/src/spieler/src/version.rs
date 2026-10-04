@@ -128,8 +128,13 @@ fn ranks(version: &str) -> Vec<Rank> {
          }
       }
       let part = &text[start..end];
+      // pep440 spells pre-releases 1.0a1, while tmux's 3.7a and OpenSSL's
+      // 1.1.1w are patch releases, so a lone letter needs a number after it
+      let numbered = chars.peek().is_some_and(|&(_, next)| next.is_ascii_digit());
       found.push(if digit {
          Rank::Number(part.parse().unwrap_or(u64::MAX))
+      } else if part.len() == 1 && !numbered {
+         Rank::Word(part.to_owned())
       } else if let Some(index) = PRE.iter().position(|word| *word == part) {
          Rank::Pre(index)
       } else {
