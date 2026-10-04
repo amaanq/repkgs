@@ -1,0 +1,4 @@
+track = "gnu:cpio"
+fetch = { url = "https://ftp.gnu.org/gnu/cpio/cpio-{version}.tar.bz2" }
+with  = [ "autotools" ]
+tools = [ "autoconf" ]
