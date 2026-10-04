@@ -39,6 +39,7 @@ use mummer::{
       text_arguments,
    },
    syslibs::{
+      CargoBuild,
       Tables,
       load,
       wanted,
@@ -113,7 +114,13 @@ fn lock_tables(path: Option<&Path>) -> io::Result<Tables> {
 
 fn syslibs_mode(operation: SyslibsOperation) -> io::Result<()> {
    let found = match operation {
-      SyslibsOperation::Wanted { dir, tables } => wanted(&lock_tables(tables.as_deref())?, &dir)?,
+      SyslibsOperation::Wanted { dir, tables } => {
+         wanted(
+            &lock_tables(tables.as_deref())?,
+            &dir,
+            Some(&CargoBuild::default()),
+         )?
+      },
       SyslibsOperation::WantedFor {
          ecosystem,
          names,

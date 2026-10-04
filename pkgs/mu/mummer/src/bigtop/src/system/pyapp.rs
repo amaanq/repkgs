@@ -199,6 +199,7 @@ impl System for Pyapp {
          attrs,
          &ctx.project_dir(&options.root),
          ctx.spec()?.sys.as_deref(),
+         None,
       )?;
       env.extend(syslibs::active(attrs, "python", &ctx.deps)?.env);
       Ok(env.into())

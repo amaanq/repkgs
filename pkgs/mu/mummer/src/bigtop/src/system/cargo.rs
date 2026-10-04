@@ -3,7 +3,6 @@ use std::{
    env::var,
    fmt::Write as _,
    fs::{
-      canonicalize,
       copy,
       create_dir_all,
       read_dir,
@@ -22,9 +21,12 @@ use std::{
 use mummer::{
    files::write_file,
    store::on_path,
+   syslibs::{
+      CargoBuild,
+      feature_flags,
+   },
    tree::note,
 };
-use serde::Deserialize;
 
 use crate::{
    attrs::{
@@ -91,18 +93,14 @@ impl System for Cargo {
          Some(deps) => Some(deps.to_owned()),
          None => None,
       };
+      let home = format!("{}/cargo-home", ctx.build);
+      let mut env: Env = Self::configure(ctx, attrs, vendor.as_deref(), &home)?.into();
       syslibs::check(
          attrs,
          &ctx.project_dir(&options.root),
          ctx.spec()?.sys.as_deref(),
+         Some(&Self::build(&options, Some(home.into()))),
       )?;
-      let mut env: Env = Self::configure(
-         ctx,
-         attrs,
-         vendor.as_deref(),
-         &format!("{}/cargo-home", ctx.build),
-      )?
-      .into();
       env.unset("RUSTFLAGS");
       Ok(env)
    }
@@ -133,73 +131,23 @@ impl System for Cargo {
 }
 
 impl Cargo {
-   fn arguments(ctx: &Ctx, options: &Options) -> io::Result<Vec<String>> {
-      let mut args = Vec::new();
-      let mut features = options.features.clone();
-      if options.no_default_features || !options.without_features.is_empty() {
-         args.push("--no-default-features".to_owned());
+   fn build(options: &Options, home: Option<PathBuf>) -> CargoBuild {
+      CargoBuild {
+         features: options.features.clone(),
+         no_default: options.no_default_features,
+         without: options.without_features.clone(),
+         home,
       }
-      if !options.without_features.is_empty() {
-         features.extend(Self::kept_defaults(
-            &ctx.project_dir(&options.root),
-            &options.without_features,
-         )?);
-      }
-      if !features.is_empty() {
-         args.push(format!("--features={}", features.join(",")));
-      }
-      args.extend(options.flags.iter().cloned());
-      Ok(args)
    }
 
-   /// The package's own default features minus `without`, as cargo reads
-   /// them, so a feature a new release adds to the default set stays on.
-   fn kept_defaults(project: &Path, without: &[String]) -> io::Result<Vec<String>> {
-      #[derive(Deserialize)]
-      struct Metadata {
-         packages: Vec<Package>,
-      }
-      #[derive(Deserialize)]
-      struct Package {
-         manifest_path: PathBuf,
-         features:      BTreeMap<String, Vec<String>>,
-      }
-
-      let output = Command::new("cargo")
-         .args([
-            "metadata",
-            "--no-deps",
-            "--offline",
-            "--format-version",
-            "1",
-         ])
-         .current_dir(project)
-         .output()?;
-      if !output.status.success() {
-         return Err(io::Error::other(format!(
-            "cargo metadata failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-         )));
-      }
-      let manifest = canonicalize(project.join("Cargo.toml"))?;
-      let package = serde_json::from_slice::<Metadata>(&output.stdout)?
-         .packages
-         .into_iter()
-         .find(|package| package.manifest_path == manifest)
-         .ok_or_else(|| {
-            io::Error::other(format!("cargo metadata lists no {}", manifest.display()))
-         })?;
-      let defaults = package.features.get("default").cloned().unwrap_or_default();
-      if let Some(missing) = without.iter().find(|name| !defaults.contains(name)) {
-         return Err(io::Error::other(format!(
-            "withoutFeatures names {missing}, which is not among the default features {}",
-            defaults.join(", ")
-         )));
-      }
-      Ok(defaults
-         .into_iter()
-         .filter(|name| !without.contains(name))
-         .collect())
+   fn arguments(ctx: &Ctx, options: &Options) -> io::Result<Vec<String>> {
+      let home = PathBuf::from(format!("{}/cargo-home", ctx.build));
+      let mut args = feature_flags(
+         &ctx.project_dir(&options.root),
+         &Self::build(options, Some(home)),
+      )?;
+      args.extend(options.flags.iter().cloned());
+      Ok(args)
    }
 
    fn quoted(value: &str) -> String {

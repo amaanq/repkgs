@@ -14,6 +14,7 @@ use std::{
    },
 };
 
+use mummer::syslibs::CargoBuild;
 use serde::{
    Deserialize,
    Serialize,
@@ -121,6 +122,7 @@ struct Act {
    track:   Option<Track>,
    fetch:   Option<Fetch>,
    patches: Option<Vec<String>>,
+   cargo:   Option<CargoBuild>,
 }
 
 /// A package as its act.toml and act.lock describe it, what every stage passes
@@ -148,6 +150,8 @@ pub struct Package {
    pub vendored:  BTreeMap<String, String>,
    /// act.lock's `[sources]`, what the `sources` hook named for the pin.
    pub generated: Vec<Source>,
+   /// act.toml's `[cargo]` features, what its Cargo.lock is resolved for.
+   pub cargo:     CargoBuild,
 }
 
 impl Package {
@@ -432,6 +436,7 @@ fn parse(file: &Path) -> io::Result<Option<Package>> {
       patches,
       vendored,
       generated,
+      cargo: act.cargo.unwrap_or_default(),
    }))
 }
 

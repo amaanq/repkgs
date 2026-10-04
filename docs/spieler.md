@@ -53,7 +53,8 @@ fetch = { archive = true }         # or { asset = "…" }, { url = "…" }, [fet
 # act.lock
 version = "10.5.0"
 date    = "2025-05-18"             # the release date, for `every`
-sys     = [ "jemalloc" ]           # libraries of the set the source's lock files may link
+sys     = [ "jemalloc" ]           # libraries of the set the source's lock files may link, a Cargo.lock as
+                                   # cargo metadata resolves it for act.toml's [cargo] features
 hash    = "sha256-…"               # the NAR hash of the unpacked tree, top directory stripped
 
 [vars]

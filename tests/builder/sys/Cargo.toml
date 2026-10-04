@@ -1,0 +1,11 @@
+[package]
+name    = "app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+openssl-sys = { path = "crates/openssl-sys" }
+zstd-sys    = { path = "crates/zstd-sys", optional = true }
+
+[dev-dependencies]
+libz-sys = { path = "crates/libz-sys" }

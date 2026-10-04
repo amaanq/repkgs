@@ -6,6 +6,7 @@ use std::{
 
 use mummer::syslibs::{
    self,
+   CargoBuild,
    Tables,
    load,
 };
@@ -76,14 +77,19 @@ pub fn wanted_for(attrs: &Attrs, ecosystem: &str, names: &[String]) -> io::Resul
 
 // our packages the lock files in `dir` can link, sorted, what act.lock's sys
 // should say
-pub fn wanted(attrs: &Attrs, dir: &Path) -> io::Result<Vec<String>> {
-   syslibs::wanted(&tables(attrs)?, dir)
+pub fn wanted(attrs: &Attrs, dir: &Path, cargo: Option<&CargoBuild>) -> io::Result<Vec<String>> {
+   syslibs::wanted(&tables(attrs)?, dir, cargo)
 }
 
 // the lock can link libraries act.lock's sys does not name, the pin is stale.
 // None means no act.toml, dependencies are by hand
-pub fn check(attrs: &Attrs, dir: &Path, sys: Option<&[String]>) -> io::Result<()> {
-   check_names(&wanted(attrs, dir)?, sys, "rehash")
+pub fn check(
+   attrs: &Attrs,
+   dir: &Path,
+   sys: Option<&[String]>,
+   cargo: Option<&CargoBuild>,
+) -> io::Result<()> {
+   check_names(&wanted(attrs, dir, cargo)?, sys, "rehash")
 }
 
 pub fn check_names(wanted: &[String], sys: Option<&[String]>, command: &str) -> io::Result<()> {
