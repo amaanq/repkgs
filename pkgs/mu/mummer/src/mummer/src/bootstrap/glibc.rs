@@ -329,11 +329,11 @@ impl Recipe for Glibc {
       }
 
       Self::make_logged(&build, &make_base, &log_path)?;
-      // Parallel install races on the .dt to .d depfile conversion because
-      // several sub-makes include the same sysd-rules and each moves the
-      // same files. Nothing is compiled here anyway.
+      // Reading depfiles converts each .dt to .d in place, which parallel
+      // sub-makes race on. Nothing is stale right after the build, so the
+      // install needs no dependency information.
       let mut install_args = Vec::from(make_base);
-      install_args.extend(["install", "-j1", &dest_arg]);
+      install_args.extend(["install", "no_deps=t", &dest_arg]);
       Self::make_logged(&build, &install_args, &log_path)?;
       Self::install_tree(&dest, out)?;
 
