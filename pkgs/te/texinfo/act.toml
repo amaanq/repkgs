@@ -1,0 +1,15 @@
+track   = "gnu:texinfo"
+fetch   = { url = "https://ftp.gnu.org/gnu/texinfo/texinfo-{version}.tar.xz" }
+with    = [ "autotools" ]
+deps    = [ "perl", "ncurses" ]
+tools   = [ "perl" ]
+patches = [ "relocatable.patch" ]
+
+[test]
+bin = [ "makeinfo", "texi2any", "texindex" ]
+
+[steps.before]
+"autotools.configure" = [ "texinfo.keep-man" ]
+
+[autotools]
+outOfTree = false
