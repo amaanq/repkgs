@@ -312,6 +312,12 @@ fn relocate(attrs: &Attrs, spec: &Spec, ctx: &Ctx, debug: &str) -> io::Result<()
       if let Some(path) = sdk {
          shown.push(format!("--sdk {}", path.display()));
       }
+      let loader = Some(text(platform, "interp"))
+         .filter(|path| !path.is_empty())
+         .map(Path::new);
+      if let Some(path) = loader {
+         shown.push(format!("--loader {}", path.display()));
+      }
 
       echo(&format!(
          "reloc-fixup {} --dest {} {}",
@@ -319,7 +325,7 @@ fn relocate(attrs: &Attrs, spec: &Spec, ctx: &Ctx, debug: &str) -> io::Result<()
          ctx.dest,
          shown.join(" ")
       ));
-      fixup::run(out, Some(Path::new(&ctx.dest)), sdk, &denied)?;
+      fixup::run(out, Some(Path::new(&ctx.dest)), sdk, loader, &denied)?;
    }
    Ok(())
 }

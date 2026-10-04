@@ -1,6 +1,7 @@
 use std::{
    collections::BTreeSet,
    fs::{
+      canonicalize,
       metadata,
       read,
       read_dir,
@@ -40,6 +41,8 @@ pub struct Context {
    pub dest:        PathBuf,
    pub sdk:         Option<PathBuf>,
    pub directories: BTreeSet<PathBuf>,
+   /// The dynamic loader's name and directory, the libc's.
+   pub loader:      Option<(String, PathBuf)>,
 }
 
 impl Context {
@@ -98,6 +101,7 @@ pub fn run(
    prefix: &Path,
    dest: Option<&Path>,
    sdk: Option<&Path>,
+   loader: Option<&Path>,
    denied_paths: &[String],
 ) -> io::Result<()> {
    if let Some(path) = dest
@@ -113,6 +117,21 @@ pub fn run(
       dest:        normalize(dest.unwrap_or(prefix)),
       sdk:         sdk.map(normalize),
       directories: BTreeSet::new(),
+      loader:      loader
+         .map(|path| {
+            let real = canonicalize(path)?;
+            let name = real
+               .file_name()
+               .ok_or_else(|| io::Error::other("the loader has no file name"))?
+               .to_string_lossy()
+               .into_owned();
+            let directory = real
+               .parent()
+               .ok_or_else(|| io::Error::other("the loader has no directory"))?
+               .to_path_buf();
+            io::Result::Ok((name, directory))
+         })
+         .transpose()?,
    };
    let mut denied = Vec::new();
    for path in denied_paths {
@@ -415,10 +434,8 @@ fn fix_runpath(
    }
    let mut direct = Vec::new();
    for (index, library) in needed.iter().enumerate() {
-      if library.name.contains('/')
-         || library.name.starts_with("ld-linux")
-         || library.name.starts_with("linux-vdso")
-      {
+      let loads = context.loader.as_ref();
+      if library.name.contains('/') || loads.is_some_and(|loader| loader.0 == library.name) {
          continue;
       }
       let found = search
@@ -430,7 +447,10 @@ fn fix_runpath(
                library.name
             ))
          })?;
-      if !search[found].path.join("libc.so.6").exists() {
+      let libc = loads.is_some_and(|loader| {
+         canonicalize(&search[found].path).is_ok_and(|directory| directory == loader.1)
+      });
+      if !libc {
          search[found].keep = false;
          direct.push((index, found));
       }
