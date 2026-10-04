@@ -526,6 +526,7 @@ impl Invocation {
          store.mask_output(&mut bytes, false);
          field(&mut hasher, bytes);
       }
+      prefetch(cache, store, &self.inputs)?;
       for path in &self.inputs {
          field(&mut hasher, store.input_id(path)?);
       }

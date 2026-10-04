@@ -8,16 +8,25 @@ use std::{
       var,
    },
    fs::{
+      Metadata,
       canonicalize,
       metadata,
       read,
    },
    io,
-   os::unix::fs::PermissionsExt as _,
+   os::unix::fs::{
+      MetadataExt as _,
+      PermissionsExt as _,
+   },
    path::{
       Component,
       Path,
       PathBuf,
+   },
+   time::{
+      Duration,
+      SystemTime,
+      UNIX_EPOCH,
    },
 };
 
@@ -231,6 +240,40 @@ impl Store {
    #[inline]
    pub fn remember(&mut self, path: String, identity: String) {
       self.identities.insert(path, identity);
+   }
+
+   /// The cache key for a file's identity, from everything `stat` says about
+   /// it, or None when it is a store path named by path, already known, or
+   /// changed within the last two seconds, finer than the kernel's timestamps.
+   #[must_use]
+   #[inline]
+   pub fn stamp_key(&self, path: &str) -> Option<String> {
+      if (is_store_path(path) && !self.content) || self.identities.contains_key(path) {
+         return None;
+      }
+      let meta = metadata(path).ok().filter(Metadata::is_file)?;
+      let settled = SystemTime::now().checked_sub(Duration::from_secs(2))?;
+      if meta.modified().ok()? >= settled
+         || UNIX_EPOCH.checked_add(Duration::new(
+            u64::try_from(meta.ctime()).ok()?,
+            u32::try_from(meta.ctime_nsec()).ok()?,
+         ))? >= settled
+      {
+         return None;
+      }
+      let mut hasher = Hasher::new();
+      for part in [
+         path.to_owned(),
+         self.output.clone(),
+         meta.dev().to_string(),
+         meta.ino().to_string(),
+         meta.len().to_string(),
+         format!("{}.{}", meta.mtime(), meta.mtime_nsec()),
+         format!("{}.{}", meta.ctime(), meta.ctime_nsec()),
+      ] {
+         field(&mut hasher, part);
+      }
+      Some(format!("i/{}", &hasher.finalize().to_hex()[..32]))
    }
 
    #[inline]
