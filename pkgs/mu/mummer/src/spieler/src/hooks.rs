@@ -1,5 +1,6 @@
 //! `update.nu` beside an act.toml may export `resolve`, `files` or
-//! `verify` to replace that stage for its package.
+//! `verify` to replace that stage for its package, and `sources` to name
+//! downloads the pinned release pins beyond act.toml's.
 //!
 //! It runs in its own nu with this binary's directory on PATH (so
 //! `^spieler versions` and `^spieler get` serve it), gets its record as JSON
@@ -25,7 +26,7 @@ use std::{
 use serde::Serialize;
 use serde_json::Value;
 
-const STAGES: [&str; 3] = ["resolve", "files", "verify"];
+const STAGES: [&str; 4] = ["resolve", "sources", "files", "verify"];
 
 fn run_nu(code: &str, what: &str, arg: &str) -> io::Result<Value> {
    let mut path = OsString::new();

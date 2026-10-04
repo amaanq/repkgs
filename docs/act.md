@@ -118,5 +118,6 @@ hash    = "sha256-tKLefmGqB2HVUMILJ7Gqa0v9GH7fqv64d5S5kK1tcYU="
 
 `version`, and `date`, `rev` and `tag` where they apply (`tag` only when act.toml's can not
 produce it). One source has `hash`, several a `[hash]` table by name. `sys` lists the set's
-libraries the package's lock files link, `[vars]` the other values its urls use, and `[patches]`
-the file each url entry of `patches` was downloaded as.
+libraries the package's lock files link, `[vars]` the other values its urls use, `[patches]`
+the file each url entry of `patches` was downloaded as, and `[sources]` the sources an update.nu
+`sources` hook named for the pin, `{ url, name }` each, which join act.toml's.

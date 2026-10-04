@@ -122,6 +122,7 @@ Most packages need nothing beyond `act.toml`. Where a stage needs code,
 
 ```nu
 export def resolve [pkg: record]: nothing -> table    # [{version tag? date? prerelease …}], extra keys land in act.lock
+export def sources [pin: record]: nothing -> record   # {name: {url name?}}, downloads the release pins beyond act.toml's
 export def files   [entry: record]: nothing -> record # {relative path: content}, written after the pin
 export def verify  [entry: record]: nothing -> record # instead of nix-build
 ```
@@ -131,6 +132,10 @@ A hook runs in a fresh `nu` with spieler's directory on PATH, so `^spieler versi
 `$env.SPIELER_ARG`, answers in JSON on stdout and shows stderr. Hooks write no files themselves and
 run only after a watch fired, and any other export is an error. `spieler list` shows which stages a
 package replaces.
+
+`sources` gets the pin with its tag and answers the extra sources that release names, which spieler
+hashes, keeping the hash of a url that did not change, and records in act.lock's `[sources]` beside
+their `[hash]` entries.
 
 The tree's hooks show the range. llvm's `files` regenerates the per-cpu compiler-rt source lists
 from the new tarball. rust-bootstrap's `resolve` follows the compiler rust's `src/stage0` names, and
