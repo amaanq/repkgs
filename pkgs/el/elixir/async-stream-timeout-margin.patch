@@ -1,0 +1,64 @@
+Subject: [PATCH] tests: give the async_stream timeout tests room under load
+
+On a saturated machine a 1 ms task can miss a 50 ms timeout and a
+100 ms task can beat it. A 1 s timeout against 5 s sleeps keeps both
+sides of the race decided while the slow task is still killed.
+---
+--- a/lib/elixir/test/elixir/task/supervisor_test.exs
++++ b/lib/elixir/test/elixir/task/supervisor_test.exs
+@@ -457,11 +457,11 @@
+     end
+ 
+     test "with timeout and :zip_input_on_exit set to true", %{supervisor: supervisor} do
+-      opts = Keyword.merge(@opts, zip_input_on_exit: true, on_timeout: :kill_task, timeout: 50)
++      opts = Keyword.merge(@opts, zip_input_on_exit: true, on_timeout: :kill_task, timeout: 1000)
+ 
+       assert supervisor
+-             |> Task.Supervisor.async_stream([1, 100], &sleep/1, opts)
+-             |> Enum.to_list() == [ok: 1, exit: {100, :timeout}]
++             |> Task.Supervisor.async_stream([1, 5000], &sleep/1, opts)
++             |> Enum.to_list() == [ok: 1, exit: {5000, :timeout}]
+     end
+ 
+     test "with outer halt on failure and :zip_input_on_exit", %{supervisor: supervisor} do
+--- a/lib/elixir/test/elixir/task_test.exs
++++ b/lib/elixir/test/elixir/task_test.exs
+@@ -883,9 +883,9 @@
+     end
+ 
+     test "streams an enumerable with ordered: false, on_timeout: :kill_task" do
+-      opts = [max_concurrency: 4, ordered: false, on_timeout: :kill_task, timeout: 50]
++      opts = [max_concurrency: 4, ordered: false, on_timeout: :kill_task, timeout: 1000]
+ 
+-      assert [100, 1, 100, 1]
++      assert [5000, 1, 5000, 1]
+              |> Task.async_stream(&sleep/1, opts)
+              |> Enum.to_list() == [ok: 1, ok: 1, exit: :timeout, exit: :timeout]
+ 
+@@ -1111,9 +1111,9 @@
+       end
+ 
+       test "with :on_timeout set to :kill_task" do
+-        opts = Keyword.merge(@opts, on_timeout: :kill_task, timeout: 50)
++        opts = Keyword.merge(@opts, on_timeout: :kill_task, timeout: 1000)
+ 
+-        assert [100, 1, 100, 1]
++        assert [5000, 1, 5000, 1]
+                |> Task.async_stream(&sleep/1, opts)
+                |> Enum.to_list() == [exit: :timeout, ok: 1, exit: :timeout, ok: 1]
+ 
+@@ -1121,11 +1121,11 @@
+       end
+ 
+       test "with timeout and :zip_input_on_exit set to true" do
+-        opts = Keyword.merge(@opts, zip_input_on_exit: true, on_timeout: :kill_task, timeout: 50)
++        opts = Keyword.merge(@opts, zip_input_on_exit: true, on_timeout: :kill_task, timeout: 1000)
+ 
+-        assert [1, 100]
++        assert [1, 5000]
+                |> Task.async_stream(&sleep/1, opts)
+-               |> Enum.to_list() == [ok: 1, exit: {100, :timeout}]
++               |> Enum.to_list() == [ok: 1, exit: {5000, :timeout}]
+       end
+ 
+       test "with outer halt on failure and :zip_input_on_exit" do
