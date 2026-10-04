@@ -12,3 +12,32 @@ export def msvc []: nothing -> nothing {
    x cc -o lua.exe lua.o lua54.lib
    x cc -o luac.exe luac.o ...$library
 }
+
+export def pc []: nothing -> nothing {
+   let version = (ctx).spec.version
+   let short   = ($version | split row "." | first 2 | str join ".")
+   let dir     = $"((ctx).out)/lib/pkgconfig"
+   let text    = [
+      "prefix=${pcfiledir}/../.."
+      "libdir=${prefix}/lib"
+      "includedir=${prefix}/include"
+      "INSTALL_BIN=${prefix}/bin"
+      "INSTALL_INC=${includedir}"
+      "INSTALL_LIB=${libdir}"
+      "INSTALL_MAN=${prefix}/share/man/man1"
+      ""
+      "Name: Lua"
+      "Description: An Extensible Extension Language"
+      $"Version: ($version)"
+      "Requires:"
+      "Libs: -L${libdir} -llua"
+      "Cflags: -I${includedir}"
+      ""
+   ] | str join "\n"
+
+   mkdir $dir
+   $text | save -f $"($dir)/lua.pc"
+   for name in [$"lua-($short)" $"lua($short)" $"lua($short | str replace . '')"] {
+      ^ln -sf lua.pc $"($dir)/($name).pc"
+   }
+}
