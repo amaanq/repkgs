@@ -9,7 +9,9 @@ use std::{
       read_to_string,
    },
    io,
+   mem,
    path::Path,
+   process::Command,
 };
 
 use mummer::{
@@ -126,6 +128,36 @@ impl Driver {
          Language::Fortran => &self.fc,
       }
    }
+
+   /// The linker command clang would run for `args`, which also names the
+   /// libraries clang adds itself.
+   fn linker_command(&self, language: Language, args: &[String]) -> Option<Vec<String>> {
+      let printed = Command::new(self.compiler(language))
+         .arg("-###")
+         .args(args)
+         .output()
+         .ok()?;
+      let text = String::from_utf8_lossy(&printed.stderr);
+      let line = text.lines().rev().find(|line| line.starts_with(" \""))?;
+      let mut words = Vec::new();
+      let mut word = String::new();
+      let mut quoted = false;
+      let mut characters = line.chars();
+      while let Some(character) = characters.next() {
+         match character {
+            '"' if quoted => {
+               words.push(mem::take(&mut word));
+               quoted = false;
+            },
+            '"' => quoted = true,
+            '\\' if quoted => word.extend(characters.next()),
+            _ if quoted => word.push(character),
+            _ => {},
+         }
+      }
+      Some(words)
+   }
+
    pub const fn format(&self) -> BinaryFormat {
       self.format
    }
@@ -292,8 +324,11 @@ impl Driver {
          BinaryFormat::Coff => return output,
       }
 
-      let mut link_args = user;
-      link_args.extend_from_slice(&self.package.ldflags);
+      let link_args = self.linker_command(language, &output).unwrap_or_else(|| {
+         let mut given = user;
+         given.extend_from_slice(&self.package.ldflags);
+         given
+      });
       let mut directories = Vec::new();
       let mut libraries = Vec::new();
       let mut runtime = cxx;
