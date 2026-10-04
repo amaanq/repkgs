@@ -8,6 +8,6 @@ expect "an upstream ELF keeps its DWARF"                       (section-in lib/u
 expect "an install entry copies a whole directory"             ($"($env.pkg)/share/data/file" | path exists)
 expect "a symlink into the output becomes relative"            ((^readlink $"($lib)/libabs.so") == "libhello.so")
 expect "a library copied from a dependency is not split again" (section-in lib/libcopied.so .gnu_debuglink)
-expect "a library copied from a dependency still finds libc"   (^readelf -d $"($lib)/libcopied.so" | str contains "sysroot")
+expect "a library copied from a dependency still finds libc"   (runpath lib/libcopied.so | any {|dir| $"($dir)/libc.so.6" | path exists })
 expect "libtool archives are deleted"                          (not ($"($lib)/libhello.la" | path exists))
 pass
