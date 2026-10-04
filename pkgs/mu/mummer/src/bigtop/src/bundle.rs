@@ -41,16 +41,6 @@ use mummer::{
 };
 use serde::Deserialize;
 
-const LIBC: [&str; 7] = [
-   "libc.so.6",
-   "libm.so.6",
-   "libdl.so.2",
-   "libpthread.so.0",
-   "librt.so.1",
-   "libresolv.so.2",
-   "libutil.so.1",
-];
-
 #[derive(Deserialize)]
 struct Attrs {
    package: String,
@@ -72,6 +62,8 @@ struct Tree<'attrs> {
    out:     &'attrs Path,
    lib:     PathBuf,
    closure: Vec<&'attrs str>,
+   /// Where the package's interpreter lives, every library there the host's.
+   libc:    PathBuf,
 }
 
 /// One output as a self-contained tree, the shape upstream binary tarballs
@@ -90,6 +82,18 @@ pub fn run() -> io::Result<()> {
       remove_dir_all(out.join("lib/debug"))?;
    }
    unwrap_launchers(&out.join("bin"))?;
+   let mut queue: Vec<PathBuf> = walk(out)?
+      .into_iter()
+      .filter(|entry| entry.kind == 'f')
+      .map(|entry| PathBuf::from(entry.path))
+      .collect();
+   let libc = queue
+      .iter()
+      .find_map(|file| interpreter_directory(file).transpose())
+      .transpose()?
+      .ok_or_else(|| {
+         io::Error::other("bundle: no program names an interpreter, so the host libc is unknown")
+      })?;
    let tree = Tree {
       out,
       lib: out.join("lib"),
@@ -99,13 +103,9 @@ pub fn run() -> io::Result<()> {
          .map(|member| member.path.as_str())
          .filter(|path| *path != attrs.package)
          .collect(),
+      libc,
    };
    create_dir_all(&tree.lib)?;
-   let mut queue: Vec<PathBuf> = walk(out)?
-      .into_iter()
-      .filter(|entry| entry.kind == 'f')
-      .map(|entry| PathBuf::from(entry.path))
-      .collect();
    let mut seen = BTreeSet::new();
    while let Some(file) = queue.pop() {
       if seen.insert(file.clone()) {
@@ -121,6 +121,17 @@ pub fn run() -> io::Result<()> {
       &format!("{} ELF files, {copied} in lib/", seen.len()),
    );
    Ok(())
+}
+
+/// The directory of the store interpreter `file` names, if it is a program.
+fn interpreter_directory(file: &Path) -> io::Result<Option<PathBuf>> {
+   let image = Image { bytes: read(file)? };
+   if !is_elf(&image) {
+      return Ok(None);
+   }
+   Ok(interpreter(&image, &segments(&image)?)?
+      .filter(|entry| names_store_path(&entry.value))
+      .and_then(|entry| Some(Path::new(&entry.value).parent()?.to_path_buf())))
 }
 
 /// Rewrites one file if it is a dynamic ELF, returns the libraries copied in
@@ -144,11 +155,8 @@ fn relink(tree: &Tree<'_>, file: &Path) -> io::Result<Vec<PathBuf>> {
    let mut copied = Vec::new();
    for entry in needed(&image, &segments)? {
       let name = &entry.value;
-      if resolves_inside(name, directory, tree.out) || name.contains("ld-linux") {
-         continue;
-      }
       let base = basename(name);
-      if LIBC.contains(&base) {
+      if resolves_inside(name, directory, tree.out) || tree.libc.join(base).exists() {
          continue;
       }
       let Some(from) = tree
