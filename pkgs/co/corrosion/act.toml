@@ -1,8 +1,9 @@
-tag   = "v{version}"
-track = "github:corrosion-rs/corrosion"
-fetch = { archive = true }
-with  = [ "cmake" ]
-tools = [ "rust" ]
+tag     = "v{version}"
+track   = "github:corrosion-rs/corrosion"
+fetch   = { archive = true }
+with    = [ "cmake" ]
+tools   = [ "rust" ]
+patches = [ "github:corrosion-rs/corrosion/commit/7dab832903ddfb0f644cbd014252d477e692012b" ]
 
 [steps]
 skip = [ "cmake.test" ]
