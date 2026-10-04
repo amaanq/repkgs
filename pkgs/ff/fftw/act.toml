@@ -9,3 +9,15 @@ flags = [ "--enable-threads", "CFLAGS=-O3 -fomit-frame-pointer -fstrict-aliasing
 [on.windows.autotools]
 flags     = [ "--with-combined-threads" ]
 makeFlags = [ "LDFLAGS=-no-undefined" ]
+
+[on.linux]
+deps = [ "libomp" ]
+
+[on.linux.autotools]
+flags = [ "--enable-openmp" ]
+
+[on.macos]
+deps = [ "libomp" ]
+
+[on.macos.autotools]
+flags = [ "--enable-openmp" ]
