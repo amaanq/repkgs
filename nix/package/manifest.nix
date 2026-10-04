@@ -45,7 +45,6 @@ let
     pathExists
     readDir
     readFile
-    removeAttrs
     replaceStrings
     split
     substring
@@ -154,31 +153,28 @@ let
     if match "(https://|github:|gitlab:).*" entry == null then
       entry
     else
-      (import ../act.nix dir).vendored.${entry}
+      vendored.${entry}
         or (throw "${where}: patch ${entry} is not vendored, run `spieler patch ${name}`");
   # a patch beside the act applies only where act.toml names it, so one left out is a mistake
-  named = map patchFile (
+  inherit ((import ../act.nix dir)) vendored;
+  named = map (entry: vendored.${entry} or entry) (
     (table.patches or [ ])
     ++ concatMap (when: table.on.${when}.patches or [ ]) (attrNames (table.on or { }))
   );
   # act.nix can hand a patch to something else, perl's PERL_CROSS_PATCH or a cratePatches entry
   nixText = if pathExists (dir + "/act.nix") then readFile (dir + "/act.nix") else "";
   mentioned = file: length (split (replaceStrings [ "." "+" ] [ "[.]" "[+]" ] file) nixText) > 1;
-  unlisted = filter (file: match ".*[.]patch" file != null && !elem file named && !mentioned file) (
-    attrNames (readDir dir)
-  );
-  base =
-    if unlisted != [ ] then
-      throw "${where}: ${concatStringsSep " " unlisted} sit beside the act but patches does not name them"
-    else
-      removeAttrs table [
-        "name"
-        "tag"
-        "track"
-        "fetch"
-        "on"
-        "extras"
-      ];
+  unlisted = filter (
+    file: match ".*[.](patch|diff)" file != null && !elem file named && !mentioned file
+  ) (attrNames (readDir dir));
+  base = removeAttrs table [
+    "name"
+    "tag"
+    "track"
+    "fetch"
+    "on"
+    "extras"
+  ];
 
   tree =
     spec:
@@ -253,7 +249,11 @@ let
         { }
     )
     // (
-      if fields ? patches then
+      if unlisted != [ ] then
+        {
+          patches = throw "${where}: ${concatStringsSep " " unlisted} sit beside the act but patches does not name them";
+        }
+      else if fields ? patches then
         { patches = map (entry: dir + "/${patchFile entry}") fields.patches; }
       else
         { }
