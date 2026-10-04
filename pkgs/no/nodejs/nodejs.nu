@@ -15,7 +15,7 @@ export def configure []: nothing -> nothing {
    # node_mksnapshot faults under qemu-loongarch64 on pointers with bits 40 to 63 set
    let snapshot = if $platform.cpu == "loongarch64" { [--without-node-snapshot] } else { [] }
    let shared   = ($bundled | each {|library| $"--shared-($library)" })
-   x python3 configure.py --prefix=/ --ninja ...$shared --with-intl=small-icu --without-corepack ...(cross-flags $platform) ...$snapshot
+   x python3 configure.py --prefix=/ --ninja ...$shared --with-intl=system-icu --openssl-use-def-ca-store --without-corepack ...(cross-flags $platform) ...$snapshot
 }
 
 export def build []: nothing -> nothing { x ninja -C out/Release $"-j((ctx).njobs)" }
