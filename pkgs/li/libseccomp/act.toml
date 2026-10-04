@@ -7,3 +7,6 @@ patches = [ "upstream-tests-tail-pid.patch" ]
 
 [only]
 os = [ "linux" ]
+
+[env]
+LIBSECCOMP_TSTCFG_JOBS = "0"
