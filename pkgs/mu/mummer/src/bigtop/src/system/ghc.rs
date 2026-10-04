@@ -35,16 +35,6 @@ use crate::{
 /// prefix from their own location, sh builtins only since PATH may be empty.
 const LOCATE_TOP: &str = "#!/bin/sh\ntop=$(cd \"${0%/*}/..\" && pwd)";
 
-/// The package db leaves these libraries to an ambient search path, so their
-/// lib dirs are named in the configs that link them.
-const LINKED: [(&str, &str); 5] = [
-   ("ghc-bignum", "gmp"),
-   ("ghc-internal", "gmp"),
-   ("rts", "libffi"),
-   ("rts", "numactl"),
-   ("terminfo", "ncurses"),
-];
-
 const LIBRARY_DIRS: [&str; 4] = [
    "library-dirs:",
    "dynamic-library-dirs:",
@@ -140,14 +130,54 @@ fn name_library_dirs(text: &str, lib: &str) -> String {
       .collect()
 }
 
+/// The words of one field of a package-db config, continuation lines included.
+fn field_words(text: &str, field: &str) -> Vec<String> {
+   let mut words = Vec::new();
+   let mut inside = false;
+   for line in text.lines() {
+      if let Some(rest) = line
+         .strip_prefix(field)
+         .and_then(|rest| rest.strip_prefix(':'))
+      {
+         inside = true;
+         words.extend(rest.split_whitespace().map(str::to_owned));
+      } else if inside && line.starts_with(char::is_whitespace) {
+         words.extend(line.split_whitespace().map(str::to_owned));
+      } else {
+         inside = false;
+      }
+   }
+   words
+}
+
+/// Names the lib dir of each dependency shipping a library a unit's
+/// `extra-libraries` asks for, which the package db otherwise leaves to an
+/// ambient search path.
 fn close_db(ctx: &Ctx, db: &Path) -> io::Result<()> {
-   for (config, dependency) in LINKED {
-      let Some(found) = ctx.deps.iter().find(|dep| dep.name == dependency) else {
-         continue;
-      };
-      let lib = format!("{}/lib", found.root);
-      for file in matching(&format!("{}/{config}-*.conf", db.display()), Kind::Files)? {
-         rewrite(&file, |text| name_library_dirs(&text, &lib))?;
+   for file in matching(&format!("{}/*.conf", db.display()), Kind::Files)? {
+      let mut libs = Vec::new();
+      for library in field_words(&read_to_string(&file)?, "extra-libraries") {
+         let shipping = ctx
+            .deps
+            .iter()
+            .map(|dep| format!("{}/lib", dep.root))
+            .find(|lib| {
+               ["so", "a"]
+                  .iter()
+                  .any(|kind| Path::new(lib).join(format!("lib{library}.{kind}")).exists())
+            });
+         if let Some(lib) = shipping
+            && !libs.contains(&lib)
+         {
+            libs.push(lib);
+         }
+      }
+      if !libs.is_empty() {
+         rewrite(&file, |text| {
+            libs
+               .iter()
+               .fold(text, |edited, lib| name_library_dirs(&edited, lib))
+         })?;
       }
    }
 
