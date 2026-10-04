@@ -28,7 +28,10 @@ use std::{
       PathBuf,
    },
    process::Command,
-   time::Instant,
+   time::{
+      Instant,
+      SystemTime,
+   },
 };
 
 use blake3::Hasher;
@@ -90,6 +93,7 @@ impl Invocation {
       let mut compile = false;
       let mut dynamic_too = false;
       let mut cacheable = true;
+      let mut directories = Vec::new();
       let mut files = Vec::new();
       let mut index = 0;
 
@@ -109,9 +113,10 @@ impl Invocation {
             "-hisuf" => interface_suffix = value().unwrap_or_default(),
             "-dynosuf" => dynamic_object = value().unwrap_or_default(),
             "-dynhisuf" => dynamic_interface = value().unwrap_or_default(),
-            "-dyno" | "-dynohi" | "-hiedir" | "-stubdir" | "-hidir" | "-odir" | "-dumpdir" => {
-               cacheable = false;
+            "-outputdir" | "-odir" | "-hidir" | "-stubdir" | "-dumpdir" => {
+               directories.extend(value());
             },
+            "-dyno" | "-dynohi" | "-hiedir" => cacheable = false,
             _ if argument == "-fwrite-ide-info" || argument.starts_with("-ddump") => {
                cacheable = false;
             },
@@ -151,6 +156,9 @@ impl Invocation {
          && !source.is_empty()
          && base.is_some()
          && relative_path(&output).is_ok()
+         && directories
+            .iter()
+            .all(|directory| Path::new(&output).starts_with(directory))
          && interface
             .as_deref()
             .is_none_or(|path| relative_path(path).is_ok());
@@ -290,6 +298,7 @@ pub fn run_ghc(args: &[String], socket: &Path) -> io::Result<i32> {
       Err(miss) => miss,
    };
    let explained = format!("{label} {miss}");
+   let before = modified(&invocation.outputs);
    let result = run(
       OsStr::new(compiler),
       arguments,
@@ -314,6 +323,7 @@ pub fn run_ghc(args: &[String], socket: &Path) -> io::Result<i32> {
       &key,
       &invocation,
       &paths,
+      &before,
       &result.stderr,
    );
    let outcome = match stored {
@@ -399,25 +409,25 @@ fn store_result(
    request: &str,
    invocation: &Invocation,
    inputs: &[String],
+   before: &[Option<SystemTime>],
    diagnostics: &[u8],
 ) -> io::Result<()> {
+   let after = modified(&invocation.outputs);
    let manifest = Manifest::build(cache, store, inputs, &[], &[])?;
    let key = manifest.result_key(request)?;
    let mut artifacts = Vec::new();
 
    for (position, path) in invocation.outputs.iter().enumerate() {
-      let bytes = match read(path) {
-         Ok(mut bytes) => {
-            store.mask_output(&mut bytes, false);
-            bytes
-         },
-         Err(error)
-            if error.kind() == io::ErrorKind::NotFound && position >= invocation.required =>
-         {
-            continue;
-         },
-         Err(error) => return Err(io::Error::other(format!("{path}: {error}"))),
-      };
+      if after[position].is_none() || after[position] == before[position] {
+         if position < invocation.required {
+            return Err(io::Error::other(format!(
+               "{path} was not written by this compile"
+            )));
+         }
+         continue;
+      }
+      let mut bytes = read(path).map_err(|error| io::Error::other(format!("{path}: {error}")))?;
+      store.mask_output(&mut bytes, false);
       let hash = digest(&bytes);
       cache.put(&format!("b/{hash}"), &bytes)?;
       artifacts.push(Artifact {
@@ -430,6 +440,15 @@ fn store_result(
    cache.put(&format!("o/{key}"), &serde_json::to_vec(&artifacts)?)?;
    cache.put(&format!("e/{key}"), diagnostics)?;
    manifest.publish(cache, request)
+}
+
+/// Modification times, so only what the compile wrote is stored, whatever
+/// the output flags made of the paths predicted from `-o`.
+fn modified(paths: &[String]) -> Vec<Option<SystemTime>> {
+   paths
+      .iter()
+      .map(|path| metadata(path).and_then(|meta| meta.modified()).ok())
+      .collect()
 }
 
 fn replay(cache: &mut Client, store: &Store, key: &str) -> Result<(), Miss> {
