@@ -1,8 +1,11 @@
-track          = "gnu:gawk"
-fetch          = { url = "https://ftp.gnu.org/gnu/gawk/gawk-{version}.tar.xz" }
-with           = [ "autotools" ]
+track = "gnu:gawk"
+fetch = { url = "https://ftp.gnu.org/gnu/gawk/gawk-{version}.tar.xz" }
+with = [ "autotools" ]
 bootstrapTools = true
-patches        = [ "relocatable.patch", "https://cgit.git.savannah.gnu.org/cgit/gawk.git/patch/awk.h?id=bf85f8a3175af703597082d4c7e0abc2066a44d3" ]
+patches = [
+  "relocatable.patch",
+  "https://cgit.git.savannah.gnu.org/cgit/gawk.git/patch/awk.h?id=bf85f8a3175af703597082d4c7e0abc2066a44d3",
+]
 
 [test]
 bin = [ "gawk", "awk" ]
