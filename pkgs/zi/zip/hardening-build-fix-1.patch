@@ -1,4 +1,7 @@
-Help texts are data, not format strings (-Werror=format-security).
+From: Santiago Vila <sanvila@debian.org>
+Subject: Use format specifier %s to print strings, not the string itself
+Bug-Debian: https://bugs.debian.org/673476
+X-Debian-version: 3.0-5
 
 --- a/zip.c
 +++ b/zip.c
@@ -7,7 +10,7 @@ Help texts are data, not format strings (-Werror=format-security).
    for (i = 0; i < sizeof(text)/sizeof(char *); i++)
    {
 -    printf(text[i]);
-+    fputs(text[i], stdout);
++    printf("%s", text[i]);
      putchar('\n');
    }
  #ifdef DOS
@@ -16,7 +19,7 @@ Help texts are data, not format strings (-Werror=format-security).
    for (i = 0; i < sizeof(cryptnote)/sizeof(char *); i++)
    {
 -    printf(cryptnote[i]);
-+    fputs(cryptnote[i], stdout);
++    printf("%s", cryptnote[i]);
      putchar('\n');
    }
    ++i;  /* crypt support means there IS at least one compilation option */

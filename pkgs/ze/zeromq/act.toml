@@ -4,8 +4,8 @@ fetch = { asset = "zeromq-{version}.tar.gz" }
 with = [ "cmake" ]
 deps = [ "libsodium" ]
 patches = [
-  "upstream-nothrow-include-new.patch",
-  "upstream-afunix-on-windows.patch",
+  "github:zeromq/libzmq/commit/2e8a6ccb414ca79636392604893c79c3b0d00dc4",
+  "github:zeromq/libzmq/commit/aa885c5a154256612108636b0fb22f44ae0e247a",
   "algorithm-include.patch",
 ]
 

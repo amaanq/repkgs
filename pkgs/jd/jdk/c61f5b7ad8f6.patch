@@ -1,9 +1,18 @@
-`__` is a macro for `masm->`, so `__ FLOAT_TYPE::x` reads `masm->FLOAT_TYPE::x`: gcc accepts
-that, clang does not. Spelled out as C2_MacroAssembler::FLOAT_TYPE::x, like mainline openjdk.
+From c61f5b7ad8f6f9a00bf0161e4c2c6e6e5c6b3463 Mon Sep 17 00:00:00 2001
+From: Guoxiong Li <gli@openjdk.org>
+Date: Thu, 6 Aug 2026 13:40:03 +0000
+Subject: [PATCH] 8389581: RISC-V: building fails with clang toolchain
 
---- a/src/hotspot/cpu/riscv/riscv.ad	2026-09-11 09:52:30.588079637 +0200
-+++ b/src/hotspot/cpu/riscv/riscv.ad	2026-09-11 09:52:30.593079708 +0200
-@@ -7578,7 +7578,7 @@
+Reviewed-by: fyang, dzhang
+---
+ src/hotspot/cpu/riscv/riscv.ad | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/src/hotspot/cpu/riscv/riscv.ad b/src/hotspot/cpu/riscv/riscv.ad
+index 3bb4094a8163..43590e89c521 100644
+--- a/src/hotspot/cpu/riscv/riscv.ad
++++ b/src/hotspot/cpu/riscv/riscv.ad
+@@ -7520,7 +7520,7 @@ instruct maxF_reg_reg(fRegF dst, fRegF src1, fRegF src2, rFlagsReg cr) %{
    ins_encode %{
      __ minmax_fp(as_FloatRegister($dst$$reg),
                   as_FloatRegister($src1$$reg), as_FloatRegister($src2$$reg),
@@ -12,7 +21,7 @@ that, clang does not. Spelled out as C2_MacroAssembler::FLOAT_TYPE::x, like main
    %}
  
    ins_pipe(pipe_class_default);
-@@ -7609,7 +7609,7 @@
+@@ -7551,7 +7551,7 @@ instruct minF_reg_reg(fRegF dst, fRegF src1, fRegF src2, rFlagsReg cr) %{
    ins_encode %{
      __ minmax_fp(as_FloatRegister($dst$$reg),
                   as_FloatRegister($src1$$reg), as_FloatRegister($src2$$reg),
@@ -21,7 +30,7 @@ that, clang does not. Spelled out as C2_MacroAssembler::FLOAT_TYPE::x, like main
    %}
  
    ins_pipe(pipe_class_default);
-@@ -7640,7 +7640,7 @@
+@@ -7582,7 +7582,7 @@ instruct maxD_reg_reg(fRegD dst, fRegD src1, fRegD src2, rFlagsReg cr) %{
    ins_encode %{
      __ minmax_fp(as_FloatRegister($dst$$reg),
                   as_FloatRegister($src1$$reg), as_FloatRegister($src2$$reg),
@@ -30,7 +39,7 @@ that, clang does not. Spelled out as C2_MacroAssembler::FLOAT_TYPE::x, like main
    %}
  
    ins_pipe(pipe_class_default);
-@@ -7671,7 +7671,7 @@
+@@ -7613,7 +7613,7 @@ instruct minD_reg_reg(fRegD dst, fRegD src1, fRegD src2, rFlagsReg cr) %{
    ins_encode %{
      __ minmax_fp(as_FloatRegister($dst$$reg),
                   as_FloatRegister($src1$$reg), as_FloatRegister($src2$$reg),
@@ -39,7 +48,7 @@ that, clang does not. Spelled out as C2_MacroAssembler::FLOAT_TYPE::x, like main
    %}
  
    ins_pipe(pipe_class_default);
-@@ -8661,7 +8661,7 @@
+@@ -8695,7 +8695,7 @@ instruct min_HF_reg(fRegF dst, fRegF src1, fRegF src2, rFlagsReg cr)
  
    ins_encode %{
      __ minmax_fp($dst$$FloatRegister, $src1$$FloatRegister, $src2$$FloatRegister,
@@ -48,7 +57,7 @@ that, clang does not. Spelled out as C2_MacroAssembler::FLOAT_TYPE::x, like main
    %}
    ins_pipe(pipe_class_default);
  %}
-@@ -8691,7 +8691,7 @@
+@@ -8725,7 +8725,7 @@ instruct max_HF_reg(fRegF dst, fRegF src1, fRegF src2, rFlagsReg cr)
  
    ins_encode %{
      __ minmax_fp($dst$$FloatRegister, $src1$$FloatRegister, $src2$$FloatRegister,

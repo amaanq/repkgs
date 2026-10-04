@@ -2,7 +2,7 @@ track   = "github:pnggroup/libpng"
 fetch   = { url = "https://downloads.sourceforge.net/libpng/libpng-{version}.tar.xz" }
 with    = [ "cmake" ]
 deps    = [ "zlib" ]
-patches = [ "upstream-cmake-install-pc-when-generated.patch" ]
+patches = [ "github:pnggroup/libpng/pull/924" ]
 
 [cmake.defs]
 PNG_STATIC = false
