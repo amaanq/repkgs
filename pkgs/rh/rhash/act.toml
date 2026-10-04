@@ -8,5 +8,5 @@ abi = [ "gnu", "apple" ]
 
 [make]
 buildTarget    = [ "lib-shared" ]
-configureFlags = [ "--enable-lib-shared", "--disable-gettext" ]
+configureFlags = [ "--enable-lib-shared", "--disable-gettext", "--disable-shani" ]
 installTarget  = [ "-C", "librhash", "install-lib-shared", "install-lib-headers" ]
