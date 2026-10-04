@@ -177,6 +177,27 @@ pub fn prefetch(cache: &mut Client, store: &mut Store, paths: &[String]) -> io::
          store.remember(path.to_owned(), value.to_string());
       }
    }
+
+   let mut stamped = Vec::new();
+   let mut keys = Vec::new();
+   for path in paths {
+      if let Some(key) = store.stamp_key(path) {
+         stamped.push(path);
+         keys.push(key);
+      }
+   }
+   let found = cache.get_many(&keys)?;
+   for ((path, key), cached) in stamped.into_iter().zip(&keys).zip(found) {
+      if let Some(identity) = cached.and_then(|bytes| String::from_utf8(bytes).ok()) {
+         store.remember(path.to_owned(), identity);
+         continue;
+      }
+      let Ok(identity) = store.input_id(path) else {
+         continue;
+      };
+      cache.put(key, identity.as_bytes())?;
+      store.remember(path.to_owned(), identity);
+   }
    Ok(())
 }
 
