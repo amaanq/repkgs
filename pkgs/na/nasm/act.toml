@@ -6,5 +6,6 @@ tools = [ "perl" ]
 test  = false
 
 # Makefile.in names win/manifest.rc relative to the build directory, which has no win/
+patches = [ "output-oob-fix.patch" ]
 [on.windows.autotools]
 outOfTree = false

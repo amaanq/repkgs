@@ -1,8 +1,9 @@
-tag   = "v{version}"
-track = "github:git/git"
-fetch = { url = "https://www.kernel.org/pub/software/scm/git/git-{version}.tar.xz" }
-with  = [ "autotools", "cargo" ]
-deps  = [ "zlib", "curl", "expat", "pcre2", "openssl" ]
+tag     = "v{version}"
+track   = "github:git/git"
+fetch   = { url = "https://www.kernel.org/pub/software/scm/git/git-{version}.tar.xz" }
+with    = [ "autotools", "cargo" ]
+deps    = [ "zlib", "curl", "expat", "pcre2", "openssl" ]
+patches = [ "relocatable.patch" ]
 
 [steps.phases]
 

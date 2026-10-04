@@ -1,8 +1,9 @@
-tag   = "v{version}"
-track = "github:libunwind/libunwind"
-fetch = { asset = "libunwind-{version}.tar.gz" }
-with  = [ "autotools" ]
-deps  = [ "xz", "zlib" ]
+tag     = "v{version}"
+track   = "github:libunwind/libunwind"
+fetch   = { asset = "libunwind-{version}.tar.gz" }
+with    = [ "autotools" ]
+deps    = [ "xz", "zlib" ]
+patches = [ "upstream-test-runner-relative.patch" ]
 
 [only]
 os = [ "linux" ]

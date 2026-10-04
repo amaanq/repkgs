@@ -25,6 +25,7 @@ tools = [ "bison", "cmake", "flex" ]
 test = false
 
 # the fork carries the CA and dynamic-derivation fixes this set relies on (nix/nix/default.nix)
+patches = [ "relocatable.patch", "sandbox-shell-undef.patch" ]
 [track]
 from = "github:Mic92/nix-1?branch=repkgs"
 # what the branch calls itself in .version, its own tags run past 2.90

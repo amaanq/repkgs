@@ -1,8 +1,9 @@
-tag   = "v{version}"
-track = "github:luarocks/luarocks"
-fetch = { url = "https://luarocks.github.io/luarocks/releases/luarocks-{version}.tar.gz" }
-with  = [ "make" ]
-deps  = [ "lua", "unzip" ]
+tag     = "v{version}"
+track   = "github:luarocks/luarocks"
+fetch   = { url = "https://luarocks.github.io/luarocks/releases/luarocks-{version}.tar.gz" }
+with    = [ "make" ]
+deps    = [ "lua", "unzip" ]
+patches = [ "relocatable.patch" ]
 
 [test]
 bin = [ "luarocks", "luarocks-admin" ]

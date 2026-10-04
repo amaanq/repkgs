@@ -1,7 +1,15 @@
 track = 'generic:freetype?url=https://download.savannah.gnu.org/releases/freetype/&regex=freetype-(\d[0-9.]*)\.tar\.xz'
 fetch = { url = "https://download.savannah.gnu.org/releases/freetype/freetype-{version}.tar.xz" }
-with  = [ "meson" ]
-deps  = [ "zlib", "libpng", "bzip2" ]
+with = [ "meson" ]
+deps = [ "zlib", "libpng", "bzip2" ]
+patches = [
+  "01-truetype-shz-limit-heap-buffer-overflow-part1.patch",
+  "02-truetype-shz-limit-heap-buffer-overflow-part2.patch",
+  "03-truetype-iup-integer-overflow.patch",
+  "04-truetype-variation-handling-signedness-mismatch.patch",
+  "05-ftobjs-formatting.patch",
+  "06-sub-byte-bitmaps-heap-buffer-over-read.patch",
+]
 
 [meson.defs]
 brotli   = "disabled"

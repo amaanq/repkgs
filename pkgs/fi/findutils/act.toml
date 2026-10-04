@@ -2,6 +2,7 @@ track          = "gnu:findutils"
 fetch          = { url = "https://ftp.gnu.org/gnu/findutils/findutils-{version}.tar.xz" }
 with           = [ "autotools" ]
 bootstrapTools = true
+patches        = [ "relocatable.patch" ]
 
 [test]
 bin = [ "find", "xargs" ]

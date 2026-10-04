@@ -1,7 +1,8 @@
-tag   = "v{version}"
-track = "github:laurikari/tre"
-fetch = { asset = "tre-{version}.tar.gz" }
-with  = [ "autotools" ]
+tag     = "v{version}"
+track   = "github:laurikari/tre"
+fetch   = { asset = "tre-{version}.tar.gz" }
+with    = [ "autotools" ]
+patches = [ "upstream-llp64-align.patch", "upstream-mingw-wchar.patch" ]
 
 [autotools]
 flags = [ "--disable-agrep", "--enable-static" ]

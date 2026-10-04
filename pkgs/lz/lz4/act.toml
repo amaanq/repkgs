@@ -1,6 +1,7 @@
-tag   = "v{version}"
-fetch = { archive = true }
-with  = [ "cmake" ]
+tag     = "v{version}"
+fetch   = { archive = true }
+with    = [ "cmake" ]
+patches = [ "CVE-2025-62813.patch" ]
 
 [track]
 from  = "github:lz4/lz4"

@@ -2,6 +2,7 @@ track          = "gnu:diffutils"
 fetch          = { url = "https://ftp.gnu.org/gnu/diffutils/diffutils-{version}.tar.xz" }
 with           = [ "autotools" ]
 bootstrapTools = true
+patches        = [ "upstream-strptime-prototypes.patch" ]
 
 [test]
 bin      = [ "diff", "cmp" ]

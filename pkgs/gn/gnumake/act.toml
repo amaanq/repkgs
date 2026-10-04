@@ -2,6 +2,7 @@ track          = "gnu:make"
 fetch          = { url = "https://ftp.gnu.org/gnu/make/make-{version}.tar.gz" }
 with           = [ "autotools" ]
 bootstrapTools = true
+patches        = [ "relocatable.patch" ]
 
 [test]
 bin      = [ "make" ]

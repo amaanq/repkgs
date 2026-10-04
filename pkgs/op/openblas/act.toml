@@ -1,7 +1,8 @@
-tag   = "v{version}"
-track = "github:OpenMathLib/OpenBLAS"
-fetch = { asset = "OpenBLAS-{version}.tar.gz" }
-with  = [ "make" ]
+tag     = "v{version}"
+track   = "github:OpenMathLib/OpenBLAS"
+fetch   = { asset = "OpenBLAS-{version}.tar.gz" }
+with    = [ "make" ]
+patches = [ "upstream-power-integrated-as.patch" ]
 
 [only]
 os = [ "linux" ]

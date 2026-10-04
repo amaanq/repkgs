@@ -29,6 +29,8 @@ let
   inherit (builtins)
     all
     attrNames
+    concatMap
+    concatStringsSep
     elem
     filter
     foldl'
@@ -36,12 +38,15 @@ let
     isBool
     isList
     isString
+    length
     listToAttrs
     mapAttrs
     match
     pathExists
     readDir
+    readFile
     removeAttrs
+    replaceStrings
     split
     substring
     ;
@@ -144,7 +149,6 @@ let
   matching = when: all holds (filter isString (split "[+]" when));
   overlays = map (when: table.on.${when}) (filter matching (attrNames (table.on or { })));
 
-  patchFiles = filter (file: match ".*[.]patch" file != null) (attrNames (readDir dir));
   patchFile =
     entry:
     if match "(https://|github:|gitlab:).*" entry == null then
@@ -152,16 +156,29 @@ let
     else
       (import ../act.nix dir).vendored.${entry}
         or (throw "${where}: patch ${entry} is not vendored, run `spieler patch ${name}`");
+  # a patch beside the act applies only where act.toml names it, so one left out is a mistake
+  named = map patchFile (
+    (table.patches or [ ])
+    ++ concatMap (when: table.on.${when}.patches or [ ]) (attrNames (table.on or { }))
+  );
+  # act.nix can hand a patch to something else, perl's PERL_CROSS_PATCH or a cratePatches entry
+  nixText = if pathExists (dir + "/act.nix") then readFile (dir + "/act.nix") else "";
+  mentioned = file: length (split (replaceStrings [ "." "+" ] [ "[.]" "[+]" ] file) nixText) > 1;
+  unlisted = filter (file: match ".*[.]patch" file != null && !elem file named && !mentioned file) (
+    attrNames (readDir dir)
+  );
   base =
-    removeAttrs table [
-      "name"
-      "tag"
-      "track"
-      "fetch"
-      "on"
-      "extras"
-    ]
-    // (if table ? patches || patchFiles == [ ] then { } else { patches = patchFiles; });
+    if unlisted != [ ] then
+      throw "${where}: ${concatStringsSep " " unlisted} sit beside the act but patches does not name them"
+    else
+      removeAttrs table [
+        "name"
+        "tag"
+        "track"
+        "fetch"
+        "on"
+        "extras"
+      ];
 
   tree =
     spec:

@@ -1,6 +1,7 @@
-track = 'generic:lua?url=https://www.lua.org/ftp/&regex=lua-(5\.4\.\d+)\.tar\.gz'
-fetch = { url = "https://www.lua.org/ftp/lua-{version}.tar.gz" }
-with  = [  ]
+track   = 'generic:lua?url=https://www.lua.org/ftp/&regex=lua-(5\.4\.\d+)\.tar\.gz'
+fetch   = { url = "https://www.lua.org/ftp/lua-{version}.tar.gz" }
+with    = [  ]
+patches = [ "lua-shared.patch", "relocatable.patch" ]
 
 [test]
 bin     = [ "lua", "luac" ]

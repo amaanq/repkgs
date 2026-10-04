@@ -1,6 +1,7 @@
-track = "generic:attr?url=https://download.savannah.nongnu.org/releases/attr/"
-fetch = { url = "https://download.savannah.nongnu.org/releases/attr/attr-{version}.tar.gz" }
-with  = [ "autotools" ]
+track   = "generic:attr?url=https://download.savannah.nongnu.org/releases/attr/"
+fetch   = { url = "https://download.savannah.nongnu.org/releases/attr/attr-{version}.tar.gz" }
+with    = [ "autotools" ]
+patches = [ "relocatable.patch" ]
 
 [test]
 bin = [ "getfattr", "setfattr", "attr" ]

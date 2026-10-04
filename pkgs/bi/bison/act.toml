@@ -3,6 +3,7 @@ fetch          = { url = "https://ftp.gnu.org/gnu/bison/bison-{version}.tar.xz" 
 with           = [ "autotools" ]
 deps           = [ "m4" ]
 bootstrapTools = true
+patches        = [ "relocatable.patch" ]
 
 [test]
 separate = true

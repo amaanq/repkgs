@@ -4,5 +4,6 @@ fetch = { url = "https://github.com/google/brotli/archive/refs/tags/v{version}.t
 with  = [ "cmake" ]
 
 # curl links brotli, and the full cmake links curl
+patches = [ "upstream-loongarch-model-attr.patch" ]
 [cmake]
 tool = "cmake-bootstrap"

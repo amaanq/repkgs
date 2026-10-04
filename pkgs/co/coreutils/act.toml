@@ -2,6 +2,7 @@ track          = "gnu:coreutils"
 fetch          = { url = "https://ftp.gnu.org/gnu/coreutils/coreutils-{version}.tar.xz" }
 with           = [ "autotools" ]
 bootstrapTools = true
+patches        = [ "relocatable.patch" ]
 
 [test]
 bin = [ "ls", "cp", "install", "sort" ]
