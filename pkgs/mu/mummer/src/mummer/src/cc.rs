@@ -86,6 +86,7 @@ struct Invocation {
    inputs:    Vec<String>,
    output:    PathBuf,
    depfile:   Option<PathBuf>,
+   linkfile:  Option<PathBuf>,
    action:    Action,
    query:     bool,
    cacheable: bool,
@@ -106,6 +107,7 @@ impl Invocation {
          inputs: Vec::new(),
          output: PathBuf::new(),
          depfile: None,
+         linkfile: None,
          action: Action::Link,
          query: false,
          cacheable: true,
@@ -206,7 +208,6 @@ impl Invocation {
                   && ![
                      "-Map",
                      "--print-map",
-                     "--dependency-file",
                      "--out-implib",
                      "--trace",
                      "--verbose",
@@ -235,6 +236,7 @@ impl Invocation {
          }
          index += if consumed { 2 } else { 1 };
       }
+      invocation.linkfile = given_link_depfile(&scanned).map(PathBuf::from);
       if matches!(
          invocation.action,
          Action::Compile | Action::Precompile | Action::Assembly | Action::Preprocess
@@ -279,6 +281,7 @@ impl Invocation {
       invocation.cacheable &= !invocation.query
          && invocation.output != Path::new("/dev/null")
          && invocation.action != Action::Other
+         && (invocation.linkfile.is_none() || invocation.links())
          && (!header || precompile)
          && (precompile || !extension.is_some_and(|found| found == "pch" || found == "gch"));
       invocation.read_precompiled();
@@ -728,12 +731,11 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    if invocation.stdout {
       arguments.extend(["-o".to_owned(), output_path.to_string_lossy().into_owned()]);
    }
-   if invocation.links() {
-      arguments.push(format!(
-         "-Wl,--dependency-file={}",
-         link_dependency.path().display()
-      ));
-   }
+   let link_file = if invocation.links() {
+      link_depfile(&mut arguments, link_dependency.path())
+   } else {
+      link_dependency.path().to_path_buf()
+   };
    let result = {
       let mut link = |args: &[String]| {
          run(
@@ -745,12 +747,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
          )
       };
       if invocation.links() && driver.format() == BinaryFormat::Elf {
-         settled_link(
-            &invocation.output,
-            &mut arguments,
-            link_dependency.path(),
-            &mut link,
-         )?
+         settled_link(&invocation.output, &mut arguments, &link_file, &mut link)?
       } else {
          link(&arguments)?
       }
@@ -769,7 +766,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       };
       let mut inputs = parse_depfile(&dependencies);
       if invocation.links() {
-         let link_text = read_to_string(link_dependency.path())?;
+         let link_text = read_to_string(&link_file)?;
          if link_text.is_empty() {
             return Ok(false);
          }
@@ -808,6 +805,16 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
             let mut dep_bytes = store.mask_for_replay(&dependencies).into_bytes();
             store.mask_output(&mut dep_bytes, false);
             cache.put(&format!("d/{key}"), &dep_bytes)?;
+         }
+         if let Some(ref given) = invocation.linkfile {
+            let text = read_to_string(given)?;
+            let target = format!("{}:", invocation.output.display());
+            let body = text
+               .strip_prefix(&target)
+               .map_or_else(|| text.clone(), |rest| format!("<output>:{rest}"));
+            let mut link_bytes = store.mask_for_replay(&body).into_bytes();
+            store.mask_output(&mut link_bytes, false);
+            cache.put(&format!("l/{key}"), &link_bytes)?;
          }
       }
       let mut diagnostics = result.stderr.clone();
@@ -916,20 +923,22 @@ fn run_uncached(
    })
 }
 
-/// The linker dependency file `args` already name, or `ours`, added to them.
-fn link_depfile(args: &mut Vec<String>, ours: &Path) -> PathBuf {
-   for (index, arg) in args.iter().enumerate() {
-      let given = arg
-         .strip_prefix("-Wl,--dependency-file=")
+fn given_link_depfile(args: &[String]) -> Option<&str> {
+   args.iter().enumerate().find_map(|(index, arg)| {
+      arg.strip_prefix("-Wl,--dependency-file=")
          .or_else(|| arg.strip_prefix("-Wl,--dependency-file,"))
          .or_else(|| {
             (index > 0 && args[index - 1] == "-Xlinker")
                .then(|| arg.strip_prefix("--dependency-file="))
                .flatten()
-         });
-      if let Some(path) = given {
-         return PathBuf::from(path);
-      }
+         })
+   })
+}
+
+/// The linker dependency file `args` already name, or `ours`, added to them.
+fn link_depfile(args: &mut Vec<String>, ours: &Path) -> PathBuf {
+   if let Some(path) = given_link_depfile(args) {
+      return PathBuf::from(path);
    }
    args.push(format!("-Wl,--dependency-file={}", ours.display()));
    ours.to_path_buf()
@@ -974,6 +983,7 @@ fn cached(
       format!("o/{key}"),
       format!("d/{key}"),
       format!("e/{key}"),
+      format!("l/{key}"),
    ];
    let mut objects = cache.get_many(&keys)?.into_iter();
    let Some(Some(status_bytes)) = objects.next() else {
@@ -988,6 +998,7 @@ fn cached(
    let Some(Some(mut diagnostics)) = objects.next() else {
       return Err(Miss::ObjectGone);
    };
+   let linked = objects.next().flatten();
    if status == 0 {
       let Some(mut bytes) = object else {
          return Err(Miss::ObjectGone);
@@ -1015,6 +1026,19 @@ fn cached(
       }
       if let (Some(path), Some(text)) = (invocation.depfile.as_ref(), dep_text.as_ref()) {
          write_file(path, text.as_bytes(), None)?;
+      }
+      if let Some(ref given) = invocation.linkfile {
+         let Some(mut link_bytes) = linked else {
+            return Err(Miss::ObjectGone);
+         };
+         store.mask_output(&mut link_bytes, true);
+         let raw = String::from_utf8(link_bytes).map_err(io::Error::other)?;
+         let text = store.resolve_all(&raw);
+         let target = format!("{}:", invocation.output.display());
+         let restored = text
+            .strip_prefix("<output>:")
+            .map_or_else(|| text.clone(), |rest| format!("{target}{rest}"));
+         write_file(given, restored.as_bytes(), None)?;
       }
    }
    store.mask_output(&mut diagnostics, true);
