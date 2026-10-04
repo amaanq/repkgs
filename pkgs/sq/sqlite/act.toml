@@ -10,5 +10,6 @@ test  = false
 configureFlags = [
   "--enable-all",
   "--enable-column-metadata",
-  "CFLAGS=-DSQLITE_ENABLE_UNLOCK_NOTIFY",
+  "--enable-update-limit",
+  "CFLAGS=-DSQLITE_ENABLE_UNLOCK_NOTIFY -DSQLITE_SECURE_DELETE -DSQLITE_MAX_VARIABLE_NUMBER=250000 -DSQLITE_MAX_EXPR_DEPTH=10000",
 ]
