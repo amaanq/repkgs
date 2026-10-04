@@ -57,7 +57,7 @@ where
       "out": if no_out { None } else { Some(&ctx.out) },
    });
    Ok(format!(
-      "probe/v4/{kind}/{}",
+      "probe/v5/{kind}/{}",
       hex(&serde_json::to_vec(&record)?)
    ))
 }
@@ -122,7 +122,8 @@ pub fn cmake_init(cache: &Path) -> io::Result<String> {
    let bracket = |text: &str| {
       let mut delimiter = String::new();
 
-      while text.contains(&format!("]{delimiter}]")) {
+      // a value ending in `]` would close `[[x]]]` one bracket early
+      while format!("{text}]").contains(&format!("]{delimiter}]")) {
          delimiter.push('=');
       }
 
