@@ -20,6 +20,7 @@ use std::{
       Path,
       PathBuf,
    },
+   process::Command,
    time::Instant,
 };
 
@@ -314,6 +315,31 @@ impl Invocation {
       Store::exact()
    }
 
+   /// The cc1 command clang runs for this compile, which also carries what its
+   /// config files and environment add, the output's own paths as tokens.
+   fn compile_job(&self, compiler: &str) -> io::Result<String> {
+      let printed = Command::new(compiler)
+         .arg("-###")
+         .args(&self.args)
+         .output()?;
+      if !printed.status.success() {
+         return Err(io::Error::other("clang -### refused the arguments"));
+      }
+      let mut job = String::from_utf8_lossy(&printed.stderr)
+         .lines()
+         .filter(|line| line.starts_with(" \""))
+         .collect::<Vec<_>>()
+         .join("\n");
+      let output = self.output.to_string_lossy();
+      if !output.is_empty() {
+         job = job.replace(output.as_ref(), "<output>");
+      }
+      if let Some(ref depfile) = self.depfile {
+         job = job.replace(depfile.to_string_lossy().as_ref(), "<depfile>");
+      }
+      Ok(job)
+   }
+
    const fn links(&self) -> bool {
       matches!(self.action, Action::Link | Action::LinkSource)
    }
@@ -448,6 +474,20 @@ impl Invocation {
       ] {
          field(&mut hasher, name);
          field(&mut hasher, var(name).unwrap_or_default());
+      }
+      if matches!(
+         self.action,
+         Action::Compile | Action::Precompile | Action::Assembly | Action::Preprocess
+      ) {
+         let mut bytes = self.compile_job(compiler)?.into_bytes();
+         store.mask_output(&mut bytes, false);
+         let job = String::from_utf8_lossy(&bytes);
+         field(&mut hasher, match toolchain {
+            Some(ref root) if self.action == Action::Precompile => {
+               job.replace(root.as_str(), "<toolchain>")
+            },
+            _ => store.key(&job),
+         });
       }
       if self.action != Action::Link {
          field(&mut hasher, "source");
