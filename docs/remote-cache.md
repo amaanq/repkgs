@@ -1,8 +1,6 @@
 # Remote compile cache
 
-mummerd's cache is per machine. With two or three more developers, a compile you already did
-should not run again on their machines. A remote tier behind mummerd shares it. Finished outputs
-travel through the circus binary cache instead, this is only about compiles.
+Out of the box, mummerd's cache is per machine. However, the remote tier behind mummerd shares it.
 
 ## Decided
 
