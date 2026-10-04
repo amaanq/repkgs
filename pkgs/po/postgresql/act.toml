@@ -1,7 +1,7 @@
 track = "generic:postgresql?url=https://ftp.postgresql.org/pub/source/&regex=v([0-9.]+)/"
 fetch = { url = "https://ftp.postgresql.org/pub/source/v{version}/postgresql-{version}.tar.bz2" }
 with  = [ "meson" ]
-deps  = [ "openssl", "zlib", "readline", "icu", "util-linux" ]
+deps  = [ "openssl", "zlib", "readline", "icu", "util-linux", "lz4", "zstd", "libxml2" ]
 tools = [ "bison", "flex", "perl" ]
 test  = false
 
@@ -13,9 +13,12 @@ test  = false
 
 [meson.defs]
 icu           = "enabled"
+libxml        = "enabled"
+lz4           = "enabled"
 readline      = "enabled"
 rpath         = false
 ssl           = "openssl"
 system_tzdata = "/usr/share/zoneinfo"
 uuid          = "e2fs"
 zlib          = "enabled"
+zstd          = "enabled"
