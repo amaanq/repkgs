@@ -3,3 +3,6 @@ fetch   = { url = "https://ftp.gnu.org/gnu/cpio/cpio-{version}.tar.bz2" }
 with    = [ "autotools" ]
 tools   = [ "autoconf", "texinfo" ]
 patches = [ "CVE-2026-66484.patch", "CVE-2026-66485.patch", "CVE-2026-66486.patch" ]
+
+[autotools]
+flags = [ "--with-rmt=/usr/sbin/rmt" ]
