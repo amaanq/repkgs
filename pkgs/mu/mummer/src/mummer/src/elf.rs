@@ -71,6 +71,39 @@ pub fn sections(image: &Image) -> io::Result<Vec<Section>> {
    Ok(sections)
 }
 
+/// The functions and data a symbol table of `kind` (2 for `.symtab`, 11 for
+/// `.dynsym`) defines with global or weak binding.
+#[inline]
+pub fn defined_symbols(image: &Image, sections: &[Section], kind: u32) -> io::Result<Vec<String>> {
+   let mut found = Vec::new();
+   for table in sections.iter().filter(|section| section.kind == kind) {
+      let strings = sections
+         .get(table.link)
+         .ok_or_else(|| io::Error::other("ELF symbol table names no string table"))?;
+      if table.stride < 24 {
+         return Err(io::Error::other("ELF symbol entry is too short"));
+      }
+      for start in (table.offset..table.offset + table.size).step_by(table.stride) {
+         let info = image.byte(start + 4)?;
+         let index = image.word(start + 6)?;
+         if index == 0
+            || index == 0xFFF1
+            || !matches!(info >> 4_u8, 1 | 2)
+            || !matches!(info & 0xF, 1 | 2)
+         {
+            continue;
+         }
+         let name = usize::try_from(image.long(start)?).map_err(io::Error::other)?;
+         let offset = strings
+            .offset
+            .checked_add(name)
+            .ok_or_else(|| io::Error::other("ELF symbol name offset overflows"))?;
+         found.push(image.string(offset)?);
+      }
+   }
+   Ok(found)
+}
+
 #[inline]
 pub fn names(image: &Image, sections: &[Section]) -> io::Result<Vec<String>> {
    let strings = sections
