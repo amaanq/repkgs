@@ -229,10 +229,17 @@ let
       allowedReferences = [ ];
     };
 
-  mummer = crate "mummer" (
-    relative:
-    builtins.match "(bigtop|jape|spieler)/src/.+" relative != null && baseNameOf relative != "main.rs"
-  );
+  mummer =
+    (crate "mummer" (
+      relative:
+      builtins.match "(bigtop|jape|spieler|mummerd)/src/.+" relative != null
+      && baseNameOf relative != "main.rs"
+    )).overrideAttrs
+      {
+        __contentAddressed = true;
+        outputHashMode = "recursive";
+        outputHashAlgo = "sha256";
+      };
 
   bigtop =
     (crate "bigtop" (
