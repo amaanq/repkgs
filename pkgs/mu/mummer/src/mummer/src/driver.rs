@@ -203,6 +203,7 @@ impl Driver {
       let mut have_input = false;
       let mut shared = false;
       let mut no_policy = false;
+      let mut no_startup = false;
       let mut optimizes = true;
       let mut sets_fortify = false;
       let mut index = 0;
@@ -218,8 +219,9 @@ impl Driver {
          );
          no_policy |= matches!(
             arg.as_str(),
-            "-static" | "-static-pie" | "-r" | "-Wl,-r" | "-nostartfiles"
+            "-static" | "-static-pie" | "-r" | "-Wl,-r"
          );
+         no_startup |= arg == "-nostartfiles";
          shared |= arg == "-shared" || arg == "-dynamiclib";
          have_input |= !arg.starts_with('-');
          sets_fortify |= fortify(arg);
@@ -296,7 +298,7 @@ impl Driver {
          format!("-Wl,-rpath,{path}"),
          "-Wl,--enable-new-dtags".to_owned(),
       ]);
-      if shared {
+      if shared || no_startup {
          return output;
       }
       if self.crt.is_empty() {
