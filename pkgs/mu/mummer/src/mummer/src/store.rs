@@ -40,6 +40,7 @@ pub const STORE_DIR: &str = match option_env!("MUMMER_STORE_DIR") {
 const OUTPUT_PLACEHOLDER: &[u8] = b"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const PATH_ENDS: &str = " \t\n\\:\"';,)]}>";
 const HASH_ALPHABET: &[u8] = b"0123456789abcdfghijklmnpqrsvwxyz";
+const RANDOM_NAMES: [(&str, usize); 2] = [("TryCompile-", 6), ("cmTC_", 5)];
 
 pub struct Store {
    content:     bool,
@@ -47,6 +48,7 @@ pub struct Store {
    output_hash: Vec<u8>,
    roots:       BTreeMap<String, String>,
    identities:  HashMap<String, String>,
+   random:      Vec<(String, String)>,
 }
 
 impl Default for Store {
@@ -110,6 +112,7 @@ impl Store {
          output_hash,
          roots,
          identities: HashMap::new(),
+         random: Vec::new(),
       }
    }
 
@@ -159,7 +162,7 @@ impl Store {
    #[inline]
    pub fn resolve(&self, masked: &str) -> Option<String> {
       if !masked.starts_with(&format!("{STORE_DIR}/*-")) {
-         return Some(masked.to_owned());
+         return Some(self.unmask_random(masked));
       }
       let end = masked[STORE_DIR.len() + 3..]
          .find('/')
@@ -190,7 +193,46 @@ impl Store {
          result.push_str(remaining);
          resolved = result;
       }
-      resolved
+      self.unmask_random(&resolved)
+   }
+
+   /// The scratch names `CMake` made up for this run, so paths a manifest
+   /// stored masked lead back into this run's directories.
+   #[inline]
+   pub fn learn_random(&mut self, args: &[String]) {
+      for arg in args {
+         for (prefix, width) in RANDOM_NAMES {
+            let mut position = 0;
+            while let Some(found) = arg[position..].find(prefix) {
+               let start = position + found + prefix.len();
+               position = start;
+               let Some(tail) = arg
+                  .get(start..start + width)
+                  .filter(|tail| tail.bytes().all(|byte| byte.is_ascii_alphanumeric()))
+               else {
+                  continue;
+               };
+               let masked = format!("{prefix}{}", "#".repeat(width));
+               if !self.random.iter().any(|known| known.0 == masked) {
+                  self.random.push((masked, format!("{prefix}{tail}")));
+               }
+            }
+         }
+      }
+   }
+
+   fn unmask_random(&self, text: &str) -> String {
+      self.random.iter().fold(text.to_owned(), |unmasked, known| {
+         unmasked.replace(&known.0, &known.1)
+      })
+   }
+
+   /// Text to store for replay, store hashes and `CMake` scratch names
+   /// masked.
+   #[must_use]
+   #[inline]
+   pub fn mask_text(&self, text: &str) -> String {
+      self.mask_for_replay(&mask_random_names(text))
    }
 
    /// Store paths in a replayed output moved in place to the roots of the same
@@ -383,9 +425,11 @@ fn normalize_path_arg(arg: &str) -> String {
    )
 }
 
-fn mask_random_names(text: &str) -> String {
+#[must_use]
+#[inline]
+pub fn mask_random_names(text: &str) -> String {
    let mut masked = text.to_owned();
-   for (prefix, width) in [("TryCompile-", 6), ("cmTC_", 5)] {
+   for (prefix, width) in RANDOM_NAMES {
       let mut position = 0;
       while let Some(found) = masked[position..].find(prefix) {
          let start = position + found + prefix.len();
