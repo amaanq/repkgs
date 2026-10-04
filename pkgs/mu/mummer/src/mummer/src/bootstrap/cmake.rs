@@ -61,7 +61,7 @@ impl Recipe for Cmake {
 
       let shell_arg = format!("SHELL={shell}");
       run_in(&build, "make", &["-j", &jobs, &shell_arg])?;
-      run_in(&build, "make", &["install", &shell_arg])?;
+      run_in(&build, "make", &["install/fast", &shell_arg])?;
 
       for path in dirs(&format!("{}/{{doc,share/cmake-*/Help}}", stage.out()))? {
          remove_dir_all(path)?;
