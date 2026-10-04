@@ -1,0 +1,10 @@
+tag   = "{version}"
+track = "github:dandavison/delta"
+fetch = { archive = true }
+with  = [ "cargo" ]
+# its tests run git
+tools = [ "git" ]
+deps  = [ "oniguruma" ]
+
+[env]
+RUSTONIG_SYSTEM_LIBONIG = "1"

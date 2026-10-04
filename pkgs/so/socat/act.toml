@@ -1,0 +1,11 @@
+track = 'generic:socat?url=http://www.dest-unreach.org/socat/download/'
+fetch = { url = "http://www.dest-unreach.org/socat/download/socat-{version}.tar.gz" }
+with  = [ "autotools" ]
+deps  = [ "openssl", "readline" ]
+
+[test]
+version = "-V"
+
+# no check target, and its test.sh opens network sockets the sandbox does not have
+[steps]
+skip = [ "autotools.test" ]

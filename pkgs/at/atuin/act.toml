@@ -1,0 +1,10 @@
+tag   = "v{version}"
+track = "github:atuinsh/atuin"
+fetch = { archive = true }
+with  = [ "cargo" ]
+deps  = [ "openssl" ]
+tools = [ "bash-interactive" ]
+
+[cargo]
+noDefaultFeatures = true
+features          = [ "ai", "client", "clipboard", "daemon", "pty-proxy", "sync" ]

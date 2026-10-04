@@ -1,0 +1,12 @@
+tag   = "v{version}"
+track = "gitlab:procps-ng/procps"
+fetch = { url = "https://downloads.sourceforge.net/project/procps-ng/Production/procps-ng-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "ncurses" ]
+
+[test]
+bin    = [ "ps" ]
+dlopen = [ "libnuma.so", "libnuma.so.1" ]
+
+[autotools]
+flags = [ "--disable-modern-top", "--enable-watch8bit" ]

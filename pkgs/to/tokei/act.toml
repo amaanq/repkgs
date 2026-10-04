@@ -1,0 +1,11 @@
+tag   = "v{version}"
+track = "github:XAMPPRocky/tokei"
+fetch = { archive = true }
+with  = [ "cargo" ]
+
+[cargo]
+features = [ "all" ]
+
+# the tests build git2, whose libgit2-sys wants libgit2 1.8
+[steps]
+skip = [ "cargo.test" ]

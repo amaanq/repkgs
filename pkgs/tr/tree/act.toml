@@ -1,0 +1,5 @@
+tag   = "{version}"
+track = "gitlab:OldManProgrammer/unix-tree"
+fetch = { url = "https://gitlab.com/OldManProgrammer/unix-tree/-/archive/{version}/unix-tree-{version}.tar.gz" }
+with  = [ "make" ]
+test  = false

@@ -1,0 +1,9 @@
+tag   = "v{version}"
+track = "github:Genivia/ugrep"
+fetch = { archive = true }
+with  = [ "autotools" ]
+deps  = [ "pcre2", "zlib", "zstd", "brotli", "lz4", "bzip2", "xz", "boost" ]
+
+# zstream.hpp includes viizip.h relative to the source tree
+[autotools]
+outOfTree = false

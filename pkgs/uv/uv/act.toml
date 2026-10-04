@@ -1,0 +1,11 @@
+tag   = "{version}"
+track = "github:astral-sh/uv"
+fetch = { archive = true }
+with  = [ "cargo" ]
+
+[cargo]
+flags = [ "--package", "uv" ]
+
+# every test wants a uv-managed CPython that `uv python install` downloads
+[steps]
+skip = [ "cargo.test" ]

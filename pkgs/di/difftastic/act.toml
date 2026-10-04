@@ -1,0 +1,4 @@
+tag   = "{version}"
+track = "github:wilfred/difftastic"
+fetch = { archive = true }
+with  = [ "cargo" ]
