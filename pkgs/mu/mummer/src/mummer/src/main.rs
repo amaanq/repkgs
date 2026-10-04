@@ -98,7 +98,16 @@ fn run(mode: Mode, name: &str, args: &[OsString], socket: &Path) -> Result<i32> 
          dest,
          sdk,
          deny,
-      } => fixup::run(&directory, dest.as_deref(), sdk.as_deref(), &deny)?,
+         loader,
+      } => {
+         fixup::run(
+            &directory,
+            dest.as_deref(),
+            sdk.as_deref(),
+            loader.as_deref(),
+            &deny,
+         )?;
+      },
       Mode::NixStore { operation } => nix_store::run(&operation)?,
       Mode::Bootstrap { recipe } => bootstrap::dispatch::mode(&recipe)?,
       Mode::Fetch { kind } => fetch::dispatch::mode(&kind)?,

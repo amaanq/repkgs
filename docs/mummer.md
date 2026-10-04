@@ -23,7 +23,7 @@ arguments through untouched, every other mode parses them and fails on an unknow
 | `mummer slot <program> [args…]`                                               | run under a build slot                         |
 | `mummer gocacheprog`                                                          | Go's `GOCACHEPROG` protocol on stdin/stdout    |
 | `mummer header-key <context> <warning-policy> <compiler> <args…>`             | autoconf header probe key                      |
-| `mummer reloc-fixup <directory> [--dest <store path>] [--deny <store path>]…` | post-link relocation                           |
+| `mummer reloc-fixup <directory> [--dest <path>] [--loader <ld.so>] [--deny <path>]…` | post-link relocation                           |
 | `mummer nix-store add-text\|add-drv\|fetchurls\|submit …`                     | builder RPC to the Nix daemon                  |
 | `mummer bootstrap <recipe>`                                                   | one toolchain stage from its structured attrs, see §13 |
 | `mummer fetch <kind>`                                                         | one lock-file producer under builder-rpc-v0, see §14 |
@@ -531,9 +531,10 @@ For executables and shared objects with a `DT_RUNPATH` or `DT_RPATH`, each exist
 mapped to its final location (`$ORIGIN` entries relative to the file's final directory, others
 through the prefix to dest mapping), kept when it is a store path and spelled `$ORIGIN/<relative>`.
 The library directories of the output are appended as candidates. Every `DT_NEEDED` without a
-`/` is searched in that order, failing the file when none has it. A library found in a directory
-that does not also hold `libc.so.6` is rewritten to `$ORIGIN/<relative>/<name>` directly and its
-directory leaves the RUNPATH. The RUNPATH string, then the direct NEEDED strings NUL separated,
+`/`, other than the `--loader` itself, is searched in that order, failing the file when none has
+it. A library found outside the loader's directory, the libc's, is rewritten to
+`$ORIGIN/<relative>/<name>` directly and its directory leaves the RUNPATH. Without `--loader`
+every library found is rewritten. bigtop passes the platform's interpreter. The RUNPATH string, then the direct NEEDED strings NUL separated,
 must fit the old RUNPATH string, otherwise every directory stays in the RUNPATH and NEEDED is
 left alone. `.gnu.version_r` entries naming a rewritten library are repointed. A symbol name
 sharing bytes with the RUNPATH string is an error.

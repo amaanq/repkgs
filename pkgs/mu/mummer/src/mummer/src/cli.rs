@@ -69,6 +69,9 @@ pub enum Mode {
       sdk:       Option<PathBuf>,
       #[pound(long)]
       deny:      Vec<String>,
+      /// the dynamic loader, whose directory's libraries stay found by name.
+      #[pound(long)]
+      loader:    Option<PathBuf>,
    },
    /// builder RPC to the Nix daemon.
    NixStore {
