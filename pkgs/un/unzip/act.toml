@@ -1,4 +1,5 @@
 fetch = { url = "https://downloads.sourceforge.net/infozip/unzip60.tar.gz" }
+deps  = [ "bzip2" ]
 
 [track]
 frozen = "Info-ZIP, last release 2009"
