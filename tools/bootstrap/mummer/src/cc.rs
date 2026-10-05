@@ -8,6 +8,11 @@ use std::{
       var_os,
    },
    ffi::OsStr,
+   fmt::{
+      Display,
+      Formatter,
+      Result as FormatResult,
+   },
    fs::{
       metadata,
       read,
@@ -99,6 +104,35 @@ enum Action {
    Other,
 }
 
+/// Why a call runs without the cache.
+enum Refusal {
+   /// An argument with effects the key cannot see.
+   Marker(String),
+   Sources(i32),
+   DiscardedOutput,
+   /// Neither one compile nor a link of objects alone.
+   Mixed,
+   LinkDepfile,
+   PrecompiledOutput,
+   Binfmt,
+   UnscannedFortran,
+}
+
+impl Display for Refusal {
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+      match *self {
+         Self::Marker(ref arg) => write!(f, "marker:{arg}"),
+         Self::Sources(count) => write!(f, "sources:{count}"),
+         Self::DiscardedOutput => f.write_str("output:/dev/null"),
+         Self::Mixed => f.write_str("mixed"),
+         Self::LinkDepfile => f.write_str("link-depfile"),
+         Self::PrecompiledOutput => f.write_str("precompiled-output"),
+         Self::Binfmt => f.write_str("binfmt"),
+         Self::UnscannedFortran => f.write_str("unscanned-fortran"),
+      }
+   }
+}
+
 struct Invocation {
    args:         Vec<String>,
    key_args:     Vec<String>,
@@ -110,7 +144,7 @@ struct Invocation {
    linkfile:     Option<PathBuf>,
    action:       Action,
    query:        bool,
-   cacheable:    bool,
+   refused:      Option<Refusal>,
    stdout:       bool,
    preprocessed: Option<String>,
    split:        Vec<usize>,
@@ -135,7 +169,7 @@ impl Invocation {
          linkfile: None,
          action: Action::Link,
          query: false,
-         cacheable: true,
+         refused: None,
          stdout: false,
          preprocessed: None,
          split: Vec::new(),
@@ -249,8 +283,17 @@ impl Invocation {
             },
          }
          let passed_on = consumed && (arg.starts_with("-X") || arg == "-mllvm");
-         invocation.cacheable &= !(uncacheable_marker(&arg)
-            || passed_on && next.as_deref().is_some_and(uncacheable_marker));
+         if uncacheable_marker(&arg) {
+            invocation
+               .refused
+               .get_or_insert_with(|| Refusal::Marker(arg.clone()));
+         } else if passed_on
+            && let Some(value) = next.as_ref().filter(|value| uncacheable_marker(value))
+         {
+            invocation
+               .refused
+               .get_or_insert_with(|| Refusal::Marker(value.clone()));
+         }
          if keyed {
             invocation.key_args.push(arg);
             if consumed && let Some(value) = next {
@@ -264,7 +307,9 @@ impl Invocation {
          invocation.action,
          Action::Compile | Action::Precompile | Action::Assembly | Action::Preprocess
       ) {
-         invocation.cacheable &= sources == 1_i32;
+         if sources != 1_i32 {
+            invocation.refused.get_or_insert(Refusal::Sources(sources));
+         }
          invocation.query |= invocation.action == Action::Preprocess && sources == 0_i32;
          if invocation.action == Action::Preprocess
             && (invocation.output.as_os_str().is_empty() || invocation.output == Path::new("-"))
@@ -305,19 +350,27 @@ impl Invocation {
          && sources > 0_i32
          && !languages
          && !wants_deps
-         && invocation.cacheable
+         && invocation.refused.is_none()
          && !invocation.query
          && invocation.linkfile.is_none()
          && invocation.output != Path::new("/dev/null")
       {
          invocation.split = positions;
       }
-      let precompile = invocation.action == Action::Precompile;
-      invocation.cacheable &= !invocation.query
-         && invocation.output != Path::new("/dev/null")
-         && invocation.action != Action::Other
-         && (invocation.linkfile.is_none() || invocation.links())
-         && (precompile || !extension.is_some_and(|found| found == "pch" || found == "gch"));
+      if invocation.output == Path::new("/dev/null") {
+         invocation.refused.get_or_insert(Refusal::DiscardedOutput);
+      }
+      if invocation.action == Action::Other {
+         invocation.refused.get_or_insert(Refusal::Mixed);
+      }
+      if invocation.linkfile.is_some() && !invocation.links() {
+         invocation.refused.get_or_insert(Refusal::LinkDepfile);
+      }
+      if invocation.action != Action::Precompile
+         && extension.is_some_and(|found| found == "pch" || found == "gch")
+      {
+         invocation.refused.get_or_insert(Refusal::PrecompiledOutput);
+      }
       invocation.read_precompiled();
       if wants_deps && invocation.depfile.is_none() {
          invocation.depfile = Some(invocation.output.with_extension("d"));
@@ -400,17 +453,24 @@ impl Invocation {
       matches!(self.action, Action::Link | Action::LinkSource)
    }
 
+   /// Keeps the first reason a call cannot be cached.
+   fn refuse(&mut self, refusal: Refusal) {
+      self.refused.get_or_insert(refusal);
+   }
+
    /// Keeps a Fortran compile cacheable only with its prescanned source.
    fn prescan(&mut self, language: Language, compiler: &str) -> io::Result<()> {
       if language != Language::Fortran {
          return Ok(());
       }
-      self.preprocessed = if self.cacheable && self.action == Action::Compile {
+      self.preprocessed = if self.refused.is_none() && self.action == Action::Compile {
          prescanned(compiler, &self.args)?
       } else {
          None
       };
-      self.cacheable &= self.preprocessed.is_some();
+      if self.preprocessed.is_none() {
+         self.refuse(Refusal::UnscannedFortran);
+      }
       Ok(())
    }
 
@@ -537,7 +597,7 @@ impl Invocation {
 pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut Client) -> io::Result<bool> {
    let expanded = driver.arguments(Language::Cc, raw);
    let mut invocation = Invocation::parse(raw.to_vec(), jobs(driver.cc(), &expanded)?);
-   if invocation.action != Action::Compile || !invocation.cacheable {
+   if invocation.action != Action::Compile || invocation.refused.is_some() {
       return Ok(false);
    }
    invocation.args = expanded;
@@ -822,7 +882,7 @@ pub fn run_cc(language: Language, raw: &[String], socket: &Path) -> io::Result<i
       return run_split(&invocation);
    }
    if invocation.links() && driver.format() != BinaryFormat::Elf {
-      invocation.cacheable = false;
+      invocation.refuse(Refusal::Binfmt);
    }
    invocation.args = expanded;
    invocation.prescan(language, compiler)?;
@@ -838,10 +898,21 @@ pub fn run_cc(language: Language, raw: &[String], socket: &Path) -> io::Result<i
 
    let outcome = if invocation.query {
       Outcome::Query
-   } else if !invocation.cacheable && (invocation.links() || invocation.action == Action::Other) {
-      Outcome::Linked
-   } else if !invocation.cacheable {
-      Outcome::Uncacheable
+   } else if let Some(ref refusal) = invocation.refused {
+      let result = run_uncached(&invocation, driver.format(), compiler, Some(socket))?;
+      let outcome = if invocation.links() || invocation.action == Action::Other {
+         Outcome::Linked
+      } else {
+         Outcome::Uncacheable
+      };
+      uncached(
+         Tool::Cc,
+         outcome,
+         format_args!("{subject} {refusal}"),
+         &user,
+         started,
+      );
+      return Ok(result.status);
    } else {
       match Client::connect(socket) {
          Ok(mut cache) => {
