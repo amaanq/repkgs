@@ -22,7 +22,10 @@ use std::{
 };
 
 use mummer::{
-   files::write_file,
+   files::{
+      utf8,
+      write_file,
+   },
    tree::note,
 };
 use serde::{
@@ -34,7 +37,6 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
-      utf8,
    },
    schema::{
       Condition,

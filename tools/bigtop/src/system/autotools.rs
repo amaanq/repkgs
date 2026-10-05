@@ -22,6 +22,7 @@ use std::{
 use mummer::{
    files::{
       glob,
+      utf8,
       write_file,
    },
    tree::{
@@ -39,7 +40,6 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
-      utf8,
    },
    probe,
    schema::{

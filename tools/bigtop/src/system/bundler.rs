@@ -19,6 +19,7 @@ use std::{
 use mummer::{
    files::{
       glob,
+      utf8,
       write_file,
    },
    syslibs::Ecosystem,
@@ -32,7 +33,6 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
-      utf8,
    },
    prepare::succeed,
    schema::{

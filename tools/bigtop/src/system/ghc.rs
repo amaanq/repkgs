@@ -20,7 +20,10 @@ use std::{
 
 use glob::glob;
 use mummer::{
-   files::remove_if_exists,
+   files::{
+      remove_if_exists,
+      utf8,
+   },
    store::on_path,
 };
 
@@ -29,7 +32,6 @@ use crate::{
       Attrs,
       Ctx,
       text,
-      utf8,
    },
    implant,
    system::command::run,

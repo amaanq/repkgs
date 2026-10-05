@@ -30,6 +30,7 @@ use mummer::{
    files::{
       glob,
       remove_if_exists,
+      utf8,
    },
    fixup,
    process::{
@@ -59,7 +60,6 @@ use crate::{
       VersionCheck,
       build_top,
       nix_store,
-      utf8,
    },
    debug,
    exports::{

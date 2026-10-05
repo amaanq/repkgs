@@ -16,7 +16,10 @@ use std::{
 };
 
 use mummer::{
-   files::write_file,
+   files::{
+      utf8,
+      write_file,
+   },
    process::Checked as _,
    tree::note,
 };
@@ -27,7 +30,6 @@ use crate::{
       Ctx,
       Def,
       Platform,
-      utf8,
    },
    schema::Field,
    system::{

@@ -24,6 +24,7 @@ use std::{
 use mummer::{
    files::{
       sorted_entries,
+      utf8,
       write_file,
    },
    process::Checked as _,
@@ -36,7 +37,6 @@ use crate::{
       Attrs,
       Ctx,
       nix_store,
-      utf8,
    },
    exports::closure,
    schema::Field,
