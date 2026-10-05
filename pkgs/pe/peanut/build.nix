@@ -65,7 +65,6 @@ let
         LLVM_TOOL_LLVM_DRIVER_BUILD = "ON";
         LLVM_BUILD_STATIC = "ON";
         LLVM_ENABLE_PIC = "OFF";
-        LLVM_PARALLEL_LINK_JOBS = "4";
         LLVM_ENABLE_ZLIB = "FORCE_ON";
         LLVM_ENABLE_ZSTD = "FORCE_ON";
         LLVM_USE_STATIC_ZSTD = "ON";

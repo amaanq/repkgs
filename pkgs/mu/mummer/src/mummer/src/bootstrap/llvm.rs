@@ -288,7 +288,6 @@ impl Recipe for Llvm {
          ),
          format!("-DLLVM_HOST_TRIPLE={}", stage.clang_target),
          format!("-DLLVM_DEFAULT_TARGET_TRIPLE={}", stage.clang_target),
-         format!("-DLLVM_PARALLEL_LINK_JOBS={}", cores().min(4)),
          format!("-DLLVM_TOOLCHAIN_TOOLS={}", TOOLCHAIN_TOOLS.join(";")),
       ]);
       run_in(&source, "cmake", &strs(&args))?;
