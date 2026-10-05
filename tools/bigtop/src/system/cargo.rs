@@ -330,12 +330,8 @@ impl Cargo {
                   .arg("-r")
                   .arg(format!("{deps}/{name}"))
                   .arg(&placed),
-               "cp",
             )?;
-            succeed(
-               Command::new("chmod").arg("-R").arg("u+w").arg(&placed),
-               "chmod",
-            )?;
+            succeed(Command::new("chmod").arg("-R").arg("u+w").arg(&placed))?;
             for file in files {
                note("patch", &format!("{name}: {}", file.display()));
                succeed(
@@ -344,7 +340,6 @@ impl Cargo {
                      .arg(&placed)
                      .args(["-p1", "-F0", "-i"])
                      .arg(file),
-                  "patch",
                )?;
             }
          }

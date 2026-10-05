@@ -253,7 +253,6 @@ impl Cabal {
          Command::new("ghc-pkg")
             .arg("recache")
             .arg(format!("--package-db={units}/package.db")),
-         "ghc-pkg",
       )
    }
 
@@ -337,10 +336,7 @@ impl Cabal {
          };
          let tar = format!("{}/{id}.tar.zst", ctx.build);
          write_file(Path::new(&tar), &bytes, None)?;
-         succeed(
-            Command::new("bsdtar").args(["-xf", &tar, "-C", &units]),
-            "bsdtar",
-         )?;
+         succeed(Command::new("bsdtar").args(["-xf", &tar, "-C", &units]))?;
          remove_file(&tar)?;
          Ok(true)
       })?;
@@ -373,7 +369,7 @@ impl Cabal {
          if Path::new(&units).join(&conf).exists() {
             command.arg(&conf);
          }
-         succeed(&mut command, "bsdtar")?;
+         succeed(&mut command)?;
          if let Ok(mut client) = Client::connect(socket) {
             drop(client.put(&format!("{key}/{id}").parse()?, &read(&tar)?));
          }

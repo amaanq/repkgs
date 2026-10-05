@@ -24,6 +24,7 @@ use mummer::{
       sections,
    },
    image::Image,
+   process::Checked as _,
    tree::{
       Entry,
       EntryKind,
@@ -152,10 +153,7 @@ pub fn macho(output: &Path, debug: &Path) -> io::Result<()> {
       };
 
       let bundle = debug.join("lib/debug").join(format!("{uuid}.dSYM"));
-      succeed(
-         Command::new("dsymutil").arg(first).arg("-o").arg(&bundle),
-         "dsymutil",
-      )?;
+      succeed(Command::new("dsymutil").arg(first).arg("-o").arg(&bundle))?;
 
       match remove_dir_all(bundle.join("Contents/Resources/Relocations")) {
          Ok(()) => {},
@@ -164,7 +162,7 @@ pub fn macho(output: &Path, debug: &Path) -> io::Result<()> {
       }
 
       for path in paths {
-         succeed(Command::new("llvm-strip").arg("-S").arg(path), "llvm-strip")?;
+         succeed(Command::new("llvm-strip").arg("-S").arg(path))?;
       }
 
       Ok(())
@@ -317,13 +315,7 @@ fn objcopy(args: &[&str], output: Option<&PathBuf>) -> io::Result<()> {
    if let Some(path) = output {
       command.arg(path);
    }
-   if !command.status()?.success() {
-      return Err(io::Error::other(format!(
-         "llvm-objcopy {} failed",
-         args.join(" ")
-      )));
-   }
-   Ok(())
+   command.checked()
 }
 
 fn has_extension(rel: &str, extensions: &[&str]) -> bool {

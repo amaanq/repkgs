@@ -17,6 +17,7 @@ use mummer::{
       segments,
    },
    image::Image,
+   process::Checked as _,
    tree::{
       Entry,
       EntryKind,
@@ -117,12 +118,7 @@ fn implant(
       "+ formatelf {}",
       args.join(" ")
    ));
-   if !Command::new("formatelf").args(&args).status()?.success() {
-      return Err(io::Error::other(format!(
-         "formatelf failed on {}",
-         entry.rel
-      )));
-   }
+   Command::new("formatelf").args(&args).checked()?;
    Ok(Some(
       Path::new(&entry.path)
          .strip_prefix(directory)

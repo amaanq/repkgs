@@ -495,7 +495,7 @@ fn install_tree(ctx: &Ctx) -> io::Result<()> {
    let tree = format!("{}/lib/node_modules/{}", ctx.out, ctx.spec()?.name);
    create_dir_all(format!("{}/lib/node_modules", ctx.out))?;
    create_dir_all(format!("{}/bin", ctx.out))?;
-   succeed(Command::new("cp").args(["-r", ".", &tree]), "cp")?;
+   succeed(Command::new("cp").args(["-r", ".", &tree]))?;
    let package = serde_json::from_str::<PackageJson>(&read_to_string("package.json")?)?;
    let bins = match package.bin {
       Some(Bin::One(path)) => {

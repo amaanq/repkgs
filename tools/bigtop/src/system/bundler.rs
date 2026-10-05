@@ -90,35 +90,23 @@ impl System for Bundler {
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
       let options = ctx.options::<Options>(self.name())?;
       let app = app_dir(ctx)?;
-      succeed(
-         Command::new("cp").args([
-            "-r",
-            &format!("{}/.", ctx.project_dir(&options.root).display()),
-            &app,
-         ]),
-         "cp",
-      )?;
+      succeed(Command::new("cp").args([
+         "-r",
+         &format!("{}/.", ctx.project_dir(&options.root).display()),
+         &app,
+      ]))?;
       create_dir_all("vendor")?;
-      succeed(
-         Command::new("cp").args([
-            "-rL",
-            &format!("{}/vendor/cache", options.deps),
-            "vendor/cache",
-         ]),
-         "cp",
-      )?;
-      succeed(
-         Command::new("cp").args([
-            "-f",
-            &format!("{}/Gemfile.lock", options.deps),
-            "Gemfile.lock",
-         ]),
-         "cp",
-      )?;
-      succeed(
-         Command::new("chmod").args(["-R", "u+w", "vendor", "Gemfile.lock"]),
-         "chmod",
-      )?;
+      succeed(Command::new("cp").args([
+         "-rL",
+         &format!("{}/vendor/cache", options.deps),
+         "vendor/cache",
+      ]))?;
+      succeed(Command::new("cp").args([
+         "-f",
+         &format!("{}/Gemfile.lock", options.deps),
+         "Gemfile.lock",
+      ]))?;
+      succeed(Command::new("chmod").args(["-R", "u+w", "vendor", "Gemfile.lock"]))?;
       let mut env = BTreeMap::from([
          ("BUNDLE_PATH".to_owned(), format!("{app}/vendor/bundle")),
          (

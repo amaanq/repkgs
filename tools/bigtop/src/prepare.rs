@@ -23,7 +23,10 @@ use std::{
 };
 
 use mummer::{
-   process::socket,
+   process::{
+      Checked as _,
+      socket,
+   },
    store::normalize,
    tree::{
       note,
@@ -280,9 +283,8 @@ fn unpack(attrs: &Attrs, src: &str) -> io::Result<()> {
          .arg("-rp")
          .arg(format!("{}/.", attrs.src))
          .arg(src),
-      "cp",
    )?;
-   succeed(Command::new("chmod").arg("-R").arg("u+w").arg(src), "chmod")?;
+   succeed(Command::new("chmod").arg("-R").arg("u+w").arg(src))?;
    for patch in &attrs.patches {
       note("patch", patch);
       succeed(
@@ -290,7 +292,6 @@ fn unpack(attrs: &Attrs, src: &str) -> io::Result<()> {
             .args(["-p1", "-F0", "-i"])
             .arg(patch)
             .current_dir(src),
-         "patch",
       )?;
    }
    shebangs(Path::new(src), false)
@@ -305,7 +306,6 @@ fn restore(tree: &Path, top: &str) -> io::Result<()> {
             .arg("-a")
             .arg(tree.join(directory))
             .arg(top),
-         "cp",
       )?;
    }
 
@@ -314,15 +314,9 @@ fn restore(tree: &Path, top: &str) -> io::Result<()> {
          .args(["-R", "u+w"])
          .arg(Path::new(top).join("source"))
          .arg(Path::new(top).join("build")),
-      "chmod",
    )
 }
 
-pub fn succeed(command: &mut Command, name: &str) -> io::Result<()> {
-   let output = command.stderr(Stdio::inherit()).output()?;
-   io::stderr().lock().write_all(&output.stdout)?;
-   if !output.status.success() {
-      return Err(io::Error::other(format!("{name} failed")));
-   }
-   Ok(())
+pub fn succeed(command: &mut Command) -> io::Result<()> {
+   command.stdout(Stdio::from(io::stderr())).checked()
 }

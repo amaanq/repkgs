@@ -127,20 +127,14 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    let exported: Value = serde_json::from_str(&read_to_string(out.join("exports.json"))?)?;
    note("exports", &serde_json::to_string(&exported)?);
    set_current_dir(&top)?;
-   succeed(
-      Command::new("chmod").arg("-R").arg("u+w").arg(&ctx.out),
-      "chmod",
-   )?;
+   succeed(Command::new("chmod").arg("-R").arg("u+w").arg(&ctx.out))?;
    relativize(&ctx.out, &ctx.dest)?;
 
    if platform.os == "windows" {
-      succeed(
-         Command::new("cp").arg("-rL").arg(&ctx.out).arg(&ctx.dest),
-         "cp",
-      )?;
+      succeed(Command::new("cp").arg("-rL").arg(&ctx.out).arg(&ctx.dest))?;
       remove_dir_all(&ctx.out)?;
    } else {
-      succeed(Command::new("mv").arg(&ctx.out).arg(&ctx.dest), "mv")?;
+      succeed(Command::new("mv").arg(&ctx.out).arg(&ctx.dest))?;
    }
 
    version_check(&spec, &ctx, &top, &request.ext.exe)?;
@@ -187,14 +181,11 @@ fn install_map(spec: &Spec, out: &Path, exe: &str) -> io::Result<()> {
       if dest.ends_with('/') || matched.len() > 1 {
          create_dir_all(&target)?;
          for source in &matched {
-            succeed(Command::new("cp").arg("-rp").arg(source).arg(&target), "cp")?;
+            succeed(Command::new("cp").arg("-rp").arg(source).arg(&target))?;
          }
       } else {
          create_dir_all(target.parent().unwrap_or(out))?;
-         succeed(
-            Command::new("cp").arg("-rp").arg(&matched[0]).arg(&target),
-            "cp",
-         )?;
+         succeed(Command::new("cp").arg("-rp").arg(&matched[0]).arg(&target))?;
       }
    }
    for (path, link) in &spec.links {
@@ -232,7 +223,6 @@ fn save_tree(tree: &str, top: &str) -> io::Result<()> {
       Command::new("cp")
          .args(["-a", "source", "build", tree])
          .current_dir(top),
-      "cp",
    )
 }
 
@@ -474,7 +464,7 @@ impl Probe<'_> {
 
          symlink(store_root, sibling)?;
       }
-      succeed(Command::new("cp").arg("-r").arg(dest).arg(&root), "cp")?;
+      succeed(Command::new("cp").arg("-r").arg(dest).arg(&root))?;
       let copy = root.join(
          dest
             .file_name()
