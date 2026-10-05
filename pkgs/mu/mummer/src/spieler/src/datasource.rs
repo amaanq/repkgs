@@ -189,11 +189,17 @@ fn github(purl: &Purl) -> io::Result<Vec<Candidate>> {
             .and_then(Value::as_str),
       ));
    }
-   let releases = fetch_json(
-      &format!("{repo}/releases?per_page=20"),
-      &repo,
-      ten_minutes(),
-   )?;
+   // `?tags` for a repository that tags versions without publishing them all as
+   // releases
+   let releases = if purl.qualifiers.contains_key("tags") {
+      Value::Array(Vec::new())
+   } else {
+      fetch_json(
+         &format!("{repo}/releases?per_page=20"),
+         &repo,
+         ten_minutes(),
+      )?
+   };
    let found: Vec<Candidate> = array(&releases)
       .iter()
       .filter(|release| {

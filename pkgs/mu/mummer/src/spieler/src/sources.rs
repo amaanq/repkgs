@@ -201,7 +201,8 @@ fn url_of(fetched: &Fetched, purl: Option<&str>) -> Result<String, String> {
    }
    let repo = purl
       .and_then(|text| text.strip_prefix("pkg:github/"))
-      .filter(|repo| repo.matches('/').count() == 1 && !repo.contains('?'))
+      .map(|repo| repo.split_once('?').map_or(repo, |(name, _)| name))
+      .filter(|repo| repo.matches('/').count() == 1)
       .ok_or("asset and archive need a github track")?;
    if let Some(ref asset) = fetched.asset {
       return Ok(format!(
