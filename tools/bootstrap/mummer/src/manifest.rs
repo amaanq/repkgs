@@ -13,6 +13,7 @@ use std::{
 
 use blake3::Hasher;
 use mummer::store::{
+   InputId,
    Store,
    field,
    is_store_path,
@@ -33,7 +34,7 @@ use tightrope::{
 #[derive(Deserialize, Serialize)]
 struct Input {
    path:     String,
-   identity: String,
+   identity: InputId,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -188,7 +189,7 @@ pub fn prefetch(cache: &mut Client, store: &mut Store, paths: &[String]) -> io::
       .collect::<Vec<String>>();
    for (path, identity) in requested.iter().zip(cache.identities(&requested)?) {
       if let Some(value) = identity {
-         store.remember(path.to_owned(), value.to_string());
+         store.remember(path.to_owned(), InputId::Content(value));
       }
    }
 
@@ -202,14 +203,17 @@ pub fn prefetch(cache: &mut Client, store: &mut Store, paths: &[String]) -> io::
    }
    let found = cache.get_many(&keys)?;
    for ((path, key), cached) in stamped.into_iter().zip(&keys).zip(found) {
-      if let Some(identity) = cached.and_then(|bytes| String::from_utf8(bytes).ok()) {
+      if let Some(identity) = cached
+         .and_then(|bytes| String::from_utf8(bytes).ok())
+         .and_then(|text| text.parse().ok())
+      {
          store.remember(path.to_owned(), identity);
          continue;
       }
       let Ok(identity) = store.input_id(path) else {
          continue;
       };
-      cache.put(key, identity.as_bytes())?;
+      cache.put(key, identity.to_string().as_bytes())?;
       store.remember(path.to_owned(), identity);
    }
    Ok(())

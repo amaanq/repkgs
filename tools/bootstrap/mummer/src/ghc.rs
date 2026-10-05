@@ -392,7 +392,10 @@ fn request_key(
    }
    let real = canonicalize(on_path(compiler))?;
    let mut hasher = Hasher::new();
-   field(&mut hasher, store.input_id(&real.to_string_lossy())?);
+   field(
+      &mut hasher,
+      store.input_id(&real.to_string_lossy())?.to_string(),
+   );
    field(
       &mut hasher,
       store.key(&String::from_utf8_lossy(&info.stdout)),
