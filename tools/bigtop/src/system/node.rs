@@ -159,26 +159,6 @@ managers! {
    Bun => Manager::Bun,
 }
 
-fn text(pairs: &[(&str, String)]) -> Vec<(String, String)> {
-   pairs
-      .iter()
-      .map(|pair| (pair.0.to_owned(), pair.1.clone()))
-      .collect()
-}
-
-/// pnpm 10 reads `npm_config_*`, 11 only `pnpm_config_*`.
-fn pnpm_conf(settings: &[(&str, String)]) -> Vec<(String, String)> {
-   settings
-      .iter()
-      .flat_map(|pair| {
-         [
-            (format!("npm_config_{}", pair.0), pair.1.clone()),
-            (format!("pnpm_config_{}", pair.0), pair.1.clone()),
-         ]
-      })
-      .collect()
-}
-
 #[derive(Deserialize)]
 struct BunIndexed {
    id:  String,
@@ -280,22 +260,26 @@ fn wyhash11(input: &[u8]) -> u64 {
    mum(seed ^ u64::try_from(input.len()).unwrap_or(u64::MAX), p4)
 }
 
-fn install_command(
-   manager: Manager,
-   ctx: &Ctx,
-   options: &Options,
-) -> io::Result<Vec<&'static str>> {
-   let args = match manager {
+/// What the install reads beyond the tree, npm's lock file and bun's cache.
+fn prepare_install(manager: Manager, ctx: &Ctx, options: &Options) -> io::Result<()> {
+   match manager {
       Manager::Npm => {
          copy(
             format!("{}/package-lock.json", options.deps),
             "package-lock.json",
          )?;
-         set_permissions("package-lock.json", PermissionsExt::from_mode(0o644))?;
-         vec!["ci", "--ignore-scripts"]
+         set_permissions("package-lock.json", PermissionsExt::from_mode(0o644))
       },
+      Manager::Bun => fill_bun_cache(&options.deps, &format!("{}/bun-cache", ctx.build)),
+      Manager::Pnpm | Manager::Yarn => Ok(()),
+   }
+}
+
+const fn install_args(manager: Manager) -> &'static [&'static str] {
+   match manager {
+      Manager::Npm => &["ci", "--ignore-scripts"],
       Manager::Pnpm => {
-         vec![
+         &[
             "install",
             "--offline",
             "--frozen-lockfile",
@@ -303,7 +287,7 @@ fn install_command(
          ]
       },
       Manager::Yarn => {
-         vec![
+         &[
             "install",
             "--offline",
             "--frozen-lockfile",
@@ -313,24 +297,23 @@ fn install_command(
          ]
       },
       Manager::Bun => {
-         fill_bun_cache(&options.deps, &format!("{}/bun-cache", ctx.build))?;
-         vec![
+         &[
             "install",
             "--frozen-lockfile",
             "--offline",
             "--ignore-scripts",
          ]
       },
-   };
-   Ok(args)
+   }
 }
 
-/// pnpm 11 wants a host part in the registry URL and opens tarballs at the
-/// URL minus "file:", so "file:/" plus the store path.
+/// pnpm 10 reads `npm_config_*` and 11 only `pnpm_config_*`. pnpm 11 wants a
+/// host part in the registry URL and opens tarballs at the URL minus "file:",
+/// so "file:/" plus the store path.
 fn manager_env(manager: Manager, ctx: &Ctx, options: &Options) -> Vec<(String, String)> {
-   let mut env = match manager {
+   let settings = match manager {
       Manager::Npm => {
-         text(&[
+         vec![
             ("npm_config_cache", format!("{}/npm-cache", ctx.build)),
             ("npm_config_offline", "true".to_owned()),
             ("npm_config_progress", "false".to_owned()),
@@ -338,10 +321,10 @@ fn manager_env(manager: Manager, ctx: &Ctx, options: &Options) -> Vec<(String, S
             ("npm_config_fund", "false".to_owned()),
             ("npm_config_update_notifier", "false".to_owned()),
             ("npm_config_loglevel", "warn".to_owned()),
-         ])
+         ]
       },
       Manager::Pnpm => {
-         pnpm_conf(&[
+         vec![
             ("registry", format!("file:/{}/registry/", options.deps)),
             ("store_dir", format!("{}/pnpm-store", ctx.build)),
             ("offline", "true".to_owned()),
@@ -350,22 +333,41 @@ fn manager_env(manager: Manager, ctx: &Ctx, options: &Options) -> Vec<(String, S
             ("side_effects_cache", "false".to_owned()),
             ("update_notifier", "false".to_owned()),
             ("loglevel", "warn".to_owned()),
-         ])
+         ]
       },
       Manager::Yarn => {
-         text(&[
+         vec![
             ("YARN_CACHE_FOLDER", format!("{}/yarn-cache", ctx.build)),
             ("YARN_YARN_OFFLINE_MIRROR", options.deps.to_string()),
             ("YARN_ENABLE_PROGRESS_BARS", "false".to_owned()),
             ("YARN_DISABLE_SELF_UPDATE_CHECK", "true".to_owned()),
-         ])
+         ]
       },
       Manager::Bun => {
-         text(&[
+         vec![
             ("BUN_INSTALL_CACHE_DIR", format!("{}/bun-cache", ctx.build)),
             ("BUN_INSTALL", format!("{}/bun-home", ctx.build)),
             ("DO_NOT_TRACK", "1".to_owned()),
-         ])
+         ]
+      },
+   };
+   let mut env = match manager {
+      Manager::Pnpm => {
+         settings
+            .into_iter()
+            .flat_map(|(name, value)| {
+               [
+                  (format!("npm_config_{name}"), value.clone()),
+                  (format!("pnpm_config_{name}"), value),
+               ]
+            })
+            .collect::<Vec<_>>()
+      },
+      Manager::Npm | Manager::Yarn | Manager::Bun => {
+         settings
+            .into_iter()
+            .map(|(name, value)| (name.to_owned(), value))
+            .collect()
       },
    };
    if !matches!(manager, Manager::Bun) {
@@ -383,9 +385,8 @@ fn setup(manager: Manager, ctx: &Ctx, attrs: &Attrs) -> io::Result<Env> {
       .iter()
       .map(|pair| (pair.0.as_str(), pair.1.as_str()))
       .collect::<Vec<(&str, &str)>>();
-   let mut args = install_command(manager, ctx, &options)?
-      .into_iter()
-      .collect::<Vec<&str>>();
+   prepare_install(manager, ctx, &options)?;
+   let mut args = install_args(manager).to_vec();
    args.extend(strs(&options.flags));
    run(manager.name(), &args, &env_vars)?;
    let modules = Path::new("node_modules");
