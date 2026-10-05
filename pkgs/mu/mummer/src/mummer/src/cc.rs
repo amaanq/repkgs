@@ -274,6 +274,7 @@ impl Invocation {
          && invocation.cacheable
          && !invocation.query
          && invocation.linkfile.is_none()
+         && invocation.output != Path::new("/dev/null")
       {
          invocation.split = positions;
       }
