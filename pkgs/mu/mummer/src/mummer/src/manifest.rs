@@ -56,7 +56,9 @@ impl Manifest {
          .map(|path| {
             Ok(Input {
                path:     store.key(path),
-               identity: store.input_id(path)?,
+               identity: store
+                  .input_id(path)
+                  .map_err(|error| io::Error::new(error.kind(), format!("{path}: {error}")))?,
             })
          })
          .collect::<io::Result<_>>()?;
