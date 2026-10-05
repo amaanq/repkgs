@@ -124,7 +124,7 @@ fn syslibs_mode(operation: SyslibsOperation) -> io::Result<()> {
          ecosystem,
          names,
          tables,
-      } => wanted_for(&lock_tables(tables.as_deref())?, &ecosystem, &names),
+      } => wanted_for(&lock_tables(tables.as_deref())?, ecosystem.parse()?, &names),
    };
    let mut stdout = io::stdout().lock();
    serde_json::to_writer(&mut stdout, &found)?;

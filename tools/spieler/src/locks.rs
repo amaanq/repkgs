@@ -22,7 +22,10 @@ use std::{
 
 use mummer::{
    hackage::PackageId,
-   syslibs::wanted_for,
+   syslibs::{
+      Ecosystem,
+      wanted_for,
+   },
 };
 
 use crate::{
@@ -207,7 +210,7 @@ pub fn add(package: &Package) -> io::Result<Vec<Used>> {
             .collect::<io::Result<Vec<_>>>()?;
          pipeline::set_sys(
             package,
-            &wanted_for(&pipeline::tables()?, "hackage", &names),
+            &wanted_for(&pipeline::tables()?, Ecosystem::Hackage, &names),
          )?;
       }
       used.push(Used {

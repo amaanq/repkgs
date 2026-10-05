@@ -25,6 +25,7 @@ use std::{
 
 use mummer::{
    files::write_file,
+   syslibs::Ecosystem,
    tree::{
       EntryKind,
       note,
@@ -440,7 +441,7 @@ impl Cabal {
       let planned = Self::plan()?;
       let names: Vec<String> = planned.iter().map(|unit| unit.pkg_name.clone()).collect();
       syslibs::check_names(
-         &syslibs::wanted_for(attrs, "hackage", &names)?,
+         &syslibs::wanted_for(attrs, Ecosystem::Hackage, &names)?,
          ctx.spec()?.sys.as_deref(),
          "lock",
       )?;
