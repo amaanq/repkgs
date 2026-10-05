@@ -293,10 +293,6 @@ pub fn execute(command: &mut Command) -> io::Result<()> {
    command.checked()
 }
 
-pub fn run(program: &str, args: &[&str]) -> io::Result<()> {
-   execute(Command::new(program).args(args))
-}
-
 /// What `command` prints, run without echoing.
 pub fn capture(command: &mut Command) -> io::Result<String> {
    Ok(String::from_utf8_lossy(&command.checked_output()?).into_owned())
