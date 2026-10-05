@@ -26,6 +26,7 @@ use mummer::{
    image::Image,
    tree::{
       Entry,
+      EntryKind,
       note,
       parallel,
       walk,
@@ -53,7 +54,7 @@ struct Elf {
 pub fn run(output: &Path, debug: &Path) -> io::Result<()> {
    let files = walk(output)?
       .into_iter()
-      .filter(|entry| entry.kind == 'f')
+      .filter(|entry| entry.kind == EntryKind::File)
       .collect::<Vec<Entry>>();
    strip_archives(&files, &["a", "o"])?;
    let candidates = files
@@ -118,7 +119,7 @@ pub fn run(output: &Path, debug: &Path) -> io::Result<()> {
 pub fn macho(output: &Path, debug: &Path) -> io::Result<()> {
    let files: Vec<Entry> = walk(output)?
       .into_iter()
-      .filter(|entry| entry.kind == 'f')
+      .filter(|entry| entry.kind == EntryKind::File)
       .collect();
    strip_archives(&files, &["a", "o"])?;
 
@@ -216,7 +217,7 @@ fn macho_uuid(entry: &Entry) -> io::Result<Option<String>> {
 fn report(debug: &Path, count: usize) -> io::Result<()> {
    let size = walk(debug)?
       .iter()
-      .filter(|entry| entry.kind != 'l')
+      .filter(|entry| entry.kind != EntryKind::Link)
       .map(|entry| entry.size)
       .sum::<u64>()
       + metadata(debug)?.len();
@@ -227,7 +228,7 @@ fn report(debug: &Path, count: usize) -> io::Result<()> {
 pub fn strip_archives(files: &[Entry], extensions: &[&str]) -> io::Result<()> {
    for entry in files
       .iter()
-      .filter(|entry| entry.kind == 'f' && has_extension(&entry.rel, extensions))
+      .filter(|entry| entry.kind == EntryKind::File && has_extension(&entry.rel, extensions))
    {
       writable(Path::new(&entry.path))?;
       let done = Command::new("llvm-objcopy")

@@ -34,6 +34,7 @@ use mummer::{
    store::normalize,
    tree::{
       Entry,
+      EntryKind,
       note,
       walk,
       writable,
@@ -84,7 +85,7 @@ pub fn run() -> io::Result<()> {
    unwrap_launchers(&out.join("bin"))?;
    let mut queue: Vec<PathBuf> = walk(out)?
       .into_iter()
-      .filter(|entry| entry.kind == 'f')
+      .filter(|entry| entry.kind == EntryKind::File)
       .map(|entry| PathBuf::from(entry.path))
       .collect();
    let libc = queue
@@ -114,7 +115,7 @@ pub fn run() -> io::Result<()> {
    }
    let copied = walk(&tree.lib)?
       .iter()
-      .filter(|entry| entry.kind == 'f' && !entry.rel.contains('/'))
+      .filter(|entry| entry.kind == EntryKind::File && !entry.rel.contains('/'))
       .count();
    note(
       "bundle",
@@ -233,15 +234,18 @@ fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
    for entry in walk(from)? {
       let target = to.join(&entry.rel);
       match entry.kind {
-         'd' => create_dir_all(&target)?,
-         'l' => symlink(&entry.target, &target)?,
-         _ => {
+         EntryKind::Dir => create_dir_all(&target)?,
+         EntryKind::Link => symlink(&entry.target, &target)?,
+         EntryKind::File => {
             copy(&entry.path, &target)?;
             writable(&target)?;
          },
       }
    }
-   for entry in walk(to)?.iter().filter(|entry| entry.kind == 'd') {
+   for entry in walk(to)?
+      .iter()
+      .filter(|entry| entry.kind == EntryKind::Dir)
+   {
       writable(Path::new(&entry.path))?;
    }
    writable(to)

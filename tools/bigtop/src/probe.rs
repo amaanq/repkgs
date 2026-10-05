@@ -24,6 +24,7 @@ use mummer::{
       mask_hashes,
    },
    tree::{
+      EntryKind,
       note,
       walk,
    },
@@ -122,7 +123,7 @@ fn toolchain(root: &str, top: &str) -> io::Result<String> {
          continue;
       }
       masked(format!("{}:{}:{}\0", entry.kind, entry.rel, entry.target).as_bytes());
-      if entry.kind == 'f' {
+      if entry.kind == EntryKind::File {
          masked(&read(&entry.path)?);
       }
    }
@@ -230,7 +231,7 @@ pub fn store_dir(key: &Key, dir: &Path, socket: &Path) -> io::Result<()> {
       return Ok(());
    };
    for entry in walk(dir)? {
-      if entry.kind == 'f'
+      if entry.kind == EntryKind::File
          && read(&entry.path)?
             .windows(ctx.out.len())
             .any(|window| window == ctx.out.as_bytes())

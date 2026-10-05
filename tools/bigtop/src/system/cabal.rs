@@ -26,6 +26,7 @@ use std::{
 use mummer::{
    files::write_file,
    tree::{
+      EntryKind,
       note,
       parallel,
       walk,
@@ -251,7 +252,7 @@ impl Cabal {
       Ok(walk(&ctx.project_dir(&options.root))?
          .into_iter()
          .filter(|entry| {
-            entry.kind == 'f'
+            entry.kind == EntryKind::File
                && Self::is_cabal(&entry.rel)
                && !entry.rel.starts_with("dist-newstyle/")
          })
@@ -377,7 +378,7 @@ impl Cabal {
          .checked_sub(Duration::from_secs(1))
          .ok_or_else(|| io::Error::other("system clock before the epoch"))?;
       for entry in walk(project)? {
-         if entry.kind != 'f' {
+         if entry.kind != EntryKind::File {
             continue;
          }
          let built = entry.rel.starts_with("dist-newstyle/");

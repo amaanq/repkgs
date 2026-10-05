@@ -12,7 +12,10 @@ use std::{
 
 use mummer::{
    files::write_file,
-   tree::note,
+   tree::{
+      note,
+      set_phase,
+   },
 };
 use serde_json::Value;
 
@@ -136,7 +139,7 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
          phase(&attrs, &mut ctx, index, socket)?;
       }
    }
-   note("phase", "finish");
+   set_phase("finish");
    if tests {
       finish::tests()
    } else {
@@ -145,7 +148,7 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
 }
 
 pub fn setup(attrs: &Attrs, source: Source<'_>, socket: &Path) -> io::Result<Ctx> {
-   note("phase", "prepare");
+   set_phase("prepare");
    let bins = attrs
       .build_dependencies
       .iter()
@@ -157,7 +160,7 @@ pub fn setup(attrs: &Attrs, source: Source<'_>, socket: &Path) -> io::Result<Ctx
    set_current_dir(&prepared.cwd)?;
    let ctx = prepared.ctx;
    for system in &attrs.plan.setups {
-      note("phase", &format!("{system}.setup"));
+      set_phase(&format!("{system}.setup"));
       note("setup", system);
       dispatch::setup(system, &ctx, attrs, socket)?.apply();
    }
@@ -170,7 +173,7 @@ pub fn setup(attrs: &Attrs, source: Source<'_>, socket: &Path) -> io::Result<Ctx
 
 pub fn phase(attrs: &Attrs, ctx: &mut Ctx, index: usize, socket: &Path) -> io::Result<()> {
    let step = &attrs.plan.phases[index];
-   note("phase", &step.name);
+   set_phase(&step.name);
    let workdir = match attrs.plan.setups.first() {
       Some(system) => dispatch::workdir(system, ctx)?,
       None => Path::new(&ctx.src).to_path_buf(),

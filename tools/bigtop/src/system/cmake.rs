@@ -10,6 +10,7 @@ use std::{
 use mummer::{
    files::write_file,
    tree::{
+      EntryKind,
       note,
       walk,
    },
@@ -208,7 +209,7 @@ impl Cmake {
       let srcdir = ctx.project_dir(&options.root);
       let scripts: Vec<String> = walk(&srcdir)?
          .into_iter()
-         .filter(|entry| entry.kind == 'f')
+         .filter(|entry| entry.kind == EntryKind::File)
          .map(|entry| entry.path)
          .collect();
       let key = probe::key(
