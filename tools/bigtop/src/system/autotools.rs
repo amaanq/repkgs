@@ -155,11 +155,10 @@ impl Autotools {
    }
 
    fn configure(ctx: &Ctx, attrs: &Attrs, options: &Options, socket: &Path) -> io::Result<()> {
-      let script = ctx
+      let located = ctx
          .project_dir(&options.root)
-         .join(&options.configure_script)
-         .to_string_lossy()
-         .into_owned();
+         .join(&options.configure_script);
+      let script = utf8(&located)?.to_owned();
       let platform = ctx.platform()?;
       // natively both name the target, so configure still runs its test
       // programs. The bootstrap's build triple differs from every

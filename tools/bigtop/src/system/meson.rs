@@ -249,8 +249,8 @@ impl Meson {
          .iter()
          .map(|entry| format!("-D{}={}", entry.0, Self::render(&entry.1)))
          .collect::<Vec<String>>();
-      let source_text = source.to_string_lossy();
-      let mut args = vec!["setup", ".", &source_text];
+      let source_text = utf8(&source)?;
+      let mut args = vec!["setup", ".", source_text];
       args.extend(strs(&machines));
       args.extend(strs(&rendered));
       args.extend(strs(&options.flags));

@@ -210,7 +210,7 @@ fn install_map(spec: &Spec, out: &Path, exe: &str) -> io::Result<()> {
       symlink(format!("{link}{suffix}"), &placed)?;
    }
    for pattern in &spec.remove {
-      let found = glob(&out.join(pattern).to_string_lossy())?;
+      let found = glob(utf8(&out.join(pattern))?)?;
       if found.is_empty() {
          return Err(io::Error::other(format!(
             "remove {pattern}: nothing matches"
@@ -449,19 +449,20 @@ impl Probe<'_> {
       let launch_root = Path::new(launch)
          .parent()
          .and_then(Path::parent)
-         .map(|package| package.to_string_lossy().into_owned())
+         .map(|package| utf8(package).map(str::to_owned))
+         .transpose()?
          .unwrap_or_default();
       let store = PathBuf::from(nix_store());
       let dll_roots = exports_of(dest)?
          .dll_dirs
          .iter()
          .filter_map(|directory| {
-            Path::new(directory)
+            let name = Path::new(directory)
                .strip_prefix(&store)
                .ok()?
                .components()
-               .next()
-               .map(|name| store.join(name).to_string_lossy().into_owned())
+               .next()?;
+            store.join(name).to_str().map(str::to_owned)
          })
          .collect::<Vec<String>>();
 

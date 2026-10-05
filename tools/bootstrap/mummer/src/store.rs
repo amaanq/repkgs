@@ -562,6 +562,13 @@ where
    hasher.update(bytes);
 }
 
+/// `path` lies inside the store, as a path rather than its text.
+#[must_use]
+#[inline]
+pub fn in_store(path: &Path) -> bool {
+   path.starts_with(STORE_DIR) && path != Path::new(STORE_DIR)
+}
+
 #[must_use]
 #[inline]
 pub fn is_store_path(path: &str) -> bool {
@@ -618,10 +625,9 @@ fn normalize_path_arg(arg: &str) -> String {
    if !value.contains('/') && !value.starts_with('.') {
       return arg.to_owned();
    }
-   format!(
-      "{}{}",
-      &arg[..start],
-      normalize(Path::new(value)).to_string_lossy()
+   normalize(Path::new(value)).to_str().map_or_else(
+      || arg.to_owned(),
+      |normal| format!("{}{normal}", &arg[..start]),
    )
 }
 

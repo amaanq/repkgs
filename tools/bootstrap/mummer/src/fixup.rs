@@ -50,6 +50,7 @@ use crate::{
    process::diagnostic,
    store::{
       STORE_DIR,
+      in_store,
       is_store_path,
       normalize,
    },
@@ -119,7 +120,7 @@ pub fn run(
    denied_paths: &[String],
 ) -> io::Result<()> {
    if let Some(path) = dest
-      && !is_store_path(&path.to_string_lossy())
+      && !in_store(path)
    {
       return Err(io::Error::other(format!(
          "invalid --dest store path {}",
@@ -134,7 +135,7 @@ pub fn run(
       loader:      loader.map(loader_location).transpose()?,
    };
    let denied = denied_hashes(denied_paths)?;
-   if !is_store_path(&context.dest.to_string_lossy()) {
+   if !in_store(&context.dest) {
       return Err(io::Error::other(
          "reloc-fixup output must end up under the Nix store",
       ));
@@ -216,12 +217,15 @@ fn walk(prefix: &Path) -> io::Result<(Vec<PathBuf>, BTreeSet<PathBuf>)> {
          if kind.is_dir() {
             pending.push(path);
          } else if kind.is_file() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.contains(".so") || shared_library(&name) {
+            let name = entry.file_name();
+            if name
+               .to_str()
+               .is_some_and(|text| text.contains(".so") || shared_library(text))
+            {
                let parent = path
                   .parent()
                   .ok_or_else(|| io::Error::other("shared library has no parent"))?;
-               if !parent.to_string_lossy().contains("/debug") {
+               if !parent.to_str().is_some_and(|text| text.contains("/debug")) {
                   directories.insert(parent.to_path_buf());
                }
             }
@@ -442,7 +446,7 @@ fn search_directories(context: &Context, final_here: &Path, old: &str) -> Vec<Se
       } else {
          context.final_path(Path::new(entry))
       };
-      if is_store_path(&final_directory.to_string_lossy()) {
+      if in_store(&final_directory) {
          search.push(SearchDirectory {
             text: origin_relative(final_here, &final_directory),
             path: context.on_disk(&final_directory),

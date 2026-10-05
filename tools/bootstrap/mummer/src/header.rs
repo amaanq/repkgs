@@ -31,6 +31,7 @@ use mummer::{
    },
    store::{
       field,
+      in_store,
       is_store_path,
       on_path,
    },
@@ -165,7 +166,7 @@ impl Probe<'_> {
             continue;
          }
          field(&mut hasher, path.as_os_str().as_encoded_bytes());
-         if !is_store_path(&path.to_string_lossy()) {
+         if !in_store(&path) {
             field(&mut hasher, read(path)?);
          }
       }

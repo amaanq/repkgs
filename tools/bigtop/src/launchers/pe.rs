@@ -17,6 +17,7 @@ use std::{
 use mummer::{
    files::{
       glob,
+      utf8,
       write_file,
    },
    tree::note,
@@ -53,7 +54,9 @@ fn dll_directories(pes: &[PathBuf], sysroot: &Path, deps: &[String]) -> io::Resu
    for directory in directories.iter().filter(|directory| directory.is_dir()) {
       for found in read_dir(directory)? {
          let entry = found?;
-         let name = entry.file_name().to_string_lossy().to_lowercase();
+         let Some(name) = entry.file_name().to_str().map(str::to_lowercase) else {
+            continue;
+         };
 
          providers.entry(name).or_insert_with(|| entry.path());
       }
@@ -69,7 +72,7 @@ fn dll_directories(pes: &[PathBuf], sysroot: &Path, deps: &[String]) -> io::Resu
                let directory = resolved
                   .parent()
                   .ok_or_else(|| io::Error::other("DLL has no parent"))?;
-               let name = directory.to_string_lossy().into_owned();
+               let name = utf8(directory)?.to_owned();
 
                if !needed.contains(&name) {
                   needed.push(name);
@@ -98,9 +101,9 @@ fn dll_directories(pes: &[PathBuf], sysroot: &Path, deps: &[String]) -> io::Resu
 }
 
 pub fn run(output: &Path, launch: &Path, sysroot: &Path, deps: &[String]) -> io::Result<()> {
-   let out = output.to_string_lossy();
+   let out = utf8(output)?;
    let store_dir = nix_store();
-   let package_relative = |path: &str| relative(path, &out, &store_dir);
+   let package_relative = |path: &str| relative(path, out, &store_dir);
    let pes = glob(&format!("{out}/**/*.{{exe,dll,pyd}}"))?
       .into_iter()
       .filter(|path| path.is_file())
@@ -113,7 +116,7 @@ pub fn run(output: &Path, launch: &Path, sysroot: &Path, deps: &[String]) -> io:
       .map(|entry| entry.root)
       .collect::<Vec<_>>();
    let needed = dll_directories(&pes, sysroot, &roots)?;
-   let (mut environment, _) = runtime_env(deps, &out, &store_dir)?;
+   let (mut environment, _) = runtime_env(deps, out, &store_dir)?;
    let inject = !environment.is_empty();
    let prepended = match environment.remove("PATH") {
       Some(Variable::Prepend(directories)) => directories,
@@ -127,10 +130,10 @@ pub fn run(output: &Path, launch: &Path, sysroot: &Path, deps: &[String]) -> io:
       let directory = binary
          .parent()
          .ok_or_else(|| io::Error::other("PE executable has no parent"))?;
-      let name = binary
+      let file_name = binary
          .file_name()
-         .ok_or_else(|| io::Error::other("PE executable has no name"))?
-         .to_string_lossy();
+         .ok_or_else(|| io::Error::other("PE executable has no name"))?;
+      let name = utf8(Path::new(file_name))?;
       let path = needed
          .iter()
          .filter(|needed_dir| Path::new(needed_dir) != directory)

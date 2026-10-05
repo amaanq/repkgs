@@ -25,6 +25,7 @@ use std::{
 use mummer::{
    files::{
       glob,
+      utf8,
       write_file,
    },
    syslibs::Ecosystem,
@@ -280,7 +281,8 @@ fn build(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<()> {
    wheels.extend(
       glob(&format!("{built}/*.whl"))?
          .iter()
-         .map(|path| path.to_string_lossy().into_owned()),
+         .map(|path| Ok(utf8(path)?.to_owned()))
+         .collect::<io::Result<Vec<_>>>()?,
    );
    for wheel in &wheels {
       install_wheel(ctx, wheel, options.mode != Mode::Project)?;
@@ -292,7 +294,7 @@ fn build(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<()> {
          .into_iter()
          .next()
          .ok_or_else(|| io::Error::other("python -m build produced no wheel"))?;
-      install_wheel(ctx, &own.to_string_lossy(), true)?;
+      install_wheel(ctx, utf8(&own)?, true)?;
    } else {
       env_python(ctx, options.mode)?;
    }
@@ -438,11 +440,7 @@ fn install_wheel(ctx: &Ctx, wheel: &str, scripts: bool) -> io::Result<()> {
    ]))?;
    let site = site_packages(ctx)?;
    for packages in glob(&format!("{stage}/lib/python3*/site-packages"))? {
-      succeed(Command::new("cp").args([
-         "-rlf",
-         &format!("{}/.", packages.to_string_lossy()),
-         &site,
-      ]))?;
+      succeed(Command::new("cp").args(["-rlf", &format!("{}/.", utf8(&packages)?), &site]))?;
       remove_dir_all(&packages)?;
    }
    let bin = format!("{stage}/bin");

@@ -224,7 +224,7 @@ impl Cmake {
       let init = format!("{}/probe-init.cmake", ctx.build.display());
       let restored = probe::restore(&key, Path::new(&init), socket)?;
       note("cmake-probes", if restored { "restored" } else { "cold" });
-      let source = srcdir.to_string_lossy();
+      let source = utf8(&srcdir)?;
       let rendered = defs
          .iter()
          .map(|entry| format!("-D{}={}", entry.0, Self::render(&entry.1)))

@@ -24,7 +24,7 @@ use crate::{
    },
    image::Image,
    store::{
-      is_store_path,
+      in_store,
       normalize,
    },
 };
@@ -245,7 +245,7 @@ fn resolve(context: &Context, here: &Path, path: &str) -> io::Result<Option<Path
       Some(normalize(&here.join(relative)))
    } else {
       let absolute = context.final_path(Path::new(path));
-      is_store_path(&absolute.to_string_lossy()).then_some(absolute)
+      in_store(&absolute).then_some(absolute)
    };
 
    if let Some(ref resolved) = target {
@@ -271,7 +271,7 @@ fn new_spelling(context: &Context, file: &Path, command: &Command) -> io::Result
 
    if command.kind == RPATH {
       let target = context.final_path(Path::new(&path));
-      return Ok(is_store_path(&target.to_string_lossy()).then(|| loader_relative(here, &target)));
+      return Ok(in_store(&target).then(|| loader_relative(here, &target)));
    }
 
    let target = resolve(context, here, &path)?.ok_or_else(|| {

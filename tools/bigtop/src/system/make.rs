@@ -13,7 +13,10 @@ use std::{
 };
 
 use mummer::{
-   files::glob,
+   files::{
+      glob,
+      utf8,
+   },
    store::on_path,
 };
 
@@ -147,7 +150,7 @@ pub fn shell() -> io::Result<[(&'static str, String); 2]> {
    } else {
       tool("sh")?
    };
-   let text = shell.to_string_lossy().into_owned();
+   let text = utf8(&shell)?.to_owned();
    Ok([("CONFIG_SHELL", text.clone()), ("SHELL", text)])
 }
 
@@ -166,8 +169,7 @@ fn with_programs(
             continue;
          }
 
-         let plain = path
-            .to_string_lossy()
+         let plain = utf8(&path)?
             .strip_suffix(exe.as_str())
             .ok_or_else(|| io::Error::other(format!("{} has no {exe} suffix", path.display())))?
             .to_owned();

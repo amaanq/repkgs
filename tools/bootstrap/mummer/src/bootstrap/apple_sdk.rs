@@ -92,7 +92,7 @@ impl Recipe for AppleSdk {
       .ok_or_else(|| io::Error::other("no MacOSX SDK in the payload"))?;
       say(&format!(
          "{} -> {}",
-         sdk.file_name().unwrap_or_default().to_string_lossy(),
+         sdk.file_name().unwrap_or_default().display(),
          stage.out.display()
       ));
       for junk in ["usr/share", "usr/bin", "System/Library/Perl"] {

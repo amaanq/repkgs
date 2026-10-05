@@ -1,5 +1,6 @@
 use std::{
    collections::BTreeMap,
+   ffi::OsStr,
    fs::{
       DirEntry,
       read_dir,
@@ -16,7 +17,10 @@ use std::{
    },
 };
 
-use mummer::files::write_file;
+use mummer::files::{
+   utf8,
+   write_file,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -110,10 +114,7 @@ fn existing(root: &Path, candidates: &[&str]) -> Vec<String> {
 }
 
 fn package_name(root: &Path) -> String {
-   let base = root
-      .file_name()
-      .map(|name| name.to_string_lossy().into_owned())
-      .unwrap_or_default();
+   let base = root.file_name().and_then(OsStr::to_str).unwrap_or_default();
    let name = base.get(33..).unwrap_or_default();
    for cpu in Cpu::ALL.map(Cpu::name) {
       let marker = format!("-{cpu}-");
@@ -144,7 +145,9 @@ fn linkable_libraries(root: &Path, extensions: &Extensions) -> io::Result<Vec<St
       if child.file_type()?.is_dir() {
          continue;
       }
-      let file = child.file_name().to_string_lossy().into_owned();
+      let Some(file) = child.file_name().to_str().map(str::to_owned) else {
+         continue;
+      };
       if let Some(stem) = file
          .strip_prefix("lib")
          .and_then(|rest| rest.strip_suffix(suffix))
@@ -174,12 +177,12 @@ pub fn record_dll_dirs(root: &Path, directories: Vec<String>) -> io::Result<()> 
 
 pub fn exports_of(root: &Path) -> io::Result<Exports> {
    let stored = read_stored(root)?;
-   let root_text = root.to_string_lossy().into_owned();
-   let nix_store = root.parent().unwrap_or(root).to_string_lossy();
+   let root_text = utf8(root)?;
+   let nix_store = utf8(root.parent().unwrap_or(root))?;
    let expand = |text: String| {
       text
-         .replace("{root}", &root_text)
-         .replace("{store}", &nix_store)
+         .replace("{root}", root_text)
+         .replace("{store}", nix_store)
    };
 
    Ok(Exports {
@@ -208,12 +211,14 @@ pub fn exports_of(root: &Path) -> io::Result<Exports> {
          .into_iter()
          .map(expand)
          .collect(),
-      root:           root_text,
+      root:           root_text.to_owned(),
    })
 }
 
 pub fn relative(path: &str, package_root: &str, store_dir: &str) -> String {
-   path.replace(package_root, "{root}").replace(store_dir, "{store}")
+   path
+      .replace(package_root, "{root}")
+      .replace(store_dir, "{store}")
 }
 
 pub fn closure(roots: &[String]) -> io::Result<Vec<Exports>> {
@@ -234,13 +239,7 @@ pub fn closure(roots: &[String]) -> io::Result<Vec<Exports>> {
 }
 
 pub fn lib_dirs(interp: &Path, roots: &[String]) -> io::Result<Vec<String>> {
-   let mut dirs = vec![
-      interp
-         .parent()
-         .unwrap_or(interp)
-         .to_string_lossy()
-         .into_owned(),
-   ];
+   let mut dirs = vec![utf8(interp.parent().unwrap_or(interp))?.to_owned()];
    for entry in closure(roots)? {
       dirs.extend(
          entry
@@ -341,11 +340,11 @@ pub fn write_request(root: &Path, request: &Request) -> io::Result<()> {
       let absolute = serde_json::from_value::<Vec<String>>(directories)?;
 
       if !absolute.is_empty() {
-         let root_text = root.to_string_lossy();
+         let root_text = utf8(root)?;
          let store_dir = nix_store();
          let relative = absolute
             .iter()
-            .map(|directory| relative(directory, &root_text, &store_dir))
+            .map(|directory| relative(directory, root_text, &store_dir))
             .collect::<Vec<String>>();
          exports.insert("dllDirs".to_owned(), serde_json::to_value(relative)?);
       }
@@ -415,7 +414,7 @@ fn walk(directory: &Path, suffix: &str, found: &mut Vec<PathBuf>) -> io::Result<
       let path = child.path();
       if path.is_dir() {
          walk(&path, suffix, found)?;
-      } else if path.to_string_lossy().ends_with(suffix) {
+      } else if path.to_str().is_some_and(|text| text.ends_with(suffix)) {
          found.push(path);
       }
    }
@@ -447,7 +446,7 @@ fn required_deps(
    for config in configs {
       find_dependencies(&read_to_string(config)?, &mut wanted);
    }
-   let out_text = out.to_string_lossy();
+   let out_text = utf8(out)?;
    let roots = deps
       .iter()
       .filter(|root| **root != out_text)
@@ -459,14 +458,17 @@ fn required_deps(
    for root in roots {
       for first in list(Path::new(root))? {
          for second in list(&first)? {
-            let Some(kind) = second.file_name().map(|name| name.to_string_lossy()) else {
+            let Some(kind) = second.file_name().and_then(OsStr::to_str) else {
                continue;
             };
             for third in list(&second)? {
-               let name = third
+               let Some(name) = third
                   .file_name()
-                  .map(|name| name.to_string_lossy().to_ascii_lowercase())
-                  .unwrap_or_default();
+                  .and_then(OsStr::to_str)
+                  .map(str::to_ascii_lowercase)
+               else {
+                  continue;
+               };
                let offered = (kind == "pkgconfig"
                   && Path::new(&name)
                      .extension()

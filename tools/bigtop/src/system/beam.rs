@@ -145,11 +145,11 @@ fn options(tool: Tool, ctx: &Ctx) -> io::Result<(Options, Vec<String>)> {
 }
 
 fn sorted_names(dir: &str) -> io::Result<Vec<String>> {
-   Ok(sorted_entries(Path::new(dir))?
+   sorted_entries(Path::new(dir))?
       .iter()
       .filter_map(|path| path.file_name())
-      .map(|name| name.to_string_lossy().into_owned())
-      .collect())
+      .map(|name| Ok(utf8(Path::new(name))?.to_owned()))
+      .collect()
 }
 
 /// a Hex tarball's contents.tar.gz into `dest`.
@@ -177,10 +177,10 @@ fn unpack(tar: &str, dest: &str) -> io::Result<()> {
 /// its name under lib/escript/ and the launcher runs the target's escript on
 /// it.
 fn install_escript(ctx: &Ctx, file: &str) -> io::Result<()> {
-   let name = Path::new(file)
+   let file_name = Path::new(file)
       .file_name()
-      .map(|name| name.to_string_lossy().into_owned())
       .ok_or_else(|| io::Error::other(format!("escript {file} has no file name")))?;
+   let name = utf8(Path::new(file_name))?;
    let dir = ctx.out.join("lib/escript");
    create_dir_all(&dir)?;
    let placed = format!("{}/{name}", dir.display());
@@ -188,7 +188,7 @@ fn install_escript(ctx: &Ctx, file: &str) -> io::Result<()> {
    let erlang = dep_root(ctx, "erlang", "escripts run under the target erlang")?;
    write(
       ctx,
-      &name,
+      name,
       &format!("{erlang}/bin/escript"),
       &[placed],
       &BTreeMap::new(),
@@ -196,10 +196,9 @@ fn install_escript(ctx: &Ctx, file: &str) -> io::Result<()> {
 }
 
 fn deps_key(tool: Tool, options: &Options) -> io::Result<Key> {
-   let set = Path::new(&*options.deps)
-      .file_name()
-      .map(|name| name.to_string_lossy().into_owned())
-      .unwrap_or_default();
+   let set = utf8(Path::new(
+      Path::new(&*options.deps).file_name().unwrap_or_default(),
+   ))?;
    probe::key(&format!("{}-deps/{set}", tool.name()), &[], None::<&()>)
 }
 
@@ -271,7 +270,7 @@ fn env(tool: Tool, ctx: &Ctx, attrs: &Attrs) -> io::Result<Vec<(&'static str, St
             (
                "MIX_REBAR3",
                if rebar3.is_absolute() {
-                  rebar3.to_string_lossy().into_owned()
+                  utf8(&rebar3)?.to_owned()
                } else {
                   String::new()
                },

@@ -22,7 +22,10 @@ use mummer::{
       BinaryFormat,
       PackageFlags,
    },
-   files::glob,
+   files::{
+      glob,
+      utf8,
+   },
 };
 use serde::Deserialize as _;
 use serde_json::Value;
@@ -93,7 +96,7 @@ pub fn compute(
          .map(|(name, value)| (name.clone(), value.clone())),
    );
    if cache {
-      compiler_caches(&mut env, &bins);
+      compiler_caches(&mut env, &bins)?;
    }
    Ok(env)
 }
@@ -111,8 +114,8 @@ fn python_path(env: &mut BTreeMap<String, Value>, build_dependencies: &[String])
 
    let joined = sites
       .iter()
-      .map(|site| site.to_string_lossy())
-      .collect::<Vec<_>>()
+      .map(|site| utf8(site))
+      .collect::<io::Result<Vec<_>>>()?
       .join(":");
    set(env, "PYTHONPATH", joined);
    Ok(())
@@ -138,8 +141,8 @@ fn sandbox_dirs(
       Value::Array(
          bins
             .iter()
-            .map(|bin| Value::String(bin.to_string_lossy().into_owned()))
-            .collect(),
+            .map(|bin| Ok(Value::String(utf8(bin)?.to_owned())))
+            .collect::<io::Result<Vec<_>>>()?,
       ),
    );
    set(env, "HOME", home.as_str());
@@ -149,7 +152,7 @@ fn sandbox_dirs(
    set(env, "TMPDIR", top);
    set(env, "CI", "true");
    set(env, "TERM", "dumb");
-   set(env, "out", out.to_string_lossy());
+   set(env, "out", utf8(out)?);
    Ok(())
 }
 
@@ -309,12 +312,12 @@ fn package_cc(
       },
    }
    let cc_path = find_tool(bins, "cc").ok_or_else(|| io::Error::other("cc not on PATH"))?;
-   let root = canonicalize(&cc_path)?
+   let resolved = canonicalize(&cc_path)?;
+   let installation = resolved
       .parent()
       .and_then(Path::parent)
-      .ok_or_else(|| io::Error::other("cc has no installation root"))?
-      .to_string_lossy()
-      .into_owned();
+      .ok_or_else(|| io::Error::other("cc has no installation root"))?;
+   let root = utf8(installation)?.to_owned();
    let flags = BTreeMap::from([(root, PackageFlags {
       cflags,
       cxxflags,
@@ -326,22 +329,23 @@ fn package_cc(
    Ok(())
 }
 
-fn compiler_caches(env: &mut BTreeMap<String, Value>, bins: &[PathBuf]) {
+fn compiler_caches(env: &mut BTreeMap<String, Value>, bins: &[PathBuf]) -> io::Result<()> {
    if let Some(rustc) = find_tool(bins, "rustc") {
-      set(env, "RUSTC", rustc.to_string_lossy());
+      set(env, "RUSTC", utf8(&rustc)?);
       if let Some(wrapper) = find_tool(bins, "rustcwrap") {
-         set(env, "RUSTC_WRAPPER", wrapper.to_string_lossy());
+         set(env, "RUSTC_WRAPPER", utf8(&wrapper)?);
       }
       set(env, "CARGO_INCREMENTAL", "0");
    }
    if let Some(wrapper) = find_tool(bins, "ghcwrap") {
-      set(env, "GHC_WRAPPER", wrapper.to_string_lossy());
+      set(env, "GHC_WRAPPER", utf8(&wrapper)?);
    }
    if find_tool(bins, "go").is_some()
       && let Some(program) = find_tool(bins, "gocacheprog")
    {
-      set(env, "GOCACHEPROG", program.to_string_lossy());
+      set(env, "GOCACHEPROG", utf8(&program)?);
    }
+   Ok(())
 }
 
 fn find_tool(bins: &[PathBuf], name: &str) -> Option<PathBuf> {

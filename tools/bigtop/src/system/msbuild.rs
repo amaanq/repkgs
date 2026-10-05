@@ -18,6 +18,7 @@ use std::{
 };
 
 use glob::glob;
+use mummer::files::utf8;
 use roxmltree::{
    Document,
    Node,
@@ -174,11 +175,7 @@ pub fn evaluate(
    seeds: &BTreeMap<String, String>,
    itemdefs: BTreeMap<String, BTreeMap<String, String>>,
 ) -> io::Result<Evaluation> {
-   let name = file
-      .file_stem()
-      .unwrap_or_default()
-      .to_string_lossy()
-      .into_owned();
+   let name = utf8(Path::new(file.file_stem().unwrap_or_default()))?.to_owned();
    let mut props = BTreeMap::from([
       ("MSBuildProjectName".to_owned(), name.clone()),
       ("ProjectName".to_owned(), name),
@@ -221,7 +218,7 @@ pub fn win_path(value: &str, dir: &Path) -> io::Result<String> {
          },
       }
    }
-   Ok(normalized.to_string_lossy().into_owned())
+   Ok(utf8(&normalized)?.to_owned())
 }
 
 impl Evaluation {
@@ -311,7 +308,8 @@ impl Evaluation {
             if !path.ends_with(".targets")
                && !file
                   .file_name()
-                  .is_some_and(|name| name.to_string_lossy().starts_with("Microsoft.Cpp"))
+                  .and_then(|name| name.to_str())
+                  .is_some_and(|name| name.starts_with("Microsoft.Cpp"))
                && file.exists()
             {
                self.eval_file(file, seeds)?;
@@ -386,10 +384,7 @@ impl Evaluation {
                   continue;
                }
 
-               paths.push((
-                  include.to_owned(),
-                  matched_path.to_string_lossy().into_owned(),
-               ));
+               paths.push((include.to_owned(), utf8(&matched_path)?.to_owned()));
             }
          } else {
             paths.push((include.to_owned(), path));
@@ -416,15 +411,18 @@ fn well_known(item: &Item) -> BTreeMap<String, String> {
          "Filename".to_owned(),
          path
             .file_stem()
+            .and_then(|stem| stem.to_str())
             .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned(),
+            .to_owned(),
       ),
       (
          "Extension".to_owned(),
          format!(
             ".{}",
-            path.extension().unwrap_or_default().to_string_lossy()
+            path
+               .extension()
+               .and_then(|extension| extension.to_str())
+               .unwrap_or_default()
          ),
       ),
    ]);

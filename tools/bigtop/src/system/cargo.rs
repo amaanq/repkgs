@@ -19,7 +19,10 @@ use std::{
 };
 
 use mummer::{
-   files::write_file,
+   files::{
+      utf8,
+      write_file,
+   },
    process::Checked as _,
    store::on_path,
    syslibs::{
@@ -183,7 +186,7 @@ impl Cargo {
             "CARGO_TARGET_DIR".to_owned(),
             format!("{}/target", ctx.build.display()),
          ),
-         ("RUSTC".to_owned(), rustc.to_string_lossy().into_owned()),
+         ("RUSTC".to_owned(), utf8(&rustc)?.to_owned()),
       ]);
       let version = Command::new(&rustc).arg("-vV").checked_output()?;
       let host = String::from_utf8_lossy(&version)
@@ -201,10 +204,7 @@ impl Cargo {
          note("sys-libs", &names.join(" "));
       }
       env.extend(sys);
-      env.insert(
-         "CLANG_PATH".to_owned(),
-         on_path("cc").to_string_lossy().into_owned(),
-      );
+      env.insert("CLANG_PATH".to_owned(), utf8(&on_path("cc"))?.to_owned());
       let mut rustflags = vec![
          format!("--remap-path-prefix={}=/src", ctx.src.display()),
          format!("--remap-path-prefix={home}=/cargo"),
@@ -288,7 +288,7 @@ impl Cargo {
             found.path(),
             format!(
                "{sysroot}/lib/rustlib/{}",
-               found.file_name().to_string_lossy()
+               utf8(Path::new(&found.file_name()))?
             ),
          )?;
       }
@@ -371,11 +371,12 @@ impl Cargo {
       let mut names = Vec::<String>::new();
       for entry in read_dir(&release)? {
          let found = entry?;
-         let name = found.file_name().to_string_lossy().into_owned();
+         let name = utf8(Path::new(&found.file_name()))?.to_owned();
          let binary = name.strip_suffix(exe.as_str()).unwrap_or(&name);
          let extension = Path::new(&name)
             .extension()
-            .map(|ext| ext.to_string_lossy().to_ascii_lowercase());
+            .and_then(|ext| ext.to_str())
+            .map(str::to_ascii_lowercase);
          if !symlink_metadata(found.path())?.is_file()
             || name.starts_with("lib")
             || name.starts_with('.')

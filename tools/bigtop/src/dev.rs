@@ -16,6 +16,7 @@ use std::{
    path::Path,
 };
 
+use mummer::files::utf8;
 use serde::{
    Deserialize,
    Serialize,
@@ -54,7 +55,7 @@ fn save(top: &str, previous: &[String]) -> io::Result<()> {
       env: vars()
          .filter(|entry| !build::nu_internal(&entry.0))
          .collect(),
-      cwd: current_dir()?.to_string_lossy().into_owned(),
+      cwd: utf8(&current_dir()?)?.to_owned(),
       unset,
    };
    let pending = Path::new(top).join("dev-env.tmp.json");

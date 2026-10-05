@@ -147,7 +147,7 @@ pub fn run(
    if !bin.is_dir() {
       return Ok(());
    }
-   let out = output.to_string_lossy().into_owned();
+   let out = utf8(output)?.to_owned();
    let mut context = Context {
       store: nix_store(),
       bin,
@@ -163,7 +163,7 @@ pub fn run(
    (context.scripts_env, context.binaries_env) =
       runtime_env(context.deps, &context.out, &context.store)?;
    let mut names = read_dir(&context.bin)?
-      .map(|entry| entry.map(|found| found.file_name().to_string_lossy().into_owned()))
+      .map(|entry| Ok(utf8(Path::new(&entry?.file_name()))?.to_owned()))
       .collect::<io::Result<Vec<String>>>()?;
    names.sort();
    for name in names {
@@ -250,7 +250,7 @@ fn target<'env>(
          return Ok(None);
       };
       let script = if symlink_metadata(path)?.is_symlink() {
-         context.storerel(&canonicalize(path)?.to_string_lossy())
+         context.storerel(utf8(&canonicalize(path)?)?)
       } else {
          real
       };
@@ -274,7 +274,7 @@ fn target<'env>(
          .collect::<Vec<String>>();
       return Ok(Some(Target {
          env:     &context.binaries_env,
-         program: context.storerel(&context.interp.to_string_lossy()),
+         program: context.storerel(utf8(context.interp)?),
          args:    Some(vec![
             "--argv0".to_owned(),
             "{self}".to_owned(),
