@@ -4,16 +4,29 @@ use std::{
       self,
       BufReader,
       BufWriter,
+      Cursor,
       Write as _,
    },
    os::unix::net::UnixStream,
    path::Path,
    sync::{
       Arc,
+      Mutex,
       atomic::{
+         AtomicBool,
          AtomicU64,
          Ordering,
       },
+      mpsc::{
+         SyncSender,
+         TrySendError,
+         sync_channel,
+      },
+   },
+   thread::{
+      Builder,
+      JoinHandle,
+      scope,
    },
 };
 
@@ -24,17 +37,32 @@ use tightrope::{
 
 use crate::{
    identity::Identities,
+   remote::Remote,
    slots::Slots,
-   store::Store,
+   store::{
+      Store,
+      Value,
+   },
+   warn,
 };
 
+const UPLOAD_QUEUE: usize = 4096;
+const REMOTE_PARALLEL: usize = 16;
+
+type Uploads = SyncSender<(String, Vec<u8>)>;
+
 pub struct Daemon {
-   store:      Store,
-   slots:      Slots,
-   identities: Identities,
-   gets:       AtomicU64,
-   hits:       AtomicU64,
-   puts:       AtomicU64,
+   store:       Store,
+   slots:       Slots,
+   identities:  Identities,
+   gets:        AtomicU64,
+   hits:        AtomicU64,
+   puts:        AtomicU64,
+   remote:      Option<Arc<Remote>>,
+   remote_hits: AtomicU64,
+   uploads:     Mutex<Option<Uploads>>,
+   uploader:    Mutex<Option<JoinHandle<()>>>,
+   dropped:     AtomicBool,
 }
 
 impl Daemon {
@@ -43,10 +71,45 @@ impl Daemon {
    }
 
    pub fn close(&self) -> io::Result<()> {
+      let uploads = self
+         .uploads
+         .lock()
+         .map_err(|_error| io::Error::other("upload queue poisoned"))?
+         .take();
+      drop(uploads);
+      let uploader = self
+         .uploader
+         .lock()
+         .map_err(|_error| io::Error::other("uploader poisoned"))?
+         .take();
+      if let Some(handle) = uploader {
+         handle
+            .join()
+            .map_err(|_error| io::Error::other("uploader panicked"))?;
+      }
       self.store.close()
    }
 
-   pub fn new(store: Store, limit: usize, store_dir: &Path) -> io::Result<Self> {
+   pub fn new(
+      store: Store,
+      limit: usize,
+      store_dir: &Path,
+      tier: Option<Remote>,
+   ) -> io::Result<Self> {
+      let remote = tier.map(Arc::new);
+      let (uploads, uploader) = match remote {
+         Some(ref shared) if shared.writes() => {
+            let (sender, receiver) = sync_channel::<(String, Vec<u8>)>(UPLOAD_QUEUE);
+            let writer = Arc::clone(shared);
+            let uploader = Builder::new().name("upload".to_owned()).spawn(move || {
+               for (key, value) in receiver {
+                  writer.put(&key, &value);
+               }
+            })?;
+            (Some(sender), Some(uploader))
+         },
+         Some(_) | None => (None, None),
+      };
       Ok(Self {
          store,
          slots: Slots::new(limit),
@@ -54,7 +117,71 @@ impl Daemon {
          gets: AtomicU64::new(0),
          hits: AtomicU64::new(0),
          puts: AtomicU64::new(0),
+         remote,
+         remote_hits: AtomicU64::new(0),
+         uploads: Mutex::new(uploads),
+         uploader: Mutex::new(uploader),
+         dropped: AtomicBool::new(false),
       })
+   }
+
+   /// The local values, else the remote's, asked for together and kept
+   /// locally so the next lookup stays here.
+   fn lookup(&self, keys: &[String]) -> io::Result<Vec<Option<Value>>> {
+      let mut values = keys
+         .iter()
+         .map(|key| self.store.get(key))
+         .collect::<Vec<_>>();
+      let Some(ref remote) = self.remote else {
+         return Ok(values);
+      };
+      let missing = (0..keys.len())
+         .filter(|&position| values[position].is_none())
+         .collect::<Vec<_>>();
+      for group in missing.chunks(REMOTE_PARALLEL) {
+         let fetched = scope(|threads| {
+            group
+               .iter()
+               .map(|&position| threads.spawn(move || remote.get(&keys[position])))
+               .collect::<Vec<_>>()
+               .into_iter()
+               .map(|thread| thread.join().ok().flatten())
+               .collect::<Vec<_>>()
+         });
+         for (&position, found) in group.iter().zip(fetched) {
+            let Some(bytes) = found else {
+               continue;
+            };
+            self.remote_hits.fetch_add(1, Ordering::Relaxed);
+            self
+               .store
+               .put(&keys[position], &mut Cursor::new(&bytes), bytes.len())?;
+            values[position] = self.store.get(&keys[position]);
+         }
+      }
+      Ok(values)
+   }
+
+   /// Queues a value just stored for the remote, dropping it rather than
+   /// holding up the build when the queue is full.
+   fn upload(&self, key: &str) -> io::Result<()> {
+      let queue = self
+         .uploads
+         .lock()
+         .map_err(|_error| io::Error::other("upload queue poisoned"))?
+         .clone();
+      let (Some(sender), Some(value)) = (queue, self.store.get(key)) else {
+         return Ok(());
+      };
+      match sender.try_send((key.to_owned(), value.read()?)) {
+         Ok(()) | Err(TrySendError::Disconnected(_)) => {},
+         Err(TrySendError::Full(_)) => {
+            if !self.dropped.swap(true, Ordering::Relaxed) {
+               warn(format_args!("remote upload queue is full, dropping writes"));
+            }
+         },
+      }
+      Ok(())
    }
 }
 
@@ -79,20 +206,29 @@ impl Connection {
    pub fn run(&mut self) -> io::Result<()> {
       while let Some(line) = read_line(&mut self.reader)? {
          match line.parse()? {
-            Request::Get(key) => {
-               self.daemon.gets.fetch_add(1, Ordering::Relaxed);
-               let value = self.daemon.store.get(&key);
-               if let Some(object) = value {
-                  self.daemon.hits.fetch_add(1, Ordering::Relaxed);
-                  writeln!(self.writer, "OK {}", object.size())?;
-                  self.writer.flush()?;
-                  object.write_to(self.writer.get_ref())?;
-               } else {
-                  self.writer.write_all(b"MISS\n")?;
+            Request::Get(first) => {
+               let mut keys = vec![first];
+               while let Some(key) = self.buffered_get()? {
+                  keys.push(key);
+               }
+               for value in self.daemon.lookup(&keys)? {
+                  self.daemon.gets.fetch_add(1, Ordering::Relaxed);
+                  if let Some(object) = value {
+                     self.daemon.hits.fetch_add(1, Ordering::Relaxed);
+                     writeln!(self.writer, "OK {}", object.size())?;
+                     self.writer.flush()?;
+                     object.write_to(self.writer.get_ref())?;
+                  } else {
+                     self.writer.write_all(b"MISS\n")?;
+                  }
                }
             },
             Request::Has(key) => {
-               let exists = self.daemon.store.get(&key).is_some();
+               let exists = self
+                  .daemon
+                  .lookup(&[key])?
+                  .first()
+                  .is_some_and(Option::is_some);
                self
                   .writer
                   .write_all(if exists { b"1\n" } else { b"0\n" })?;
@@ -100,6 +236,7 @@ impl Connection {
             Request::Put { key, length } => {
                self.daemon.store.put(&key, &mut self.reader, length)?;
                self.daemon.puts.fetch_add(1, Ordering::Relaxed);
+               self.daemon.upload(&key)?;
                self.writer.write_all(b"OK\n")?;
             },
             Request::Identities(count) => {
@@ -132,9 +269,10 @@ impl Connection {
                let (occupied, waiting) = self.daemon.slots.stats();
                writeln!(
                   self.writer,
-                  "gets={} hits={} puts={} ids={} slots={} waiting={} {}",
+                  "gets={} hits={} remote={} puts={} ids={} slots={} waiting={} {}",
                   self.daemon.gets.load(Ordering::Relaxed),
                   self.daemon.hits.load(Ordering::Relaxed),
+                  self.daemon.remote_hits.load(Ordering::Relaxed),
                   self.daemon.puts.load(Ordering::Relaxed),
                   self.daemon.identities.len(),
                   occupied,
@@ -146,6 +284,22 @@ impl Connection {
          self.writer.flush()?;
       }
       Ok(())
+   }
+
+   /// The next request when it is a GET the client already pipelined, so a
+   /// batch reaches the remote together.
+   fn buffered_get(&mut self) -> io::Result<Option<String>> {
+      let buffered = self.reader.buffer();
+      if !buffered.starts_with(b"GET ") || !buffered.contains(&b'\n') {
+         return Ok(None);
+      }
+      match read_line(&mut self.reader)?
+         .map(|line| line.parse())
+         .transpose()?
+      {
+         Some(Request::Get(key)) => Ok(Some(key)),
+         _ => Err(io::Error::other("a buffered GET did not parse as one")),
+      }
    }
 }
 
@@ -200,6 +354,7 @@ mod tests {
             .expect("open store"),
             1,
             &directory,
+            None,
          )
          .expect("create daemon"),
       );

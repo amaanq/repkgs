@@ -11,14 +11,17 @@ readme.workspace       = true
 rust-version.workspace = true
 
 [dependencies]
+base64      = "0.23"
 blake3      = { workspace = true }
 color-eyre  = { workspace = true }
 eyre        = { workspace = true }
 pound       = "0.1.7"
 rustix      = { features = [ "process" ], workspace = true }
+sha2        = "0.11"
 signal-hook = { default-features = false, version = "0.3" }
 tempfile    = "3"
 tightrope   = { workspace = true }
+ureq        = { default-features = false, features = [ "rustls" ], version = "3" }
 
 [lints]
 workspace = true

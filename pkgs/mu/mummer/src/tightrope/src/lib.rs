@@ -16,6 +16,7 @@ use zstd::{
 pub const MAX_OBJECT: usize = 2 << 30;
 pub const MAX_LINE: usize = 0x0001_0000;
 pub const MAX_KEY: usize = 4096;
+pub const LOCAL_PREFIX: &str = "i/";
 
 #[inline]
 pub fn check_key(key: &str) -> io::Result<()> {

@@ -1,4 +1,5 @@
 mod identity;
+mod remote;
 mod server;
 mod slots;
 mod store;
@@ -86,6 +87,7 @@ use signal_hook::{
 };
 
 use crate::{
+   remote::Remote,
    server::{
       Connection,
       Daemon,
@@ -102,19 +104,26 @@ use crate::{
 #[pound(name = "mummerd")]
 struct Options {
    /// The Unix socket to listen on.
-   socket:    PathBuf,
+   socket:       PathBuf,
    /// Cache budget in GiB, zero means unlimited.
    #[pound(long, env = "MUMMERD_SIZE", default = "100")]
-   size:      u64,
+   size:         u64,
    /// A second, slower pack directory that takes what the budget pushes out.
    #[pound(long, env = "MUMMERD_COLD")]
-   cold:      Option<PathBuf>,
+   cold:         Option<PathBuf>,
    /// Budget of the cold directory in GiB, zero means unlimited.
    #[pound(long, env = "MUMMERD_COLD_SIZE", default = "0")]
-   cold_size: u64,
+   cold_size:    u64,
    /// Concurrent compiler slots, default the number of CPUs.
    #[pound(long, env = "MUMMERD_SLOTS")]
-   slots:     Option<usize>,
+   slots:        Option<usize>,
+   /// A Bazel HTTP cache asked on a local miss, such as bazel-remote.
+   #[pound(long, env = "MUMMERD_REMOTE")]
+   remote:       Option<String>,
+   /// A file holding `user:password` for the remote, which also makes this
+   /// machine write to it.
+   #[pound(long, env = "MUMMERD_REMOTE_TOKEN")]
+   remote_token: Option<PathBuf>,
 }
 
 struct Socket {
@@ -231,7 +240,32 @@ fn main() -> Result<()> {
    let store_dir = var_os("NIX_STORE_DIR")
       .filter(|path| !path.is_empty())
       .map_or_else(|| PathBuf::from("/nix/store"), PathBuf::from);
-   let daemon = Arc::new(Daemon::new(store, limit, &store_dir)?);
+   let remote = options
+      .remote
+      .filter(|url| !url.is_empty())
+      .map(|url| {
+         Remote::new(
+            &url,
+            options
+               .remote_token
+               .as_deref()
+               .filter(|path| !path.as_os_str().is_empty()),
+         )
+      })
+      .transpose()
+      .wrap_err("could not read the remote token")?;
+   if let Some(ref tier) = remote {
+      note(format_args!(
+         "remote tier {}, {}",
+         tier.url(),
+         if tier.writes() {
+            "writing"
+         } else {
+            "read-only"
+         }
+      ));
+   }
+   let daemon = Arc::new(Daemon::new(store, limit, &store_dir, remote)?);
    let mut workers = Vec::<(JoinHandle<()>, UnixStream)>::new();
    let result = serve(&socket.listener, &daemon, &stopped, &mut workers);
    daemon.stop();

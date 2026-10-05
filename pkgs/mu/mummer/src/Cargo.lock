@@ -375,14 +375,17 @@ dependencies = [
 name = "mummerd"
 version = "1.0.0"
 dependencies = [
+ "base64",
  "blake3",
  "color-eyre",
  "eyre",
  "pound",
  "rustix",
+ "sha2",
  "signal-hook",
  "tempfile",
  "tightrope",
+ "ureq",
 ]
 
 [[package]]

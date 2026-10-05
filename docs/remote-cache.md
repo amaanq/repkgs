@@ -19,11 +19,18 @@ mummerd stores opaque values under string keys (`GET`, `HAS`, `PUT` in tightrope
 already machine independent, store hashes are masked and `$out` is a placeholder, so the same
 compile on two machines with the same toolchain asks for the same key.
 
-On the remote a key is an action cache entry whose digest is the sha256 of the key text, and the
-value is one blob in the content store, named by its own sha256. A `PUT` writes the blob first and
-the action entry second, so a reader never sees an entry whose blob is missing. A `HAS` is one
-action lookup. The batched `get_many` and `has_many` become batched remote calls, one round trip
-per batch, since a round trip per compile would be slower than compiling small files.
+The remote speaks Bazel's HTTP cache protocol (`GET`/`PUT` on `/ac/<sha256>` and `/cas/<sha256>`).
+A key is an action cache entry whose digest is the sha256 of the key text. The entry is a real REAPI
+`ActionResult`, so a server that validates entries, as bazel-remote does by default, takes it. A
+value up to 1 MiB rides in the entry's `stdout_raw`, one round trip. A larger one is a CAS blob
+named by its own sha256 that the entry's one output file points at, written before the entry so a
+reader never sees an entry whose blob is missing, and dropped as a miss when its bytes do not hash
+to its name.
+
+The GETs a client pipelines in one `get_many` reach the remote together, up to 16 at a time, so a
+cache hit costs two round trips (the manifest, then the result) however far the server is. Keys
+under `tightrope::LOCAL_PREFIX` (`i/`, the stat-stamped file identities) name this machine's
+files and never go to the remote.
 
 ## Failure
 
@@ -33,14 +40,12 @@ trying again. A blob whose bytes do not hash to its name is dropped and counted 
 
 ## Configuration
 
-`--remote <url>` (`MUMMERD_REMOTE`) and `--remote-token <file>` (`MUMMERD_REMOTE_TOKEN`). With a
-token mummerd writes through, without one it only reads.
+`--remote <url>` (`MUMMERD_REMOTE`) and `--remote-token <file>` (`MUMMERD_REMOTE_TOKEN`), the file
+holding `user:password` for HTTP basic auth. With a token mummerd writes through from a background
+queue that never holds up a build, without one it only reads. The NixOS module takes
+`services.mummerd.remote` and `services.mummerd.remoteTokenFile`, the latter a string handed over
+with `LoadCredential` so the secret stays out of the store.
 
-## Open, your call
-
-- Protocol. Bazel's HTTP cache protocol (`GET`/`PUT` on `/ac/<sha256>` and `/cas/<sha256>`) needs
-  only ureq, which mummer already links. The gRPC REAPI needs tonic, prost and h2, a much heavier
-  dependency set for the same two operations. bazel-remote speaks both. Whether NativeLink serves
-  the HTTP protocol has to be checked before choosing it as the server.
-- Whether hits from the remote are written into the local cache of read-only machines (faster
-  second build, more disk) or only served.
+Serving it is bazel-remote, for example `bazel-remote --dir /var/cache/bazel-remote --max_size 500
+--http_address :8080 --htpasswd_file htpasswd --allow_unauthenticated_reads`, which lets everyone
+read and only the htpasswd users write.
