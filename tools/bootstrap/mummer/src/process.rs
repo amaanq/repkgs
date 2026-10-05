@@ -238,12 +238,13 @@ pub fn status_code(status: ExitStatus) -> i32 {
       .unwrap_or_else(|| 128_i32 + status.signal().unwrap_or(1_i32))
 }
 
+/// Runs a program under a compiler slot when a daemon answers, its output
+/// passed through.
 #[inline]
 pub fn run_slotted<Argument>(
    program: &OsStr,
    args: &[Argument],
    socket: Option<&Path>,
-   capture: bool,
 ) -> io::Result<RunResult>
 where
    Argument: AsRef<OsStr>,
@@ -252,15 +253,32 @@ where
    let slot = client
       .as_mut()
       .and_then(|connected| Slot::acquire(connected).ok().flatten());
-   run(program, args, slot, capture, &[])
+   let mut command = Command::new(program);
+   command
+      .args(args)
+      .stdin(Stdio::inherit())
+      .stdout(Stdio::inherit());
+   if slot.is_some() {
+      command.env("MUMMER_SLOT", "1");
+   }
+   let result = command.status().map(|status| {
+      RunResult {
+         status: status_code(status),
+         stderr: Vec::new(),
+      }
+   });
+   drop(slot);
+   started(program, result, |message| {
+      diagnostic(format_args!("{message}"));
+   })
 }
 
+/// Runs a compiler with its stderr captured, for the cache to keep.
 #[inline]
 pub fn run<Argument>(
    program: &OsStr,
    args: &[Argument],
    slot: Option<Slot<'_>>,
-   capture: bool,
    environment: &[(&str, &OsStr)],
 ) -> io::Result<RunResult>
 where
@@ -271,35 +289,38 @@ where
       .args(args)
       .envs(environment.iter().copied())
       .stdin(Stdio::inherit())
-      .stdout(Stdio::inherit());
+      .stdout(Stdio::inherit())
+      .stderr(Stdio::piped());
    if slot.is_some() {
       command.env("MUMMER_SLOT", "1");
    }
-   let result = if capture {
-      command.stderr(Stdio::piped()).output().map(|output| {
-         RunResult {
-            status: status_code(output.status),
-            stderr: output.stderr,
-         }
-      })
-   } else {
-      command.status().map(|status| {
-         RunResult {
-            status: status_code(status),
-            stderr: Vec::new(),
-         }
-      })
-   };
+   let result = command.output().map(|output| {
+      RunResult {
+         status: status_code(output.status),
+         stderr: output.stderr,
+      }
+   });
    drop(slot);
+   started(program, result, |_message| {})
+}
+
+/// A program that could not start as exit status 127 with the reason as its
+/// stderr, the way a shell reports it.
+fn started<Report>(
+   program: &OsStr,
+   result: io::Result<RunResult>,
+   report: Report,
+) -> io::Result<RunResult>
+where
+   Report: FnOnce(&str),
+{
    match result {
       Err(error) if error.kind() == io::ErrorKind::NotFound => {
          let message = format!(
             "mummer could not start {}, {error}",
             program.to_string_lossy()
          );
-         if !capture {
-            diagnostic(format_args!("{message}"));
-         }
+         report(&message);
          Ok(RunResult {
             status: 127,
             stderr: format!("{message}\n").into_bytes(),

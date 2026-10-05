@@ -308,7 +308,6 @@ impl Wrapper for Module<'_> {
          OsStr::new(self.compiler),
          self.arguments,
          Slot::acquire(cache).ok().flatten(),
-         true,
          &[],
       )?;
       Ok((result, before))
@@ -392,7 +391,7 @@ pub fn run_ghc(args: &[String], socket: &Path) -> io::Result<i32> {
       },
       Err(label) => (Outcome::Uncacheable, label),
    };
-   let result = run_slotted(OsStr::new(compiler), arguments, Some(socket), false)?;
+   let result = run_slotted(OsStr::new(compiler), arguments, Some(socket))?;
    uncached(Tool::Ghc, outcome, label, arguments, started);
    Ok(result.status)
 }

@@ -72,25 +72,27 @@ fn dispatch() -> Result<i32> {
    let name_text = name
       .to_str()
       .ok_or_else(|| report!("mode {name:?} is not UTF-8"))?;
-   run(
-      Mode::from_arguments(name_text, args)?,
-      args,
-      &socket,
-   )
+   run(Mode::from_arguments(name_text, args)?, args, &socket)
 }
 
 fn slot_mode(args: &[OsString], socket: &Path) -> Result<i32> {
    let Some((program, rest)) = args.split_first() else {
       bail!("mummer slot requires a program")
    };
-   Ok(process::run_slotted(program, rest, Some(socket), false)?.status)
+   Ok(process::run_slotted(program, rest, Some(socket))?.status)
 }
 
 fn run(mode: Mode, args: &[OsString], socket: &Path) -> Result<i32> {
    match mode {
       Mode::Cc => return Ok(cc::run_cc(Language::Cc, &text_arguments(args)?, socket)?),
       Mode::Cxx => return Ok(cc::run_cc(Language::Cxx, &text_arguments(args)?, socket)?),
-      Mode::Fortran => return Ok(cc::run_cc(Language::Fortran, &text_arguments(args)?, socket)?),
+      Mode::Fortran => {
+         return Ok(cc::run_cc(
+            Language::Fortran,
+            &text_arguments(args)?,
+            socket,
+         )?);
+      },
       Mode::Rustcwrap => return Ok(rustc::run_rustc(&text_arguments(args)?, socket)?),
       Mode::Ghcwrap => return Ok(ghc::run_ghc(&text_arguments(args)?, socket)?),
       Mode::Cache {
