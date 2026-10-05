@@ -63,6 +63,10 @@ use crate::{
       segments,
    },
    image::Image,
+   store_path::{
+      HASH_ALPHABET,
+      StorePath,
+   },
 };
 
 pub const STORE_DIR: &str = match option_env!("MUMMER_STORE_DIR") {
@@ -72,7 +76,6 @@ pub const STORE_DIR: &str = match option_env!("MUMMER_STORE_DIR") {
 
 const OUTPUT_PLACEHOLDER: &[u8] = b"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const PATH_ENDS: &str = " \t\n\\:\"';,)]}>";
-const HASH_ALPHABET: &[u8] = b"0123456789abcdfghijklmnpqrsvwxyz";
 const RANDOM_NAMES: [(&str, usize); 3] = [("TryCompile-", 6), ("cmTC_", 5), ("/rustc", 6)];
 
 /// What a key records of an input file.
@@ -131,12 +134,13 @@ impl From<InputId> for String {
 }
 
 pub struct Store {
-   content:     bool,
-   output:      String,
-   output_hash: Vec<u8>,
-   roots:       BTreeMap<String, String>,
-   identities:  HashMap<String, InputId>,
-   random:      Vec<(String, String)>,
+   content:    bool,
+   output:     String,
+   /// `$out` when content mode masks its hash in what is stored.
+   masked:     Option<StorePath>,
+   roots:      BTreeMap<String, StorePath>,
+   identities: HashMap<String, InputId>,
+   random:     Vec<(String, String)>,
 }
 
 impl Default for Store {
@@ -163,15 +167,7 @@ impl Store {
 
    fn identified(content: bool) -> Self {
       let output = var("out").unwrap_or_default();
-      let output_hash = if content && is_store_path(&output) {
-         output
-            .as_bytes()
-            .get(STORE_DIR.len() + 1..STORE_DIR.len() + 33)
-            .unwrap_or_default()
-            .to_vec()
-      } else {
-         Vec::new()
-      };
+      let masked = content.then(|| StorePath::containing(&output)).flatten();
       let mut roots = BTreeMap::new();
       let toolchain = current_exe()
          .ok()
@@ -182,22 +178,14 @@ impl Store {
          .split_whitespace()
          .chain([output.as_str(), toolchain.as_str()])
       {
-         if !is_store_path(root) {
-            continue;
+         if let Some(object) = StorePath::containing(root) {
+            roots.entry(mask_hashes(object.as_str())).or_insert(object);
          }
-         let suffix = &root[STORE_DIR.len() + 1..];
-         let end = suffix
-            .find('/')
-            .map_or(root.len(), |position| STORE_DIR.len() + 1 + position);
-         let directory = &root[..end];
-         roots
-            .entry(mask_hashes(directory))
-            .or_insert_with(|| directory.to_owned());
       }
       Self {
          content,
          output,
-         output_hash,
+         masked,
          roots,
          identities: HashMap::new(),
          random: Vec::new(),
@@ -222,13 +210,14 @@ impl Store {
 
    #[inline]
    pub fn mask_output(&self, data: &mut [u8], restore: bool) {
-      if self.output_hash.len() != 32 {
+      let Some(ref output) = self.masked else {
          return;
-      }
+      };
+      let hash = output.hash_part().as_bytes();
       let (from, to) = if restore {
-         (OUTPUT_PLACEHOLDER, self.output_hash.as_slice())
+         (OUTPUT_PLACEHOLDER, hash)
       } else {
-         (self.output_hash.as_slice(), OUTPUT_PLACEHOLDER)
+         (hash, OUTPUT_PLACEHOLDER)
       };
       let prefix = format!("{STORE_DIR}/");
       let mut offset = 0;
@@ -275,7 +264,7 @@ impl Store {
                .next()
                .is_none_or(|next| next == '/' || PATH_ENDS.contains(next));
             result.push_str(&remaining[..position]);
-            result.push_str(if whole { real } else { masked });
+            result.push_str(if whole { real.as_str() } else { masked });
             remaining = &remaining[end..];
          }
          result.push_str(remaining);
@@ -378,8 +367,7 @@ impl Store {
             continue;
          };
          if let Some(root) = self.roots.get(&format!("{STORE_DIR}/*-{name}")) {
-            data[start..start + 32]
-               .copy_from_slice(&root.as_bytes()[prefix.len()..prefix.len() + 32]);
+            data[start..start + 32].copy_from_slice(root.hash_part().as_bytes());
          }
          offset = end;
       }
