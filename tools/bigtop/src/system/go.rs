@@ -2,7 +2,6 @@ use std::{
    fs::{
       copy,
       create_dir_all,
-      read_dir,
    },
    io,
    path::Path,
@@ -22,6 +21,7 @@ use crate::{
    system::{
       command::{
          Env,
+         file_names,
          run,
          strs,
          tool,
@@ -166,10 +166,7 @@ impl Go {
    fn install(ctx: &Ctx) -> io::Result<()> {
       let built = format!("{}/bin", ctx.build);
       let wanted = ctx.spec()?.bin;
-      let mut names: Vec<String> = read_dir(&built)?
-         .map(|entry| entry.map(|found| found.file_name().to_string_lossy().into_owned()))
-         .collect::<io::Result<_>>()?;
-      names.sort();
+      let names = file_names(Path::new(&built))?;
       let out = format!("{}/bin", ctx.out);
       create_dir_all(&out)?;
       for name in names

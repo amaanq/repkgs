@@ -7,17 +7,13 @@ use std::{
       File,
       create_dir_all,
       read,
-      read_dir,
       symlink_metadata,
    },
    io::{
       self,
       Write as _,
    },
-   path::{
-      Path,
-      PathBuf,
-   },
+   path::Path,
    process::{
       Command,
       Stdio,
@@ -26,7 +22,10 @@ use std::{
 };
 
 use mummer::{
-   files::write_file,
+   files::{
+      sorted_entries,
+      write_file,
+   },
    store::STORE_DIR,
    tree::writable,
 };
@@ -89,7 +88,7 @@ impl System for Python {
       let options: Options = ctx.options("python")?;
       let root = ctx.project_dir(&options.root);
       let dep_roots: Vec<String> = ctx.deps.iter().map(|dep| dep.root.clone()).collect();
-      let mut path = Self::site_packages(&dep_roots)?;
+      let mut path = Self::site_packages(&dep_roots);
       path.extend(tool_site_packages()?);
       for own in [root.clone(), root.join("src")] {
          if own.exists() {
@@ -116,16 +115,12 @@ impl System for Python {
 }
 
 impl Python {
-   fn site_packages(roots: &[String]) -> io::Result<Vec<String>> {
+   fn site_packages(roots: &[String]) -> Vec<String> {
       let mut found = Vec::new();
       for root in roots {
-         let Ok(entries) = read_dir(Path::new(root).join("lib")) else {
+         let Ok(versions) = sorted_entries(&Path::new(root).join("lib")) else {
             continue;
          };
-         let mut versions: Vec<PathBuf> = entries
-            .map(|entry| entry.map(|listed| listed.path()))
-            .collect::<io::Result<_>>()?;
-         versions.sort();
          for version in versions {
             let name = version.file_name().unwrap_or_default().to_string_lossy();
             let site = version.join("site-packages");
@@ -134,7 +129,7 @@ impl Python {
             }
          }
       }
-      Ok(found)
+      found
    }
 
    fn python(code: &str) -> io::Result<String> {
@@ -205,11 +200,8 @@ impl Python {
    /// to its own location.
    fn install(ctx: &Ctx, attrs: &Attrs) -> io::Result<()> {
       let dist = format!("{}/dist", ctx.build);
-      let mut wheels: Vec<PathBuf> = read_dir(&dist)?
-         .map(|entry| entry.map(|found| found.path()))
-         .collect::<io::Result<_>>()?;
+      let mut wheels = sorted_entries(Path::new(&dist))?;
       wheels.retain(|path| path.extension().is_some_and(|extension| extension == "whl"));
-      wheels.sort();
       let wheel = wheels
          .first()
          .ok_or_else(|| io::Error::other("no wheel in dist"))?
@@ -261,7 +253,7 @@ impl Python {
       let mut roots = vec![ctx.out.clone()];
       roots.extend(ctx.deps.iter().map(|dep| dep.root.clone()));
       let store = var("NIX_STORE").unwrap_or_else(|_| STORE_DIR.to_owned());
-      let rels: Vec<String> = Self::site_packages(&roots)?
+      let rels: Vec<String> = Self::site_packages(&roots)
          .iter()
          .map(|site| {
             site.strip_prefix(&ctx.out).map_or_else(
@@ -298,11 +290,7 @@ impl Python {
       if !bin.is_dir() {
          return Ok(());
       }
-      let mut scripts: Vec<PathBuf> = read_dir(bin)?
-         .map(|entry| entry.map(|found| found.path()))
-         .collect::<io::Result<_>>()?;
-      scripts.sort();
-      for script in scripts {
+      for script in sorted_entries(bin)? {
          if !symlink_metadata(&script)?.is_file() {
             continue;
          }
@@ -338,7 +326,7 @@ impl Python {
          .module
          .clone()
          .unwrap_or_else(|| spec.name.replace('-', "_"));
-      let mut path = Self::site_packages(slice::from_ref(&ctx.out))?;
+      let mut path = Self::site_packages(slice::from_ref(&ctx.out));
       path.push(var("PYTHONPATH").unwrap_or_default());
       let joined = path.join(":");
       let env = [("PYTHONPATH", joined.as_str())];
@@ -362,12 +350,12 @@ pub fn tool_site_packages() -> io::Result<Vec<String>> {
          .unwrap_or_else(|| Path::new("/"))
          .to_string_lossy()
          .into_owned();
-      if !Python::site_packages(slice::from_ref(&root))?.is_empty() {
+      if !Python::site_packages(slice::from_ref(&root)).is_empty() {
          roots.push(root);
       }
    }
    let closure_roots: Vec<String> = closure(&roots)?.into_iter().map(|dep| dep.root).collect();
-   Python::site_packages(&closure_roots)
+   Ok(Python::site_packages(&closure_roots))
 }
 
 pub fn maturin_interpreter() -> io::Result<String> {

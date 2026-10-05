@@ -1,8 +1,5 @@
 use std::{
-   fs::{
-      read_dir,
-      read_to_string,
-   },
+   fs::read_to_string,
    io,
    path::Path,
 };
@@ -24,6 +21,7 @@ use crate::{
    system::{
       command::{
          dep_root,
+         file_names,
          run,
          strs,
          unknown,
@@ -98,13 +96,9 @@ impl Luarocks {
       args.extend(options.rockspec.as_deref());
       run("luarocks", &args, &[])?;
       let bin = format!("{}/bin", ctx.out);
-      let Ok(entries) = read_dir(&bin) else {
+      let Ok(names) = file_names(Path::new(&bin)) else {
          return Ok(());
       };
-      let mut names: Vec<String> = entries
-         .map(|entry| entry.map(|found| found.file_name().to_string_lossy().into_owned()))
-         .collect::<io::Result<_>>()?;
-      names.sort();
       for name in names {
          let path = format!("{bin}/{name}");
          let mut text = read_to_string(&path)?;

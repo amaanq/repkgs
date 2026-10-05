@@ -16,6 +16,7 @@ use std::{
 };
 
 use mummer::{
+   files::sorted_entries,
    process::Checked as _,
    store::on_path,
 };
@@ -122,6 +123,14 @@ pub fn tool(name: &str) -> io::Result<PathBuf> {
       return Err(io::Error::other(format!("{name} not on PATH")));
    }
    Ok(path)
+}
+
+pub fn file_names(directory: &Path) -> io::Result<Vec<String>> {
+   Ok(sorted_entries(directory)?
+      .iter()
+      .filter_map(|path| path.file_name())
+      .map(|name| name.to_string_lossy().into_owned())
+      .collect())
 }
 
 pub fn strs(values: &[String]) -> impl Iterator<Item = &str> {
