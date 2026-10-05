@@ -5,7 +5,6 @@ use std::{
       copy,
       create_dir_all,
       read,
-      read_dir,
       read_to_string,
       remove_dir_all,
       remove_file,
@@ -24,7 +23,10 @@ use std::{
 };
 
 use mummer::{
-   files::write_file,
+   files::{
+      sorted_entries,
+      write_file,
+   },
    syslibs::Ecosystem,
    tree::{
       EntryKind,
@@ -90,12 +92,28 @@ struct Plan {
 #[derive(Deserialize)]
 struct Unit {
    #[serde(rename = "type")]
-   kind:     String,
+   kind:     UnitType,
    #[serde(default)]
-   style:    Option<String>,
+   style:    Option<UnitStyle>,
    id:       String,
    #[serde(rename = "pkg-name")]
    pkg_name: String,
+}
+
+#[derive(Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum UnitType {
+   PreExisting,
+   Configured,
+   Installed,
+}
+
+#[derive(Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum UnitStyle {
+   Global,
+   Local,
+   Inplace,
 }
 
 /// the same fixed path in every sandbox, so the paths inside cached units
@@ -128,15 +146,16 @@ impl System for Cabal {
       let options: Options = ctx.options("cabal")?;
       let repo = format!("{}/repo", ctx.build);
       create_dir_all(&repo)?;
-      let mut sources: Vec<String> = read_dir(&options.deps)?
-         .map(|entry| entry.map(|found| found.file_name().to_string_lossy().into_owned()))
-         .collect::<io::Result<_>>()?;
-      sources.sort();
-      for name in sources
-         .iter()
-         .filter(|name| name.ends_with(".tar.gz") || Self::is_cabal(name))
-      {
-         symlink(format!("{}/{name}", options.deps), format!("{repo}/{name}"))?;
+      for source in sorted_entries(Path::new(&*options.deps))? {
+         let Some(name) = source
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+         else {
+            continue;
+         };
+         if name.ends_with(".tar.gz") || Self::is_cabal(&name) {
+            symlink(format!("{}/{name}", options.deps), format!("{repo}/{name}"))?;
+         }
       }
       let output = Command::new("ghc").arg("--info").output()?;
       if !output.status.success() {
@@ -225,12 +244,8 @@ impl Cabal {
          .is_some_and(|extension| extension.eq_ignore_ascii_case("cabal"))
    }
 
-   fn units() -> io::Result<String> {
-      var("CABAL_UNITS").map_err(|_unset| io::Error::other("CABAL_UNITS is not set"))
-   }
-
-   fn unit_key() -> io::Result<String> {
-      var("CABAL_UNIT_KEY").map_err(|_unset| io::Error::other("CABAL_UNIT_KEY is not set"))
+   fn exported(name: &str) -> io::Result<String> {
+      var(name).map_err(|_unset| io::Error::other(format!("{name} is not set")))
    }
 
    fn recache(units: &str) -> io::Result<()> {
@@ -291,26 +306,27 @@ impl Cabal {
       Ok(plan
          .install_plan
          .into_iter()
-         .filter(|unit| unit.kind == "configured" && unit.style.as_deref() == Some("global"))
+         .filter(|unit| unit.kind == UnitType::Configured && unit.style == Some(UnitStyle::Global))
          .collect())
    }
 
    fn unit_dirs(units: &str) -> io::Result<Vec<String>> {
       let mut names = Vec::new();
-      for entry in read_dir(units)? {
-         let found = entry?;
-         let name = found.file_name().to_string_lossy().into_owned();
-         if found.file_type()?.is_dir() && name != "package.db" && name != "incoming" {
+      for path in sorted_entries(Path::new(units))? {
+         let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+         if path.symlink_metadata()?.is_dir() && name != "package.db" && name != "incoming" {
             names.push(name);
          }
       }
-      names.sort();
       Ok(names)
    }
 
    fn restore(ctx: &Ctx, ids: &[String], socket: &Path) -> io::Result<()> {
-      let units = Self::units()?;
-      let key = Self::unit_key()?;
+      let units = Self::exported("CABAL_UNITS")?;
+      let key = Self::exported("CABAL_UNIT_KEY")?;
       let got: Vec<bool> = parallel(ids, |id| {
          let unit = format!("{key}/{id}").parse::<Key>()?;
          let Some(bytes) = Client::connect(socket)
@@ -343,8 +359,8 @@ impl Cabal {
    /// executable units (alex, happy, build tools of other packages) have no
    /// package.db entry, just bin/.
    fn save_units(ctx: &Ctx, before: &[String], socket: &Path) -> io::Result<()> {
-      let units = Self::units()?;
-      let key = Self::unit_key()?;
+      let units = Self::exported("CABAL_UNITS")?;
+      let key = Self::exported("CABAL_UNIT_KEY")?;
       let new: Vec<String> = Self::unit_dirs(&units)?
          .into_iter()
          .filter(|id| !before.contains(id))
@@ -449,7 +465,7 @@ impl Cabal {
          let ids: Vec<String> = planned.into_iter().map(|unit| unit.id).collect();
          Self::restore(ctx, &ids, socket)?;
       }
-      let before = Self::unit_dirs(&Self::units()?)?;
+      let before = Self::unit_dirs(&Self::exported("CABAL_UNITS")?)?;
       let mut args = vec!["build"];
       args.extend(strs(&targets));
       run("cabal", &args, &[])?;
