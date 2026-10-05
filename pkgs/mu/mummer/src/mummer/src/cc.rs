@@ -762,7 +762,14 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       } else if own_depfile && self_contained {
          format!("o: {}", invocation.source)
       } else {
-         read_to_string(dependency_path)?
+         match read_to_string(dependency_path) {
+            Ok(text) => text,
+            // clang deletes the dependency file when a header is missing
+            Err(error) if error.kind() == io::ErrorKind::NotFound && result.status != 0_i32 => {
+               return Ok(false);
+            },
+            Err(error) => return Err(error),
+         }
       };
       let mut inputs = parse_depfile(&dependencies);
       if invocation.links() {
