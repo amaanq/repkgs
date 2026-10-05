@@ -1,19 +1,26 @@
 use std::{
    fs::create_dir_all,
    io,
-   path::Path,
+   path::PathBuf,
+   process::Command,
 };
+
+use mummer::attrs::load;
+use serde::Deserialize;
 
 use crate::bootstrap::{
    dispatch::Recipe,
    stage::{
       Stage,
+      execute,
       files,
-      run,
-      strs,
-      wanted,
    },
 };
+
+#[derive(Deserialize)]
+struct Attrs {
+   sdk: PathBuf,
+}
 
 pub struct Vcruntime;
 
@@ -23,14 +30,13 @@ impl Recipe for Vcruntime {
    }
 
    fn run(&self, stage: &Stage) -> io::Result<()> {
-      let sdk = wanted(stage.sdk.as_deref(), "sdk")?;
-      let bin = Path::new(stage.out()).join("bin");
+      let attrs = load::<Attrs>()?;
+      let bin = stage.out.join("bin");
       create_dir_all(&bin)?;
-      let mut args: Vec<String> = files(&format!("{sdk}/crt/redist/*.dll"))?
-         .into_iter()
-         .map(|path| path.to_string_lossy().into_owned())
-         .collect();
-      args.push(bin.to_string_lossy().into_owned());
-      run("cp", &strs(&args))
+      execute(
+         Command::new("cp")
+            .args(files(&format!("{}/crt/redist/*.dll", attrs.sdk.display()))?)
+            .arg(&bin),
+      )
    }
 }

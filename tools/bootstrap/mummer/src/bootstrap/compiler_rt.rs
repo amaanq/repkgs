@@ -6,7 +6,11 @@ use std::{
       Path,
       PathBuf,
    },
+   process::Command,
 };
+
+use mummer::attrs::load;
+use serde::Deserialize;
 
 use crate::bootstrap::{
    dispatch::Recipe,
@@ -21,9 +25,21 @@ use crate::bootstrap::{
       files,
       read_list,
       say,
-      wanted,
+   },
+   target::{
+      Binfmt,
+      Cpu,
    },
 };
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Attrs {
+   libc_headers:  PathBuf,
+   list:          PathBuf,
+   #[serde(default)]
+   linux_headers: Option<PathBuf>,
+}
 
 pub struct CompilerRt;
 
@@ -32,32 +48,31 @@ impl CompilerRt {
    /// what is built here. The libc names its header dirs in
    /// etc/cc/include-dirs, and a case-insensitive header overlay
    /// (windows-sdk) rides in its flags relative to its own location.
-   fn libc_includes(stage: &Stage) -> io::Result<Vec<String>> {
-      let libc = wanted(stage.libc_headers.as_deref(), "libcHeaders")?;
-      let mut dirs: Vec<String> = cc_fact(libc, "include-dirs")?
+   fn libc_includes(attrs: &Attrs) -> io::Result<Vec<String>> {
+      let libc = &attrs.libc_headers;
+      let mut dirs = cc_fact(libc, "include-dirs")?
          .unwrap_or_default()
          .iter()
-         .map(|dir| format!("{libc}/{dir}"))
-         .collect();
-      if let Some(linux) = stage.linux_headers.as_deref() {
-         dirs.push(format!("{linux}/include"));
+         .map(|dir| libc.join(dir).display().to_string())
+         .collect::<Vec<_>>();
+      if let Some(ref linux) = attrs.linux_headers {
+         dirs.push(linux.join("include").display().to_string());
       }
-      let flags: Vec<String> = cc_fact(libc, "flags")?
+      let libc_text = libc.display().to_string();
+      let flags = cc_fact(libc, "flags")?
          .unwrap_or_default()
          .iter()
-         .map(|flag| flag.replace("SYSROOT", libc))
-         .collect();
+         .map(|flag| flag.replace("SYSROOT", &libc_text))
+         .collect::<Vec<_>>();
       let mut args = vec!["-nostdlibinc".to_owned()];
-      for dir in &dirs {
-         args.push("-isystem".to_owned());
-         args.push(dir.clone());
+      for dir in dirs {
+         args.extend(["-isystem".to_owned(), dir]);
       }
-      for (index, flag) in flags.iter().enumerate() {
-         if flag == "-ivfsoverlay"
-            && let Some(overlay) = flags.get(index + 1)
+      for pair in flags.windows(2) {
+         if let [ref flag, ref overlay] = *pair
+            && flag == "-ivfsoverlay"
          {
-            args.push("-ivfsoverlay".to_owned());
-            args.push(overlay.clone());
+            args.extend(["-ivfsoverlay".to_owned(), overlay.clone()]);
          }
       }
       Ok(args)
@@ -65,7 +80,7 @@ impl CompilerRt {
 
    /// "@`lse/outline_atomic`_<op><size>_<model>.S" stands for aarch64/lse.S
    /// built with those three defines, cmake generates the same by symlinking.
-   fn builtin_item(builtins: &str, obj: &str, file: &str) -> Item {
+   fn builtin_item(builtins: &Path, obj: &Path, file: &str) -> Item {
       if let Some(rest) = file
          .strip_prefix("@lse/outline_atomic_")
          .and_then(|rest| rest.strip_suffix(".S"))
@@ -76,8 +91,8 @@ impl CompilerRt {
             .unwrap_or(op_size.len());
          let (op, size) = op_size.split_at(split);
          return Item {
-            src:   PathBuf::from(format!("{builtins}/aarch64/lse.S")),
-            obj:   PathBuf::from(format!("{obj}/{file}.o")),
+            src:   builtins.join("aarch64/lse.S"),
+            obj:   obj.join(format!("{file}.o")),
             flags: vec![
                format!("-DL_{op}"),
                format!("-DSIZE={size}"),
@@ -85,55 +100,44 @@ impl CompilerRt {
             ],
          };
       }
-      let std = if Path::new(file)
+      let std: &[&str] = if Path::new(file)
          .extension()
          .is_some_and(|extension| extension.eq_ignore_ascii_case("cpp"))
       {
-         vec!["-std=c++17", "-fno-exceptions", "-fno-rtti", "-nostdinc++"]
+         &["-std=c++17", "-fno-exceptions", "-fno-rtti", "-nostdinc++"]
       } else {
-         vec!["-std=gnu11"]
+         &["-std=gnu11"]
       };
       Item {
-         src:   PathBuf::from(format!("{builtins}/{file}")),
-         obj:   PathBuf::from(format!("{obj}/{file}.o")),
-         flags: std.into_iter().map(str::to_owned).collect(),
+         src:   builtins.join(file),
+         obj:   obj.join(format!("{file}.o")),
+         flags: std.iter().copied().map(str::to_owned).collect(),
       }
-   }
-
-   /// where each driver looks for the builtins, the per-target runtime dir
-   /// with lib<name>.a (ELF) or <name>.lib (lld-link), and for darwin only
-   /// ever `lib/darwin/libclang_rt.osx.a`, fat in Xcode and one arch here.
-   fn builtins_lib(stage: &Stage, out: &str) -> io::Result<String> {
-      Ok(format!("{out}/{}", stage.profile()?.runtime("builtins")))
    }
 
    /// ELF only, crtbegin/crtend (vcruntime and libSystem bring their own)
    /// and GCC's crt names for glibc's Makeconfig, which links them even when
    /// configure saw compiler-rt.
-   fn elf_extras(stage: &Stage, src: &Path, out: &str, common: &[String]) -> io::Result<()> {
-      let builtins = format!("{}/compiler-rt/lib/builtins", src.display());
-      let libdir = format!("{out}/lib/{}", stage.clang_target);
-      let crtflags: Vec<String> = ["-DCRT_HAS_INITFINI_ARRAY", "-DEH_USE_FRAME_REGISTRY"]
-         .into_iter()
-         .map(str::to_owned)
-         .collect();
-      compile(common, &[
+   fn elf_extras(stage: &Stage, builtins: &Path, common: &[String]) -> io::Result<()> {
+      let libdir = stage.out.join("lib").join(&stage.clang_target);
+      let crtflags = ["-DCRT_HAS_INITFINI_ARRAY", "-DEH_USE_FRAME_REGISTRY"].map(str::to_owned);
+      compile("clang", common, &[
          Item {
-            src:   PathBuf::from(format!("{builtins}/crtbegin.c")),
-            obj:   PathBuf::from(format!("{libdir}/clang_rt.crtbegin.o")),
-            flags: crtflags.clone(),
+            src:   builtins.join("crtbegin.c"),
+            obj:   libdir.join("clang_rt.crtbegin.o"),
+            flags: crtflags.to_vec(),
          },
          Item {
-            src:   PathBuf::from(format!("{builtins}/crtend.c")),
-            obj:   PathBuf::from(format!("{libdir}/clang_rt.crtend.o")),
-            flags: crtflags,
+            src:   builtins.join("crtend.c"),
+            obj:   libdir.join("clang_rt.crtend.o"),
+            flags: crtflags.to_vec(),
          },
       ])?;
       for name in ["crtbegin.o", "crtbeginS.o", "crtbeginT.o"] {
-         symlink("clang_rt.crtbegin.o", format!("{libdir}/{name}"))?;
+         symlink("clang_rt.crtbegin.o", libdir.join(name))?;
       }
       for name in ["crtend.o", "crtendS.o"] {
-         symlink("clang_rt.crtend.o", format!("{libdir}/{name}"))?;
+         symlink("clang_rt.crtend.o", libdir.join(name))?;
       }
       Ok(())
    }
@@ -142,55 +146,53 @@ impl CompilerRt {
    /// for it per binfmt. On ELF it needs kernel headers (mmap flags), so
    /// stage1 only. *`ROCm`* is the separate `clang_rt.profile_rocm`,
    /// `WindowsMMap` the win32 mmap port.
-   fn profile_runtime(stage: &Stage, src: &Path, out: &str) -> io::Result<()> {
-      if stage.binfmt == "elf" && stage.linux_headers.is_none() {
+   fn profile_runtime(stage: &Stage, attrs: &Attrs, src: &Path) -> io::Result<()> {
+      if stage.binfmt == Binfmt::Elf && attrs.linux_headers.is_none() {
          return Ok(());
       }
-      let profile = format!("{}/compiler-rt/lib/profile", src.display());
-      let coff = stage.binfmt == "coff";
-      let sources = files(&format!("{profile}/*.{{c,cpp}}"))?;
-      let kept = sources.into_iter().filter(|path| {
-         let name = path
+      let profile = src.join("compiler-rt/lib/profile");
+      let coff = stage.binfmt == Binfmt::Coff;
+      let named = |path: &Path| {
+         path
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
-         !(name.contains("ROCm") || (!coff && name.starts_with("WindowsMMap")))
-      });
-      let target_profile = stage.profile()?;
+            .unwrap_or_default()
+      };
       let mut flags = stage.target();
-      flags.extend(Self::libc_includes(stage)?);
-      flags.extend([
-         "-O2".to_owned(),
-         "-nostdinc++".to_owned(),
-         "-w".to_owned(),
-         format!("-I{}/compiler-rt/include", src.display()),
-         format!("-I{profile}"),
-      ]);
+      flags.extend(Self::libc_includes(attrs)?);
+      flags.extend(["-O2", "-nostdinc++", "-w"].map(str::to_owned));
+      flags.push(format!("-I{}/compiler-rt/include", src.display()));
+      flags.push(format!("-I{}", profile.display()));
       flags.push("-DCOMPILER_RT_HAS_ATOMICS=1".to_owned());
-      flags.extend(target_profile.pic().iter().map(|flag| (*flag).to_owned()));
-      if target_profile.posix() {
-         flags.extend([
-            "-DCOMPILER_RT_HAS_FCNTL_LCK=1".to_owned(),
-            "-DCOMPILER_RT_HAS_FLOCK=1".to_owned(),
-            "-DCOMPILER_RT_HAS_UNAME=1".to_owned(),
-         ]);
+      flags.extend(stage.profile.pic().iter().copied().map(str::to_owned));
+      if stage.profile.posix() {
+         flags.extend(
+            [
+               "-DCOMPILER_RT_HAS_FCNTL_LCK=1",
+               "-DCOMPILER_RT_HAS_FLOCK=1",
+               "-DCOMPILER_RT_HAS_UNAME=1",
+            ]
+            .map(str::to_owned),
+         );
       }
-      let lib = format!("{out}/{}", target_profile.runtime("profile"));
-      let items: Vec<Item> = kept
+      let items = files(&format!("{}/*.{{c,cpp}}", profile.display()))?
+         .into_iter()
+         .filter(|path| {
+            let name = named(path);
+            !(name.contains("ROCm") || (!coff && name.starts_with("WindowsMMap")))
+         })
          .map(|source| {
-            let name = source
-               .file_name()
-               .map(|name| name.to_string_lossy().into_owned())
-               .unwrap_or_default();
             Item {
-               obj:   PathBuf::from(format!("{}/obj/profile/{name}.o", stage.build_top)),
+               obj:   stage
+                  .build_top
+                  .join(format!("obj/profile/{}.o", named(&source))),
                src:   source,
                flags: Vec::new(),
             }
          })
-         .collect();
-      let objs = compile(&flags, &items)?;
-      archive(Path::new(&lib), &objs)
+         .collect::<Vec<_>>();
+      let objs = compile("clang", &flags, &items)?;
+      archive(&stage.out.join(stage.runtime("profile")), &objs)
    }
 }
 
@@ -204,26 +206,25 @@ impl Recipe for CompilerRt {
    /// cmake would use, laid out as a clang resource dir. No
    /// -`DCOMPILER_RT_HAS_FLOAT16` on ppc, clang has no _Float16 there.
    fn run(&self, stage: &Stage) -> io::Result<()> {
-      let out = stage.out();
+      let attrs = load::<Attrs>()?;
       let src = stage.unpack("llvm", &["compiler-rt", "third-party/siphash"])?;
-      let builtins = format!("{}/compiler-rt/lib/builtins", src.display());
-      let obj = format!("{}/obj", stage.build_top);
-      let pic = stage.profile()?.pic();
-      let percpu: &[&str] = match stage.cpu.as_str() {
-         "powerpc64le" => &[],
-         "aarch64" => {
+      let builtins = src.join("compiler-rt/lib/builtins");
+      let obj = stage.build_top.join("obj");
+      let percpu: &[&str] = match stage.cpu {
+         Cpu::Powerpc64le => &[],
+         Cpu::Aarch64 => {
             &[
                "-DCOMPILER_RT_HAS_FLOAT16",
                "-DENABLE_BAREMETAL_AARCH64_FMV",
                "-DHAS_ASM_LSE",
             ]
          },
-         _ => &["-DCOMPILER_RT_HAS_FLOAT16"],
+         Cpu::X86_64 | Cpu::Riscv64 | Cpu::Loongarch64 => &["-DCOMPILER_RT_HAS_FLOAT16"],
       };
       let mut common = stage.target();
-      common.extend(Self::libc_includes(stage)?);
-      common.extend(pic.iter().map(|flag| (*flag).to_owned()));
-      common.extend(percpu.iter().map(|flag| (*flag).to_owned()));
+      common.extend(Self::libc_includes(&attrs)?);
+      common.extend(stage.profile.pic().iter().copied().map(str::to_owned));
+      common.extend(percpu.iter().copied().map(str::to_owned));
       common.extend(
          [
             "-O2",
@@ -234,41 +235,37 @@ impl Recipe for CompilerRt {
             "-ffreestanding",
             "-DVISIBILITY_HIDDEN",
          ]
-         .into_iter()
          .map(str::to_owned),
       );
-      common.push(format!("-I{builtins}"));
+      common.push(format!("-I{}", builtins.display()));
       common.push(format!("-I{}/third-party/siphash/include", src.display()));
 
-      let list = wanted(stage.list.as_deref(), "list")?;
-      let items: Vec<Item> = read_list(Path::new(list))?
+      let items = read_list(&attrs.list)?
          .iter()
          .map(|file| Self::builtin_item(&builtins, &obj, file))
-         .collect();
+         .collect::<Vec<_>>();
       say(&format!(
          "compiler-rt builtins {}: {} objects",
          stage.cpu,
          items.len()
       ));
-      let lib = Self::builtins_lib(stage, out)?;
-      if let Some(parent) = Path::new(&lib).parent() {
+      let lib = stage.out.join(stage.runtime("builtins"));
+      if let Some(parent) = lib.parent() {
          create_dir_all(parent)?;
       }
-      let objs = compile(&common, &items)?;
-      archive(Path::new(&lib), &objs)?;
+      let objs = compile("clang", &common, &items)?;
+      archive(&lib, &objs)?;
 
-      let resource = capture(&format!("{}/bin/clang", stage.llvm), &[
-         "--print-resource-dir",
-      ])?;
+      let resource =
+         capture(Command::new(stage.llvm.join("bin/clang")).arg("--print-resource-dir"))?;
       copy_tree(
          &Path::new(resource.trim()).join("include"),
-         Path::new(&format!("{out}/include")),
+         &stage.out.join("include"),
          "**/*",
       )?;
-      if stage.binfmt == "elf" {
-         Self::elf_extras(stage, &src, out, &common)?;
+      if stage.binfmt == Binfmt::Elf {
+         Self::elf_extras(stage, &builtins, &common)?;
       }
-      Self::profile_runtime(stage, &src, out)?;
-      Ok(())
+      Self::profile_runtime(stage, &attrs, &src)
    }
 }

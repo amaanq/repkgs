@@ -5,7 +5,6 @@ use std::{
    fs::{
       copy,
       create_dir_all,
-      remove_file,
    },
    io,
    os::unix::fs::symlink,
@@ -13,9 +12,13 @@ use std::{
       Path,
       PathBuf,
    },
+   process::Command,
 };
 
-use mummer::files::write_file;
+use mummer::files::{
+   remove_if_exists,
+   write_file,
+};
 
 use crate::bootstrap::{
    dispatch::Recipe,
@@ -25,10 +28,14 @@ use crate::bootstrap::{
       archive,
       compile,
       copy_tree,
+      execute,
       files,
-      run,
       say,
-      strs,
+   },
+   target::{
+      Binfmt,
+      Libc,
+      Os,
    },
 };
 
@@ -40,6 +47,7 @@ struct Lib {
    skip:         &'static [&'static str],
    skip_windows: &'static [&'static str],
    extra:        &'static [&'static str],
+   below:        &'static [&'static str],
    std:          &'static str,
    so:           Option<&'static [&'static str]>,
    dll:          bool,
@@ -71,6 +79,7 @@ const LIBS: [Lib; 4] = [
       skip:         &["Unwind_AIXExtras.cpp"],
       skip_windows: &[],
       extra:        &["compiler-rt/lib/builtins/gcc_personality_v0.c"],
+      below:        &[],
       std:          "c++17",
       so:           Some(&["-lc"]),
       dll:          true,
@@ -90,6 +99,7 @@ const LIBS: [Lib; 4] = [
       skip:         &["cxa_noexception.cpp"],
       skip_windows: &[],
       extra:        &[],
+      below:        &["unwind"],
       std:          "c++26",
       so:           Some(&["-lunwind", "-lc"]),
       dll:          false,
@@ -115,6 +125,7 @@ const LIBS: [Lib; 4] = [
       ],
       skip_windows: &[],
       extra:        &[],
+      below:        &["unwind", "c++abi"],
       std:          "c++26",
       so:           Some(&["-lc++abi", "-lunwind", "-lc"]),
       dll:          true,
@@ -145,6 +156,7 @@ const LIBS: [Lib; 4] = [
          "tzdb_list.cpp",
       ],
       extra:        &[],
+      below:        &[],
       std:          "c++26",
       so:           None,
       dll:          false,
@@ -172,8 +184,8 @@ impl Runtimes {
    /// libcxx/CMakeLists.txt encodes `LIBCXX_HARDENING_MODE` and
    /// `LIBCXX_ASSERTION_SEMANTIC`.
    fn config_site(stage: &Stage) -> String {
-      let musl = u8::from(stage.libc == "musl");
-      let tzdb = u8::from(stage.os != "windows");
+      let musl = u8::from(stage.libc == Libc::Musl);
+      let tzdb = u8::from(stage.os != Os::Windows);
       format!(
          "#ifndef _LIBCPP___CONFIG_SITE
 #define _LIBCPP___CONFIG_SITE
@@ -209,39 +221,34 @@ impl Runtimes {
 
    /// include/ as `ninja install` would lay it out, c++/v1 plus the two
    /// generated headers, cxxabi.h, unwind.h and co.
-   fn install_headers(stage: &Stage, src: &Path, inc: &str) -> io::Result<()> {
-      let v1 = format!("{inc}/c++/v1");
+   fn install_headers(stage: &Stage, src: &Path, inc: &Path) -> io::Result<()> {
+      let v1 = inc.join("c++/v1");
       create_dir_all(&v1)?;
-      run("cp", &[
-         "-r",
-         &format!("{}/libcxx/include/.", src.display()),
-         &v1,
-      ])?;
+      execute(
+         Command::new("cp")
+            .arg("-r")
+            .arg(format!("{}/libcxx/include/.", src.display()))
+            .arg(&v1),
+      )?;
       for junk in ["CMakeLists.txt", "__config_site.in", "module.modulemap.in"] {
-         match remove_file(format!("{v1}/{junk}")) {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
-            _ => {},
-         }
+         remove_if_exists(&v1.join(junk))?;
       }
       write_file(
-         Path::new(&format!("{v1}/__config_site")),
+         &v1.join("__config_site"),
          Self::config_site(stage).as_bytes(),
          None,
       )?;
       copy(
          src.join("libcxx/vendor/llvm/default_assertion_handler.in"),
-         format!("{v1}/__assertion_handler"),
+         v1.join("__assertion_handler"),
       )?;
       for header in ["cxxabi.h", "__cxxabi_config.h"] {
-         copy(
-            src.join("libcxxabi/include").join(header),
-            format!("{inc}/{header}"),
-         )?;
+         copy(src.join("libcxxabi/include").join(header), inc.join(header))?;
       }
-      copy_tree(&src.join("libunwind/include"), Path::new(inc), "**/*.h")
+      copy_tree(&src.join("libunwind/include"), inc, "**/*.h")
    }
 
-   fn items(lib: &Lib, obj: &str, posix: bool) -> io::Result<Vec<Item>> {
+   fn items(lib: &Lib, obj: &Path, posix: bool) -> io::Result<Vec<Item>> {
       let mut found = files(&format!("{}/{}", lib.dir, lib.glob))?;
       if !posix && let Some(glob) = lib.glob_windows {
          found.extend(files(&format!("{}/{glob}", lib.dir))?);
@@ -268,7 +275,7 @@ impl Runtimes {
                _ => Vec::new(),
             };
             Item {
-               obj:   PathBuf::from(format!("{obj}/{}/{source}.o", lib.name)),
+               obj:   obj.join(format!("{}/{source}.o", lib.name)),
                src:   PathBuf::from(source),
                flags: std,
             }
@@ -276,10 +283,11 @@ impl Runtimes {
          .collect())
    }
 
-   fn flags(stage: &Stage, out: &str) -> io::Result<(Vec<String>, Vec<String>)> {
-      let profile = stage.profile()?;
+   fn flags(stage: &Stage) -> io::Result<(Vec<String>, Vec<String>)> {
+      let profile = stage.profile;
+      let out = stage.out.display();
       let mut common = stage.ccflags()?;
-      common.extend(profile.pic().iter().map(|flag| (*flag).to_owned()));
+      common.extend(profile.pic().iter().copied().map(str::to_owned));
       common.extend(
          [
             "-O2",
@@ -294,17 +302,12 @@ impl Runtimes {
             "-D__STDC_FORMAT_MACROS",
             "-D__STDC_LIMIT_MACROS",
          ]
-         .into_iter()
          .map(str::to_owned),
       );
       common.push(format!("-I{out}/include/c++/v1"));
-      common.extend(
-         ["-Ilibcxxabi/include", "-Ilibunwind/include", "-w"]
-            .into_iter()
-            .map(str::to_owned),
-      );
+      common.extend(["-Ilibcxxabi/include", "-Ilibunwind/include", "-w"].map(str::to_owned));
       let mut link = stage.ccflags()?;
-      link.extend(["-nostdlib++", "-shared"].into_iter().map(str::to_owned));
+      link.extend(["-nostdlib++", "-shared"].map(str::to_owned));
       link.push(format!("-L{out}/lib"));
       if profile.posix() {
          link.push("-Wl,-z,defs".to_owned());
@@ -312,18 +315,15 @@ impl Runtimes {
       Ok((common, link))
    }
 
-   fn link_names(out: &str) -> io::Result<()> {
-      for lib in ["unwind", "c++abi", "c++"] {
-         symlink(format!("lib{lib}.so.1"), format!("{out}/lib/lib{lib}.so"))?;
+   fn link_names(out: &Path) -> io::Result<()> {
+      let lib = out.join("lib");
+      for name in ["unwind", "c++abi", "c++"] {
+         symlink(format!("lib{name}.so.1"), lib.join(format!("lib{name}.so")))?;
       }
+      write_file(&lib.join("libgcc_s.so"), b"INPUT(-lunwind)\n", None)?;
+      symlink("libunwind.a", lib.join("libgcc_s.a"))?;
       write_file(
-         Path::new(&format!("{out}/lib/libgcc_s.so")),
-         b"INPUT(-lunwind)\n",
-         None,
-      )?;
-      symlink("libunwind.a", format!("{out}/lib/libgcc_s.a"))?;
-      write_file(
-         Path::new(&format!("{out}/lib/libatomic.so")),
+         &lib.join("libatomic.so"),
          b"/* compiler-rt builtins */\n",
          None,
       )
@@ -336,81 +336,84 @@ impl Runtimes {
       link: &[String],
       built: &BTreeMap<&str, Built>,
    ) -> io::Result<Built> {
-      let out = stage.out();
-      let profile = stage.profile()?;
-      let coff = stage.binfmt == "coff";
-      let mut items = Self::items(lib, &format!("{}/obj", stage.build_top), profile.posix())?;
+      let out = &stage.out;
+      let profile = stage.profile;
+      let coff = stage.binfmt == Binfmt::Coff;
+      let mut items = Self::items(lib, &stage.build_top.join("obj"), profile.posix())?;
       say(&format!("lib{}: {} files", lib.name, items.len()));
       let mut flags = common.to_vec();
-      flags.extend(lib.flags.iter().map(|flag| (*flag).to_owned()));
+      flags.extend(lib.flags.iter().copied().map(str::to_owned));
       if profile.posix() {
-         flags.extend(lib.posix_flags.iter().map(|flag| (*flag).to_owned()));
+         flags.extend(lib.posix_flags.iter().copied().map(str::to_owned));
       }
       let mut static_flags = flags.clone();
       if coff {
-         static_flags.extend([
-            "-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS".to_owned(),
-            "-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS".to_owned(),
-            "-D_LIBUNWIND_HIDE_SYMBOLS".to_owned(),
-         ]);
+         static_flags.extend(
+            [
+               "-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS",
+               "-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS",
+               "-D_LIBUNWIND_HIDE_SYMBOLS",
+            ]
+            .map(str::to_owned),
+         );
       }
-      let objects = compile(&static_flags, &items)?;
+      let objects = compile("clang", &static_flags, &items)?;
       let dll = if coff {
          for item in &mut items {
-            item.obj = PathBuf::from(format!("{}.dll.o", item.obj.display()));
+            item.obj = item.obj.with_added_extension("dll.o");
          }
-         compile(&flags, &items)?
+         compile("clang", &flags, &items)?
       } else {
          Vec::new()
       };
-      let below: &[&str] = match lib.name {
-         "c++abi" => &["unwind"],
-         "c++" => &["unwind", "c++abi"],
-         _ => &[],
-      };
-      let members: Vec<PathBuf> = objects
+      let below = lib
+         .below
          .iter()
-         .chain(below.iter().flat_map(|layer| &built[layer].objects))
+         .map(|layer| {
+            built
+               .get(layer)
+               .ok_or_else(|| io::Error::other(format!("lib{layer} is not built yet")))
+         })
+         .collect::<io::Result<Vec<_>>>()?;
+      let members = objects
+         .iter()
+         .chain(below.iter().flat_map(|layer| &layer.objects))
          .cloned()
-         .collect();
-      archive(Path::new(&format!("{out}/lib/lib{}.a", lib.name)), &members)?;
+         .collect::<Vec<_>>();
+      archive(&out.join(format!("lib/lib{}.a", lib.name)), &members)?;
       if let Some(so_libs) = lib.so
          && profile.posix()
       {
          let so = format!("lib{}.so.1", lib.name);
-         let mut args = link.to_vec();
-         args.extend([
-            format!("-Wl,-soname,{so}"),
-            "-o".to_owned(),
-            format!("{out}/lib/{so}.0"),
-         ]);
-         args.extend(
-            members
-               .iter()
-               .map(|path| path.to_string_lossy().into_owned()),
-         );
-         args.extend(so_libs.iter().map(|flag| (*flag).to_owned()));
-         run("clang", &strs(&args))?;
-         symlink(format!("{so}.0"), format!("{out}/lib/{so}"))?;
+         execute(
+            Command::new("clang")
+               .args(link)
+               .arg(format!("-Wl,-soname,{so}"))
+               .arg("-o")
+               .arg(out.join(format!("lib/{so}.0")))
+               .args(&members)
+               .args(so_libs),
+         )?;
+         symlink(format!("{so}.0"), out.join(format!("lib/{so}")))?;
       } else if coff && lib.dll {
-         create_dir_all(format!("{out}/bin"))?;
-         let mut args = link.to_vec();
-         args.extend([
-            "-o".to_owned(),
-            format!("{out}/bin/lib{}.dll", lib.name),
-            format!("-Wl,--out-implib,{out}/lib/lib{}.dll.a", lib.name),
-         ]);
-         args.extend(dll.iter().map(|path| path.to_string_lossy().into_owned()));
+         create_dir_all(out.join("bin"))?;
+         let mut command = Command::new("clang");
+         command
+            .args(link)
+            .arg("-o")
+            .arg(out.join(format!("bin/lib{}.dll", lib.name)))
+            .arg(format!(
+               "-Wl,--out-implib,{}/lib/lib{}.dll.a",
+               out.display(),
+               lib.name
+            ))
+            .args(&dll);
          if lib.name == "c++" {
-            args.extend(
-               below
-                  .iter()
-                  .flat_map(|layer| &built[layer].dll)
-                  .map(|path| path.to_string_lossy().into_owned()),
-            );
-            args.push("-lunwind".to_owned());
+            command
+               .args(below.iter().flat_map(|layer| &layer.dll))
+               .arg("-lunwind");
          }
-         run("clang", &strs(&args))?;
+         execute(&mut command)?;
       }
       Ok(Built { objects, dll })
    }
@@ -435,7 +438,7 @@ impl Recipe for Runtimes {
    /// libcalls, which compiler-rt's always linked builtins provide, so the
    /// name only has to resolve.
    fn run(&self, stage: &Stage) -> io::Result<()> {
-      let out = stage.out();
+      let out = &stage.out;
       let src = stage.unpack("llvm", &[
          "libcxx",
          "libcxxabi",
@@ -448,17 +451,17 @@ impl Recipe for Runtimes {
          "runtimes",
          "cmake",
       ])?;
-      Self::install_headers(stage, &src, &format!("{out}/include"))?;
-      create_dir_all(format!("{out}/lib"))?;
+      Self::install_headers(stage, &src, &out.join("include"))?;
+      create_dir_all(out.join("lib"))?;
       set_current_dir(&src)?;
-      let (common, link) = Self::flags(stage, out)?;
+      let (common, link) = Self::flags(stage)?;
 
       let mut built = BTreeMap::new();
       for lib in &LIBS {
          let compiled = Self::build_lib(lib, stage, &common, &link, &built)?;
          built.insert(lib.name, compiled);
       }
-      if stage.profile()?.posix() {
+      if stage.profile.posix() {
          Self::link_names(out)?;
       }
       Ok(())

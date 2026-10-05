@@ -10,25 +10,47 @@ use std::{
    },
    io,
    os::unix::fs::symlink,
-   path::Path,
+   path::{
+      Path,
+      PathBuf,
+   },
+   process::Command,
 };
 
-use mummer::files::write_file;
-use serde::Serialize;
+use mummer::{
+   attrs::load,
+   files::write_file,
+};
+use serde::{
+   Deserialize,
+   Serialize,
+};
 
 use crate::bootstrap::{
    dispatch::Recipe,
    stage::{
       Stage,
-      TargetProfile,
       capture,
       cc_fact,
-      run,
+      execute,
       say,
-      strs,
-      wanted,
+   },
+   target::{
+      Binfmt,
+      Os,
+      Profile,
    },
 };
+
+#[derive(Deserialize)]
+struct Attrs {
+   prebuilt:   PathBuf,
+   reloc:      PathBuf,
+   #[serde(default)]
+   crt_interp: Option<PathBuf>,
+   #[serde(default)]
+   native:     Option<PathBuf>,
+}
 
 struct Driver {
    flags:    Vec<String>,
@@ -37,8 +59,8 @@ struct Driver {
 
 #[derive(Serialize)]
 struct Config<'stage> {
-   cc:         String,
-   binfmt:     &'stage str,
+   cc:         PathBuf,
+   binfmt:     Binfmt,
    flags:      Vec<String>,
    cxxflags:   Vec<String>,
    #[serde(rename = "prefix-map")]
@@ -49,9 +71,9 @@ struct Config<'stage> {
 
 #[derive(Serialize)]
 struct ElfPolicy<'stage> {
-   libc:   &'stage str,
+   libc:   &'stage Path,
    interp: &'stage str,
-   crt:    String,
+   crt:    PathBuf,
 }
 
 const STUB_LD: &str = "SECTIONS {
@@ -66,66 +88,76 @@ pub struct Cc;
 impl Cc {
    // absolute compiler paths, cc must work with an empty PATH, and clang on
    // PATH is the cache mummer
-   fn llvm_bin(stage: &Stage, name: &str) -> String {
-      format!("{}/bin/{name}", stage.llvm)
+   fn llvm_bin(stage: &Stage, name: &str) -> PathBuf {
+      stage.llvm.join("bin").join(name)
    }
 
-   fn lld(stage: &Stage) -> io::Result<String> {
-      Ok(Self::llvm_bin(stage, stage.profile()?.lld()))
+   fn lld(stage: &Stage) -> PathBuf {
+      Self::llvm_bin(stage, stage.profile.lld())
    }
 
-   fn linker_tools(stage: &Stage, out: &str, sysroot: &str) -> io::Result<()> {
+   fn script(path: &Path, command: &str) -> io::Result<()> {
+      write_file(
+         path,
+         format!("#!/bin/sh\nexec {command} \"$@\"\n").as_bytes(),
+         Some(0o755),
+      )
+   }
+
+   fn linker_tools(stage: &Stage, sysroot: &Path) -> io::Result<()> {
+      let bin = stage.out.join("bin");
       // lld picks its personality from argv[0], and "ld" means ELF, spell the
       // flavour out elsewhere
-      let profile = stage.profile()?;
-      let ldargs = if let Some(flavor) = profile.ld_flavor() {
-         Some(format!("{} -flavor {flavor}", Self::llvm_bin(stage, "lld")))
-      } else if let TargetProfile::Mingw(machine) = profile {
-         Some(format!("{} -m {}", Self::lld(stage)?, machine.emulation()))
-      } else {
-         None
+      let ldargs = match (stage.profile.ld_flavor(), stage.profile) {
+         (Some(flavor), _) => {
+            Some(format!(
+               "{} -flavor {flavor}",
+               Self::llvm_bin(stage, "lld").display()
+            ))
+         },
+         (None, Profile::Mingw(machine)) => {
+            Some(format!(
+               "{} -m {}",
+               Self::lld(stage).display(),
+               machine.emulation()
+            ))
+         },
+         (None, Profile::Elf | Profile::Macho | Profile::Msvc) => None,
       };
-      if let Some(args) = ldargs {
-         let script = format!("#!/bin/sh\nexec {args} \"$@\"\n");
-         write_file(
-            Path::new(&format!("{out}/bin/ld")),
-            script.as_bytes(),
-            Some(0o755),
-         )?;
-      } else {
-         symlink(Self::lld(stage)?, format!("{out}/bin/ld"))?;
+      match ldargs {
+         Some(args) => Self::script(&bin.join("ld"), &args)?,
+         None => symlink(Self::lld(stage), bin.join("ld"))?,
       }
-      if let TargetProfile::Mingw(machine) = profile {
-         let windres = format!(
-            "#!/bin/sh\nexec {} --target={} --preprocessor-arg=--sysroot={sysroot} \"$@\"\n",
-            Self::llvm_bin(stage, "llvm-windres"),
-            machine.bfd(),
-         );
-         let dlltool = format!(
-            "#!/bin/sh\nexec {} -m {} \"$@\"\n",
-            Self::llvm_bin(stage, "llvm-dlltool"),
-            machine.dlltool(),
-         );
-         for (name, script) in [("windres", windres), ("dlltool", dlltool)] {
-            write_file(
-               Path::new(&format!("{out}/bin/{name}")),
-               script.as_bytes(),
-               Some(0o755),
-            )?;
-         }
+      if let Profile::Mingw(machine) = stage.profile {
+         Self::script(
+            &bin.join("windres"),
+            &format!(
+               "{} --target={} --preprocessor-arg=--sysroot={}",
+               Self::llvm_bin(stage, "llvm-windres").display(),
+               machine.bfd(),
+               sysroot.display()
+            ),
+         )?;
+         Self::script(
+            &bin.join("dlltool"),
+            &format!(
+               "{} -m {}",
+               Self::llvm_bin(stage, "llvm-dlltool").display(),
+               machine.dlltool()
+            ),
+         )?;
       }
       Ok(())
    }
 
-   fn driver_flags(stage: &Stage, sysroot: &str) -> io::Result<Driver> {
-      let lld = Self::lld(stage)?;
-      let given = cc_fact(sysroot, "flags")?;
-      let Some(facts) = given else {
-         let mut flags: Vec<String> = stage
+   fn driver_flags(stage: &Stage, sysroot: &Path) -> io::Result<Driver> {
+      let lld = Self::lld(stage).display().to_string();
+      let Some(facts) = cc_fact(sysroot, "flags")? else {
+         let mut flags = stage
             .ccflags()?
             .into_iter()
             .filter(|flag| flag != "-unwindlib=none")
-            .collect();
+            .collect::<Vec<_>>();
          flags.push("-unwindlib=libunwind".to_owned());
          flags.push(format!("--ld-path={lld}"));
          return Ok(Driver {
@@ -133,41 +165,52 @@ impl Cc {
             cxxflags: vec!["-stdlib=libc++".to_owned()],
          });
       };
-      let fill = |word: &str| -> String { word.replace("SYSROOT", sysroot).replace("LLD", &lld) };
+      let sysroot_text = sysroot.display().to_string();
+      let fill = |word: &String| word.replace("SYSROOT", &sysroot_text).replace("LLD", &lld);
       let mut flags = stage.target();
-      flags.extend(facts.iter().map(|word| fill(word)));
-      let cxx_facts = cc_fact(sysroot, "cxxflags")?.unwrap_or_default();
-      let cxxflags = cxx_facts.iter().map(|word| fill(word)).collect();
+      flags.extend(facts.iter().map(fill));
+      let cxxflags = cc_fact(sysroot, "cxxflags")?
+         .unwrap_or_default()
+         .iter()
+         .map(fill)
+         .collect();
       Ok(Driver { flags, cxxflags })
    }
 
+   /// The entry stub every ELF executable starts in, compiled from cwd so its
+   /// `STT_FILE` symbol records no store path.
    fn elf_policy<'stage>(
       stage: &'stage Stage,
-      out: &str,
-      sysroot: &'stage str,
+      attrs: &Attrs,
+      sysroot: &'stage Path,
    ) -> io::Result<ElfPolicy<'stage>> {
-      let crt_interp = wanted(stage.crt_interp.as_deref(), "crt_interp")?;
-      // compile from cwd, the STT_FILE symbol would otherwise record a store
-      // path
+      let crt_interp = attrs
+         .crt_interp
+         .as_deref()
+         .ok_or_else(|| io::Error::other("this stage has no crt_interp"))?;
       copy(crt_interp, "crt_interp.c")?;
       let mut flags = stage.target();
-      flags.extend([
-         "-O2".to_owned(),
-         "-fPIE".to_owned(),
-         "-ffreestanding".to_owned(),
-         "-nostdlib".to_owned(),
-         "-nostdinc".to_owned(),
-         "-fno-builtin".to_owned(),
-         "-fno-stack-protector".to_owned(),
-         "-fno-asynchronous-unwind-tables".to_owned(),
-      ]);
-      let mut crt_args = strs(&flags);
-      let crt_out = format!("{out}/lib/crt_interp.o");
-      crt_args.extend(["-c", "crt_interp.c", "-o", &crt_out]);
-      run("clang", &crt_args)?;
-
-      let mut reloc_args = strs(&flags);
-      reloc_args.extend([
+      flags.extend(
+         [
+            "-O2",
+            "-fPIE",
+            "-ffreestanding",
+            "-nostdlib",
+            "-nostdinc",
+            "-fno-builtin",
+            "-fno-stack-protector",
+            "-fno-asynchronous-unwind-tables",
+         ]
+         .map(str::to_owned),
+      );
+      let crt = stage.out.join("lib/crt_interp.o");
+      execute(
+         Command::new("clang")
+            .args(&flags)
+            .args(["-c", "crt_interp.c", "-o"])
+            .arg(&crt),
+      )?;
+      execute(Command::new("clang").args(&flags).args([
          "-DRELOC_STUB",
          "-fno-jump-tables",
          "-fvisibility=hidden",
@@ -175,13 +218,9 @@ impl Cc {
          "crt_interp.c",
          "-o",
          "reloc_stub.o",
-      ]);
-      run("clang", &reloc_args)?;
-
+      ]))?;
       write_file(Path::new("stub.ld"), STUB_LD.as_bytes(), None)?;
-
-      let lld_bin = Self::lld(stage)?;
-      run(&lld_bin, &[
+      execute(Command::new(Self::lld(stage)).args([
          "-pie",
          "--no-dynamic-linker",
          "-e",
@@ -191,46 +230,57 @@ impl Cc {
          "reloc_stub.o",
          "-o",
          "reloc_stub.elf",
-      ])?;
-
-      let reloc_bin = format!("{out}/lib/reloc_stub.bin");
-      run("llvm-objcopy", &[
-         "-O",
-         "binary",
-         "-j",
-         ".text",
-         "reloc_stub.elf",
-         &reloc_bin,
-      ])?;
-
+      ]))?;
+      execute(
+         Command::new("llvm-objcopy")
+            .args(["-O", "binary", "-j", ".text", "reloc_stub.elf"])
+            .arg(stage.out.join("lib/reloc_stub.bin")),
+      )?;
       Ok(ElfPolicy {
-         libc:   sysroot,
+         libc: sysroot,
          interp: &stage.interp,
-         crt:    crt_out,
+         crt,
       })
    }
 
-   fn smoke_test(stage: &Stage, out: &str) -> io::Result<()> {
-      let exe = stage.profile()?.exe();
+   fn smoke_test(stage: &Stage) -> io::Result<()> {
+      let exe = stage.profile.exe();
       let hello_c = "#include <stdio.h>\nint main(void) { puts(\"cc ok\"); }\n";
       write_file(Path::new("hello.c"), hello_c.as_bytes(), None)?;
       let hello_cc = "#include <print>\nint main() { std::println(\"c++ ok\"); }\n";
       write_file(Path::new("hello.cc"), hello_cc.as_bytes(), None)?;
-
-      let cc_bin = format!("{out}/bin/cc");
-      let hello_out = format!("hello{exe}");
-      run(&cc_bin, &["hello.c", "-o", &hello_out])?;
-
-      let cxx_bin = format!("{out}/bin/c++");
-      let hellocxx_out = format!("hello++{exe}");
-      run(&cxx_bin, &["-std=c++23", "hello.cc", "-o", &hellocxx_out])?;
-
-      if stage.os == "linux" && stage.cpu == ARCH {
-         let first = capture("./hello", &[])?;
-         let second = capture("./hello++", &[])?;
+      execute(
+         Command::new(stage.out.join("bin/cc"))
+            .args(["hello.c", "-o"])
+            .arg(format!("hello{exe}")),
+      )?;
+      execute(
+         Command::new(stage.out.join("bin/c++"))
+            .args(["-std=c++23", "hello.cc", "-o"])
+            .arg(format!("hello++{exe}")),
+      )?;
+      if stage.os == Os::Linux && stage.cpu.name() == ARCH {
+         let first = capture(&mut Command::new("./hello"))?;
+         let second = capture(&mut Command::new("./hello++"))?;
          say(&format!("{first}{second}"));
       }
       Ok(())
+   }
+
+   /// etc/roots, store dirs a depfile can name such as sysroot members and
+   /// compiler resource headers, passed to the compile cache as
+   /// `MUMMER_STORE_ROOTS`.
+   fn roots(stage: &Stage, sysroot: &Path) -> io::Result<()> {
+      let members = match read_to_string(sysroot.join("roots")) {
+         Ok(text) => text.trim().to_owned(),
+         Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
+         Err(error) => return Err(error),
+      };
+      write_file(
+         &stage.out.join("etc/roots"),
+         format!("{} {} {members}\n", sysroot.display(), stage.llvm.display()).as_bytes(),
+         None,
+      )
    }
 }
 
@@ -240,18 +290,14 @@ impl Recipe for Cc {
    }
 
    fn run(&self, stage: &Stage) -> io::Result<()> {
-      let out = stage.out();
-      let sysroot = wanted(stage.sysroot.as_deref(), "sysroot")?;
-      create_dir_all(format!("{out}/bin"))?;
-      create_dir_all(format!("{out}/lib"))?;
-      create_dir_all(format!("{out}/etc"))?;
+      let attrs = load::<Attrs>()?;
+      let out = &stage.out;
+      let sysroot = stage.sysroot()?;
+      for directory in ["bin", "lib", "etc"] {
+         create_dir_all(out.join(directory))?;
+      }
       set_current_dir(&stage.build_top)?;
-
-      let prebuilt = wanted(stage.prebuilt.as_deref(), "prebuilt")?;
-      copy(
-         format!("{prebuilt}/bin/mummer"),
-         format!("{out}/bin/mummer"),
-      )?;
+      copy(attrs.prebuilt.join("bin/mummer"), out.join("bin/mummer"))?;
 
       // mummer under every name a build system may call. No clang alias, that
       // name keeps meaning the raw compiler, which bootstrap recipes
@@ -266,50 +312,33 @@ impl Recipe for Cc {
          "rustcwrap",
          "ghcwrap",
       ] {
-         symlink("mummer", format!("{out}/bin/{name}"))?;
+         symlink("mummer", out.join("bin").join(name))?;
       }
-
-      Self::linker_tools(stage, out, sysroot)?;
+      Self::linker_tools(stage, sysroot)?;
 
       // CC_FOR_BUILD when cross, mummer locates its conf via /proc/self/exe
-      if let Some(native) = stage.native.as_deref() {
+      if let Some(ref native) = attrs.native {
          for name in ["cc", "c++"] {
             symlink(
-               format!("{native}/bin/{name}"),
-               format!("{out}/bin/{name}-build"),
+               native.join("bin").join(name),
+               out.join(format!("bin/{name}-build")),
             )?;
          }
       }
-
-      // etc/roots, store dirs a depfile can name such as sysroot members and
-      // compiler resource headers, passed to the compile cache as
-      // MUMMER_STORE_ROOTS
-      let roots_file = format!("{sysroot}/roots");
-      let members = if Path::new(&roots_file).exists() {
-         read_to_string(&roots_file)?.trim().to_owned()
-      } else {
-         String::new()
-      };
-      let roots_text = format!("{sysroot} {} {members}\n", stage.llvm);
-      write_file(
-         Path::new(&format!("{out}/etc/roots")),
-         roots_text.as_bytes(),
-         None,
-      )?;
-
+      Self::roots(stage, sysroot)?;
       let driver = Self::driver_flags(stage, sysroot)?;
 
-      let include = format!("{out}/include");
+      let include = out.join("include");
       create_dir_all(&include)?;
-      let reloc = wanted(stage.reloc.as_deref(), "reloc")?;
-      copy(format!("{reloc}/reloc.h"), format!("{include}/reloc.h"))?;
+      copy(attrs.reloc.join("reloc.h"), include.join("reloc.h"))?;
       copy(
-         format!("{reloc}/reloc_self_{}.h", stage.os),
-         format!("{include}/reloc_self.h"),
+         attrs
+            .reloc
+            .join(format!("reloc_self_{}.h", stage.os.name())),
+         include.join("reloc_self.h"),
       )?;
-
-      let policy = if stage.binfmt == "elf" {
-         Some(Self::elf_policy(stage, out, sysroot)?)
+      let policy = if stage.binfmt == Binfmt::Elf {
+         Some(Self::elf_policy(stage, &attrs, sysroot)?)
       } else {
          None
       };
@@ -317,23 +346,27 @@ impl Recipe for Cc {
       // -B, cc -print-prog-name=ld for libtool's with_gnu_ld probe answers
       // bin/ld, the target's lld flavour, not the ELF ld.lld beside the
       // raw clang
-      let mut flags = vec![format!("-B{out}/bin"), format!("-isystem{out}/include")];
+      let mut flags = vec![
+         format!("-B{}/bin", out.display()),
+         format!("-isystem{}/include", out.display()),
+      ];
       flags.extend(driver.flags);
-
-      let conf = Config {
+      let config = Config {
          cc: Self::llvm_bin(stage, "clang"),
-         binfmt: &stage.binfmt,
+         binfmt: stage.binfmt,
          flags,
          cxxflags: driver.cxxflags,
-         prefix_map: vec![format!("{sysroot}=/sysroot"), format!("{out}=/cc")],
+         prefix_map: vec![
+            format!("{}=/sysroot", sysroot.display()),
+            format!("{}=/cc", out.display()),
+         ],
          policy,
       };
       write_file(
-         Path::new(&format!("{out}/etc/mummer.json")),
-         &serde_json::to_vec_pretty(&conf)?,
+         &out.join("etc/mummer.json"),
+         &serde_json::to_vec_pretty(&config)?,
          None,
       )?;
-
-      Self::smoke_test(stage, out)
+      Self::smoke_test(stage)
    }
 }

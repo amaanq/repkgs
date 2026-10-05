@@ -1,6 +1,6 @@
 use std::{
    io,
-   path::Path,
+   process::Command,
 };
 
 use mummer::store::on_path;
@@ -11,8 +11,8 @@ use crate::bootstrap::{
       Stage,
       copy_tree,
       cores,
+      execute,
       files,
-      run_in,
       say,
       tool,
    },
@@ -28,7 +28,6 @@ impl Recipe for Linux {
    /// the kernel's own `make headers`, HOSTCC builds unifdef and co. for the
    /// build machine, stage0's cc in stage1 and the peanut clang in stage0.
    fn run(&self, stage: &Stage) -> io::Result<()> {
-      let out = stage.out();
       let src = stage.unpack("linux", &[])?;
       let hostcc = if on_path("cc").is_absolute() {
          "cc".to_owned()
@@ -38,21 +37,23 @@ impl Recipe for Linux {
          words.push("-static-pie".to_owned());
          words.join(" ")
       };
-      let sh = tool("sh")?.to_string_lossy().into_owned();
-      run_in(&src, "make", &[
-         "-j",
-         &cores().to_string(),
-         "headers",
-         &format!("ARCH={}", stage.karch),
-         &format!("HOSTCC={hostcc}"),
-         &format!("SHELL={sh}"),
-         &format!("CONFIG_SHELL={sh}"),
-      ])?;
-      let include = format!("{out}/include");
-      copy_tree(&src.join("usr/include"), Path::new(&include), "**/*.h")?;
+      let sh = tool("sh")?.display().to_string();
+      execute(
+         Command::new("make")
+            .arg("-j")
+            .arg(cores().to_string())
+            .arg("headers")
+            .arg(format!("ARCH={}", stage.karch))
+            .arg(format!("HOSTCC={hostcc}"))
+            .arg(format!("SHELL={sh}"))
+            .arg(format!("CONFIG_SHELL={sh}"))
+            .current_dir(&src),
+      )?;
+      let include = stage.out.join("include");
+      copy_tree(&src.join("usr/include"), &include, "**/*.h")?;
       say(&format!(
          "linux-headers: {} headers",
-         files(&format!("{include}/**/*.h"))?.len()
+         files(&format!("{}/**/*.h", include.display()))?.len()
       ));
       Ok(())
    }

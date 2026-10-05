@@ -5,15 +5,21 @@ use std::{
    },
    io,
    os::unix::fs::symlink,
+   path::PathBuf,
 };
+
+use mummer::attrs::load;
+use serde::Deserialize;
 
 use crate::bootstrap::{
    dispatch::Recipe,
-   stage::{
-      Stage,
-      wanted,
-   },
+   stage::Stage,
 };
+
+#[derive(Deserialize)]
+struct Attrs {
+   prebuilt: PathBuf,
+}
 
 pub struct Mummer;
 
@@ -23,12 +29,12 @@ impl Recipe for Mummer {
    }
 
    fn run(&self, stage: &Stage) -> io::Result<()> {
-      let prebuilt = wanted(stage.prebuilt.as_deref(), "prebuilt")?;
-      let bin = format!("{}/bin", stage.out());
+      let attrs = load::<Attrs>()?;
+      let bin = stage.out.join("bin");
       create_dir_all(&bin)?;
-      copy(format!("{prebuilt}/bin/mummer"), format!("{bin}/mummer"))?;
+      copy(attrs.prebuilt.join("bin/mummer"), bin.join("mummer"))?;
       for name in ["clang", "clang++"] {
-         symlink("mummer", format!("{bin}/{name}"))?;
+         symlink("mummer", bin.join(name))?;
       }
       Ok(())
    }

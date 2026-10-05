@@ -12,26 +12,38 @@ use std::{
       Path,
       PathBuf,
    },
+   process::Command,
 };
 
-use mummer::tree::parallel_with;
+use mummer::{
+   attrs::load,
+   files::remove_if_exists,
+};
+use serde::Deserialize;
 
 use crate::bootstrap::{
    dispatch::Recipe,
    stage::{
+      Item,
       Stage,
       archive,
       capture,
-      cores,
+      compile,
+      execute,
       files,
-      run,
-      run_in,
+      make_parallel,
+      make_target,
       say,
-      strs,
       tool,
-      wanted,
    },
 };
+
+#[derive(Deserialize)]
+struct Attrs {
+   zstd:    PathBuf,
+   zlib:    PathBuf,
+   targets: String,
+}
 
 const TOOLCHAIN_TOOLS: &[&str] = &[
    "llvm-ar",
@@ -63,72 +75,75 @@ const TOOLCHAIN_TOOLS: &[&str] = &[
 pub struct Llvm;
 
 impl Llvm {
-   fn compression_libraries(stage: &Stage) -> io::Result<PathBuf> {
-      let prefix = PathBuf::from(&stage.build_top).join("complibs");
-
+   /// Static zstd and zlib for LLVM to link, built from source with the
+   /// stage's cc.
+   fn compression_libraries(stage: &Stage, attrs: &Attrs) -> io::Result<PathBuf> {
+      let prefix = stage.build_top.join("complibs");
       for directory in ["include", "lib", "obj"] {
          create_dir_all(prefix.join(directory))?;
       }
-
-      let compile = |flags: &[&str], sources: &[PathBuf]| -> io::Result<Vec<PathBuf>> {
-         parallel_with(sources, cores(), |source| {
-            let name = source
-               .file_name()
-               .ok_or_else(|| io::Error::other("compression source has no filename"))?;
-            let object = prefix
-               .join("obj")
-               .join(format!("{}.o", name.to_string_lossy()));
-            let mut args = vec!["-O2", "-fPIC"];
-            args.extend_from_slice(flags);
-            let source_text = source.to_string_lossy();
-            let object_text = object.to_string_lossy();
-            args.extend(["-c", &source_text, "-o", &object_text]);
-            run("cc", &args)?;
-            Ok(object)
-         })
+      let build = |flags: &[&str], sources: Vec<PathBuf>| -> io::Result<Vec<PathBuf>> {
+         let items = sources
+            .into_iter()
+            .map(|source| {
+               let name = source
+                  .file_name()
+                  .ok_or_else(|| io::Error::other("compression source has no filename"))?;
+               Ok(Item {
+                  obj:   prefix
+                     .join("obj")
+                     .join(format!("{}.o", name.to_string_lossy())),
+                  src:   source,
+                  flags: Vec::new(),
+               })
+            })
+            .collect::<io::Result<Vec<_>>>()?;
+         let common = ["-O2", "-fPIC"]
+            .iter()
+            .chain(flags)
+            .copied()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+         compile("cc", &common, &items)
       };
 
-      let zstd = wanted(stage.zstd.as_deref(), "zstd")?;
-      let zstd_sources = files(&format!("{zstd}/lib/{{common,compress,decompress}}/*.c"))?;
-      let zstd_objects = compile(
+      let zstd = &attrs.zstd;
+      let zstd_objects = build(
          &[
             "-DZSTD_DISABLE_ASM",
             "-DZSTD_LEGACY_SUPPORT=0",
             "-DZSTD_MULTITHREAD",
          ],
-         &zstd_sources,
+         files(&format!(
+            "{}/lib/{{common,compress,decompress}}/*.c",
+            zstd.display()
+         ))?,
       )?;
       archive(&prefix.join("lib/libzstd.a"), &zstd_objects)?;
-
       for header in ["zstd.h", "zdict.h", "zstd_errors.h"] {
          copy(
-            format!("{zstd}/lib/{header}"),
+            zstd.join("lib").join(header),
             prefix.join("include").join(header),
          )?;
       }
 
-      let zlib = wanted(stage.zlib.as_deref(), "zlib")?;
-      let zlib_objects = compile(
+      let zlib = &attrs.zlib;
+      let zlib_objects = build(
          &["-DHAVE_UNISTD_H", "-D_LARGEFILE64_SOURCE=1"],
-         &files(&format!("{zlib}/*.c"))?,
+         files(&format!("{}/*.c", zlib.display()))?,
       )?;
       archive(&prefix.join("lib/libz.a"), &zlib_objects)?;
-
       for header in ["zlib.h", "zconf.h"] {
-         copy(
-            format!("{zlib}/{header}"),
-            prefix.join("include").join(header),
-         )?;
+         copy(zlib.join(header), prefix.join("include").join(header))?;
       }
-
       Ok(prefix)
    }
 
    fn install_tools(stage: &Stage) -> io::Result<()> {
-      let out = stage.out();
-
+      let out = &stage.out;
+      let shown = out.display();
       for path in files(&format!(
-         "{out}/bin/{{clang-*,diagtool,git-clang-format,hmaptool,*-arch}}"
+         "{shown}/bin/{{clang-*,diagtool,git-clang-format,hmaptool,*-arch}}"
       ))? {
          let name = path.file_name().unwrap_or_default().to_string_lossy();
          if name
@@ -137,31 +152,24 @@ impl Llvm {
          {
             continue;
          }
-
          remove_file(path)?;
       }
-
-      for path in files(&format!("{out}/lib/lib{{clang,LTO,Remarks}}.so*"))? {
+      for path in files(&format!("{shown}/lib/lib{{clang,LTO,Remarks}}.so*"))? {
          remove_file(path)?;
       }
-
       for directory in ["share", "include/llvm-c", "include/clang-c"] {
-         match remove_dir_all(Path::new(out).join(directory)) {
-            Ok(()) => {},
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {},
-            Err(error) => return Err(error),
+         match remove_dir_all(out.join(directory)) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+            Ok(()) | Err(_) => {},
          }
       }
-
-      let mut strip_args = vec!["--strip-all".to_owned()];
-      strip_args.extend(
-         files(&format!("{out}/{{bin/*,lib/*.so*}}"))?
-            .into_iter()
-            .filter(|path| !path.is_symlink())
-            .map(|path| path.to_string_lossy().into_owned()),
-      );
-      run("llvm-strip", &strs(&strip_args))?;
-
+      execute(
+         Command::new("llvm-strip").arg("--strip-all").args(
+            files(&format!("{shown}/{{bin/*,lib/*.so*}}"))?
+               .into_iter()
+               .filter(|path| !path.is_symlink()),
+         ),
+      )?;
       for name in [
          "ar",
          "ranlib",
@@ -175,36 +183,95 @@ impl Llvm {
          "c++filt",
          "addr2line",
       ] {
-         let link = Path::new(out).join("bin").join(name);
-         match remove_file(&link) {
-            Ok(()) => {},
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {},
-            Err(error) => return Err(error),
-         }
-
+         let link = out.join("bin").join(name);
+         remove_if_exists(&link)?;
          symlink(format!("llvm-{name}"), link)?;
       }
-
-      let sysroot = wanted(stage.sysroot.as_deref(), "sysroot")?;
-
-      for library in files(&format!("{sysroot}/lib/lib{{c++,c++abi,unwind}}.so.*"))? {
-         let name = library.file_name().unwrap_or_default().to_string_lossy();
-         if !name.rsplit_once('.').is_some_and(|(_, version)| {
-            version.len() == 1 && version.bytes().all(|byte| byte.is_ascii_digit())
-         }) {
+      for library in files(&format!(
+         "{}/lib/lib{{c++,c++abi,unwind}}.so.*",
+         stage.sysroot()?.display()
+      ))? {
+         let Some(filename) = library.file_name() else {
             continue;
+         };
+         let single_version =
+            filename
+               .to_string_lossy()
+               .rsplit_once('.')
+               .is_some_and(|(_, version)| {
+                  version.len() == 1 && version.bytes().all(|byte| byte.is_ascii_digit())
+               });
+         if single_version {
+            copy(canonicalize(&library)?, out.join("lib").join(filename))?;
          }
-
-         let filename = library
-            .file_name()
-            .ok_or_else(|| io::Error::other("runtime library has no filename"))?;
-         copy(
-            canonicalize(&library)?,
-            Path::new(out).join("lib").join(filename),
-         )?;
       }
-
       Ok(())
+   }
+
+   fn configure(stage: &Stage, attrs: &Attrs, source: &Path, build: &Path) -> io::Result<()> {
+      let compression = Self::compression_libraries(stage, attrs)?;
+      execute(
+         Command::new("cmake")
+            .args(["-S", "llvm", "-B"])
+            .arg(build)
+            .args([
+               "-G",
+               "Unix Makefiles",
+               "-DCMAKE_BUILD_TYPE=Release",
+               "-DCMAKE_C_COMPILER=cc",
+               "-DCMAKE_CXX_COMPILER=c++",
+               "-DCMAKE_INSTALL_RPATH=$ORIGIN/../lib",
+               "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
+               "-DLLVM_ENABLE_PROJECTS=clang;lld",
+               "-DLLVM_LINK_LLVM_DYLIB=ON",
+               "-DLLVM_BUILD_LLVM_DYLIB=ON",
+               "-DCLANG_LINK_CLANG_DYLIB=ON",
+               "-DLLVM_ENABLE_ZLIB=FORCE_ON",
+               "-DZLIB_USE_STATIC_LIBS=ON",
+               "-DLLVM_ENABLE_ZSTD=FORCE_ON",
+               "-DLLVM_USE_STATIC_ZSTD=ON",
+               "-DLLVM_ENABLE_LIBXML2=OFF",
+               "-DLLVM_ENABLE_TERMINFO=OFF",
+               "-DLLVM_ENABLE_LIBEDIT=OFF",
+               "-DLLVM_ENABLE_LIBPFM=OFF",
+               "-DLLVM_INCLUDE_TESTS=OFF",
+               "-DLLVM_INCLUDE_BENCHMARKS=OFF",
+               "-DLLVM_INCLUDE_EXAMPLES=OFF",
+               "-DLLVM_INCLUDE_DOCS=OFF",
+               "-DCLANG_INCLUDE_TESTS=OFF",
+               "-DCLANG_INCLUDE_DOCS=OFF",
+               "-DCLANG_ENABLE_ARCMT=OFF",
+               "-DCLANG_ENABLE_STATIC_ANALYZER=OFF",
+               "-DCLANG_TOOL_CLANG_REPL_BUILD=OFF",
+               "-DCLANG_ENABLE_HLSL=OFF",
+               "-DCLANG_DEFAULT_LINKER=lld",
+               "-DCLANG_DEFAULT_RTLIB=compiler-rt",
+               "-DCLANG_DEFAULT_UNWINDLIB=libunwind",
+               "-DCLANG_DEFAULT_CXX_STDLIB=libc++",
+               "-DCLANG_DEFAULT_OBJCOPY=llvm-objcopy",
+               "-DLLVM_INSTALL_TOOLCHAIN_ONLY=ON",
+            ])
+            .arg(format!("-DCMAKE_MAKE_PROGRAM={}", tool("make")?.display()))
+            .arg(format!("-DCMAKE_INSTALL_PREFIX={}", stage.out.display()))
+            .arg(format!("-DCMAKE_AR={}", tool("llvm-ar")?.display()))
+            .arg(format!("-DCMAKE_RANLIB={}", tool("llvm-ranlib")?.display()))
+            .arg(format!("-DCMAKE_PREFIX_PATH={}", compression.display()))
+            .arg(format!(
+               "-DPython3_EXECUTABLE={}",
+               tool("python3")?.display()
+            ))
+            .arg(format!("-DLLVM_TARGETS_TO_BUILD={}", attrs.targets))
+            .arg(format!("-DLLVM_HOST_TRIPLE={}", stage.clang_target))
+            .arg(format!(
+               "-DLLVM_DEFAULT_TARGET_TRIPLE={}",
+               stage.clang_target
+            ))
+            .arg(format!(
+               "-DLLVM_TOOLCHAIN_TOOLS={}",
+               TOOLCHAIN_TOOLS.join(";")
+            ))
+            .current_dir(source),
+      )
    }
 }
 
@@ -214,6 +281,7 @@ impl Recipe for Llvm {
    }
 
    fn run(&self, stage: &Stage) -> io::Result<()> {
+      let attrs = load::<Attrs>()?;
       let source = stage.unpack("llvm-project", &[
          "llvm",
          "clang",
@@ -224,79 +292,12 @@ impl Recipe for Llvm {
          "libunwind/include",
          "runtimes/cmake",
       ])?;
-
-      for patch in &stage.patches {
-         run_in(&source, "patch", &["-p1", "-i", patch])?;
-      }
-
-      let compression = Self::compression_libraries(stage)?;
-      let build = PathBuf::from(&stage.build_top).join("build");
-      let mut args: Vec<String> = [
-         "-S",
-         "llvm",
-         "-B",
-         &build.to_string_lossy(),
-         "-G",
-         "Unix Makefiles",
-         "-DCMAKE_BUILD_TYPE=Release",
-         "-DCMAKE_C_COMPILER=cc",
-         "-DCMAKE_CXX_COMPILER=c++",
-         "-DCMAKE_INSTALL_RPATH=$ORIGIN/../lib",
-         "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
-         "-DLLVM_ENABLE_PROJECTS=clang;lld",
-         "-DLLVM_LINK_LLVM_DYLIB=ON",
-         "-DLLVM_BUILD_LLVM_DYLIB=ON",
-         "-DCLANG_LINK_CLANG_DYLIB=ON",
-         "-DLLVM_ENABLE_ZLIB=FORCE_ON",
-         "-DZLIB_USE_STATIC_LIBS=ON",
-         "-DLLVM_ENABLE_ZSTD=FORCE_ON",
-         "-DLLVM_USE_STATIC_ZSTD=ON",
-         "-DLLVM_ENABLE_LIBXML2=OFF",
-         "-DLLVM_ENABLE_TERMINFO=OFF",
-         "-DLLVM_ENABLE_LIBEDIT=OFF",
-         "-DLLVM_ENABLE_LIBPFM=OFF",
-         "-DLLVM_INCLUDE_TESTS=OFF",
-         "-DLLVM_INCLUDE_BENCHMARKS=OFF",
-         "-DLLVM_INCLUDE_EXAMPLES=OFF",
-         "-DLLVM_INCLUDE_DOCS=OFF",
-         "-DCLANG_INCLUDE_TESTS=OFF",
-         "-DCLANG_INCLUDE_DOCS=OFF",
-         "-DCLANG_ENABLE_ARCMT=OFF",
-         "-DCLANG_ENABLE_STATIC_ANALYZER=OFF",
-         "-DCLANG_TOOL_CLANG_REPL_BUILD=OFF",
-         "-DCLANG_ENABLE_HLSL=OFF",
-         "-DCLANG_DEFAULT_LINKER=lld",
-         "-DCLANG_DEFAULT_RTLIB=compiler-rt",
-         "-DCLANG_DEFAULT_UNWINDLIB=libunwind",
-         "-DCLANG_DEFAULT_CXX_STDLIB=libc++",
-         "-DCLANG_DEFAULT_OBJCOPY=llvm-objcopy",
-         "-DLLVM_INSTALL_TOOLCHAIN_ONLY=ON",
-      ]
-      .into_iter()
-      .map(str::to_owned)
-      .collect();
-      args.extend([
-         format!("-DCMAKE_MAKE_PROGRAM={}", tool("make")?.display()),
-         format!("-DCMAKE_INSTALL_PREFIX={}", stage.out()),
-         format!("-DCMAKE_AR={}", tool("llvm-ar")?.display()),
-         format!("-DCMAKE_RANLIB={}", tool("llvm-ranlib")?.display()),
-         format!("-DCMAKE_PREFIX_PATH={}", compression.display()),
-         format!("-DPython3_EXECUTABLE={}", tool("python3")?.display()),
-         format!(
-            "-DLLVM_TARGETS_TO_BUILD={}",
-            wanted(stage.targets.as_deref(), "targets")?
-         ),
-         format!("-DLLVM_HOST_TRIPLE={}", stage.clang_target),
-         format!("-DLLVM_DEFAULT_TARGET_TRIPLE={}", stage.clang_target),
-         format!("-DLLVM_TOOLCHAIN_TOOLS={}", TOOLCHAIN_TOOLS.join(";")),
-      ]);
-      run_in(&source, "cmake", &strs(&args))?;
-
-      let shell_arg = format!("SHELL={}", tool("sh")?.display());
-      run_in(&build, "make", &["-j", &cores().to_string(), &shell_arg])?;
-      run_in(&build, "make", &["install/fast", &shell_arg])?;
+      let build = stage.build_top.join("build");
+      Self::configure(stage, &attrs, &source, &build)?;
+      execute(&mut make_parallel(&build)?)?;
+      execute(&mut make_target(&build, "install/fast")?)?;
       Self::install_tools(stage)?;
-      let version = capture(&format!("{}/bin/clang", stage.out()), &["--version"])?;
+      let version = capture(Command::new(stage.out.join("bin/clang")).arg("--version"))?;
       say(version.lines().next().unwrap_or_default());
       Ok(())
    }
