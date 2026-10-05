@@ -20,7 +20,10 @@ use mummer::{
       get_directory,
       put_directory,
    },
-   files::write_file,
+   files::{
+      utf8,
+      write_file,
+   },
    store::{
       STORE_DIR,
       mask_hashes,
@@ -40,7 +43,6 @@ use tightrope::{
 use crate::attrs::{
    Ctx,
    build_top,
-   utf8,
 };
 
 #[derive(Serialize)]

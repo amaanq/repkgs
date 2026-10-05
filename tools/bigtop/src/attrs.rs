@@ -483,14 +483,6 @@ pub fn text<'value>(value: &'value Value, name: &str) -> &'value str {
    value.get(name).and_then(Value::as_str).unwrap_or_default()
 }
 
-/// A path as text for an argument or env value, which a path read from
-/// ctx.json, written from UTF-8 attrs, always is.
-pub fn utf8(path: &Path) -> io::Result<&str> {
-   path
-      .to_str()
-      .ok_or_else(|| io::Error::other(format!("{} is not UTF-8", path.display())))
-}
-
 pub fn nix_store() -> String {
    var("NIX_STORE").unwrap_or_else(|_unset| STORE_DIR.to_owned())
 }

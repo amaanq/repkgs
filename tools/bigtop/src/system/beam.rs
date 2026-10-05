@@ -17,6 +17,7 @@ use std::{
 use mummer::{
    files::{
       sorted_entries,
+      utf8,
       write_file,
    },
    store::on_path,
@@ -28,7 +29,6 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
-      utf8,
    },
    launchers::entries::write,
    probe,

@@ -8,7 +8,10 @@ use std::{
 };
 
 use mummer::{
-   files::write_file,
+   files::{
+      utf8,
+      write_file,
+   },
    tree::{
       EntryKind,
       note,
@@ -22,7 +25,6 @@ use crate::{
       Attrs,
       Ctx,
       Def,
-      utf8,
    },
    probe,
    schema::Field,

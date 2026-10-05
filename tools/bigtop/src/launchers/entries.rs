@@ -34,6 +34,7 @@ use mummer::{
       is_elf,
       segments,
    },
+   files::utf8,
    image::Image,
    store::normalize,
    tree::{
@@ -47,7 +48,6 @@ use crate::{
    attrs::{
       Ctx,
       nix_store,
-      utf8,
    },
    exports::{
       exports_of,

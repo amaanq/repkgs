@@ -5,7 +5,10 @@ use std::{
 };
 
 use mummer::{
-   files::write_file,
+   files::{
+      utf8,
+      write_file,
+   },
    tree::writable,
 };
 
@@ -13,7 +16,6 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
-      utf8,
    },
    schema::{
       Field,
