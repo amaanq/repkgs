@@ -90,9 +90,6 @@ snapshots, with the commit in act.lock's `rev` for a `{rev}` url. The base is `[
 newest stable tag among the first hundred the API lists. A tip that moved within the same day keeps
 its version, so decide also proposes an update whenever the rev differs from the pinned one.
 
-A github purl with `?tags` lists the repository's tags even when it publishes releases, for one
-that tags versions without releasing every one. `asset` sources still need a release behind the tag.
-
 **decide** is a pure function from the manifest, the candidates and the flags to a plan entry, the
 new version with its sources, pins and lock work, or a reason to skip. `check --json` prints the
 plan, and `apply --plan` takes one back, edited or not.

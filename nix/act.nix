@@ -22,7 +22,7 @@ let
   where = "${toString dir}/act.toml";
 
   track = if isAttrs (act.track or null) then act.track.from or null else act.track or null;
-  repo = match "github:([^/?]+/[^/?]+)([?].*)?" (if track == null then "" else track);
+  repo = match "github:([^/?]+/[^/?]+)" (if track == null then "" else track);
   forge =
     if repo == null then
       throw "${where}: asset and archive need a github track"
