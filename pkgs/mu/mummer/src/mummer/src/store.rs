@@ -1,6 +1,7 @@
 use std::{
    collections::{
       BTreeMap,
+      BTreeSet,
       HashMap,
    },
    env::{
@@ -33,7 +34,18 @@ use std::{
 use blake3::Hasher;
 use tightrope::{
    LOCAL_PREFIX,
+   client::Client,
    identity::Identity,
+};
+
+use crate::{
+   elf::{
+      is_elf,
+      needed,
+      runpath_text,
+      segments,
+   },
+   image::Image,
 };
 
 pub const STORE_DIR: &str = match option_env!("MUMMER_STORE_DIR") {
@@ -335,6 +347,103 @@ impl Store {
          self.mask_output(&mut bytes, false);
       }
       Ok(Identity::of(&bytes).to_string())
+   }
+
+   /// A program as the code it runs, itself and the libraries it loads
+   /// through RUNPATH, so relinking a toolchain against other directories
+   /// keeps the compiles it already did.
+   #[inline]
+   pub fn tool_identity(&self, cache: &mut Client, program: &str) -> io::Result<String> {
+      let mut pending = vec![canonicalize(on_path(program))?];
+      let mut visited = BTreeSet::new();
+      let mut found = BTreeSet::new();
+      while let Some(file) = pending.pop() {
+         if !visited.insert(file.clone()) {
+            continue;
+         }
+         let (identity, libraries) = self.loaded_identity(cache, &file)?;
+         let name = file.file_name().unwrap_or_default().to_string_lossy();
+         found.insert(format!("{name}={identity}"));
+         pending.extend(libraries);
+      }
+      Ok(found.into_iter().collect::<Vec<_>>().join(","))
+   }
+
+   /// One file's identity with its RUNPATH and the room reserved after it
+   /// left out, and the libraries it loads, remembered by its stat stamp.
+   fn loaded_identity(
+      &self,
+      cache: &mut Client,
+      file: &Path,
+   ) -> io::Result<(String, Vec<PathBuf>)> {
+      let memo = self
+         .stamp_key(&file.to_string_lossy())
+         .map(|key| format!("{key}-loaded"));
+      if let Some(ref key) = memo
+         && let Some(bytes) = cache.get(key)?
+      {
+         let text = String::from_utf8(bytes).map_err(io::Error::other)?;
+         let mut lines = text.lines();
+         if let Some(identity) = lines.next() {
+            return Ok((identity.to_owned(), lines.map(PathBuf::from).collect()));
+         }
+      }
+      let image = Image { bytes: read(file)? };
+      let mut libraries = Vec::new();
+      let identity = if is_elf(&image) {
+         let program_headers = segments(&image)?;
+         let mut hasher = Hasher::new();
+         if let Some(text) = runpath_text(&image, &program_headers)? {
+            let mut end = text.offset + text.capacity;
+            while image.bytes.get(end) == Some(&0) {
+               end += 1;
+            }
+            let outside = image
+               .bytes
+               .get(..text.offset)
+               .zip(image.bytes.get(end..))
+               .ok_or_else(|| io::Error::other("ELF RUNPATH is outside the file"))?;
+            hasher.update(outside.0);
+            field(&mut hasher, format!("runpath {}", end - text.offset));
+            hasher.update(outside.1);
+            let origin = file.parent().unwrap_or_else(|| Path::new("/"));
+            let directories = text
+               .value
+               .split(':')
+               .filter(|entry| !entry.is_empty())
+               .map(|entry| {
+                  PathBuf::from(
+                     entry
+                        .replace("${ORIGIN}", &origin.to_string_lossy())
+                        .replace("$ORIGIN", &origin.to_string_lossy()),
+                  )
+               })
+               .collect::<Vec<_>>();
+            for library in needed(&image, &program_headers)? {
+               if let Some(path) = directories
+                  .iter()
+                  .map(|directory| directory.join(&library.value))
+                  .find(|path| path.is_file())
+               {
+                  libraries.push(canonicalize(path)?);
+               }
+            }
+         } else {
+            hasher.update(&image.bytes);
+         }
+         format!("L:{}", hasher.finalize().to_hex())
+      } else {
+         Identity::of(&image.bytes).to_string()
+      };
+      if let Some(key) = memo {
+         let mut record = identity.clone();
+         for library in &libraries {
+            record.push('\n');
+            record.push_str(&library.to_string_lossy());
+         }
+         cache.put(&key, record.as_bytes())?;
+      }
+      Ok((identity, libraries))
    }
 
    #[inline]
