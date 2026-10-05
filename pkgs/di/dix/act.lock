@@ -1,0 +1,4 @@
+version = "2.2.0"
+date    = "2026-07-03"
+sys     = [ "sqlite" ]
+hash    = "sha256-U7zKSFQsmAkG4Um0DxgkgsGKh+/MqT1H3llUVd/i8UE="

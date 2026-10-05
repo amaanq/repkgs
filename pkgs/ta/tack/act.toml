@@ -1,0 +1,4 @@
+tag   = "v{version}"
+track = "github:manic-systems/tack"
+fetch = { archive = true }
+with  = [ "cargo" ]

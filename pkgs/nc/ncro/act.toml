@@ -1,0 +1,4 @@
+tag   = "v{version}"
+track = "github:manic-systems/ncro"
+fetch = { archive = true }
+with  = [ "cargo" ]

@@ -1,0 +1,4 @@
+version = "0.12.0"
+date    = "2026-06-22"
+sys     = [ "clang", "libgit2", "openssl", "sqlite", "xz", "zlib", "zstd" ]
+hash    = "sha256-uMUqtQM9hC/m70rDG5DAN+GaerGo5XSNrh9JrfN1IRw="
