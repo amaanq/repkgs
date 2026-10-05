@@ -40,10 +40,11 @@ pub const STORE_DIR: &str = match option_env!("MUMMER_STORE_DIR") {
    Some(directory) => directory,
    None => "/nix/store",
 };
+
 const OUTPUT_PLACEHOLDER: &[u8] = b"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const PATH_ENDS: &str = " \t\n\\:\"';,)]}>";
 const HASH_ALPHABET: &[u8] = b"0123456789abcdfghijklmnpqrsvwxyz";
-const RANDOM_NAMES: [(&str, usize); 2] = [("TryCompile-", 6), ("cmTC_", 5)];
+const RANDOM_NAMES: [(&str, usize); 3] = [("TryCompile-", 6), ("cmTC_", 5), ("/rustc", 6)];
 
 pub struct Store {
    content:     bool,
@@ -209,10 +210,7 @@ impl Store {
             while let Some(found) = arg[position..].find(prefix) {
                let start = position + found + prefix.len();
                position = start;
-               let Some(tail) = arg
-                  .get(start..start + width)
-                  .filter(|tail| tail.bytes().all(|byte| byte.is_ascii_alphanumeric()))
-               else {
+               let Some(tail) = random_tail(arg, start, width) else {
                   continue;
                };
                let masked = format!("{prefix}{}", "#".repeat(width));
@@ -431,6 +429,16 @@ fn normalize_path_arg(arg: &str) -> String {
    )
 }
 
+/// The `width` alphanumerics at `start`, when nothing alphanumeric follows.
+fn random_tail(text: &str, start: usize, width: usize) -> Option<&str> {
+   let tail = text.get(start..start + width)?;
+   let ends = text
+      .as_bytes()
+      .get(start + width)
+      .is_none_or(|byte| !byte.is_ascii_alphanumeric());
+   (ends && tail.bytes().all(|byte| byte.is_ascii_alphanumeric())).then_some(tail)
+}
+
 #[must_use]
 #[inline]
 pub fn mask_random_names(text: &str) -> String {
@@ -440,10 +448,7 @@ pub fn mask_random_names(text: &str) -> String {
       while let Some(found) = masked[position..].find(prefix) {
          let start = position + found + prefix.len();
          position = start;
-         if masked
-            .get(start..start + width)
-            .is_some_and(|tail| tail.bytes().all(|byte| byte.is_ascii_alphanumeric()))
-         {
+         if random_tail(&masked, start, width).is_some() {
             masked.replace_range(start..start + width, &"#".repeat(width));
          }
       }
