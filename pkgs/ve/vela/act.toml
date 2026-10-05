@@ -4,3 +4,9 @@ with  = [ "cargo" ]
 [track]
 from = "github:manic-systems/vela?branch=master"
 base = "0.2.0"
+
+[on.linux]
+tools = [ "wild" ]
+
+[on.linux.cc]
+linker = "wild"
