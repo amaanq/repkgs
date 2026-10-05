@@ -31,7 +31,7 @@ use std::{
    process::ExitCode,
 };
 
-use eyre::Result;
+use misstep::Result;
 use mummer::{
    process::{
       run_main,
@@ -184,5 +184,5 @@ fn run(mode: Mode, socket: &Path) -> Result<i32> {
 }
 
 fn main() -> ExitCode {
-   run_main("bigtop", dispatch)
+   run_main(dispatch)
 }

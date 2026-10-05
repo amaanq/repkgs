@@ -11,8 +11,7 @@ version      = "1.0.0"
 
 [workspace.dependencies]
 blake3     = "1.8.7"
-color-eyre = { default-features = false, version = "0.6.5" }
-eyre       = "0.6.14"
+misstep    = { features = [ "pretty" ], version = "0.3.0" }
 rustix     = { features = [ "event", "fs", "net" ], version = "1.1.4" }
 
 mummer    = { path = "bootstrap/mummer" }

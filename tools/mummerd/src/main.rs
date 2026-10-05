@@ -52,11 +52,11 @@ use std::{
    },
 };
 
-use eyre::{
+use misstep::{
    Result,
-   WrapErr as _,
+   ResultExt as _,
    bail,
-   eyre,
+   report,
 };
 use pound::Parse;
 use rustix::{
@@ -199,11 +199,10 @@ impl Drop for Socket {
 
 fn main() -> Result<()> {
    let options = Options::parse();
-   color_eyre::install()?;
    let cache = match var_os("XDG_CACHE_HOME") {
       Some(path) if !path.is_empty() => PathBuf::from(path),
       Some(_) | None => {
-         PathBuf::from(var_os("HOME").ok_or_else(|| eyre!("HOME is not set"))?).join(".cache")
+         PathBuf::from(var_os("HOME").ok_or_else(|| report!("HOME is not set"))?).join(".cache")
       },
    };
    let mut tiers = vec![Tier {
@@ -231,10 +230,10 @@ fn main() -> Result<()> {
    // outgrows the usual soft limit of 1024 long before the hard one
    let mut files = getrlimit(Resource::Nofile);
    files.current = files.maximum;
-   setrlimit(Resource::Nofile, files).wrap_err("could not raise the open file limit")?;
+   setrlimit(Resource::Nofile, files).context("could not raise the open file limit")?;
 
-   let store = Store::open(tiers).wrap_err("could not open cache")?;
-   let socket = Socket::bind(options.socket).wrap_err("could not bind socket")?;
+   let store = Store::open(tiers).context("could not open cache")?;
+   let socket = Socket::bind(options.socket).context("could not bind socket")?;
    let stopped = Arc::new(AtomicBool::new(false));
    register(SIGINT, Arc::clone(&stopped))?;
    register(SIGTERM, Arc::clone(&stopped))?;
@@ -265,7 +264,7 @@ fn main() -> Result<()> {
          )
       })
       .transpose()
-      .wrap_err("could not set up the remote cache")?;
+      .context("could not set up the remote cache")?;
    if let Some(ref tier) = remote {
       note(format_args!(
          "remote tier {}, {}",
@@ -291,7 +290,7 @@ fn main() -> Result<()> {
    for (worker, _) in workers {
       worker
          .join()
-         .map_err(|_error| eyre!("cache worker panicked"))?;
+         .map_err(|_error| report!("cache worker panicked"))?;
    }
    daemon.close()?;
    result.map_err(Into::into)
@@ -342,7 +341,7 @@ fn timestamp() -> String {
 fn gibibytes(size: u64, option: &str) -> Result<u64> {
    size
       .checked_mul(1 << 30)
-      .ok_or_else(|| eyre!("{option} is too large"))
+      .ok_or_else(|| report!("{option} is too large"))
 }
 
 fn serve(

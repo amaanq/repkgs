@@ -18,10 +18,10 @@ use std::{
    process::ExitCode,
 };
 
-use eyre::{
+use misstep::{
    Result,
    bail,
-   eyre,
+   report,
 };
 use mummer::{
    directory::{
@@ -64,7 +64,7 @@ fn dispatch() -> Result<i32> {
    let socket = socket();
    let name_text = name
       .to_str()
-      .ok_or_else(|| eyre!("mode {name:?} is not UTF-8"))?;
+      .ok_or_else(|| report!("mode {name:?} is not UTF-8"))?;
    run(
       Mode::from_arguments(name_text, args)?,
       name_text,
@@ -143,5 +143,5 @@ fn cache_mode(operation: CacheOperation, key: &str, file: &Path, socket: &Path) 
 }
 
 fn main() -> ExitCode {
-   run_main("mummer", dispatch)
+   run_main(dispatch)
 }

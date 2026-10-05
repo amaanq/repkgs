@@ -32,9 +32,9 @@ use std::{
    time::Instant,
 };
 
-use eyre::{
+use misstep::{
    Result,
-   eyre,
+   report,
 };
 use pound::Error as ArgumentError;
 use tightrope::client::Client;
@@ -248,22 +248,16 @@ pub fn text_arguments(args: &[OsString]) -> Result<Vec<String>> {
       .map(|arg| {
          arg.to_str()
             .map(str::to_owned)
-            .ok_or_else(|| eyre!("argument {arg:?} is not UTF-8"))
+            .ok_or_else(|| report!("argument {arg:?} is not UTF-8"))
       })
       .collect()
 }
 
 #[inline]
-pub fn run_main<Dispatch>(name: &str, dispatch: Dispatch) -> ExitCode
+pub fn run_main<Dispatch>(dispatch: Dispatch) -> ExitCode
 where
    Dispatch: FnOnce() -> Result<i32>,
 {
-   if let Err(error) = color_eyre::install() {
-      diagnostic(format_args!(
-         "{name} could not install error reporting, {error}"
-      ));
-      return ExitCode::FAILURE;
-   }
    let asked = args_os().any(|arg| arg == "-h" || arg == "--help" || arg == "--version");
    let result = dispatch().or_else(|error| {
       match error.downcast_ref::<ArgumentError>() {

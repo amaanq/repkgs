@@ -11,8 +11,7 @@ readme.workspace       = true
 rust-version.workspace = true
 
 [dependencies]
-color-eyre = { workspace = true }
-eyre       = { workspace = true }
+misstep    = { workspace = true }
 mummer     = { workspace = true }
 libc       = "0.2"
 rustix     = { features = [ "process" ], workspace = true }

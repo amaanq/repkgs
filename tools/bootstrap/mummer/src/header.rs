@@ -18,7 +18,7 @@ use std::{
 };
 
 use blake3::Hasher;
-use eyre::{
+use misstep::{
    Result,
    bail,
 };
