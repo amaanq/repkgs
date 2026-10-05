@@ -209,7 +209,19 @@ impl Invocation {
                   sources += 1_i32;
                   positions.push(index);
                   header |= precompiles;
-               } else if !arg.starts_with('-') && linked.contains(&&arg) {
+               } else if !arg.starts_with('-') && {
+                  // a value the driver hands the linker after its option, as
+                  // `-rpath <dir>` or `-z noexecstack`, is no input file
+                  let option = index
+                     .checked_sub(1)
+                     .map(|before| invocation.args[before].as_str())
+                     .filter(|before| before.starts_with('-'));
+                  linked.iter().enumerate().any(|(position, token)| {
+                     **token == arg
+                        && !(position > 0
+                           && option.is_some_and(|before| linked[position - 1].as_str() == before))
+                  })
+               } {
                   invocation.inputs.push(arg.clone());
                   objects = true;
                }
