@@ -1,0 +1,6 @@
+fetch = { url = "https://github.com/manic-systems/bagel/archive/{rev}.tar.gz" }
+with  = [ "cargo" ]
+
+[track]
+from = "github:manic-systems/bagel?branch=main"
+base = "1.0.0"

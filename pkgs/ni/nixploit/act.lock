@@ -1,0 +1,5 @@
+version = "0.1.0-unstable-2026-10-01"
+date    = "2026-10-01"
+rev     = "ec40bbe6f0f88e82370a4ed838fc6b6e288cab32"
+sys     = [ "sqlite" ]
+hash    = "sha256-3olxEf9RRuZ5ng3RgfSjlDvJRhKuhF5L7jZJuS+qKMU="

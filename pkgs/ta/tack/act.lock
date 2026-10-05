@@ -1,0 +1,4 @@
+version = "1.0.1"
+date    = "2026-08-03"
+sys     = [ "xz", "zstd" ]
+hash    = "sha256-2wwH6pzL2vzffXKuMQwVMbUhfRubDwjPbrqdcbcJZqA="

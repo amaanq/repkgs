@@ -1,0 +1,4 @@
+version = "3.0.0"
+date    = "2026-10-02"
+sys     = [ "clang" ]
+hash    = "sha256-RMNRa+/JEpaQhwS9G1fM/cooJWG8iohw3ePseAcG37M="
