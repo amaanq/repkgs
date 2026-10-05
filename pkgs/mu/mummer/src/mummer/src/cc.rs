@@ -16,7 +16,6 @@ use std::{
       self,
       Write as _,
    },
-   mem::take,
    path::{
       Path,
       PathBuf,
@@ -119,14 +118,10 @@ impl Invocation {
       let mut emit_pch = false;
       let mut wants_deps = false;
       let mut objects = false;
-      let scanned = expanded(&invocation.args).unwrap_or_else(|| {
-         invocation.cacheable = false;
-         invocation.args.clone()
-      });
       let mut index = 0;
-      while index < scanned.len() {
-         let arg = scanned[index].clone();
-         let next = scanned.get(index + 1).cloned();
+      while index < invocation.args.len() {
+         let arg = invocation.args[index].clone();
+         let next = invocation.args.get(index + 1).cloned();
          let mut keyed = true;
          let mut consumed = false;
          match arg.as_str() {
@@ -237,7 +232,7 @@ impl Invocation {
          }
          index += if consumed { 2 } else { 1 };
       }
-      invocation.linkfile = given_link_depfile(&scanned).map(PathBuf::from);
+      invocation.linkfile = given_link_depfile(&invocation.args).map(PathBuf::from);
       if matches!(
          invocation.action,
          Action::Compile | Action::Precompile | Action::Assembly | Action::Preprocess
@@ -855,54 +850,6 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    };
    log("cc", outcome, &explained, started);
    Ok(result.status)
-}
-
-/// `args` with each `@file` replaced by the words in it, split the way
-/// LLVM's GNU tokenizer does, or None for a file that cannot be read or
-/// names another.
-fn expanded(args: &[String]) -> Option<Vec<String>> {
-   let mut words = Vec::with_capacity(args.len());
-   for arg in args {
-      let Some(file) = arg.strip_prefix('@') else {
-         words.push(arg.clone());
-         continue;
-      };
-      let text = read_to_string(file).ok()?;
-      let mut word = String::new();
-      let mut started = false;
-      let mut quote = None;
-      let mut characters = text.chars();
-      while let Some(character) = characters.next() {
-         match character {
-            '\\' => {
-               word.push(characters.next()?);
-               started = true;
-            },
-            '"' | '\'' if quote.is_none() => {
-               quote = Some(character);
-               started = true;
-            },
-            _ if quote == Some(character) => quote = None,
-            _ if quote.is_none() && character.is_whitespace() => {
-               if started {
-                  words.push(take(&mut word));
-                  started = false;
-               }
-            },
-            _ => {
-               word.push(character);
-               started = true;
-            },
-         }
-      }
-      if started {
-         words.push(word);
-      }
-   }
-   words
-      .iter()
-      .all(|word| !word.starts_with('@'))
-      .then_some(words)
 }
 
 fn run_uncached(
