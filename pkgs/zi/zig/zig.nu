@@ -4,7 +4,7 @@ use core.nu *
 # whole directory moves between sandboxes
 def cache-key []: nothing -> string {
    let given = (attrs)
-   ^bigtop probe key $"zig-cache/($given.src | path basename)" ...$given.patches
+   ^bigtop probe key --no-out $"zig-cache/($given.src | path basename)" ...$given.patches
 }
 
 export def restore []: nothing -> nothing {
