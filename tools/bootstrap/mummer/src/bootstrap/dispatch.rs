@@ -13,6 +13,7 @@ use std::{
 
 use mummer::{
    attrs::load,
+   process::logged,
    store::STORE_DIR,
 };
 use serde_json::Value;
@@ -129,13 +130,8 @@ fn summary(log: &Path) {
       return;
    };
    let mut kinds = BTreeMap::<&str, usize>::new();
-   for line in text.lines() {
-      let Some(outcome) = line.split('\t').nth(1) else {
-         continue;
-      };
-      if outcome != "query" {
-         *kinds.entry(outcome).or_default() += 1;
-      }
+   for run in logged(&text) {
+      *kinds.entry(run.outcome.name()).or_default() += 1;
    }
    let parts = kinds
       .iter()
