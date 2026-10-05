@@ -1,5 +1,5 @@
 use std::{
-   collections::BTreeMap,
+   collections::BTreeSet,
    fs::read_to_string,
    io,
 };
@@ -18,7 +18,6 @@ use serde::{
    Deserialize,
    Serialize,
 };
-use serde_json::Value;
 
 use crate::{
    fetch::{
@@ -29,19 +28,21 @@ use crate::{
          attr,
          collect_with,
          fetchurls,
+         keys,
          say,
          store_attr,
       },
+      registry::basename,
    },
    nix_store::Store,
 };
 
 const MSIS: [&str; 9] = [
    "Windows SDK Desktop Headers x86",
-   "Windows SDK Desktop Headers {arch}",
-   "Windows SDK Desktop Libs {arch}",
+   "Windows SDK Desktop Headers <arch>",
+   "Windows SDK Desktop Libs <arch>",
    "Windows SDK OnecoreUap Headers x86",
-   "Windows SDK OnecoreUap Headers {arch}",
+   "Windows SDK OnecoreUap Headers <arch>",
    "Windows SDK for Windows Store Apps Headers",
    "Windows SDK for Windows Store Apps Headers OnecoreUap",
    "Windows SDK for Windows Store Apps Libs",
@@ -57,8 +58,8 @@ struct Manifest {
 struct Package {
    id:           String,
    language:     Option<String>,
-   #[serde(default)]
-   dependencies: BTreeMap<String, Value>,
+   #[serde(default, deserialize_with = "keys")]
+   dependencies: BTreeSet<String>,
    #[serde(default)]
    payloads:     Vec<Payload>,
 }
@@ -78,11 +79,59 @@ struct Assembled {
    payloads: Vec<Selected>,
 }
 
+/// What `winsdk-assemble` does with a payload.
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PayloadKind {
+   Crt,
+   Msi,
+   Cab,
+}
+
 #[derive(Serialize)]
-pub struct Selected {
-   pub file: String,
-   pub kind: &'static str,
-   pub out:  StorePath,
+struct Selected {
+   file: String,
+   kind: PayloadKind,
+   out:  StorePath,
+}
+
+/// The CPUs Microsoft ships an SDK for, as the SDK and the CRT spell them.
+#[derive(Clone, Copy)]
+enum WinArch {
+   X64,
+   Arm64,
+}
+
+impl WinArch {
+   const fn sdk(self) -> &'static str {
+      match self {
+         Self::X64 => "x64",
+         Self::Arm64 => "arm64",
+      }
+   }
+
+   const fn crt(self) -> &'static str {
+      match self {
+         Self::X64 => "x64",
+         Self::Arm64 => "ARM64",
+      }
+   }
+}
+
+impl TryFrom<&str> for WinArch {
+   type Error = io::Error;
+
+   fn try_from(cpu: &str) -> io::Result<Self> {
+      match cpu {
+         "x86_64" => Ok(Self::X64),
+         "aarch64" => Ok(Self::Arm64),
+         _ => {
+            Err(io::Error::other(format!(
+               "windows-sdk: Microsoft ships no {cpu} SDK"
+            )))
+         },
+      }
+   }
 }
 
 fn newest<'version, Versions>(versions: Versions) -> Option<&'version str>
@@ -116,7 +165,7 @@ fn select_crt(packages: &[Package], crt_arch: &str) -> io::Result<(String, Vec<P
    let crt = newest(
       package(packages, "Microsoft.VisualStudio.Product.BuildTools")?
          .dependencies
-         .keys()
+         .iter()
          .filter_map(|key| {
             key.strip_prefix("Microsoft.VisualStudio.Component.VC.")?
                .strip_suffix(".x86.x64")
@@ -157,13 +206,7 @@ fn select_sdk(packages: &[Package]) -> io::Result<(String, Vec<Payload>)> {
       .iter()
       .map(|payload| {
          Payload {
-            file_name: payload
-               .file_name
-               .replace('\\', "/")
-               .rsplit('/')
-               .next()
-               .unwrap_or_default()
-               .to_owned(),
+            file_name: basename(&payload.file_name.replace('\\', "/")).to_owned(),
             url:       payload.url.clone(),
             sha256:    payload.sha256.clone(),
          }
@@ -185,43 +228,33 @@ impl Producer for Winsdk {
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
       let cpu = attr("arch")?;
-      let sdk_arch = match cpu.as_str() {
-         "x86_64" => "x64",
-         "aarch64" => "arm64",
-         _ => {
-            return Err(io::Error::other(format!(
-               "windows-sdk: Microsoft ships no {cpu} SDK"
-            )));
-         },
-      };
+      let arch = WinArch::try_from(cpu.as_str())?;
+      let sdk_arch = arch.sdk();
       let manifest: Manifest = serde_json::from_str(&read_to_string(attr("manifest")?)?)?;
       let packages: Vec<Package> = manifest
          .packages
          .into_iter()
          .filter(|candidate| candidate.language.is_none())
          .collect();
-      let crt_arch = if sdk_arch == "arm64" {
-         "ARM64"
-      } else {
-         sdk_arch
-      };
-      let (crt, vsix) = select_crt(&packages, crt_arch)?;
-      let mut payloads: Vec<(Payload, &'static str)> =
-         vsix.into_iter().map(|payload| (payload, "crt")).collect();
+      let (crt, vsix) = select_crt(&packages, arch.crt())?;
+      let mut payloads: Vec<(Payload, PayloadKind)> = vsix
+         .into_iter()
+         .map(|payload| (payload, PayloadKind::Crt))
+         .collect();
       let (sdk_id, sdk) = select_sdk(&packages)?;
       for name in MSIS {
-         let wanted = format!("{}-x86_en-us.msi", name.replace("{arch}", sdk_arch));
+         let wanted = format!("{}-x86_en-us.msi", name.replace("<arch>", sdk_arch));
          let msi = sdk
             .iter()
             .find(|payload| payload.file_name == wanted)
             .ok_or_else(|| io::Error::other(format!("windows-sdk: {sdk_id} has no {wanted}")))?;
-         payloads.push((msi.clone(), "msi"));
+         payloads.push((msi.clone(), PayloadKind::Msi));
       }
       for cab in sdk
          .iter()
          .filter(|payload| payload.file_name.strip_suffix(".cab").is_some())
       {
-         payloads.push((cab.clone(), "cab"));
+         payloads.push((cab.clone(), PayloadKind::Cab));
       }
       let rows: Vec<Row> = payloads
          .iter()
