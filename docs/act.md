@@ -104,7 +104,8 @@ Tables merge, lists append, anything else replaces. `with` is a Nix keyword, so 
 A function of `{ platform, pkgs, tools, toolchain, pin, source, file, fetch, tree, when }` to a
 list of changes in the vocabulary above, merged after `[on]`. `pkgs` and `tools` are the target
 and build sets, `source <name>` one of this act's sources, `file <name>` a file beside it,
-`tree { dir, name, exclude, files }` a local tree, `when <bool> <change>` the change or nothing.
+`tree { dir, name, exclude, files }` a directory of the repository, `when <bool> <change>` the
+change or nothing.
 
 ## act.lock
 

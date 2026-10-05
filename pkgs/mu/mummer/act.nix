@@ -7,7 +7,7 @@
   {
     cargo.tool = tools.rust-bootstrap;
     source = tree {
-      dir = "src";
+      dir = "tools/bootstrap";
       exclude = [ "target" ];
       files = [
         ".rs"

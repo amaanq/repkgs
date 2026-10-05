@@ -1,7 +1,7 @@
 # spieler
 
-The updater for this tree and any other that keeps its pins in `act.lock`. It lives in the mummer
-workspace (`pkgs/mu/mummer/src/spieler`) and is on PATH in the development shell and through
+The updater for this tree and any other that keeps its pins in `act.lock`. It lives in the tools
+workspace (`tools/spieler`) and is on PATH in the development shell and through
 `motley update`.
 
 ## Principles
