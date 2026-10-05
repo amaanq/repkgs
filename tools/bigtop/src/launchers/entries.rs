@@ -51,6 +51,7 @@ use crate::{
    exports::{
       exports_of,
       lib_dirs,
+      relative,
    },
 };
 
@@ -87,9 +88,7 @@ struct Context<'run> {
 
 impl Context<'_> {
    fn storerel(&self, path: &str) -> String {
-      path
-         .replace(&self.out, "{root}")
-         .replace(&self.store, "{store}")
+      relative(path, &self.out, &self.store)
    }
 }
 
@@ -103,11 +102,7 @@ pub fn write(
    vars: &BTreeMap<String, String>,
 ) -> io::Result<()> {
    let store_dir = nix_store();
-   let rel = |path: &str| {
-      path
-         .replace(&ctx.out, "{root}")
-         .replace(&store_dir, "{store}")
-   };
+   let rel = |path: &str| relative(path, &ctx.out, &store_dir);
    let bin = Path::new(&ctx.out).join("bin");
    create_dir_all(&bin)?;
    let platform = ctx.platform()?;
@@ -204,14 +199,13 @@ pub type Env = BTreeMap<String, Variable>;
 pub fn runtime_env(deps: &[String], out: &str, nix_store: &str) -> io::Result<(Env, Env)> {
    let mut binaries = BTreeMap::new();
    let mut path = Vec::new();
-   let relative = |value: &str| value.replace(out, "{root}").replace(nix_store, "{store}");
 
    for dep in deps {
       if Path::new(dep).join("bin").exists() {
-         path.push(relative(&format!("{dep}/bin")));
+         path.push(relative(&format!("{dep}/bin"), out, nix_store));
       }
       for (name, value) in exports_of(Path::new(dep))?.env {
-         binaries.insert(name, Variable::Default(relative(&value)));
+         binaries.insert(name, Variable::Default(relative(&value, out, nix_store)));
       }
    }
    let mut scripts = BTreeMap::new();
