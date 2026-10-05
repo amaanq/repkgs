@@ -10,7 +10,13 @@ use std::{
    },
 };
 
-use mummer::hash::OutputHash;
+use mummer::{
+   hash::OutputHash,
+   store_path::{
+      DrvPath,
+      StorePath,
+   },
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -25,11 +31,16 @@ use crate::nix_store::{
    Derivation,
    FetchFile,
    Output,
+   Realisation,
    Store,
 };
 
 pub fn attr(name: &str) -> io::Result<String> {
    var(name).map_err(|_unset| io::Error::other(format!("{name} is not set")))
+}
+
+pub fn store_attr(name: &str) -> io::Result<StorePath> {
+   attr(name)?.try_into()
 }
 
 pub fn optional(name: &str) -> Option<String> {
@@ -52,11 +63,6 @@ pub struct Row {
    pub hash: OutputHash,
 }
 
-pub struct Fetched {
-   pub drv: String,
-   pub out: String,
-}
-
 fn store_name(file: &str) -> String {
    file
       .chars()
@@ -74,7 +80,7 @@ fn store_name(file: &str) -> String {
 }
 
 /// one builtin:fetchurl derivation per row, in order.
-pub fn fetchurls(store: &mut Store, rows: &[Row]) -> io::Result<Vec<Fetched>> {
+pub fn fetchurls(store: &mut Store, rows: &[Row]) -> io::Result<Vec<Realisation>> {
    let files = rows
       .iter()
       .map(|row| {
@@ -85,16 +91,7 @@ pub fn fetchurls(store: &mut Store, rows: &[Row]) -> io::Result<Vec<Fetched>> {
          }
       })
       .collect::<Vec<_>>();
-   Ok(store
-      .fetchurls(&files)?
-      .into_iter()
-      .map(|made| {
-         Fetched {
-            drv: made.drv,
-            out: made.out,
-         }
-      })
-      .collect())
+   store.fetchurls(&files)
 }
 
 /// one thing the collecting derivation lays out under $out at `to`.
@@ -154,7 +151,7 @@ where
    ))
 }
 
-fn input_drvs(inputs: &[String]) -> BTreeMap<String, BTreeSet<String>> {
+fn input_drvs(inputs: &[DrvPath]) -> BTreeMap<DrvPath, BTreeSet<String>> {
    inputs
       .iter()
       .map(|drv| (drv.clone(), BTreeSet::from(["out".to_owned()])))
@@ -168,13 +165,13 @@ pub fn collect(
    store: &mut Store,
    name: &str,
    layout: &[Entry],
-   inputs: &[String],
+   inputs: &[DrvPath],
    script: Option<&str>,
    attrs: Map<String, Value>,
-   srcs: &[String],
+   srcs: &[StorePath],
 ) -> io::Result<()> {
-   let peanut = attr("peanut")?;
-   let mummer = attr("mummer")?;
+   let peanut = store_attr("peanut")?;
+   let mummer = store_attr("mummer")?;
    let system = attr("system")?;
    let mut json = Map::new();
    json.insert("name".to_owned(), Value::String(name.to_owned()));
@@ -183,7 +180,7 @@ pub fn collect(
       "outputs".to_owned(),
       Value::Array(vec![Value::String("out".to_owned())]),
    );
-   json.insert("peanut".to_owned(), Value::String(peanut.clone()));
+   json.insert("peanut".to_owned(), Value::String(peanut.to_string()));
    json.insert("layout".to_owned(), to_value(layout)?);
    json.extend(attrs);
    let mut sources = BTreeSet::from([peanut, mummer.clone()]);
@@ -201,7 +198,7 @@ pub fn collect(
       env: BTreeMap::from([("__json".to_owned(), Value::Object(json).to_string())]),
    };
    let mut references = sources;
-   references.extend(inputs.iter().cloned());
+   references.extend(inputs.iter().cloned().map(StorePath::from));
    let drv = store.add_derivation(&format!("{name}.drv"), &references, &derivation)?;
    say(&format!(
       "{name}: {} entries, {} inputs -> {drv}",
@@ -220,14 +217,14 @@ pub fn stage<Attrs>(
    name: &str,
    kind: &str,
    attrs: &Attrs,
-   inputs: &[String],
-   srcs: &[String],
+   inputs: &[DrvPath],
+   srcs: &[StorePath],
 ) -> io::Result<()>
 where
    Attrs: Serialize,
 {
-   let peanut = attr("peanut")?;
-   let mummer = attr("mummer")?;
+   let peanut = store_attr("peanut")?;
+   let mummer = store_attr("mummer")?;
    let system = attr("system")?;
    let attrs_file = store.add_text(
       &format!("{name}-attrs.json"),
@@ -240,9 +237,9 @@ where
    let env = [
       ("name", drv_name.clone()),
       ("system", system.clone()),
-      ("peanut", peanut),
-      ("mummer", mummer.clone()),
-      ("stage_attrs", attrs_file),
+      ("peanut", peanut.to_string()),
+      ("mummer", mummer.to_string()),
+      ("stage_attrs", attrs_file.to_string()),
       ("requiredSystemFeatures", "builder-rpc-v0".to_owned()),
       ("preferLocalBuild", "1".to_owned()),
       ("outputHashMode", "text".to_owned()),
@@ -264,7 +261,7 @@ where
       env,
    };
    let mut references = sources;
-   references.extend(inputs.iter().cloned());
+   references.extend(inputs.iter().cloned().map(StorePath::from));
    let drv = store.add_derivation(&format!("{drv_name}.drv"), &references, &derivation)?;
    say(&format!(
       "{name}: second stage after {} inputs -> {drv}",

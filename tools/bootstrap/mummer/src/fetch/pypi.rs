@@ -14,6 +14,7 @@ use mummer::{
       Algorithm,
       OutputHash,
    },
+   store_path::StorePath,
    syslibs::load,
 };
 use serde::{
@@ -660,7 +661,7 @@ impl Pypi {
 
       for (planned, made) in plan.iter().zip(fetched) {
          layout.push(Entry::link(
-            made.out.clone(),
+            made.out.to_string(),
             format!("dist/{}", planned.file),
          ));
 
@@ -675,11 +676,11 @@ impl Pypi {
          drvs.push(made.drv);
       }
 
-      let srcs: Vec<String> = trees
+      let srcs = trees
          .iter()
          .filter(|tree| !tree.file.is_empty())
-         .map(|tree| tree.path.clone())
-         .collect();
+         .map(|tree| tree.path.parse())
+         .collect::<io::Result<Vec<StorePath>>>()?;
       let stage_trees = trees
          .iter()
          .map(|tree| {
@@ -717,7 +718,7 @@ impl Pypi {
       plan.extend(trees);
       layout.push(json_file("plan.json", &plan)?);
       let mut stage_sources = srcs.clone();
-      stage_sources.push(source.to_owned());
+      stage_sources.push(source.parse()?);
       stage(
          store,
          "python-deps",

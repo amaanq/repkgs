@@ -22,6 +22,10 @@ use mummer::{
    },
    process::diagnostic,
    store::STORE_DIR,
+   store_path::{
+      DrvPath,
+      StorePath,
+   },
 };
 use serde::{
    Deserialize,
@@ -49,9 +53,9 @@ pub struct Derivation {
    #[serde(default)]
    pub outputs: BTreeMap<String, Output>,
    #[serde(default, rename = "inputDrvs")]
-   pub inputs:  BTreeMap<String, BTreeSet<String>>,
+   pub inputs:  BTreeMap<DrvPath, BTreeSet<String>>,
    #[serde(default, rename = "inputSrcs")]
-   pub sources: BTreeSet<String>,
+   pub sources: BTreeSet<StorePath>,
    pub system:  String,
    pub builder: String,
    #[serde(default)]
@@ -82,7 +86,7 @@ impl Derivation {
          .map(|(path, names)| {
             format!(
                "({},[{}])",
-               quote(path),
+               quote(path.as_str()),
                names
                   .iter()
                   .map(|name| quote(name))
@@ -95,7 +99,7 @@ impl Derivation {
       let sources = self
          .sources
          .iter()
-         .map(|source| quote(source))
+         .map(|source| quote(source.as_str()))
          .collect::<Vec<_>>()
          .join(",");
       let arguments = self
@@ -134,7 +138,7 @@ fn quote(text: &str) -> String {
    result
 }
 
-fn store_path(kind: &str, name: &str, contents: &[u8]) -> String {
+fn store_path(kind: &str, name: &str, contents: &[u8]) -> io::Result<StorePath> {
    let fingerprint = format!(
       "{kind}:sha256:{}:{STORE_DIR}:{name}",
       Digest::sha256(contents).hex()
@@ -155,7 +159,7 @@ fn store_path(kind: &str, name: &str, contents: &[u8]) -> String {
          alphabet[usize::from(((low | (high << 8_u32)) >> shift) & 31_u16)],
       ));
    }
-   format!("{STORE_DIR}/{encoded}-{name}")
+   format!("{STORE_DIR}/{encoded}-{name}").try_into()
 }
 
 pub struct FetchFile {
@@ -200,7 +204,7 @@ impl TryFrom<FetchRequest> for FetchFile {
 }
 
 impl FetchFile {
-   fn derivation(&self) -> Derivation {
+   fn derivation(&self) -> io::Result<Derivation> {
       let digest = self.hash.digest();
       let algorithm = digest.algorithm().to_string();
       let hex = digest.hex();
@@ -208,7 +212,8 @@ impl FetchFile {
          "output:out",
          &self.name,
          format!("fixed:out:{algorithm}:{hex}:").as_bytes(),
-      );
+      )?
+      .to_string();
       let output_hash = self.hash.to_string();
       let environment = [
          ("name", self.name.as_str()),
@@ -239,13 +244,13 @@ impl FetchFile {
          algorithm,
          hash: hex,
       };
-      Derivation {
+      Ok(Derivation {
          outputs: BTreeMap::from([("out".to_owned(), output)]),
          system: "builtin".to_owned(),
          builder: "builtin:fetchurl".to_owned(),
          env: environment,
          ..Derivation::default()
-      }
+      })
    }
 }
 
@@ -394,15 +399,15 @@ impl Connection {
    fn add_text(
       &mut self,
       name: &str,
-      references: &BTreeSet<String>,
+      references: &BTreeSet<StorePath>,
       bytes: &[u8],
-   ) -> io::Result<String> {
+   ) -> io::Result<StorePath> {
       self.word(7);
       self.string(name.as_bytes())?;
       self.string(b"text:sha256")?;
       self.word(references.len().try_into().map_err(io::Error::other)?);
       for reference in references {
-         self.string(reference.as_bytes())?;
+         self.string(reference.as_str().as_bytes())?;
       }
       self.word(0);
       self.word(bytes.len().try_into().map_err(io::Error::other)?);
@@ -410,7 +415,7 @@ impl Connection {
       self.word(0);
       self.flush()?;
       self.drain_logs()?;
-      let path = self.read_string()?;
+      let path = self.read_string()?.try_into()?;
       self.read_string()?;
       self.read_string()?;
       self.skip_strings()?;
@@ -422,10 +427,10 @@ impl Connection {
       Ok(path)
    }
 
-   fn submit(&mut self, path: &str, output: &str) -> io::Result<()> {
+   fn submit(&mut self, path: &DrvPath, output: &str) -> io::Result<()> {
       self.word(1000);
       self.word(0);
-      self.string(path.as_bytes())?;
+      self.string(path.as_str().as_bytes())?;
       self.string(output.as_bytes())?;
       self.flush()?;
       self.drain_logs()?;
@@ -436,8 +441,8 @@ impl Connection {
 
 #[derive(Serialize)]
 pub struct Realisation {
-   pub drv: String,
-   pub out: String,
+   pub drv: DrvPath,
+   pub out: StorePath,
 }
 
 /// the daemon behind `NIX_REMOTE`, or path arithmetic alone under
@@ -459,17 +464,17 @@ impl Store {
    pub fn add_text(
       &mut self,
       name: &str,
-      references: &BTreeSet<String>,
+      references: &BTreeSet<StorePath>,
       bytes: &[u8],
-   ) -> io::Result<String> {
+   ) -> io::Result<StorePath> {
       self.connection.as_mut().map_or_else(
          || {
             let mut kind = "text".to_owned();
             for reference in references {
                kind.push(':');
-               kind.push_str(reference);
+               kind.push_str(reference.as_str());
             }
-            Ok(store_path(&kind, name, bytes))
+            store_path(&kind, name, bytes)
          },
          |daemon| daemon.add_text(name, references, bytes),
       )
@@ -478,16 +483,18 @@ impl Store {
    pub fn add_derivation(
       &mut self,
       name: &str,
-      references: &BTreeSet<String>,
+      references: &BTreeSet<StorePath>,
       derivation: &Derivation,
-   ) -> io::Result<String> {
-      self.add_text(name, references, derivation.aterm().as_bytes())
+   ) -> io::Result<DrvPath> {
+      self
+         .add_text(name, references, derivation.aterm().as_bytes())?
+         .try_into()
    }
 
    pub fn fetchurls(&mut self, files: &[FetchFile]) -> io::Result<Vec<Realisation>> {
       let mut results = Vec::with_capacity(files.len());
       for file in files {
-         let derivation = file.derivation();
+         let derivation = file.derivation()?;
          let name = format!("{}.drv", file.name);
          let drv = self.add_derivation(&name, &BTreeSet::new(), &derivation)?;
          let out = derivation
@@ -495,13 +502,14 @@ impl Store {
             .into_values()
             .next()
             .ok_or_else(|| io::Error::other("fetchurl has no outputs"))?
-            .path;
+            .path
+            .try_into()?;
          results.push(Realisation { drv, out });
       }
       Ok(results)
    }
 
-   pub fn submit(&mut self, path: &str, output: &str) -> io::Result<()> {
+   pub fn submit(&mut self, path: &DrvPath, output: &str) -> io::Result<()> {
       self
          .connection
          .as_mut()
@@ -522,7 +530,11 @@ fn add_from_stdin(
          .aterm()
          .into_bytes();
    }
-   let path = store.add_text(name, &references.iter().cloned().collect(), &bytes)?;
+   let paths = references
+      .iter()
+      .map(|reference| reference.parse())
+      .collect::<io::Result<BTreeSet<StorePath>>>()?;
+   let path = store.add_text(name, &paths, &bytes)?;
    writeln!(io::stdout().lock(), "{path}")
 }
 
@@ -549,7 +561,7 @@ pub fn run(operation: &StoreOperation) -> io::Result<()> {
       StoreOperation::Submit {
          ref path,
          ref output,
-      } => store.submit(path, output)?,
+      } => store.submit(&path.parse()?, output)?,
    }
    Ok(())
 }

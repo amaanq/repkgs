@@ -3,9 +3,12 @@ use std::{
    io,
 };
 
-use mummer::hash::{
-   Algorithm,
-   OutputHash,
+use mummer::{
+   hash::{
+      Algorithm,
+      OutputHash,
+   },
+   store_path::DrvPath,
 };
 use serde_json::Map;
 
@@ -120,10 +123,10 @@ impl Producer for Gems {
       let mut layout: Vec<Entry> = rows
          .iter()
          .zip(&fetched)
-         .map(|(row, made)| Entry::link(made.out.clone(), format!("vendor/cache/{}", row.file)))
+         .map(|(row, made)| Entry::link(made.out.to_string(), format!("vendor/cache/{}", row.file)))
          .collect();
       layout.push(Entry::write(lock, "Gemfile.lock".to_owned()));
-      let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
+      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
       collect(store, "gems", &layout, &inputs, None, Map::new(), &[])
    }
 }

@@ -5,7 +5,10 @@ use std::{
    io,
 };
 
-use mummer::hash::OutputHash;
+use mummer::{
+   hash::OutputHash,
+   store_path::DrvPath,
+};
 use serde::Deserialize;
 use serde_json::Map;
 
@@ -78,13 +81,13 @@ impl Producer for Luarocks {
       let mut layout: Vec<Entry> = rows
          .iter()
          .zip(&fetched)
-         .map(|(row, made)| Entry::link(made.out.clone(), row.file.clone()))
+         .map(|(row, made)| Entry::link(made.out.to_string(), row.file.clone()))
          .collect();
       layout.push(Entry::write(
          manifest,
          format!("manifest-{}", major_minor.join(".")),
       ));
-      let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
+      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
       collect(
          store,
          "luarocks-set",

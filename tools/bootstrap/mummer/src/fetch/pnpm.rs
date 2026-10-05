@@ -7,7 +7,10 @@ use std::{
    io,
 };
 
-use mummer::hash::OutputHash;
+use mummer::{
+   hash::OutputHash,
+   store_path::DrvPath,
+};
 use serde_json::Map;
 
 use crate::{
@@ -216,9 +219,9 @@ impl Producer for Pnpm {
       let layout: Vec<Entry> = rows
          .iter()
          .zip(&fetched)
-         .map(|(row, made)| Entry::link(made.out.clone(), format!("registry/{}", row.file)))
+         .map(|(row, made)| Entry::link(made.out.to_string(), format!("registry/{}", row.file)))
          .collect();
-      let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
+      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
       collect(store, "pnpm-deps", &layout, &inputs, None, Map::new(), &[])
    }
 }

@@ -7,6 +7,7 @@ use std::{
 use mummer::{
    hackage::PackageId,
    hash::OutputHash,
+   store_path::DrvPath,
 };
 use serde::Deserialize;
 use serde_json::Map;
@@ -73,9 +74,9 @@ impl Producer for Hackage {
       let layout: Vec<Entry> = targets
          .iter()
          .zip(&fetched)
-         .map(|(to, made)| Entry::link(made.out.clone(), to.clone()))
+         .map(|(to, made)| Entry::link(made.out.to_string(), to.clone()))
          .collect();
-      let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
+      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
       collect(store, "hackage-set", &layout, &inputs, None, Map::new(), &[
       ])
    }
