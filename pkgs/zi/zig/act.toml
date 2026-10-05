@@ -22,3 +22,4 @@ ZIG_TARGET_MCPU      = "baseline"
 
 [env]
 ZIG_GLOBAL_CACHE_DIR = "/build/zig-cache"
+ZIG_LOCAL_CACHE_DIR  = "/build/zig-cache/local"
