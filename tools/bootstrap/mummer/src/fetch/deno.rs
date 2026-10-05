@@ -47,7 +47,10 @@ use crate::{
          url_path,
       },
    },
-   nix_store::Store,
+   nix_store::{
+      Realisation,
+      Store,
+   },
 };
 
 const JSR: &str = "https://jsr.io";
@@ -442,26 +445,16 @@ struct Versions<'entry> {
 /// the collecting derivation lays out what deno reads under `$DENO_DIR`.
 pub struct DenoFiles;
 
-impl Producer for DenoFiles {
-   fn name(&self) -> &'static str {
-      "deno-files"
-   }
-
-   fn run(&self, store: &mut Store) -> io::Result<()> {
-      let fetched: Staged = serde_json::from_str(&read_to_string(attr("stage_attrs")?)?)?;
-      let mut module_urls = Vec::new();
-      let mut module_rows = Vec::new();
-      for package in &fetched.jsr {
-         for (url, row) in jsr_modules(package)? {
-            module_urls.push(url);
-            module_rows.push(row);
-         }
-      }
-      let modules = fetchurls(store, &module_rows)?;
-      say(&format!("denoDeps: {} jsr modules", modules.len()));
-
+impl DenoFiles {
+   /// jsr module bodies, https modules and each jsr version's _meta.json as
+   /// deno caches them, then a meta.json per jsr package listing its versions.
+   fn remote_layout(
+      fetched: &Staged,
+      module_urls: &[String],
+      modules: &[Realisation],
+   ) -> io::Result<Vec<Entry>> {
       let mut layout = Vec::new();
-      for (url, made) in module_urls.iter().zip(&modules) {
+      for (url, made) in module_urls.iter().zip(modules) {
          layout.push(Entry::copy(
             made.out.to_string(),
             trailer(url, content_type(url))?,
@@ -505,11 +498,16 @@ impl Producer for DenoFiles {
             cache_path(&url)?,
          ));
       }
-      // npm/registry.npmjs.org/<name>/<version>/ plus a registry.json cut to
-      // the locked versions ("full" and dist.tarball present, deno asks
-      // the registry nothing more)
+      Ok(layout)
+   }
+
+   /// npm/registry.npmjs.org/<name>/<version>/ plus a registry.json cut to
+   /// the locked versions ("full" and dist.tarball present, deno asks the
+   /// registry nothing more).
+   fn npm_layout(npm: &[NpmFetched]) -> io::Result<Vec<Entry>> {
+      let mut layout = Vec::new();
       let mut npm_by_name: BTreeMap<&str, Vec<&NpmFetched>> = BTreeMap::new();
-      for package in &fetched.npm {
+      for package in npm {
          layout.push(Entry::unpack(
             package.tarball.to_string(),
             format!(
@@ -543,6 +541,29 @@ impl Producer for DenoFiles {
             &packument,
          )?);
       }
+      Ok(layout)
+   }
+}
+
+impl Producer for DenoFiles {
+   fn name(&self) -> &'static str {
+      "deno-files"
+   }
+
+   fn run(&self, store: &mut Store) -> io::Result<()> {
+      let fetched: Staged = serde_json::from_str(&read_to_string(attr("stage_attrs")?)?)?;
+      let (module_urls, module_rows): (Vec<_>, Vec<_>) = fetched
+         .jsr
+         .iter()
+         .map(jsr_modules)
+         .collect::<io::Result<Vec<_>>>()?
+         .into_iter()
+         .flatten()
+         .unzip();
+      let modules = fetchurls(store, &module_rows)?;
+      say(&format!("denoDeps: {} jsr modules", modules.len()));
+      let mut layout = Self::remote_layout(&fetched, &module_urls, &modules)?;
+      layout.extend(Self::npm_layout(&fetched.npm)?);
       // the first stage's files are laid out too, so they are inputs of the
       // collecting derivation as well
       let inputs: Vec<DrvPath> = modules
