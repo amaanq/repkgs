@@ -9,6 +9,7 @@ use std::{
 };
 
 use mummer::{
+   config::BinaryFormat,
    elf::{
       defined_symbols,
       is_elf,
@@ -32,7 +33,6 @@ use mummer::{
 use crate::{
    attrs::Attrs,
    exports::Exports,
-   hardening::BinaryFormat,
 };
 
 pub fn tables(attrs: &Attrs) -> io::Result<Tables> {

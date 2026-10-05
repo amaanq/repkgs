@@ -26,12 +26,12 @@ use std::{
 };
 
 use mummer::{
-   files::glob,
-   fixup,
-   store::{
-      STORE_DIR,
-      normalize,
+   files::{
+      glob,
+      remove_if_exists,
    },
+   fixup,
+   store::normalize,
    tree::{
       note,
       prune,
@@ -53,6 +53,7 @@ use crate::{
       VersionCheck,
       build_top,
       flag,
+      nix_store,
       text,
       words,
    },
@@ -427,7 +428,7 @@ impl Probe<'_> {
          .and_then(Path::parent)
          .map(|package| package.to_string_lossy().into_owned())
          .unwrap_or_default();
-      let store = PathBuf::from(var("NIX_STORE").unwrap_or_else(|_| STORE_DIR.to_owned()));
+      let store = PathBuf::from(nix_store());
       let dll_roots: Vec<String> = exports_of(dest)?
          .dll_dirs
          .iter()
@@ -477,11 +478,7 @@ impl Probe<'_> {
    // HOME is needed by rebar3, WINE and QEMU_ settings by emulators.
    // bzip2 --version goes on to compress stdin, stdout can be binary
    fn run(&self, root: &Path) -> io::Result<()> {
-      match remove_file(&self.audit) {
-         Ok(()) => {},
-         Err(error) if error.kind() == io::ErrorKind::NotFound => {},
-         Err(error) => return Err(error),
-      }
+      remove_if_exists(Path::new(&self.audit))?;
       let shown = self.command.join(" ");
       let emulator_env: Vec<OsString> = vars_os()
          .filter(|entry| {

@@ -34,13 +34,13 @@ use mummer::{
       writable,
    },
 };
+use tightrope::key::Hex;
 
 use crate::prepare::succeed;
 
 const PACKAGE_NOTE: u32 = 0xCAFE_1A7E;
 const BUILD_ID_NOTE: u32 = 3;
 const SMALL_ELF: u64 = 3072;
-const HEX: &[u8; 16] = b"0123456789abcdef";
 
 struct Elf {
    path:      String,
@@ -264,18 +264,7 @@ fn examine(entry: &Entry) -> io::Result<Option<Elf>> {
       id:        notes
          .iter()
          .find(|found| found.owner == "GNU" && found.kind == BUILD_ID_NOTE)
-         .map(|found| {
-            found
-               .description
-               .iter()
-               .flat_map(|byte| {
-                  [
-                     char::from(HEX[usize::from(byte >> 4_u8)]),
-                     char::from(HEX[usize::from(byte & 15)]),
-                  ]
-               })
-               .collect()
-         }),
+         .map(|found| Hex(&found.description).to_string()),
       ours:      notes.iter().any(|found| found.kind == PACKAGE_NOTE),
       dwarf:     names.iter().any(|name| name == ".debug_info"),
       split:     names.iter().any(|name| name == ".gnu_debuglink"),

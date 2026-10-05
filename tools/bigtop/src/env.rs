@@ -17,7 +17,10 @@ use std::{
    },
 };
 
-use mummer::files::glob;
+use mummer::{
+   config::BinaryFormat,
+   files::glob,
+};
 use serde::{
    Deserialize as _,
    Serialize,
@@ -40,7 +43,6 @@ use crate::{
       exports_of,
    },
    hardening::{
-      BinaryFormat,
       Line,
       flags as hardening_flags,
    },

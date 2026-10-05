@@ -12,9 +12,14 @@ use std::{
    },
 };
 
-use mummer::store::{
-   is_store_path,
-   normalize,
+use mummer::{
+   attrs::load,
+   config::BinaryFormat,
+   store::{
+      STORE_DIR,
+      is_store_path,
+      normalize,
+   },
 };
 use serde::{
    Deserialize,
@@ -30,7 +35,6 @@ use serde_json::{
 use crate::{
    exports::Exports,
    hardening::{
-      BinaryFormat,
       Choice,
       Hardening,
    },
@@ -104,9 +108,7 @@ pub struct Outputs {
 
 impl Attrs {
    pub fn load() -> io::Result<Self> {
-      let path = var("NIX_ATTRS_JSON_FILE")
-         .map_err(|_unset| io::Error::other("NIX_ATTRS_JSON_FILE is not set"))?;
-      Ok(serde_json::from_str(&read_to_string(path)?)?)
+      load()
    }
 
    pub fn spec(&self) -> io::Result<Spec> {
@@ -458,6 +460,10 @@ pub fn words(value: &Value, name: &str) -> Vec<String> {
             .collect()
       })
       .unwrap_or_default()
+}
+
+pub fn nix_store() -> String {
+   var("NIX_STORE").unwrap_or_else(|_unset| STORE_DIR.to_owned())
 }
 
 pub fn build_top() -> io::Result<String> {

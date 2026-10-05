@@ -10,6 +10,8 @@ use std::{
 
 use mummer::{
    elf::{
+      PT_DYNAMIC,
+      PT_INTERP,
       RUNPATH_SLACK,
       has_segment,
       is_elf,
@@ -83,7 +85,7 @@ fn implant(
       return Ok(None);
    }
    let segments = segments(&image)?;
-   if !has_segment(&segments, 2) {
+   if !has_segment(&segments, PT_DYNAMIC) {
       return Ok(None);
    }
    let existing = runpath(&image, &segments)?.unwrap_or_default();
@@ -106,7 +108,7 @@ fn implant(
    writable(Path::new(&entry.path))?;
    let mut args = Vec::<&str>::new();
    let blob = stub.map(|found| found.to_string_lossy().into_owned());
-   if has_segment(&segments, 3) {
+   if has_segment(&segments, PT_INTERP) {
       if let Some(found) = blob.as_deref() {
          args.extend(["--set-entry-stub", found]);
       }

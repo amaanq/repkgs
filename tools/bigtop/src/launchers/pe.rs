@@ -1,6 +1,5 @@
 use std::{
    collections::BTreeMap,
-   env::var,
    fs::{
       canonicalize,
       copy,
@@ -20,11 +19,11 @@ use mummer::{
       glob,
       write_file,
    },
-   store::STORE_DIR,
    tree::note,
 };
 
 use crate::{
+   attrs::nix_store,
    exports::{
       closure,
       exports_of,
@@ -99,11 +98,11 @@ fn dll_directories(pes: &[PathBuf], sysroot: &Path, deps: &[String]) -> io::Resu
 
 pub fn run(output: &Path, launch: &Path, sysroot: &Path, deps: &[String]) -> io::Result<()> {
    let out = output.to_string_lossy();
-   let nix_store = var("NIX_STORE").unwrap_or_else(|_| STORE_DIR.to_owned());
+   let store_dir = nix_store();
    let relative = |path: &str| {
       path
          .replace(out.as_ref(), "{root}")
-         .replace(&nix_store, "{store}")
+         .replace(&store_dir, "{store}")
    };
    let pes: Vec<PathBuf> = glob(&format!("{out}/**/*.{{exe,dll,pyd}}"))?
       .into_iter()
@@ -117,7 +116,7 @@ pub fn run(output: &Path, launch: &Path, sysroot: &Path, deps: &[String]) -> io:
       .map(|entry| entry.root)
       .collect::<Vec<_>>();
    let needed = dll_directories(&pes, sysroot, &roots)?;
-   let (mut environment, _) = runtime_env(deps, &out, &nix_store)?;
+   let (mut environment, _) = runtime_env(deps, &out, &store_dir)?;
    let inject = !environment.is_empty();
    let prepended = match environment.remove("PATH") {
       Some(Variable::Prepend(directories)) => directories,
