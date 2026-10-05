@@ -93,13 +93,13 @@ fn probe_mode(operation: ProbeOperation, socket: &Path) -> Result<i32> {
          writeln!(io::stdout().lock(), "{key}")?;
       },
       ProbeOperation::Restore { key, file } => {
-         return Ok(i32::from(!probe::restore(&key, &file, socket)?));
+         return Ok(i32::from(!probe::restore(&key.parse()?, &file, socket)?));
       },
-      ProbeOperation::Store { key, file } => probe::store(&key, &file, socket)?,
+      ProbeOperation::Store { key, file } => probe::store(&key.parse()?, &file, socket)?,
       ProbeOperation::RestoreDir { key, dir } => {
-         return Ok(i32::from(!probe::restore_dir(&key, &dir, socket)?));
+         return Ok(i32::from(!probe::restore_dir(&key.parse()?, &dir, socket)?));
       },
-      ProbeOperation::StoreDir { key, dir } => probe::store_dir(&key, &dir, socket)?,
+      ProbeOperation::StoreDir { key, dir } => probe::store_dir(&key.parse()?, &dir, socket)?,
       ProbeOperation::CmakeInit { cache } => {
          writeln!(io::stdout().lock(), "{}", probe::cmake_init(&cache)?)?;
       },

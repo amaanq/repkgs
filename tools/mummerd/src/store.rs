@@ -67,7 +67,7 @@ use tempfile::tempfile_in;
 use tightrope::{
    MAX_KEY,
    MAX_OBJECT,
-   check_key,
+   key::Key,
 };
 
 use crate::{
@@ -167,7 +167,7 @@ impl Display for Stats {
 
 #[derive(Default)]
 struct State {
-   index:  BTreeMap<String, Location>,
+   index:  BTreeMap<Key, Location>,
    packs:  BTreeMap<u64, Pack>,
    active: u64,
    totals: Vec<u64>,
@@ -179,7 +179,7 @@ impl State {
       clippy::expect_used,
       reason = "indexed locations must refer to loaded packs"
    )]
-   fn insert(&mut self, key: String, location: Location) {
+   fn insert(&mut self, key: Key, location: Location) {
       if let Some(previous) = self.index.get(&key)
          && previous.pack > location.pack
       {
@@ -384,12 +384,12 @@ impl Shared {
          if location.pack != identifier {
             continue;
          }
-         let key_length = u32::try_from(key.len()).map_err(io::Error::other)?;
+         let key_length = u32::try_from(key.as_str().len()).map_err(io::Error::other)?;
          let record_offset = location.offset - HEADER_SIZE - u64::from(key_length);
          writer.write_all(&key_length.to_le_bytes())?;
          writer.write_all(&location.length.to_le_bytes())?;
          writer.write_all(&record_offset.to_le_bytes())?;
-         writer.write_all(key.as_bytes())?;
+         writer.write_all(key.as_str().as_bytes())?;
       }
       writer.flush()?;
       rename(temporary, self.pack_path(tier, identifier, "hint"))
@@ -641,7 +641,7 @@ impl Store {
       Ok(store)
    }
 
-   pub fn get(&self, key: &str) -> Option<Value> {
+   pub fn get(&self, key: &Key) -> Option<Value> {
       let (file, offset, length) = {
          let state = self.shared.read();
          let location = state.index.get(key)?;
@@ -675,14 +675,13 @@ impl Store {
       clippy::expect_used,
       reason = "the active pack must exist after rotation"
    )]
-   pub fn put<Reader>(&self, key: &str, body: &mut Reader, length: usize) -> io::Result<()>
+   pub fn put<Reader>(&self, key: &Key, body: &mut Reader, length: usize) -> io::Result<()>
    where
       Reader: Read,
    {
-      let key_length = u32::try_from(key.len()).map_err(io::Error::other)?;
+      let key_length = u32::try_from(key.as_str().len()).map_err(io::Error::other)?;
       let value_length = u32::try_from(length).map_err(io::Error::other)?;
       check_lengths(key_length, value_length)?;
-      check_key(key)?;
       let size = u64::from(value_length);
       let record_size = HEADER_SIZE + u64::from(key_length) + size;
       let staged: Box<dyn Read> = if size < SPOOL_MIN {
@@ -713,10 +712,10 @@ impl Store {
       }
       let active = state.active;
       let pack = state.packs.get_mut(&active).expect("missing active pack");
-      let mut header = Vec::with_capacity(8 + key.len());
+      let mut header = Vec::with_capacity(8 + key.as_str().len());
       header.extend_from_slice(&key_length.to_le_bytes());
       header.extend_from_slice(&value_length.to_le_bytes());
-      header.extend_from_slice(key.as_bytes());
+      header.extend_from_slice(key.as_str().as_bytes());
       let header_length = u64::try_from(header.len()).map_err(io::Error::other)?;
       let offset = pack.size + header_length;
       let start = pack.size;
@@ -740,7 +739,7 @@ impl Store {
       }
       pack.size += record_size;
       state.totals[0] += record_size;
-      state.insert(key.to_owned(), Location {
+      state.insert(key.clone(), Location {
          pack: active,
          offset,
          length: value_length,
@@ -821,13 +820,11 @@ fn check_lengths(key_length: u32, length: u32) -> io::Result<()> {
    Ok(())
 }
 
-fn read_key(reader: &mut impl Read, length: u32) -> io::Result<String> {
+fn read_key(reader: &mut impl Read, length: u32) -> io::Result<Key> {
    let byte_count = usize::try_from(length).map_err(io::Error::other)?;
    let mut bytes = vec![0; byte_count];
    reader.read_exact(&mut bytes)?;
-   let key = String::from_utf8(bytes).map_err(io::Error::other)?;
-   check_key(&key)?;
-   Ok(key)
+   String::from_utf8(bytes).map_err(io::Error::other)?.parse()
 }
 
 fn read_header<const SIZE: usize>(reader: &mut impl Read) -> io::Result<Option<[u8; SIZE]>> {
@@ -883,7 +880,7 @@ mod tests {
    }
 
    fn read(store: &Store, key: &str) -> Option<Vec<u8>> {
-      let object = store.get(key)?;
+      let object = store.get(&key.parse().expect("valid key"))?;
       let mut bytes = vec![0; object.length as usize];
       object
          .file
@@ -902,7 +899,9 @@ mod tests {
 
    fn put(store: &Store, key: &str, value: &[u8]) {
       let length = value.len();
-      store.put(key, &mut &*value, length).expect("write value");
+      store
+         .put(&key.parse().expect("valid key"), &mut &*value, length)
+         .expect("write value");
    }
 
    const PER_PACK: usize = PACK_LIMIT as usize / (1 << 20);

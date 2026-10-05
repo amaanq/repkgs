@@ -684,6 +684,7 @@ name = "tightrope"
 version = "1.0.0"
 dependencies = [
  "blake3",
+ "serde",
  "zstd",
 ]
 

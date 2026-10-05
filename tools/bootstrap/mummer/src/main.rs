@@ -38,7 +38,10 @@ use mummer::{
       text_arguments,
    },
 };
-use tightrope::client::Client;
+use tightrope::{
+   client::Client,
+   key::Key,
+};
 
 use crate::cli::{
    CacheOperation,
@@ -89,7 +92,7 @@ fn run(mode: Mode, name: &str, args: &[OsString], socket: &Path) -> Result<i32> 
          operation,
          key,
          path,
-      } => return cache_mode(operation, &key, &path, socket),
+      } => return cache_mode(operation, &key.parse()?, &path, socket),
       Mode::Slot => return slot_mode(args, socket),
       Mode::Gocacheprog => gocache::run(socket)?,
       Mode::HeaderKey => return header::lookup(&text_arguments(args)?, socket),
@@ -118,7 +121,7 @@ fn run(mode: Mode, name: &str, args: &[OsString], socket: &Path) -> Result<i32> 
    Ok(0)
 }
 
-fn cache_mode(operation: CacheOperation, key: &str, file: &Path, socket: &Path) -> Result<i32> {
+fn cache_mode(operation: CacheOperation, key: &Key, file: &Path, socket: &Path) -> Result<i32> {
    let mut client = match Client::connect(socket) {
       Ok(client) => client,
       Err(error) => {

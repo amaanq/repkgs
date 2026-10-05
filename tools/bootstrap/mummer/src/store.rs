@@ -33,9 +33,13 @@ use std::{
 
 use blake3::Hasher;
 use tightrope::{
-   LOCAL_PREFIX,
    client::Client,
+   digest::Digest,
    identity::Identity,
+   key::{
+      Key,
+      Namespace,
+   },
 };
 
 use crate::{
@@ -315,7 +319,7 @@ impl Store {
    /// changed within the last two seconds, finer than the kernel's timestamps.
    #[must_use]
    #[inline]
-   pub fn stamp_key(&self, path: &str) -> Option<String> {
+   pub fn stamp_key(&self, path: &str) -> Option<Digest> {
       if (is_store_path(path) && !self.content) || self.identities.contains_key(path) {
          return None;
       }
@@ -341,10 +345,7 @@ impl Store {
       ] {
          field(&mut hasher, part);
       }
-      Some(format!(
-         "{LOCAL_PREFIX}{}",
-         &hasher.finalize().to_hex()[..32]
-      ))
+      Some(Digest::from(hasher.finalize()))
    }
 
    #[inline]
@@ -391,7 +392,7 @@ impl Store {
    ) -> io::Result<(String, Vec<PathBuf>)> {
       let memo = self
          .stamp_key(&file.to_string_lossy())
-         .map(|key| format!("{key}-loaded"));
+         .map(|stamp| Key::digest(Namespace::Loaded, &stamp));
       if let Some(ref key) = memo
          && let Some(bytes) = cache.get(key)?
       {

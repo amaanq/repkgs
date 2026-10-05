@@ -34,7 +34,13 @@ use mummer::{
    },
 };
 use tempfile::NamedTempFile;
-use tightrope::client::Client;
+use tightrope::{
+   client::Client,
+   key::{
+      Key,
+      Namespace,
+   },
+};
 
 use crate::{
    cc::{
@@ -160,15 +166,15 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
          field(&mut hasher, read(path)?);
       }
    }
-   let key = format!("probe/header/{}", hasher.finalize().to_hex());
+   let key = Key::hex(Namespace::HeaderProbe, hasher.finalize().as_bytes());
    match cache.get(&key)? {
       Some(bytes) if bytes == b"yes\n" => {
-         log("header", "hit", &key, started);
+         log("header", "hit", key.as_str(), started);
          Ok(0)
       },
       Some(_) => bail!("invalid cached header result"),
       None => {
-         log("header", "miss", &key, started);
+         log("header", "miss", key.as_str(), started);
          writeln!(io::stdout().lock(), "{key}")?;
          Ok(3)
       },

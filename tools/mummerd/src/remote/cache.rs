@@ -25,7 +25,7 @@ use sha2::{
    Digest as _,
    Sha256,
 };
-use tightrope::LOCAL_PREFIX;
+use tightrope::key::Key;
 use tokio::runtime::{
    Builder,
    Runtime,
@@ -117,8 +117,8 @@ impl Remote {
 
    /// The value under `key`, or None for a miss, a bad blob or a remote that
    /// is resting after a failure.
-   pub fn get(&self, key: &str) -> Option<Vec<u8>> {
-      if key.starts_with(LOCAL_PREFIX) || now() < self.reads_resting.load(Ordering::Relaxed) {
+   pub fn get(&self, key: &Key) -> Option<Vec<u8>> {
+      if key.is_local() || now() < self.reads_resting.load(Ordering::Relaxed) {
          return None;
       }
       self
@@ -132,11 +132,8 @@ impl Remote {
 
    /// A small value goes in the entry's `stdout_raw`, a large one stores its
    /// blob before the entry naming it, so no reader finds a missing blob.
-   pub fn put(&self, key: &str, value: &[u8]) {
-      if !self.writes
-         || key.starts_with(LOCAL_PREFIX)
-         || now() < self.writes_resting.load(Ordering::Relaxed)
-      {
+   pub fn put(&self, key: &Key, value: &[u8]) {
+      if !self.writes || key.is_local() || now() < self.writes_resting.load(Ordering::Relaxed) {
          return;
       }
       if let Err(error) = self.runtime.block_on(self.store(key, value)) {
@@ -144,7 +141,7 @@ impl Remote {
       }
    }
 
-   async fn fetch(&self, key: &str) -> io::Result<Option<Vec<u8>>> {
+   async fn fetch(&self, key: &Key) -> io::Result<Option<Vec<u8>>> {
       let request = GetActionResultRequest {
          instance_name: self.instance.clone(),
          action_digest: key_digest(key),
@@ -182,7 +179,7 @@ impl Remote {
       Ok(whole.then_some(blob))
    }
 
-   async fn store(&self, key: &str, value: &[u8]) -> io::Result<()> {
+   async fn store(&self, key: &Key, value: &[u8]) -> io::Result<()> {
       let result = if value.len() <= INLINE {
          ActionResult {
             output_files: Vec::new(),
@@ -279,10 +276,10 @@ fn found(method: &str, code: Code) -> io::Result<bool> {
    }
 }
 
-fn key_digest(key: &str) -> Digest {
+fn key_digest(key: &Key) -> Digest {
    Digest {
-      hash:       sha256(key.as_bytes()),
-      size_bytes: i64::try_from(key.len()).unwrap_or(i64::MAX),
+      hash:       sha256(key.as_str().as_bytes()),
+      size_bytes: i64::try_from(key.as_str().len()).unwrap_or(i64::MAX),
    }
 }
 

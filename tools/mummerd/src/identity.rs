@@ -97,7 +97,7 @@ impl Identities {
          if let Some(entry) = known.get(path)
             && entry.stamp == stamp
          {
-            return Ok(entry.identity.clone());
+            return Ok(entry.identity);
          }
       }
       let identity = Identity::of_reader(&mut file)?;
@@ -107,7 +107,7 @@ impl Identities {
          .map_err(|_error| io::Error::other("identity lock poisoned"))?
          .insert(path.to_owned(), Entry {
             stamp,
-            identity: identity.clone(),
+            identity,
          });
       Ok(identity)
    }

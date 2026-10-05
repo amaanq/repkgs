@@ -20,6 +20,7 @@ use mummer::{
    store::on_path,
    tree::note,
 };
+use tightrope::key::Key;
 
 use crate::{
    attrs::{
@@ -191,7 +192,7 @@ fn install_escript(ctx: &Ctx, file: &str) -> io::Result<()> {
    )
 }
 
-fn deps_key(tool: Tool, options: &Options) -> io::Result<String> {
+fn deps_key(tool: Tool, options: &Options) -> io::Result<Key> {
    let set = Path::new(&*options.deps)
       .file_name()
       .map(|name| name.to_string_lossy().into_owned())

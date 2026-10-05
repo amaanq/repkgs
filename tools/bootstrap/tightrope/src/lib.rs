@@ -1,5 +1,7 @@
 pub mod client;
+pub mod digest;
 pub mod identity;
+pub mod key;
 pub mod request;
 
 use std::io::{
@@ -16,20 +18,6 @@ use zstd::{
 pub const MAX_OBJECT: usize = 2 << 30;
 pub const MAX_LINE: usize = 0x0001_0000;
 pub const MAX_KEY: usize = 4096;
-pub const LOCAL_PREFIX: &str = "i/";
-
-#[inline]
-pub fn check_key(key: &str) -> io::Result<()> {
-   if key.is_empty()
-      || key.len() > MAX_KEY
-      || key
-         .bytes()
-         .any(|byte| byte.is_ascii_whitespace() || byte == 0)
-   {
-      return Err(io::Error::other("invalid cache key"));
-   }
-   Ok(())
-}
 
 #[inline]
 pub fn read_line<Reader>(reader: &mut Reader) -> io::Result<Option<String>>
@@ -50,12 +38,6 @@ where
       ));
    }
    String::from_utf8(bytes).map(Some).map_err(io::Error::other)
-}
-
-#[must_use]
-#[inline]
-pub fn digest(bytes: &[u8]) -> String {
-   blake3::hash(bytes).to_hex()[..32].to_owned()
 }
 
 #[inline]

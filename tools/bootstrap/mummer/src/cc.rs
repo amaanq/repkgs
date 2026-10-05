@@ -52,7 +52,14 @@ use mummer::{
    },
 };
 use tempfile::Builder;
-use tightrope::client::Client;
+use tightrope::{
+   client::Client,
+   digest::Digest,
+   key::{
+      Key,
+      Namespace,
+   },
+};
 
 use crate::{
    driver::{
@@ -436,12 +443,7 @@ impl Invocation {
       Ok(identities)
    }
 
-   fn request_key(
-      &self,
-      store: &mut Store,
-      cache: &mut Client,
-      compiler: &str,
-   ) -> io::Result<String> {
+   fn request_key(&self, store: &mut Store, cache: &mut Client, compiler: &str) -> io::Result<Key> {
       let mut hasher = Hasher::new();
       field(&mut hasher, store.tool_id(compiler)?);
       field(
@@ -517,7 +519,7 @@ impl Invocation {
       for path in &self.inputs {
          field(&mut hasher, store.input_id(path)?);
       }
-      Ok(format!("cc/{}", &hasher.finalize().to_hex()[..32]))
+      Ok(Key::digest(Namespace::Cc, &Digest::from(hasher.finalize())))
    }
 }
 
@@ -539,7 +541,10 @@ pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut Client) -> io:
       Err(Miss::Failed(error)) => return Err(error),
       Err(_) => return Ok(false),
    };
-   let results = cache.get_many(&[format!("r/{key}"), format!("e/{key}")])?;
+   let results = cache.get_many(&[
+      Key::digest(Namespace::Status, &key),
+      Key::digest(Namespace::Diagnostics, &key),
+   ])?;
    Ok(
       matches!(results.as_slice(), [Some(status), Some(diagnostics)]
       if status == b"0" && diagnostics.is_empty()),
@@ -806,11 +811,11 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
             None => read(output_path)?,
          };
          store.mask_output(&mut object, false);
-         cache.put(&format!("o/{key}"), &object)?;
+         cache.put(&Key::digest(Namespace::Object, &key), &object)?;
          if invocation.depfile.is_some() {
             let mut dep_bytes = store.mask_text(&dependencies).into_bytes();
             store.mask_output(&mut dep_bytes, false);
-            cache.put(&format!("d/{key}"), &dep_bytes)?;
+            cache.put(&Key::digest(Namespace::Depfile, &key), &dep_bytes)?;
          }
          if invocation.links() {
             let text = read_to_string(&link_file)?;
@@ -820,13 +825,16 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
                .map_or_else(|| text.clone(), |rest| format!("<output>:{rest}"));
             let mut link_bytes = store.mask_text(&body).into_bytes();
             store.mask_output(&mut link_bytes, false);
-            cache.put(&format!("l/{key}"), &link_bytes)?;
+            cache.put(&Key::digest(Namespace::LinkDepfile, &key), &link_bytes)?;
          }
       }
       let mut diagnostics = result.stderr.clone();
       store.mask_output(&mut diagnostics, false);
-      cache.put(&format!("e/{key}"), &diagnostics)?;
-      cache.put(&format!("r/{key}"), result.status.to_string().as_bytes())?;
+      cache.put(&Key::digest(Namespace::Diagnostics, &key), &diagnostics)?;
+      cache.put(
+         &Key::digest(Namespace::Status, &key),
+         result.status.to_string().as_bytes(),
+      )?;
       manifest.publish(&mut cache, &request)?;
       Ok(true)
    })();
@@ -1111,15 +1119,16 @@ fn cached(
    cache: &mut Client,
    store: &Store,
    invocation: &Invocation,
-   key: &str,
+   key: &Digest,
 ) -> Result<i32, Miss> {
    let keys = [
-      format!("r/{key}"),
-      format!("o/{key}"),
-      format!("d/{key}"),
-      format!("e/{key}"),
-      format!("l/{key}"),
-   ];
+      Namespace::Status,
+      Namespace::Object,
+      Namespace::Depfile,
+      Namespace::Diagnostics,
+      Namespace::LinkDepfile,
+   ]
+   .map(|namespace| Key::digest(namespace, key));
    let mut objects = cache.get_many(&keys)?.into_iter();
    let Some(Some(status_bytes)) = objects.next() else {
       return Err(Miss::ObjectGone);
