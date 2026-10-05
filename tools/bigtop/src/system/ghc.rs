@@ -5,7 +5,6 @@ use std::{
    fs::{
       create_dir_all,
       read_to_string,
-      remove_file,
       symlink_metadata,
       write,
    },
@@ -20,7 +19,10 @@ use std::{
 };
 
 use glob::glob;
-use mummer::store::on_path;
+use mummer::{
+   files::remove_if_exists,
+   store::on_path,
+};
 
 use crate::{
    attrs::{
@@ -273,10 +275,7 @@ pub fn install(ctx: &Ctx) -> io::Result<()> {
 /// from Debian's unpacked .deb in the working directory.
 pub fn install_deb(ctx: &Ctx, attrs: &Attrs) -> io::Result<()> {
    // a symlink into /var
-   match remove_file("usr/lib/ghc/lib/package.conf.d") {
-      Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
-      Ok(()) | Err(_) => {},
-   }
+   remove_if_exists(Path::new("usr/lib/ghc/lib/package.conf.d"))?;
    // ghc-pkg runs below, before finish: interpreter and RUNPATH now, the stub
    // when finish repeats it
    implant::run(
