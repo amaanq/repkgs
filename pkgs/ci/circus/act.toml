@@ -1,4 +1,4 @@
 tag   = "v{version}"
-track = "github:manic-systems/circus"
+track = "github:manic-systems/circus?tags=true"
 fetch = { archive = true }
 with  = [ "cargo" ]
