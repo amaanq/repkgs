@@ -47,5 +47,9 @@ queue that never holds up a build, without one it only reads. The NixOS module t
 with `LoadCredential` so the secret stays out of the store.
 
 Serving it is bazel-remote, for example `bazel-remote --dir /var/cache/bazel-remote --max_size 500
---http_address :8080 --htpasswd_file htpasswd --allow_unauthenticated_reads`, which lets everyone
-read and only the htpasswd users write.
+--http_address 127.0.0.1:8080 --htpasswd_file htpasswd`, which only the htpasswd users can use.
+Never expose that port directly. Basic auth over plain HTTP hands the write password, and with it
+the power to plant object files in everyone's builds, to anyone on the path. Reach it over a
+private network such as Tailscale, or through an HTTPS reverse proxy, and point `--remote` at the
+`https://` address. bazel-remote has no read-only users, every htpasswd user can write, so on a
+private network add `--allow_unauthenticated_reads` and give the password only to writers.
