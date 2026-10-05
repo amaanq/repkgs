@@ -313,7 +313,7 @@ First it looks the full compile up as a §5.2 request. A manifest hit whose resu
 text, any other diagnostic disqualifies the probe.
 
 ```
-key = "probe/header/v1/" + full hex of hash(
+key = "probe/header/" + full hex of hash(
    field(context) field(compiler) field(warning policy)
    for each expanded argument: field(arg)
    for each of CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH OBJC_INCLUDE_PATH LIBRARY_PATH
@@ -610,10 +610,11 @@ That is `spec.install` and `spec.links`, `--keep-tree`, the `bin` check, `prune`
 relocated copy under `env -i`, and the `mummer:` cache summary. `--tests` writes the tests
 derivation's `result.json` instead.
 
-`probe key <kind> <scripts…> [--extra <json>] [--no-out]` prints `probe/v6/<kind>/<hash>` over
-the scripts' contents, `extra`, the full store roots, mummer's injected flags (`PKGS_CC`) and `$out`
-unless `--no-out`. Store hashes remain in the key because configure results can depend on
-absolute paths, and `$out` pins every other input of the derivation. `restore` and `store` move unchanged file bytes through
+`probe key <kind> <scripts…> [--extra <json>]` prints `probe/<kind>/<hash>` over the scripts'
+contents, `extra`, the full store roots, mummer's injected flags (`PKGS_CC`) and the cc toolchain's
+content. Store hashes remain in the key because configure results can depend on absolute paths.
+`$out` stays out, since a CA derivation's is a placeholder hashed from every input. `store` drops
+lines that name `$out` instead, and `store-dir` refuses a tree that names it. `restore` and `store` move file bytes through
 mummerd, with failed uploads reported without failing the build. `restore-dir` and `store-dir` move a tree,
 `cmake-init` renders a `CMakeCache.txt`'s path-free `INTERNAL` entries as a `-C` script.
 
