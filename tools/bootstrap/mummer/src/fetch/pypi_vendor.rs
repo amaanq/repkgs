@@ -2,15 +2,14 @@ use std::{
    fs::read_to_string,
    io,
    path::Path,
-   process::{
-      Command,
-      Stdio,
-   },
 };
 
-use mummer::store_path::{
-   DrvPath,
-   StorePath,
+use mummer::{
+   store_path::{
+      DrvPath,
+      StorePath,
+   },
+   unpack::Bsdtar,
 };
 use serde::{
    Deserialize,
@@ -28,6 +27,7 @@ use crate::{
          attr,
          collect_with,
          say,
+         store_attr,
       },
    },
    nix_store::Store,
@@ -63,36 +63,18 @@ impl Producer for PypiVendor {
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
       let mut stage: Stage = serde_json::from_str(&read_to_string(attr("stage_attrs")?)?)?;
-      let bsdtar = format!("{}/bin/bsdtar", attr("peanut")?);
-      let archive = |args: &[&str]| -> io::Result<String> {
-         let output = Command::new(&bsdtar)
-            .args(args)
-            .stderr(Stdio::inherit())
-            .output()?;
-
-         if !output.status.success() {
-            return Err(io::Error::other(format!(
-               "bsdtar failed with {}",
-               output.status
-            )));
-         }
-
-         String::from_utf8(output.stdout).map_err(io::Error::other)
-      };
+      let tar = Bsdtar::new(store_attr("peanut")?.join("bin/bsdtar"));
       let mut locks = Vec::new();
 
       for sdist in &stage.sdists {
-         let entries = archive(&["-tf", sdist.out.as_str()])?;
+         let entries = tar.list(sdist.out.as_ref())?;
 
          if let Some(lock) = entries.lines().find(|entry| {
             let path = Path::new(entry);
             path.components().count() == 2
                && path.file_name().is_some_and(|name| name == "Cargo.lock")
          }) {
-            locks.push((
-               sdist.name.as_str(),
-               archive(&["-xOf", sdist.out.as_str(), lock])?,
-            ));
+            locks.push((sdist.name.as_str(), tar.read(sdist.out.as_ref(), lock)?));
          }
       }
 

@@ -46,6 +46,6 @@ pub fn run_mode() -> io::Result<()> {
    let out = attr("out")?;
    let unpacker = attr("unpacker")?;
    let archive = Path::new("archive");
-   download(&urls.split(' ').collect::<Vec<_>>(), archive)?;
+   download(&urls.split_whitespace().collect::<Vec<_>>(), archive)?;
    unpack(&format!("{unpacker}/bin/bsdtar"), archive, Path::new(&out))
 }
