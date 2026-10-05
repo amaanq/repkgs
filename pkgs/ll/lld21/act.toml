@@ -20,6 +20,3 @@ BUILD_SHARED_LIBS       = false
 LLVM_INCLUDE_TESTS      = false
 LLVM_LINK_LLVM_DYLIB    = true
 LLVM_PARALLEL_LINK_JOBS = 4
-
-[cc]
-debugInfo = "lines"

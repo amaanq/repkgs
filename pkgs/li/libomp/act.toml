@@ -28,6 +28,3 @@ os = [ "linux", "macos" ]
 
 [on.msvc.cc]
 cflags = [ "-Dpid_t=int" ]
-
-[cc]
-debugInfo = "lines"
