@@ -4,10 +4,13 @@ use std::{
       BTreeSet,
    },
    env::var,
+   fmt::Display,
+   fs::read_to_string,
    io::{
       self,
       Write as _,
    },
+   path::Path,
 };
 
 use mummer::{
@@ -20,16 +23,13 @@ use mummer::{
 use serde::{
    Deserialize,
    Serialize,
-};
-use serde_json::{
-   Map,
-   Value,
-   to_value,
+   de::DeserializeOwned,
 };
 
 use crate::nix_store::{
    Derivation,
    FetchFile,
+   Floating,
    Output,
    Realisation,
    Store,
@@ -47,9 +47,39 @@ pub fn optional(name: &str) -> Option<String> {
    var(name).ok().filter(|value| !value.is_empty())
 }
 
-/// `<source>/<root>/<file>`, where the producers find their lock.
+/// `<source>/<root>`, where the producers find their lock.
+pub fn lock_dir() -> io::Result<String> {
+   Ok(format!("{}/{}", attr("source")?, attr("root")?))
+}
+
+/// `lockFile` when the producer was handed one apart from the source, else
+/// `file` in the lock directory.
 pub fn lock_path(file: &str) -> io::Result<String> {
-   Ok(format!("{}/{}/{file}", attr("source")?, attr("root")?))
+   optional("lockFile").map_or_else(|| Ok(format!("{}/{file}", lock_dir()?)), Ok)
+}
+
+pub fn read_toml<Data, File>(path: File) -> io::Result<Data>
+where
+   Data: DeserializeOwned,
+   File: AsRef<Path>,
+{
+   toml::from_str(&read_to_string(path)?).map_err(io::Error::other)
+}
+
+/// An error naming every one of `names` after `message`, when there are any.
+pub fn reject<Name>(message: &str, names: &[Name]) -> io::Result<()>
+where
+   Name: Display,
+{
+   if names.is_empty() {
+      return Ok(());
+   }
+   let listed = names
+      .iter()
+      .map(ToString::to_string)
+      .collect::<Vec<_>>()
+      .join(", ");
+   Err(io::Error::other(format!("{message}: {listed}")))
 }
 
 pub fn say(message: &str) {
@@ -151,64 +181,185 @@ where
    ))
 }
 
-fn input_drvs(inputs: &[DrvPath]) -> BTreeMap<DrvPath, BTreeSet<String>> {
-   inputs
-      .iter()
-      .map(|drv| (drv.clone(), BTreeSet::from(["out".to_owned()])))
-      .collect()
+/// Where a fetched file goes under the collecting derivation's `$out`.
+pub enum Place {
+   Link(String),
+   Unpack(String),
 }
 
-/// the collecting derivation, submitted as this producer's output, a
-/// floating-CA derivation run as `mummer assemble` (or `script` with `attrs` as
-/// structured attrs). `inputs` are the .drv paths `layout` refers to.
+/// What a lock-file producer fetches and lays out, each fetch at its place in
+/// order, then `entries`.
+pub struct Plan {
+   name:    &'static str,
+   fetches: Vec<(Row, Place)>,
+   entries: Vec<Entry>,
+}
+
+impl Plan {
+   pub const fn new(name: &'static str) -> Self {
+      Self {
+         name,
+         fetches: Vec::new(),
+         entries: Vec::new(),
+      }
+   }
+
+   pub fn fetch(&mut self, row: Row, place: Place) {
+      self.fetches.push((row, place));
+   }
+
+   pub fn add(&mut self, entry: Entry) {
+      self.entries.push(entry);
+   }
+
+   pub fn submit(self, store: &mut Store) -> io::Result<()> {
+      let (rows, places): (Vec<_>, Vec<_>) = self.fetches.into_iter().unzip();
+      let fetched = fetchurls(store, &rows)?;
+      let mut layout = places
+         .into_iter()
+         .zip(&fetched)
+         .map(|(place, made)| {
+            match place {
+               Place::Link(to) => Entry::link(made.out.to_string(), to),
+               Place::Unpack(to) => Entry::unpack(made.out.to_string(), to),
+            }
+         })
+         .collect::<Vec<_>>();
+      layout.extend(self.entries);
+      let inputs = fetched.into_iter().map(|made| made.drv).collect::<Vec<_>>();
+      collect(store, self.name, &layout, &inputs)
+   }
+}
+
+/// The store paths a producer's derivations run and the platform they run on.
+struct Toolchain {
+   peanut: StorePath,
+   mummer: StorePath,
+   system: String,
+}
+
+impl Toolchain {
+   fn load() -> io::Result<Self> {
+      Ok(Self {
+         peanut: store_attr("peanut")?,
+         mummer: store_attr("mummer")?,
+         system: attr("system")?,
+      })
+   }
+
+   /// `job` added as a derivation reading `inputs` and submitted as this
+   /// producer's output.
+   fn submit(&self, store: &mut Store, job: Job<'_>, inputs: &[DrvPath]) -> io::Result<DrvPath> {
+      let mut references = job.sources.clone();
+      references.extend(inputs.iter().cloned().map(StorePath::from));
+      let derivation = Derivation {
+         outputs: BTreeMap::from([("out".to_owned(), Output::floating(job.output))]),
+         inputs:  inputs
+            .iter()
+            .map(|drv| (drv.clone(), BTreeSet::from(["out".to_owned()])))
+            .collect(),
+         sources: job.sources,
+         system:  self.system.clone(),
+         builder: format!("{}/bin/mummer", self.mummer),
+         args:    job.args,
+         env:     job.env,
+      };
+      let drv = store.add_derivation(&format!("{}.drv", job.name), &references, &derivation)?;
+      store.submit(&drv, "out")?;
+      Ok(drv)
+   }
+}
+
+/// A derivation run as `mummer <args>`, its one output floating.
+struct Job<'name> {
+   name:    &'name str,
+   output:  Floating,
+   args:    Vec<String>,
+   env:     BTreeMap<String, String>,
+   sources: BTreeSet<StorePath>,
+}
+
+/// The `__json` of a collecting derivation, `attrs` after the fields every one
+/// has.
+#[derive(Serialize)]
+struct Collecting<'layout, Attrs> {
+   name:    &'layout str,
+   system:  &'layout str,
+   outputs: [&'static str; 1],
+   peanut:  &'layout StorePath,
+   layout:  &'layout [Entry],
+   #[serde(flatten)]
+   attrs:   Attrs,
+}
+
+/// How a collecting derivation assembles, `mummer <script>` with `attrs`
+/// beside the layout and `srcs` as further sources.
+pub struct Assembly<'srcs, Attrs> {
+   pub script: &'static str,
+   pub attrs:  Attrs,
+   pub srcs:   &'srcs [StorePath],
+}
+
+#[derive(Serialize)]
+pub struct NoAttrs;
+
+/// The collecting derivation, submitted as this producer's output, a
+/// floating-CA derivation run as `mummer assemble`. `inputs` are the .drv
+/// paths `layout` refers to.
 pub fn collect(
    store: &mut Store,
    name: &str,
    layout: &[Entry],
    inputs: &[DrvPath],
-   script: Option<&str>,
-   attrs: Map<String, Value>,
-   srcs: &[StorePath],
 ) -> io::Result<()> {
-   let peanut = store_attr("peanut")?;
-   let mummer = store_attr("mummer")?;
-   let system = attr("system")?;
-   let mut json = Map::new();
-   json.insert("name".to_owned(), Value::String(name.to_owned()));
-   json.insert("system".to_owned(), Value::String(system.clone()));
-   json.insert(
-      "outputs".to_owned(),
-      Value::Array(vec![Value::String("out".to_owned())]),
-   );
-   json.insert("peanut".to_owned(), Value::String(peanut.to_string()));
-   json.insert("layout".to_owned(), to_value(layout)?);
-   json.extend(attrs);
-   let mut sources = BTreeSet::from([peanut, mummer.clone()]);
-   sources.extend(srcs.iter().cloned());
-   let derivation = Derivation {
-      outputs: BTreeMap::from([("out".to_owned(), Output {
-         algorithm: "r:sha256".to_owned(),
-         ..Output::default()
-      })]),
-      inputs: input_drvs(inputs),
-      sources: sources.clone(),
-      system,
-      builder: format!("{mummer}/bin/mummer"),
-      args: vec![script.unwrap_or("assemble").to_owned()],
-      env: BTreeMap::from([("__json".to_owned(), Value::Object(json).to_string())]),
-   };
-   let mut references = sources;
-   references.extend(inputs.iter().cloned().map(StorePath::from));
-   let drv = store.add_derivation(&format!("{name}.drv"), &references, &derivation)?;
+   collect_with(store, name, layout, inputs, Assembly {
+      script: "assemble",
+      attrs:  NoAttrs,
+      srcs:   &[],
+   })
+}
+
+pub fn collect_with<Attrs>(
+   store: &mut Store,
+   name: &str,
+   layout: &[Entry],
+   inputs: &[DrvPath],
+   assembly: Assembly<'_, Attrs>,
+) -> io::Result<()>
+where
+   Attrs: Serialize,
+{
+   let toolchain = Toolchain::load()?;
+   let json = serde_json::to_string(&Collecting {
+      name,
+      system: &toolchain.system,
+      outputs: ["out"],
+      peanut: &toolchain.peanut,
+      layout,
+      attrs: assembly.attrs,
+   })?;
+   let mut sources = BTreeSet::from([toolchain.peanut.clone(), toolchain.mummer.clone()]);
+   sources.extend(assembly.srcs.iter().cloned());
+   let drv = toolchain.submit(
+      store,
+      Job {
+         name,
+         output: Floating::Recursive,
+         args: vec![assembly.script.to_owned()],
+         env: BTreeMap::from([("__json".to_owned(), json)]),
+         sources,
+      },
+      inputs,
+   )?;
    say(&format!(
       "{name}: {} entries, {} inputs -> {drv}",
       layout.len(),
       inputs.len()
    ));
-   store.submit(&drv, "out")
+   Ok(())
 }
 
-/// a second producer stage, `mummer fetch <kind>` run once `inputs` are built,
+/// A second producer stage, `mummer fetch <kind>` run once `inputs` are built,
 /// with `attrs` as the JSON file `stage_attrs` names. What it submits is this
 /// producer's result, so nix/fetch.nix unwraps such fetchers with one more
 /// outputOf.
@@ -223,22 +374,18 @@ pub fn stage<Attrs>(
 where
    Attrs: Serialize,
 {
-   let peanut = store_attr("peanut")?;
-   let mummer = store_attr("mummer")?;
-   let system = attr("system")?;
+   let toolchain = Toolchain::load()?;
    let attrs_file = store.add_text(
       &format!("{name}-attrs.json"),
       &BTreeSet::new(),
       &serde_json::to_vec(attrs)?,
    )?;
    let drv_name = format!("{name}.drv");
-   let mut sources = BTreeSet::from([peanut.clone(), mummer.clone(), attrs_file.clone()]);
-   sources.extend(srcs.iter().cloned());
    let env = [
       ("name", drv_name.clone()),
-      ("system", system.clone()),
-      ("peanut", peanut.to_string()),
-      ("mummer", mummer.to_string()),
+      ("system", toolchain.system.clone()),
+      ("peanut", toolchain.peanut.to_string()),
+      ("mummer", toolchain.mummer.to_string()),
       ("stage_attrs", attrs_file.to_string()),
       ("requiredSystemFeatures", "builder-rpc-v0".to_owned()),
       ("preferLocalBuild", "1".to_owned()),
@@ -248,24 +395,26 @@ where
    .into_iter()
    .map(|(key, value)| (key.to_owned(), value))
    .collect();
-   let derivation = Derivation {
-      outputs: BTreeMap::from([("out".to_owned(), Output {
-         algorithm: "text:sha256".to_owned(),
-         ..Output::default()
-      })]),
-      inputs: input_drvs(inputs),
-      sources: sources.clone(),
-      system,
-      builder: format!("{mummer}/bin/mummer"),
-      args: vec!["fetch".to_owned(), kind.to_owned()],
-      env,
-   };
-   let mut references = sources;
-   references.extend(inputs.iter().cloned().map(StorePath::from));
-   let drv = store.add_derivation(&format!("{drv_name}.drv"), &references, &derivation)?;
+   let mut sources = BTreeSet::from([
+      toolchain.peanut.clone(),
+      toolchain.mummer.clone(),
+      attrs_file,
+   ]);
+   sources.extend(srcs.iter().cloned());
+   let drv = toolchain.submit(
+      store,
+      Job {
+         name: &drv_name,
+         output: Floating::Text,
+         args: vec!["fetch".to_owned(), kind.to_owned()],
+         env,
+         sources,
+      },
+      inputs,
+   )?;
    say(&format!(
       "{name}: second stage after {} inputs -> {drv}",
       inputs.len()
    ));
-   store.submit(&drv, "out")
+   Ok(())
 }

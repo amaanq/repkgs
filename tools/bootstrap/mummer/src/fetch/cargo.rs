@@ -26,6 +26,7 @@ use crate::{
          collect,
          fetchurls,
          json_file,
+         reject,
       },
    },
    nix_store::Store,
@@ -64,15 +65,7 @@ impl Producer for Cargo {
    fn run(&self, store: &mut Store) -> io::Result<()> {
       let source = attr("source")?;
       let vendor = vendor_layout(store, &read_to_string(format!("{source}/Cargo.lock"))?, "")?;
-      collect(
-         store,
-         "cargo-vendor",
-         &vendor.layout,
-         &vendor.drvs,
-         None,
-         serde_json::Map::new(),
-         &[],
-      )
+      collect(store, "cargo-vendor", &vendor.layout, &vendor.drvs)
    }
 }
 
@@ -100,19 +93,13 @@ pub fn vendor_layout(store: &mut Store, text: &str, prefix: &str) -> io::Result<
          )
       })
       .collect();
-   if !foreign.is_empty() {
-      return Err(io::Error::other(format!(
-         "cargoVendor: unsupported sources: {}",
-         foreign.join(", ")
-      )));
-   }
-   let crates: Vec<&Package> = lock
-      .package
-      .iter()
-      .filter(|package| package.source.as_deref() == Some(CRATES_IO))
-      .collect();
-   let mut rows = Vec::with_capacity(crates.len());
-   for package in &crates {
+   reject("cargoVendor: unsupported sources", &foreign)?;
+   let mut crates = Vec::new();
+   let mut rows = Vec::new();
+   for package in &lock.package {
+      if package.source.as_deref() != Some(CRATES_IO) {
+         continue;
+      }
       let checksum = package.checksum.as_deref().ok_or_else(|| {
          io::Error::other(format!(
             "cargoVendor: {} {} has no checksum",
@@ -127,20 +114,21 @@ pub fn vendor_layout(store: &mut Store, text: &str, prefix: &str) -> io::Result<
          ),
          hash: OutputHash::hex(Algorithm::Sha256, checksum)?,
       });
+      crates.push((package, checksum));
    }
    let fetched = fetchurls(store, &rows)?;
    let mut layout = Vec::with_capacity(crates.len() * 2);
-   for (package, made) in crates.iter().zip(&fetched) {
+   for (&(package, checksum), made) in crates.iter().zip(&fetched) {
       let dir = format!("{prefix}{}-{}", package.name, package.version);
       layout.push(Entry::unpack(made.out.to_string(), dir.clone()));
       layout.push(json_file(
          &format!("{dir}/.cargo-checksum.json"),
          &Checksum {
             files:   BTreeMap::new(),
-            package: package.checksum.as_deref().unwrap_or_default(),
+            package: checksum,
          },
       )?);
    }
-   let drvs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
+   let drvs = fetched.into_iter().map(|made| made.drv).collect();
    Ok(Vendor { layout, drvs })
 }

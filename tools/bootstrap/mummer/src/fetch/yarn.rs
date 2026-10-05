@@ -4,21 +4,17 @@ use std::{
    io,
 };
 
-use mummer::{
-   hash::OutputHash,
-   store_path::DrvPath,
-};
-use serde_json::Map;
+use mummer::hash::OutputHash;
 
 use crate::{
    fetch::{
       dispatch::Producer,
       drv::{
-         Entry,
+         Place,
+         Plan,
          Row,
-         collect,
-         fetchurls,
          lock_path,
+         reject,
       },
       registry::{
          basename,
@@ -101,61 +97,46 @@ impl Producer for Yarn {
    fn run(&self, store: &mut Store) -> io::Result<()> {
       let entries = parse_lock(&read_to_string(lock_path("yarn.lock")?)?)?;
       // workspace / link: / file: entries have no `resolved`
-      let remote: Vec<&Locked> = entries
+      let remote = entries
          .iter()
-         .filter(|entry| entry.resolved.is_some())
-         .collect();
-      let bad: Vec<&str> = remote
+         .filter_map(|entry| Some((entry, entry.resolved.as_deref()?)))
+         .collect::<Vec<_>>();
+      let bad = remote
          .iter()
-         .filter(|entry| entry.resolved.as_deref().is_some_and(foreign))
-         .map(|entry| entry.keys.as_str())
-         .collect();
-      if !bad.is_empty() {
-         return Err(io::Error::other(format!(
-            "yarnDeps: unsupported `resolved` (git/github/file) for: {}",
-            bad.join(", ")
-         )));
-      }
-      let unhashed: Vec<&str> = remote
-         .iter()
-         .filter(|entry| entry.integrity.is_none())
-         .map(|entry| entry.keys.as_str())
-         .collect();
-      if !unhashed.is_empty() {
-         return Err(io::Error::other(format!(
-            "yarnDeps: no `integrity` (yarn < 1.10 lock, run `yarn install` once with a current \
-             yarn 1.x) for: {}",
-            unhashed.join(", ")
-         )));
-      }
+         .filter(|&&(_, resolved)| foreign(resolved))
+         .map(|&(entry, _)| entry.keys.as_str())
+         .collect::<Vec<_>>();
+      reject(
+         "yarnDeps: unsupported `resolved` (git/github/file) for",
+         &bad,
+      )?;
+      let mut unhashed = Vec::new();
+      let mut plan = Plan::new("yarn-deps");
       let mut seen = BTreeSet::new();
-      let mut rows = Vec::new();
-      for entry in remote {
-         let url = entry
-            .resolved
-            .as_deref()
-            .unwrap_or_default()
-            .split('#')
-            .next()
-            .unwrap_or_default()
-            .to_owned();
+      for (entry, resolved) in remote {
+         let Some(ref integrity) = entry.integrity else {
+            unhashed.push(entry.keys.as_str());
+            continue;
+         };
+         let url = resolved.split('#').next().unwrap_or_default().to_owned();
          let file = mirror_name(&url);
          if !seen.insert(file.clone()) {
             continue;
          }
-         rows.push(Row {
-            file,
-            url,
-            hash: OutputHash::integrity(entry.integrity.as_deref().unwrap_or_default())?,
-         });
+         plan.fetch(
+            Row {
+               file: file.clone(),
+               url,
+               hash: OutputHash::integrity(integrity)?,
+            },
+            Place::Link(file),
+         );
       }
-      let fetched = fetchurls(store, &rows)?;
-      let layout: Vec<Entry> = rows
-         .iter()
-         .zip(&fetched)
-         .map(|(row, made)| Entry::link(made.out.to_string(), row.file.clone()))
-         .collect();
-      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "yarn-deps", &layout, &inputs, None, Map::new(), &[])
+      reject(
+         "yarnDeps: no `integrity` (yarn < 1.10 lock, run `yarn install` once with a current yarn \
+          1.x) for",
+         &unhashed,
+      )?;
+      plan.submit(store)
    }
 }

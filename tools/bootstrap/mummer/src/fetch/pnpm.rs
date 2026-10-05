@@ -7,25 +7,20 @@ use std::{
    io,
 };
 
-use mummer::{
-   hash::OutputHash,
-   store_path::DrvPath,
-};
-use serde_json::Map;
+use mummer::hash::OutputHash;
 
 use crate::{
    fetch::{
       dispatch::Producer,
       drv::{
-         Entry,
+         Place,
+         Plan,
          Row,
-         collect,
-         fetchurls,
          lock_path,
+         reject,
       },
       registry::{
-         split_id,
-         tarball_url,
+         PackageId,
          url_path,
       },
    },
@@ -185,43 +180,37 @@ impl Producer for Pnpm {
             "pnpmDeps: pnpm-lock.yaml version {lock_version}, only 9.x is supported (pnpm >= 9)"
          )));
       }
-      let found = packages(&text)?;
-      let foreign: Vec<&str> = found
-         .iter()
-         .filter(|pair| pair.1.integrity.is_none())
-         .map(|pair| pair.0.as_str())
-         .collect();
-      if !foreign.is_empty() {
-         return Err(io::Error::other(format!(
-            "pnpmDeps: no integrity (git/file/directory resolution) for: {}",
-            foreign.join(", ")
-         )));
-      }
-      let mut rows: Vec<Row> = Vec::with_capacity(found.len());
+      let mut foreign = Vec::new();
+      let mut plan = Plan::new("pnpm-deps");
       let mut seen = BTreeSet::new();
+      let found = packages(&text)?;
       for (id, resolution) in &found {
-         let (name, version) = split_id(id);
-         let url = resolution
-            .tarball
-            .clone()
-            .unwrap_or_else(|| tarball_url(name, version, ""));
+         let Some(ref integrity) = resolution.integrity else {
+            foreign.push(id.as_str());
+            continue;
+         };
+         let url = match resolution.tarball {
+            Some(ref tarball) => tarball.clone(),
+            None => PackageId::try_from(id.as_str())?.tarball_url(None),
+         };
          let file = url_path(&url).trim_start_matches('/').to_owned();
          if !seen.insert(file.clone()) {
             continue;
          }
-         rows.push(Row {
-            file,
-            url,
-            hash: OutputHash::integrity(resolution.integrity.as_deref().unwrap_or_default())?,
-         });
+         let to = format!("registry/{file}");
+         plan.fetch(
+            Row {
+               file,
+               url,
+               hash: OutputHash::integrity(integrity)?,
+            },
+            Place::Link(to),
+         );
       }
-      let fetched = fetchurls(store, &rows)?;
-      let layout: Vec<Entry> = rows
-         .iter()
-         .zip(&fetched)
-         .map(|(row, made)| Entry::link(made.out.to_string(), format!("registry/{}", row.file)))
-         .collect();
-      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "pnpm-deps", &layout, &inputs, None, Map::new(), &[])
+      reject(
+         "pnpmDeps: no integrity (git/file/directory resolution) for",
+         &foreign,
+      )?;
+      plan.submit(store)
    }
 }

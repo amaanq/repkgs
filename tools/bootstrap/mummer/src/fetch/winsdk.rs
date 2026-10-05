@@ -18,19 +18,16 @@ use serde::{
    Deserialize,
    Serialize,
 };
-use serde_json::{
-   Map,
-   Value,
-   to_value,
-};
+use serde_json::Value;
 
 use crate::{
    fetch::{
       dispatch::Producer,
       drv::{
+         Assembly,
          Row,
          attr,
-         collect,
+         collect_with,
          fetchurls,
          say,
          store_attr,
@@ -72,6 +69,13 @@ struct Payload {
    file_name: String,
    url:       String,
    sha256:    String,
+}
+
+/// What `winsdk-assemble` finds beside the layout.
+#[derive(Serialize)]
+struct Assembled {
+   sevenzip: StorePath,
+   payloads: Vec<Selected>,
 }
 
 #[derive(Serialize)]
@@ -244,20 +248,19 @@ impl Producer for Winsdk {
          .collect();
       let mut inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
       inputs.push(attr("sevenzip_drv")?.try_into()?);
-      let mut attrs = Map::new();
-      attrs.insert(
-         "sevenzip".to_owned(),
-         Value::String(store_attr("sevenzip")?.to_string()),
-      );
-      attrs.insert("payloads".to_owned(), to_value(&selected)?);
-      collect(
+      collect_with(
          store,
          &format!("windows-sdk-{cpu}"),
          &[],
          &inputs,
-         Some("winsdk-assemble"),
-         attrs,
-         &[],
+         Assembly {
+            script: "winsdk-assemble",
+            attrs:  Assembled {
+               sevenzip: store_attr("sevenzip")?,
+               payloads: selected,
+            },
+            srcs:   &[],
+         },
       )
    }
 }

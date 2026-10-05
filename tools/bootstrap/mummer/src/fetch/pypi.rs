@@ -3,7 +3,6 @@ use std::{
       BTreeMap,
       VecDeque,
    },
-   fs::read_to_string,
    io,
    path::Path,
    ptr::eq,
@@ -31,6 +30,8 @@ use crate::{
          attr,
          fetchurls,
          json_file,
+         lock_dir,
+         read_toml,
          say,
          stage,
       },
@@ -548,12 +549,11 @@ impl Producer for Pypi {
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
       let source = attr("source")?;
-      let root = format!("{source}/{}", attr("root")?);
-      let lock: Lock =
-         toml::from_str(&read_to_string(format!("{root}/uv.lock"))?).map_err(io::Error::other)?;
+      let root = lock_dir()?;
+      let lock: Lock = read_toml(format!("{root}/uv.lock"))?;
       let project_file = format!("{root}/pyproject.toml");
       let pyproject: Pyproject = if Path::new(&project_file).exists() {
-         toml::from_str(&read_to_string(project_file)?).map_err(io::Error::other)?
+         read_toml(project_file)?
       } else {
          Pyproject::default()
       };

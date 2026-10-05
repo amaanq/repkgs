@@ -1,5 +1,8 @@
 use std::{
-   collections::BTreeMap,
+   collections::{
+      BTreeMap,
+      BTreeSet,
+   },
    fs::read_to_string,
    io,
 };
@@ -39,9 +42,8 @@ use crate::{
          stage,
       },
       registry::{
-         flat_name,
-         split_id,
-         tarball_url,
+         PackageId,
+         Url,
          url_path,
       },
    },
@@ -130,19 +132,23 @@ impl Deno {
    /// "vite@5.0.0_@types+node@20.0.0".
    fn npm(store: &mut Store, lock: &Lock) -> io::Result<Vec<NpmFetched>> {
       let mut rows = Vec::new();
-      let mut ids: Vec<(String, String, String)> = Vec::new();
+      let mut ids = Vec::new();
+      let mut seen = BTreeSet::new();
       for (key, entry) in &lock.npm {
-         let id = npm_key_id(key);
-         let (name, version) = split_id(id);
-         if ids.iter().any(|seen| seen.0 == name && seen.1 == version) {
+         let id = PackageId::try_from(npm_key_id(key))?;
+         if !seen.insert((id.name, id.version)) {
             continue;
          }
-         ids.push((name.to_owned(), version.to_owned(), entry.integrity.clone()));
          rows.push(Row {
-            file: format!("{}-{version}.tgz", flat_name(name)),
-            url:  tarball_url(name, version, ""),
+            file: format!("{}-{}.tgz", id.flat_name(), id.version),
+            url:  id.tarball_url(None),
             hash: OutputHash::integrity(&entry.integrity)?,
          });
+         ids.push((
+            id.name.to_owned(),
+            id.version.to_owned(),
+            entry.integrity.clone(),
+         ));
       }
       let fetched = fetchurls(store, &rows)?;
       Ok(ids
@@ -166,10 +172,11 @@ impl Deno {
       let mut rows = Vec::new();
       let mut ids: Vec<(String, String)> = Vec::new();
       for (key, entry) in &lock.jsr {
-         let (name, version) = split_id(key);
+         let id = PackageId::try_from(key.as_str())?;
+         let (name, version) = (id.name, id.version);
          ids.push((name.to_owned(), version.to_owned()));
          rows.push(Row {
-            file: format!("jsr-{}-{version}_meta.json", flat_name(name)),
+            file: format!("jsr-{}-{version}_meta.json", id.flat_name()),
             url:  format!("{JSR}/{name}/{version}_meta.json"),
             hash: OutputHash::hex(Algorithm::Sha256, &entry.integrity)?,
          });
@@ -196,9 +203,9 @@ impl Deno {
          .remote
          .iter()
          .map(|(url, sha256)| {
-            let (host, _path) = host_and_path(url);
+            let parts = Url::try_from(url.as_str())?;
             Ok(Row {
-               file: format!("{host}{}", url_path(url)),
+               file: format!("{}{}", parts.authority, parts.path),
                url:  url.clone(),
                hash: OutputHash::hex(Algorithm::Sha256, sha256)?,
             })
@@ -265,18 +272,14 @@ impl Producer for Deno {
    }
 }
 
-fn host_and_path(url: &str) -> (&str, &str) {
-   let rest = url.split_once("://").map_or(url, |(_scheme, rest)| rest);
-   rest.split_once('/').unwrap_or((rest, ""))
-}
-
 /// where deno's global cache keeps a URL,
 /// remote/<scheme>/<host>[_PORT<n>]/<sha256 of path?query>.
-fn cache_path(url: &str) -> String {
-   let (scheme, rest) = url.split_once("://").unwrap_or(("https", url));
-   let (authority, path_query) = rest
-      .find('/')
-      .map_or((rest, ""), |slash| (&rest[..slash], &rest[slash..]));
+fn cache_path(url: &str) -> io::Result<String> {
+   let Url {
+      scheme,
+      authority,
+      path: path_query,
+   } = Url::try_from(url)?;
    let (host, port) = authority
       .split_once(':')
       .map_or((authority, ""), |(host, port)| (host, port));
@@ -286,7 +289,7 @@ fn cache_path(url: &str) -> String {
    } else {
       format!("_PORT{port}")
    };
-   format!("remote/{scheme}/{host}{port_part}/{key}")
+   Ok(format!("remote/{scheme}/{host}{port_part}/{key}"))
 }
 
 #[derive(Serialize)]
@@ -431,21 +434,21 @@ impl Producer for DenoFiles {
          layout.push(Entry::copy(
             made.out.to_string(),
             trailer(url, content_type(url))?,
-            cache_path(url),
+            cache_path(url)?,
          ));
       }
       for module in &fetched.https {
          layout.push(Entry::copy(
             module.src.to_string(),
             trailer(&module.url, content_type(&module.url))?,
-            cache_path(&module.url),
+            cache_path(&module.url)?,
          ));
       }
       for package in &fetched.jsr {
          layout.push(Entry::copy(
             package.meta.to_string(),
             trailer(&package.url, "application/json")?,
-            cache_path(&package.url),
+            cache_path(&package.url)?,
          ));
       }
       let mut jsr_by_name: BTreeMap<&str, Vec<&JsrFetched>> = BTreeMap::new();
@@ -466,7 +469,7 @@ impl Producer for DenoFiles {
                serde_json::to_string(&listing)?,
                trailer(&url, "application/json")?
             ),
-            cache_path(&url),
+            cache_path(&url)?,
          ));
       }
       // npm/registry.npmjs.org/<name>/<version>/ plus a registry.json cut to
@@ -516,6 +519,6 @@ impl Producer for DenoFiles {
          .chain(fetched.jsr.iter().map(|package| package.drv.clone()))
          .chain(fetched.https.iter().map(|module| module.drv.clone()))
          .collect();
-      collect(store, "deno-deps", &layout, &inputs, None, Map::new(), &[])
+      collect(store, "deno-deps", &layout, &inputs)
    }
 }
