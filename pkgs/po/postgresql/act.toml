@@ -2,9 +2,8 @@ track   = "generic:postgresql?url=https://ftp.postgresql.org/pub/source/&regex=v
 fetch   = { url = "https://ftp.postgresql.org/pub/source/v{version}/postgresql-{version}.tar.bz2" }
 with    = [ "meson" ]
 deps    = [ "openssl", "zlib", "readline", "icu", "util-linux", "lz4", "zstd", "libxml2" ]
-tools   = [ "bison", "flex", "perl" ]
+tools   = [ "bison", "flex", "perl", "tzdata" ]
 test    = false
-patches = [ "tzdir-etc-zoneinfo.patch" ]
 
 [steps.after]
 "meson.install" = [ "postgresql.relocate-pgxs" ]
@@ -13,13 +12,12 @@ patches = [ "tzdir-etc-zoneinfo.patch" ]
 "meson.configure" = [ "postgresql.fixed-paths" ]
 
 [meson.defs]
-icu           = "enabled"
-libxml        = "enabled"
-lz4           = "enabled"
-readline      = "enabled"
-rpath         = false
-ssl           = "openssl"
-system_tzdata = "/usr/share/zoneinfo"
-uuid          = "e2fs"
-zlib          = "enabled"
-zstd          = "enabled"
+icu      = "enabled"
+libxml   = "enabled"
+lz4      = "enabled"
+readline = "enabled"
+rpath    = false
+ssl      = "openssl"
+uuid     = "e2fs"
+zlib     = "enabled"
+zstd     = "enabled"
