@@ -5,6 +5,7 @@ use std::{
       current_exe,
       temp_dir,
       var,
+      var_os,
    },
    ffi::OsStr,
    fs::{
@@ -1073,6 +1074,11 @@ where
             if settled != linked {
                let mode = metadata(output)?.permissions().mode();
                write_file(output, &settled, Some(mode & 0o7777))?;
+               if let Some(directory) = var_os("MUMMER_UNSETTLED_DIR")
+                  && let Some(name) = output.file_name()
+               {
+                  write_file(&Path::new(&directory).join(name), &linked, None)?;
+               }
             }
             return Ok((result, Some(linked)));
          },
