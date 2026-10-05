@@ -104,6 +104,7 @@ pub enum Miss {
    EnvironmentChanged(String),
    Appeared(String),
    ObjectGone,
+   RunpathRoom,
    Failed(io::Error),
 }
 
@@ -115,6 +116,7 @@ impl Display for Miss {
          Self::EnvironmentChanged(ref name) => write!(f, "env-changed:{name}"),
          Self::Appeared(ref path) => write!(f, "appeared:{path}"),
          Self::ObjectGone => f.write_str("object-gone"),
+         Self::RunpathRoom => f.write_str("runpath-room"),
          Self::Failed(_) => f.write_str("replay-failed"),
       }
    }

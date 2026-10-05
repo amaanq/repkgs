@@ -7,15 +7,12 @@ use std::{
    fs::{
       File,
       canonicalize,
-      metadata,
-      read,
       read_to_string,
    },
    io::{
       self,
       Read as _,
    },
-   os::unix::fs::PermissionsExt as _,
    path::Path,
 };
 
@@ -27,7 +24,6 @@ use mummer::{
       runpath_text,
       segments,
    },
-   files::write_file,
    image::Image,
    store::is_store_path,
 };
@@ -404,21 +400,21 @@ pub fn reserve(args: &mut [String], room: usize) {
 /// directories, then the directories of the shared libraries the linker
 /// opened, as its dependency file names them, so a library the link named but
 /// `--as-needed` dropped still loads by name, keeping the padding reloc-fixup
-/// rewrites into. Some(room) when the placeholder is too small for the output's
+/// rewrites into. Room when the placeholder is too small for the output's
 /// `DT_NEEDED` count, the link to redo with `reserve`.
-pub fn settle_runpath(output: &Path, dependencies: &str) -> io::Result<Option<usize>> {
+pub fn settle_runpath(bytes: &[u8], dependencies: &str) -> io::Result<Settled> {
    let mut image = Image {
-      bytes: read(output)?,
+      bytes: bytes.to_vec(),
    };
    if !is_elf(&image) {
-      return Ok(None);
+      return Ok(Settled::Image(image.bytes));
    }
    let segments = segments(&image)?;
    let Some(text) = runpath_text(&image, &segments)? else {
-      return Ok(None);
+      return Ok(Settled::Image(image.bytes));
    };
    if !text.value.split(':').any(is_placeholder) {
-      return Ok(None);
+      return Ok(Settled::Image(image.bytes));
    }
    let given = text
       .value
@@ -453,14 +449,20 @@ pub fn settle_runpath(output: &Path, dependencies: &str) -> io::Result<Option<us
    let entries = directories.len() + given.len();
    let wanted = path.len() + 1 + entries.max(1) * RUNPATH_SLACK + needed.len() * 80;
    if wanted >= text.capacity {
-      return Ok(Some((wanted + 1).next_power_of_two()));
+      return Ok(Settled::Room((wanted + 1).next_power_of_two()));
    }
    path.push('/');
    path.push_str(&"_".repeat(text.capacity - 1 - path.len()));
    image.write(text.offset, path.as_bytes())?;
-   let mode = metadata(output)?.permissions().mode();
-   write_file(output, &image.bytes, Some(mode & 0o7777))?;
-   Ok(None)
+   Ok(Settled::Image(image.bytes))
+}
+
+/// What settling an image came to.
+pub enum Settled {
+   /// The image, its RUNPATH settled if it had a placeholder.
+   Image(Vec<u8>),
+   /// The room the placeholder needs, for a link redone with `reserve`.
+   Room(usize),
 }
 
 /// An ELF shared object, what the dynamic loader finds by RUNPATH.
