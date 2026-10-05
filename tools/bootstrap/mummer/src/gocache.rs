@@ -177,12 +177,95 @@ fn reply(output: &mut impl Write, response: &Response) -> io::Result<()> {
    output.flush()
 }
 
-#[expect(
-   clippy::too_many_lines,
-   reason = "loop covers protocol handling and request dispatch in one place"
-)]
+/// The daemon, dropped after its first failure, and the directory Go reads
+/// outputs from.
+struct Session {
+   cache:     Option<Client>,
+   directory: PathBuf,
+}
+
+impl Session {
+   fn get(&mut self, action: GoId, started: Instant) -> io::Result<ResponseBody> {
+      let found = self
+         .cache
+         .as_mut()
+         .map(|client| -> io::Result<_> {
+            let Some(output_bytes) = client.get(&Key::hex(Namespace::GoAction, &action.0))? else {
+               return Ok(None);
+            };
+            let output = GoId::try_from(output_bytes.as_slice())?;
+            Ok(client
+               .get(&Key::hex(Namespace::GoOutput, &output.0))?
+               .map(|bytes| (output, bytes)))
+         })
+         .transpose();
+      match found {
+         Ok(Some(Some((output, bytes)))) => {
+            let path = self.directory.join(output.to_string());
+            write_file(&path, &bytes, None)?;
+            log(Tool::Go, Outcome::Cached, action, started);
+            Ok(ResponseBody::Hit {
+               output: output.encoded(),
+               size: bytes.len(),
+               path,
+            })
+         },
+         Ok(_) => Ok(ResponseBody::Miss { miss: true }),
+         Err(error) => {
+            diagnostic(format_args!("mummer Go cache lookup failed, {error}"));
+            self.cache = None;
+            Ok(ResponseBody::Miss { miss: true })
+         },
+      }
+   }
+
+   fn put(
+      &mut self,
+      action: GoId,
+      output: GoId,
+      bytes: &[u8],
+      started: Instant,
+   ) -> io::Result<ResponseBody> {
+      let path = self.directory.join(output.to_string());
+      write_file(&path, bytes, None)?;
+      if let Some(client) = self.cache.as_mut()
+         && let Err(error) = client
+            .put(&Key::hex(Namespace::GoOutput, &output.0), bytes)
+            .and_then(|()| client.put(&Key::hex(Namespace::GoAction, &action.0), &output.0))
+      {
+         diagnostic(format_args!("mummer Go cache upload failed, {error}"));
+         self.cache = None;
+      }
+      let outcome = if self.cache.is_some() {
+         Outcome::Compiled
+      } else {
+         Outcome::CompiledUnstored
+      };
+      log(Tool::Go, outcome, action, started);
+      Ok(ResponseBody::Stored { path })
+   }
+}
+
+/// A put's body, the base64 JSON string on the line after it.
+fn body(input: &mut impl BufRead, size: usize) -> io::Result<Vec<u8>> {
+   if size > MAX_OBJECT {
+      return Err(io::Error::other("Go cache body exceeds size limit"));
+   }
+   if size == 0 {
+      return Ok(Vec::new());
+   }
+   loop {
+      let line = next_line(input, size.div_ceil(3) * 4 + 16)?
+         .ok_or_else(|| io::Error::other("Go cache body is missing"))?;
+      if !line.trim().is_empty() {
+         let encoded = serde_json::from_str::<String>(&line)?;
+         return STANDARD.decode(encoded).map_err(io::Error::other);
+      }
+   }
+}
+
 pub fn run(socket: &Path) -> io::Result<()> {
-   let mut cache = match Client::connect(socket) {
+   let cache = match Client::connect(socket) {
       Ok(client) => Some(client),
       Err(error) => {
          diagnostic(format_args!("mummer Go cache daemon unavailable, {error}"));
@@ -198,6 +281,7 @@ pub fn run(socket: &Path) -> io::Result<()> {
       PathBuf::from,
    );
    create_dir_all(&directory)?;
+   let mut session = Session { cache, directory };
    let mut input = BufReader::new(io::stdin());
    let stdout = io::stdout();
    let mut writer = stdout.lock();
@@ -214,88 +298,19 @@ pub fn run(socket: &Path) -> io::Result<()> {
       let request = serde_json::from_str::<Request>(&line)?;
       let started = Instant::now();
       let closing = matches!(request.command, RequestCommand::Close);
-      let body = match request.command {
+      let response = match request.command {
          RequestCommand::Close => ResponseBody::Closed(BTreeMap::new()),
-         RequestCommand::Get { action } => {
-            let found = cache
-               .as_mut()
-               .map(|client| -> io::Result<_> {
-                  let Some(output_bytes) = client.get(&Key::hex(Namespace::GoAction, &action.0))?
-                  else {
-                     return Ok(None);
-                  };
-                  let output = GoId::try_from(output_bytes.as_slice())?;
-                  Ok(client
-                     .get(&Key::hex(Namespace::GoOutput, &output.0))?
-                     .map(|bytes| (output, bytes)))
-               })
-               .transpose();
-            match found {
-               Ok(Some(Some((output, bytes)))) => {
-                  let path = directory.join(output.to_string());
-                  write_file(&path, &bytes, None)?;
-                  log(Tool::Go, Outcome::Cached, action, started);
-                  ResponseBody::Hit {
-                     output: output.encoded(),
-                     size: bytes.len(),
-                     path,
-                  }
-               },
-               Ok(_) => ResponseBody::Miss { miss: true },
-               Err(error) => {
-                  diagnostic(format_args!("mummer Go cache lookup failed, {error}"));
-                  cache = None;
-                  ResponseBody::Miss { miss: true }
-               },
-            }
-         },
+         RequestCommand::Get { action } => session.get(action, started)?,
          RequestCommand::Put {
             action,
             output,
             size,
          } => {
-            if size > MAX_OBJECT {
-               return Err(io::Error::other("Go cache body exceeds size limit"));
-            }
-            let mut bytes = Vec::new();
-            if size != 0 {
-               loop {
-                  let body_line = next_line(&mut input, size.div_ceil(3) * 4 + 16)?
-                     .ok_or_else(|| io::Error::other("Go cache body is missing"))?;
-                  if body_line.trim().is_empty() {
-                     continue;
-                  }
-                  let encoded = serde_json::from_str::<String>(&body_line)?;
-                  bytes = STANDARD.decode(encoded).map_err(io::Error::other)?;
-                  break;
-               }
-            }
+            let bytes = body(&mut input, size)?;
             // a killed go build leaves a torn stream, storing it would poison
             // the action for every later build
             if bytes.len() == size {
-               let path = directory.join(output.to_string());
-               write_file(&path, &bytes, None)?;
-               if let Some(client) = cache.as_mut()
-                  && let Err(error) = client
-                     .put(&Key::hex(Namespace::GoOutput, &output.0), &bytes)
-                     .and_then(|()| {
-                        client.put(&Key::hex(Namespace::GoAction, &action.0), &output.0)
-                     })
-               {
-                  diagnostic(format_args!("mummer Go cache upload failed, {error}"));
-                  cache = None;
-               }
-               log(
-                  Tool::Go,
-                  if cache.is_some() {
-                     Outcome::Compiled
-                  } else {
-                     Outcome::CompiledUnstored
-                  },
-                  action,
-                  started,
-               );
-               ResponseBody::Stored { path }
+               session.put(action, output, &bytes, started)?
             } else {
                ResponseBody::Torn {
                   err: format!("body: got {} of {size} bytes", bytes.len()),
@@ -304,8 +319,8 @@ pub fn run(socket: &Path) -> io::Result<()> {
          },
       };
       reply(&mut writer, &Response {
-         id: request.id,
-         body,
+         id:   request.id,
+         body: response,
       })?;
       if closing {
          break;
