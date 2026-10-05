@@ -2,7 +2,7 @@
 [
   {
     source = tree {
-      dir = "src";
+      dir = "tests/builder/cmake/src";
       name = "src";
     };
   }

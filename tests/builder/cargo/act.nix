@@ -3,7 +3,7 @@
   {
     cargo.deps = null;
     source = tree {
-      dir = "src";
+      dir = "tests/builder/cargo/src";
       name = "src";
     };
   }
