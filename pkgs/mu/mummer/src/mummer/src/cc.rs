@@ -94,6 +94,7 @@ struct Invocation {
 impl Invocation {
    #[expect(
       clippy::too_many_lines,
+      clippy::cognitive_complexity,
       reason = "single-pass option scanner, splitting would scatter invocation state"
    )]
    fn parse(args: Vec<String>) -> Self {
@@ -114,7 +115,7 @@ impl Invocation {
       };
       let mut sources = 0_i32;
       let mut header = false;
-      let mut emit_pch = false;
+      let mut language: Option<String> = None;
       let mut wants_deps = false;
       let mut objects = false;
       let mut index = 0;
@@ -160,9 +161,11 @@ impl Invocation {
             "-shared" | "-r" => objects = true,
             "-I" | "-isystem" | "-iquote" | "-idirafter" | "-include" | "-imacros"
             | "-isysroot" | "--sysroot" | "-L" | "-l" | "-x" | "-D" | "-U" | "-target"
-            | "--target" => {
+            | "--target" | "-Xclang" | "-Xlinker" | "-Xassembler" | "-Xpreprocessor" | "-mllvm" => {
                if let Some(ref value) = next {
-                  header |= arg == "-x" && value.ends_with("-header");
+                  if arg == "-x" {
+                     language = (value != "none").then(|| value.clone());
+                  }
                   consumed = true;
                }
             },
@@ -170,22 +173,35 @@ impl Invocation {
                if arg.starts_with("-o") && arg.len() > 2 {
                   keyed = false;
                   invocation.output = PathBuf::from(&arg[2..]);
+               } else if let Some(given) = arg.strip_prefix("-x")
+                  && !given.is_empty()
+               {
+                  language = (given != "none").then(|| given.to_owned());
                } else if arg.starts_with("-Wp,-MD,") || arg.starts_with("-Wp,-MMD,") {
                   keyed = false;
                   invocation.depfile = arg.splitn(3, ',').nth(2).map(PathBuf::from);
                   wants_deps = true;
                } else if !arg.starts_with('-')
-                  && [
-                     ".c", ".cc", ".cpp", ".cxx", ".c++", ".C", ".S", ".s", ".sx", ".m", ".f",
-                     ".F", ".f77", ".for", ".FOR", ".f90", ".F90", ".f95", ".F95", ".f03", ".F03",
-                     ".f08", ".F08",
-                  ]
-                  .iter()
-                  .any(|suffix| arg.ends_with(suffix))
+                  && ((language.is_some() && Path::new(&arg).is_file())
+                     || [
+                        ".c", ".cc", ".cpp", ".cxx", ".c++", ".C", ".S", ".s", ".sx", ".m", ".f",
+                        ".F", ".f77", ".for", ".FOR", ".f90", ".F90", ".f95", ".F95", ".f03",
+                        ".F03", ".f08", ".F08", ".h", ".hh", ".hpp", ".hxx",
+                     ]
+                     .iter()
+                     .any(|suffix| arg.ends_with(suffix)))
                {
                   keyed = false;
                   invocation.source.clone_from(&arg);
                   sources += 1_i32;
+                  header |= language.as_deref().map_or_else(
+                     || {
+                        [".h", ".hh", ".hpp", ".hxx"]
+                           .iter()
+                           .any(|suffix| arg.ends_with(suffix))
+                     },
+                     |given| given.ends_with("-header"),
+                  );
                } else if !arg.starts_with('-')
                   && ([".o", ".os", ".lo", ".a", ".so", ".obj"]
                      .iter()
@@ -195,36 +211,14 @@ impl Invocation {
                   invocation.inputs.push(arg.clone());
                   objects = true;
                }
-               emit_pch |= arg == "-emit-pch";
-               header |= arg.ends_with("-header");
                invocation.query |= arg.starts_with("-print")
                   || arg.starts_with("--print")
                   || arg.starts_with("-dump");
-               invocation.cacheable &= !arg.starts_with('@')
-                  && !arg.contains(",@")
-                  && ![
-                     "-Map",
-                     "--print-map",
-                     "--out-implib",
-                     "--trace",
-                     "--verbose",
-                     "--print-gc-sections",
-                     "--stats",
-                     "-save-temps",
-                     "-ftime-trace",
-                     "-fprofile",
-                     "--coverage",
-                     "-fmodules",
-                     "-MJ",
-                     "-serialize-diagnostics",
-                     "-gsplit-dwarf",
-                  ]
-                  .iter()
-                  .any(|marker| arg.contains(marker))
-                  && !arg.ends_with(",-M")
-                  && !arg.ends_with(",-t");
             },
          }
+         let passed_on = consumed && (arg.starts_with("-X") || arg == "-mllvm");
+         invocation.cacheable &= !(uncacheable_marker(&arg)
+            || passed_on && next.as_deref().is_some_and(uncacheable_marker));
          if keyed {
             invocation.key_args.push(arg);
             if consumed && let Some(value) = next {
@@ -244,6 +238,8 @@ impl Invocation {
             && (invocation.output.as_os_str().is_empty() || invocation.output == Path::new("-"))
          {
             invocation.stdout = true;
+         } else if invocation.output.as_os_str().is_empty() && header {
+            invocation.output = PathBuf::from(format!("{}.gch", invocation.source));
          } else if invocation.output.as_os_str().is_empty() {
             invocation.output = Path::new(&invocation.source)
                .file_stem()
@@ -267,11 +263,7 @@ impl Invocation {
          }
       }
       let extension = invocation.output.extension();
-      if emit_pch
-         && header
-         && invocation.action == Action::Compile
-         && extension.is_some_and(|found| found == "pch")
-      {
+      if header && invocation.action == Action::Compile {
          invocation.action = Action::Precompile;
       }
       let precompile = invocation.action == Action::Precompile;
@@ -309,6 +301,33 @@ impl Invocation {
             None => self.cacheable = false,
          }
       }
+   }
+
+   /// The precompiled header clang finds beside an `-include`d one, which
+   /// only its cc1 job names.
+   fn read_implicit_precompiled(&mut self, compiler: &str) -> io::Result<()> {
+      if !self.cacheable || !self.args.iter().any(|arg| arg == "-include") {
+         return Ok(());
+      }
+      let printed = Command::new(compiler)
+         .arg("-###")
+         .args(&self.args)
+         .output()?;
+      let job = String::from_utf8_lossy(&printed.stderr);
+      let mut tokens = job
+         .lines()
+         .filter(|line| line.starts_with(" \""))
+         .flat_map(|line| line.split("\" \""))
+         .map(|token| token.trim().trim_matches('"'));
+      while let Some(token) = tokens.next() {
+         if token == "-include-pch"
+            && let Some(path) = tokens.next()
+            && !self.inputs.iter().any(|input| input == path)
+         {
+            self.inputs.push(path.to_owned());
+         }
+      }
+      Ok(())
    }
 
    /// clang reopens the headers a .pch names, so a precompile matches them
@@ -572,6 +591,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    }
    invocation.args = driver.arguments(language, &invocation.args);
    invocation.prescan(language, compiler)?;
+   invocation.read_implicit_precompiled(compiler)?;
    let mut store = Store::new();
    let mut manifest_store = invocation.manifest_store();
    store.learn_random(&invocation.args);
@@ -895,6 +915,32 @@ fn run_uncached(
    settled_link(&invocation.output, &mut arguments, &dependencies, |args| {
       run_slotted(OsStr::new(compiler), args, slot_socket, false)
    })
+}
+
+fn uncacheable_marker(arg: &str) -> bool {
+   arg.starts_with('@')
+      || arg.contains(",@")
+      || [
+         "-Map",
+         "--print-map",
+         "--out-implib",
+         "--trace",
+         "--verbose",
+         "--print-gc-sections",
+         "--stats",
+         "-save-temps",
+         "-ftime-trace",
+         "-fprofile",
+         "--coverage",
+         "-fmodules",
+         "-MJ",
+         "-serialize-diagnostics",
+         "-gsplit-dwarf",
+      ]
+      .iter()
+      .any(|marker| arg.contains(marker))
+      || arg.ends_with(",-M")
+      || arg.ends_with(",-t")
 }
 
 fn given_link_depfile(args: &[String]) -> Option<&str> {
