@@ -2,21 +2,20 @@
 # checks it. nuff reads ../nuff.toml, and this wrapper pins nuff and every tool that config names.
 {
   pkgs,
-  # false inside a build (nix/checks.nix), where the package-scripts lint has no evaluator to
-  # instantiate the set with
+  # false inside a build
   evaluates ? true,
 }:
 let
   inherit (pkgs) lib;
   nuff = pkgs.callPackage "${
-    builtins.fetchGit {
+    fetchGit {
       url = "https://github.com/manic-systems/nuff";
       rev = "a99fadda6130d62f92e87963218740c2455a2c70";
     }
   }/nix/package.nix" { };
   fenix = (builtins.fromJSON (builtins.readFile ../flake.lock)).nodes.fenix.locked;
   rustfmt =
-    (import (builtins.fetchTarball {
+    (import (fetchTarball {
       url = "https://github.com/${fenix.owner}/${fenix.repo}/archive/${fenix.rev}.tar.gz";
       sha256 = fenix.narHash;
     }) { inherit pkgs; }).latest.rustfmt;
