@@ -8,6 +8,7 @@ use std::{
    },
    ffi::OsStr,
    fs::{
+      metadata,
       read,
       read_to_string,
       remove_file,
@@ -17,6 +18,7 @@ use std::{
       Write as _,
    },
    mem::take,
+   os::unix::fs::PermissionsExt as _,
    path::{
       Path,
       PathBuf,
@@ -47,16 +49,14 @@ use mummer::{
    },
 };
 use tempfile::Builder;
-use tightrope::{
-   client::Client,
-   identity::Identity,
-};
+use tightrope::client::Client;
 
 use crate::{
    driver::{
       BinaryFormat,
       Driver,
       Language,
+      Settled,
       reserve,
       settle_runpath,
    },
@@ -440,13 +440,6 @@ impl Invocation {
          Action::Precompile => "precompile",
          Action::Compile | Action::Assembly | Action::Preprocess | Action::Other => "compile",
       });
-      if self.links() {
-         // mummer settles a link's RUNPATH itself
-         field(
-            &mut hasher,
-            Identity::of(&read(current_exe()?)?).to_string(),
-         );
-      }
       // the toolchain's own paths move with every mummer build
       let toolchain = current_exe()
          .ok()
@@ -724,7 +717,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    } else {
       link_dependency.path().to_path_buf()
    };
-   let result = {
+   let (result, linked) = {
       let mut link = |args: &[String]| {
          run(
             OsStr::new(compiler),
@@ -737,7 +730,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       if invocation.links() && driver.format() == BinaryFormat::Elf {
          settled_link(&invocation.output, &mut arguments, &link_file, &mut link)?
       } else {
-         link(&arguments)?
+         (link(&arguments)?, None)
       }
    };
    io::stderr().lock().write_all(&result.stderr)?;
@@ -793,7 +786,10 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       let manifest = Manifest::build(&mut cache, &mut manifest_store, &inputs, &[], &absent)?;
       let key = manifest.result_key(&request)?;
       if result.status == 0_i32 {
-         let mut object = read(output_path)?;
+         let mut object = match linked {
+            Some(bytes) => bytes,
+            None => read(output_path)?,
+         };
          store.mask_output(&mut object, false);
          cache.put(&format!("o/{key}"), &object)?;
          if invocation.depfile.is_some() {
@@ -801,8 +797,8 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
             store.mask_output(&mut dep_bytes, false);
             cache.put(&format!("d/{key}"), &dep_bytes)?;
          }
-         if let Some(ref given) = invocation.linkfile {
-            let text = read_to_string(given)?;
+         if invocation.links() {
+            let text = read_to_string(&link_file)?;
             let target = format!("{}:", invocation.output.display());
             let body = text
                .strip_prefix(&target)
@@ -998,9 +994,11 @@ fn run_uncached(
       .tempfile()?;
    let mut arguments = invocation.args.clone();
    let dependencies = link_depfile(&mut arguments, scratch.path());
-   settled_link(&invocation.output, &mut arguments, &dependencies, |args| {
-      run_slotted(OsStr::new(compiler), args, slot_socket, false)
-   })
+   let (result, _linked) =
+      settled_link(&invocation.output, &mut arguments, &dependencies, |args| {
+         run_slotted(OsStr::new(compiler), args, slot_socket, false)
+      })?;
+   Ok(result)
 }
 
 fn uncacheable_marker(arg: &str) -> bool {
@@ -1051,31 +1049,45 @@ fn link_depfile(args: &mut Vec<String>, ours: &Path) -> PathBuf {
 }
 
 /// Links, then settles the output's RUNPATH from what the linker opened,
-/// linking once more with the room the output turned out to need.
+/// linking once more with the room the output turned out to need. Also gives
+/// the linker's output as it was before settling, what the cache keeps so a
+/// hit settles it again with this mummer's rules.
 fn settled_link<Link>(
    output: &Path,
    args: &mut [String],
    dependencies: &Path,
    mut link: Link,
-) -> io::Result<RunResult>
+) -> io::Result<(RunResult, Option<Vec<u8>>)>
 where
    Link: FnMut(&[String]) -> io::Result<RunResult>,
 {
-   let result = link(args)?;
-   if result.status != 0_i32 || !output.is_file() || !dependencies.is_file() {
-      return Ok(result);
+   let mut result = link(args)?;
+   let mut relinked = false;
+   loop {
+      if result.status != 0_i32 || !output.is_file() || !dependencies.is_file() {
+         return Ok((result, None));
+      }
+      let linked = read(output)?;
+      match settle_runpath(&linked, &read_to_string(dependencies)?)? {
+         Settled::Image(settled) => {
+            if settled != linked {
+               let mode = metadata(output)?.permissions().mode();
+               write_file(output, &settled, Some(mode & 0o7777))?;
+            }
+            return Ok((result, Some(linked)));
+         },
+         Settled::Room(_) if relinked => {
+            return Err(io::Error::other(
+               "RUNPATH does not fit even after relinking",
+            ));
+         },
+         Settled::Room(room) => {
+            reserve(args, room);
+            result = link(args)?;
+            relinked = true;
+         },
+      }
    }
-   let Some(room) = settle_runpath(output, &read_to_string(dependencies)?)? else {
-      return Ok(result);
-   };
-   reserve(args, room);
-   let again = link(args)?;
-   if again.status == 0_i32 && settle_runpath(output, &read_to_string(dependencies)?)?.is_some() {
-      return Err(io::Error::other(
-         "RUNPATH does not fit even after relinking",
-      ));
-   }
-   Ok(again)
 }
 
 fn cached(
@@ -1119,8 +1131,30 @@ fn cached(
       } else {
          None
       };
+      let link_text = if invocation.links() {
+         let Some(mut link_bytes) = linked else {
+            return Err(Miss::ObjectGone);
+         };
+         store.mask_output(&mut link_bytes, true);
+         let raw = String::from_utf8(link_bytes).map_err(io::Error::other)?;
+         let text = store.resolve_all(&raw);
+         let target = format!("{}:", invocation.output.display());
+         Some(
+            text
+               .strip_prefix("<output>:")
+               .map_or_else(|| text.clone(), |rest| format!("{target}{rest}")),
+         )
+      } else {
+         None
+      };
       store.mask_output(&mut bytes, true);
       store.resolve_bytes(&mut bytes);
+      if let Some(ref text) = link_text {
+         bytes = match settle_runpath(&bytes, text)? {
+            Settled::Image(settled) => settled,
+            Settled::Room(_) => return Err(Miss::RunpathRoom),
+         };
+      }
       if invocation.stdout {
          io::stdout().lock().write_all(&bytes)?;
       } else {
@@ -1133,18 +1167,8 @@ fn cached(
       if let (Some(path), Some(text)) = (invocation.depfile.as_ref(), dep_text.as_ref()) {
          write_file(path, text.as_bytes(), None)?;
       }
-      if let Some(ref given) = invocation.linkfile {
-         let Some(mut link_bytes) = linked else {
-            return Err(Miss::ObjectGone);
-         };
-         store.mask_output(&mut link_bytes, true);
-         let raw = String::from_utf8(link_bytes).map_err(io::Error::other)?;
-         let text = store.resolve_all(&raw);
-         let target = format!("{}:", invocation.output.display());
-         let restored = text
-            .strip_prefix("<output>:")
-            .map_or_else(|| text.clone(), |rest| format!("{target}{rest}"));
-         write_file(given, restored.as_bytes(), None)?;
+      if let (Some(given), Some(text)) = (invocation.linkfile.as_ref(), link_text.as_ref()) {
+         write_file(given, text.as_bytes(), None)?;
       }
    }
    store.mask_output(&mut diagnostics, true);
