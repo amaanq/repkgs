@@ -1,5 +1,4 @@
 use std::{
-   collections::HashMap,
    env::{
       current_exe,
       var,
@@ -20,6 +19,8 @@ use mummer::{
    config::{
       BinaryFormat,
       Config,
+      PackageFlags,
+      package_flags,
    },
    elf::{
       RUNPATH_SLACK,
@@ -34,7 +35,6 @@ use mummer::{
       is_store_path,
    },
 };
-use serde::Deserialize;
 
 use crate::manifest::{
    Miss,
@@ -72,16 +72,6 @@ pub enum Language {
    Cc,
    Cxx,
    Fortran,
-}
-
-#[derive(Default, Deserialize)]
-pub struct PackageFlags {
-   #[serde(default)]
-   cflags:   Vec<String>,
-   #[serde(default)]
-   cxxflags: Vec<String>,
-   #[serde(default)]
-   ldflags:  Vec<String>,
 }
 
 pub struct Toolchain {
@@ -160,17 +150,10 @@ impl Driver {
             flag.replace_range(position..=position, &root.to_string_lossy());
          }
       }
-      let package = match var("PKGS_CC") {
-         Ok(packages_text) => {
-            let mut packages =
-               serde_json::from_str::<HashMap<String, PackageFlags>>(&packages_text)?;
-            let name = root
-               .to_str()
-               .ok_or_else(|| io::Error::other("mummer installation path is not UTF-8"))?;
-            packages.remove(name).unwrap_or_default()
-         },
-         Err(_) => PackageFlags::default(),
-      };
+      let name = root
+         .to_str()
+         .ok_or_else(|| io::Error::other("mummer installation path is not UTF-8"))?;
+      let package = package_flags()?.remove(name).unwrap_or_default();
       Ok(Self::Configured(Box::new(Toolchain { config, package })))
    }
 

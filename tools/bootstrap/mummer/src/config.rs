@@ -1,3 +1,9 @@
+use std::{
+   collections::BTreeMap,
+   env::var,
+   io,
+};
+
 use serde::{
    Deserialize,
    Serialize,
@@ -40,4 +46,24 @@ pub struct ElfPolicy {
    pub interp: String,
    #[serde(default, skip_serializing_if = "Option::is_none")]
    pub crt:    Option<String>,
+}
+
+/// What a package adds to the flags of one toolchain.
+#[derive(Default, Deserialize, Serialize)]
+pub struct PackageFlags {
+   #[serde(default)]
+   pub cflags:   Vec<String>,
+   #[serde(default)]
+   pub cxxflags: Vec<String>,
+   #[serde(default)]
+   pub ldflags:  Vec<String>,
+}
+
+/// `PKGS_CC`, the package's flags by the root of the toolchain they are for.
+#[inline]
+pub fn package_flags() -> io::Result<BTreeMap<String, PackageFlags>> {
+   match var("PKGS_CC") {
+      Ok(text) => Ok(serde_json::from_str(&text)?),
+      Err(_) => Ok(BTreeMap::new()),
+   }
 }

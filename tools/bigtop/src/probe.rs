@@ -1,6 +1,4 @@
 use std::{
-   collections::BTreeMap,
-   env::var,
    fs::{
       canonicalize,
       create_dir_all,
@@ -14,6 +12,10 @@ use std::{
 };
 
 use mummer::{
+   config::{
+      PackageFlags,
+      package_flags,
+   },
    directory::{
       get_directory,
       put_directory,
@@ -30,7 +32,6 @@ use mummer::{
    },
 };
 use serde::Serialize;
-use serde_json::Value;
 use tightrope::{
    client::Client,
    key::Key,
@@ -46,7 +47,7 @@ struct Record<'inputs, Extra> {
    files:      Vec<String>,
    args:       Option<&'inputs Extra>,
    roots:      Vec<&'inputs String>,
-   cc:         Vec<&'inputs Value>,
+   cc:         Vec<&'inputs PackageFlags>,
    toolchains: Vec<String>,
 }
 
@@ -64,10 +65,7 @@ where
       .iter()
       .map(|path| Ok(format!("{path}={}", hex(&read(path)?))))
       .collect::<io::Result<Vec<_>>>()?;
-   let cc = match var("PKGS_CC") {
-      Ok(flags) => serde_json::from_str::<BTreeMap<String, Value>>(&flags)?,
-      Err(_) => BTreeMap::new(),
-   };
+   let cc = package_flags()?;
    let toolchains = cc
       .keys()
       .map(|root| toolchain(root, &top))

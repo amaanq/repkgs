@@ -18,13 +18,13 @@ use std::{
 };
 
 use mummer::{
-   config::BinaryFormat,
+   config::{
+      BinaryFormat,
+      PackageFlags,
+   },
    files::glob,
 };
-use serde::{
-   Deserialize as _,
-   Serialize,
-};
+use serde::Deserialize as _;
 use serde_json::Value;
 
 use crate::{
@@ -49,13 +49,6 @@ use crate::{
 };
 
 const EPOCH: &str = "315532800";
-
-#[derive(Serialize)]
-struct PackageFlags {
-   cflags:   Vec<String>,
-   cxxflags: Vec<String>,
-   ldflags:  Vec<String>,
-}
 
 pub fn run(out: &Path, cache: bool) -> io::Result<()> {
    let attrs = Attrs::load()?;
