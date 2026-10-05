@@ -12,14 +12,12 @@ use std::{
       Path,
       PathBuf,
    },
-   process::{
-      Command,
-      Stdio,
-   },
+   process::Command,
 };
 
 use mummer::{
    files::write_file,
+   process::Checked as _,
    tree::note,
 };
 
@@ -36,6 +34,7 @@ use crate::{
          run,
          strs,
          unknown,
+         upsert,
       },
       dispatch::System,
    },
@@ -101,7 +100,7 @@ impl System for Meson {
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options("meson")?;
+      let options: Options = ctx.options(self.name())?;
       match verb {
          "configure" => Self::configure(ctx, &options),
          "build" => run("ninja", &[&format!("-j{}", ctx.njobs)], &[]),
@@ -233,10 +232,7 @@ impl Meson {
          ("auto_features".to_owned(), Def::Text("disabled".to_owned())),
       ];
       for (name, value) in &options.defs {
-         match defs.iter_mut().find(|entry| entry.0 == *name) {
-            Some(entry) => entry.1 = value.clone(),
-            None => defs.push((name.clone(), value.clone())),
-         }
+         upsert(&mut defs, name, value.clone());
       }
       let source = ctx.project_dir(&options.root);
       let machines = if platform.cross {
@@ -267,15 +263,11 @@ impl Meson {
       ];
       let mut kept = Vec::new();
       if !options.skip_tests.is_empty() {
-         let output = Command::new("meson")
+         let listed = Command::new("meson")
             .args(["test", "--list"])
-            .stderr(Stdio::inherit())
-            .output()?;
-         if !output.status.success() {
-            return Err(io::Error::other("meson test --list failed"));
-         }
+            .checked_output()?;
          kept.extend(
-            String::from_utf8_lossy(&output.stdout)
+            String::from_utf8_lossy(&listed)
                .lines()
                .filter(|name| !options.skip_tests.iter().any(|skip| name.contains(skip)))
                .map(str::to_owned),

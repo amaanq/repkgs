@@ -12,13 +12,13 @@ use std::{
       Path,
       PathBuf,
    },
-   process::{
-      Command,
-      Stdio,
-   },
+   process::Command,
 };
 
-use mummer::store::on_path;
+use mummer::{
+   process::Checked as _,
+   store::on_path,
+};
 use serde::Serialize;
 
 use crate::{
@@ -34,7 +34,7 @@ use crate::{
 pub enum Setting {
    Text(String),
    List(Vec<String>),
-   Unset(()),
+   Unset,
 }
 
 /// what a build system's setup hands the build script to load, PATH as a list.
@@ -52,7 +52,7 @@ impl Env {
    }
 
    pub fn unset(&mut self, name: &str) {
-      self.0.insert(name.to_owned(), Setting::Unset(()));
+      self.0.insert(name.to_owned(), Setting::Unset);
    }
 
    /// into this process, lists joined the way nu exports PATH.
@@ -61,7 +61,7 @@ impl Env {
          match *setting {
             Setting::Text(ref value) => export(name, value),
             Setting::List(ref values) => export(name, &values.join(":")),
-            Setting::Unset(()) => {
+            Setting::Unset => {
                // SAFETY: the build runs single-threaded between phases
                unsafe { remove_var(name) }
             },
@@ -138,32 +138,22 @@ fn echo(program: &str, args: &[&str]) {
 
 pub fn run(program: &str, args: &[&str], env: &[(&str, &str)]) -> io::Result<()> {
    echo(program, args);
-   let status = Command::new(program)
+   Command::new(program)
       .args(args)
       .envs(env.iter().copied())
-      .status()?;
-   if !status.success() {
-      return Err(io::Error::other(format!(
-         "{program} failed with {}",
-         status.code().unwrap_or(-1)
-      )));
-   }
-   Ok(())
+      .checked()
 }
 
 pub fn capture(program: &str, args: &[&str]) -> io::Result<String> {
    echo(program, args);
-   let output = Command::new(program)
-      .args(args)
-      .stderr(Stdio::inherit())
-      .output()?;
-   if !output.status.success() {
-      return Err(io::Error::other(format!(
-         "{program} failed with {}",
-         output.status.code().unwrap_or(-1)
-      )));
+   Ok(String::from_utf8_lossy(&Command::new(program).args(args).checked_output()?).into_owned())
+}
+
+pub fn upsert<Value>(defs: &mut Vec<(String, Value)>, name: &str, value: Value) {
+   match defs.iter_mut().find(|entry| entry.0 == name) {
+      Some(entry) => entry.1 = value,
+      None => defs.push((name.to_owned(), value)),
    }
-   Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 pub fn unknown(name: &str, verb: &str) -> io::Error {

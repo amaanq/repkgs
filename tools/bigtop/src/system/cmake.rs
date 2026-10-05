@@ -30,6 +30,7 @@ use crate::{
          run,
          strs,
          unknown,
+         upsert,
       },
       dispatch::System,
    },
@@ -77,7 +78,7 @@ impl System for Cmake {
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options("cmake")?;
+      let options: Options = ctx.options(self.name())?;
       match verb {
          "configure" => Self::configure(ctx, attrs, &options, socket),
          "build" => {
@@ -106,13 +107,6 @@ impl Cmake {
          Def::Flag(false) => "OFF".to_owned(),
          Def::Text(ref text) => text.clone(),
          Def::Number(number) => number.to_string(),
-      }
-   }
-
-   fn upsert(defs: &mut Vec<(String, Def)>, name: &str, value: Def) {
-      match defs.iter_mut().find(|entry| entry.0 == name) {
-         Some(entry) => entry.1 = value,
-         None => defs.push((name.to_owned(), value)),
       }
    }
 
@@ -167,17 +161,17 @@ impl Cmake {
          ("BUILD_TESTING".to_owned(), Def::Flag(ctx.tests_run)),
       ];
       if platform.cross {
-         Self::upsert(
+         upsert(
             &mut defs,
             "CMAKE_SYSTEM_NAME",
             Def::Text(platform.os_names.cmake),
          );
-         Self::upsert(&mut defs, "CMAKE_SYSTEM_PROCESSOR", Def::Text(platform.cpu));
+         upsert(&mut defs, "CMAKE_SYSTEM_PROCESSOR", Def::Text(platform.cpu));
 
          // a hand-set CMAKE_SYSTEM_NAME leaves the version empty, and projects
          // such as zeromq derive _WIN32_WINNT from it
          if platform.os == "windows" {
-            Self::upsert(
+            upsert(
                &mut defs,
                "CMAKE_SYSTEM_VERSION",
                Def::Text("10.0".to_owned()),
@@ -185,21 +179,21 @@ impl Cmake {
          }
       }
       if platform.os == "macos" {
-         Self::upsert(
+         upsert(
             &mut defs,
             "CMAKE_OSX_SYSROOT",
             Def::Text(platform.sysroot.clone()),
          );
       }
       if !platform.emulator.is_empty() {
-         Self::upsert(
+         upsert(
             &mut defs,
             "CMAKE_CROSSCOMPILING_EMULATOR",
             Def::Text(platform.emulator.join(";")),
          );
       }
       for (name, value) in &options.defs {
-         Self::upsert(&mut defs, name, value.clone());
+         upsert(&mut defs, name, value.clone());
       }
       Ok(defs)
    }
