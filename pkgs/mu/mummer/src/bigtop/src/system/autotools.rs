@@ -1,4 +1,5 @@
 use std::{
+   collections::HashSet,
    env::var,
    fs::{
       File,
@@ -212,7 +213,9 @@ impl Autotools {
             Err(error) => return Err(error),
             Ok(first) => {
                run(&shell, &args, &env)?;
-               read(&status)? == first
+               let second = read(&status)?;
+               Self::note_lost_lines(&first, &second);
+               second == first
             },
          };
       if reusable {
@@ -230,6 +233,23 @@ impl Autotools {
          Self::stub_gnulib_tests(&workdir, &platform.os)?;
       }
       Ok(())
+   }
+
+   /// Names the config.status lines a cached run lost, which point at the
+   /// check whose answer replays without its side effect.
+   fn note_lost_lines(first: &[u8], second: &[u8]) {
+      let fresh = String::from_utf8_lossy(first);
+      let replayed = String::from_utf8_lossy(second);
+      let kept = replayed.lines().collect::<HashSet<_>>();
+      for line in fresh.lines().filter(|line| !kept.contains(line)).take(3) {
+         note(
+            "config.cache",
+            &format!(
+               "cached run lost {}",
+               line.chars().take(160).collect::<String>()
+            ),
+         );
+      }
    }
 
    const BACKPORTS: &[(&str, &[u8], &[u8])] = &[
