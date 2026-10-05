@@ -2,6 +2,7 @@ tag   = "v{version}"
 track = "github:tree-sitter/tree-sitter"
 fetch = { archive = true }
 with  = [ "cargo", "make" ]
+tools = [ "nodejs" ]
 
 [steps.before]
 "cargo.build" = [ "make.build", "make.install" ]
