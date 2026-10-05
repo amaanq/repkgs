@@ -71,7 +71,7 @@ where
       "toolchains": toolchains,
    });
    Ok(format!(
-      "probe/v10/{kind}/{}",
+      "probe/{kind}/{}",
       hex(&serde_json::to_vec(&record)?)
    ))
 }

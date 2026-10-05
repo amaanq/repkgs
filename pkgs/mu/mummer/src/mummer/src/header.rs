@@ -151,7 +151,7 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
          field(&mut hasher, read(path)?);
       }
    }
-   let key = format!("probe/header/v1/{}", hasher.finalize().to_hex());
+   let key = format!("probe/header/{}", hasher.finalize().to_hex());
    match cache.get(&key)? {
       Some(bytes) if bytes == b"yes\n" => {
          log("header", "hit", &key, started);
