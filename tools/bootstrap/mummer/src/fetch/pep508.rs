@@ -6,7 +6,22 @@ use std::{
    cmp::Ordering,
    collections::BTreeMap,
    io,
+   iter::repeat,
 };
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Op {
+   Arbitrary,
+   Equal,
+   NotEqual,
+   LessEqual,
+   GreaterEqual,
+   Compatible,
+   Less,
+   Greater,
+   In,
+   NotIn,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Token<'marker> {
@@ -16,11 +31,21 @@ enum Token<'marker> {
    Not,
    And,
    Or,
-   Op(&'marker str),
+   Op(Op),
    Name(&'marker str),
 }
 
-const OPERATORS: [&str; 8] = ["===", "==", "!=", "<=", ">=", "~=", "<", ">"];
+/// Longest first, so `<=` is not read as `<`.
+const OPERATORS: [(&str, Op); 8] = [
+   ("===", Op::Arbitrary),
+   ("==", Op::Equal),
+   ("!=", Op::NotEqual),
+   ("<=", Op::LessEqual),
+   (">=", Op::GreaterEqual),
+   ("~=", Op::Compatible),
+   ("<", Op::Less),
+   (">", Op::Greater),
+];
 
 fn tokenize(text: &str) -> io::Result<Vec<Token<'_>>> {
    let mut tokens = Vec::new();
@@ -49,9 +74,12 @@ fn tokenize(text: &str) -> io::Result<Vec<Token<'_>>> {
          rest = &rest[1..];
          continue;
       }
-      if let Some(op) = OPERATORS.iter().find(|op| rest.starts_with(**op)) {
+      if let Some(&(spelled, op)) = OPERATORS
+         .iter()
+         .find(|&&(spelled, _)| rest.starts_with(spelled))
+      {
          tokens.push(Token::Op(op));
-         rest = &rest[op.len()..];
+         rest = &rest[spelled.len()..];
          continue;
       }
       let end = rest
@@ -72,12 +100,12 @@ fn tokenize(text: &str) -> io::Result<Vec<Token<'_>>> {
                   .starts_with(|character: char| character.is_alphanumeric() || character == '_')
             {
                rest = tail;
-               Token::Op("not in")
+               Token::Op(Op::NotIn)
             } else {
                Token::Not
             }
          },
-         "in" => Token::Op("in"),
+         "in" => Token::Op(Op::In),
          "and" => Token::And,
          "or" => Token::Or,
          _ => Token::Name(word),
@@ -101,17 +129,8 @@ fn version_order(lhs: &str, rhs: &str) -> Ordering {
    let left = release(lhs);
    let right = release(rhs);
    let width = left.len().max(right.len());
-   for index in 0..width {
-      let order = left
-         .get(index)
-         .copied()
-         .unwrap_or(0)
-         .cmp(&right.get(index).copied().unwrap_or(0));
-      if order != Ordering::Equal {
-         return order;
-      }
-   }
-   Ordering::Equal
+   let padded = |parts: Vec<u64>| parts.into_iter().chain(repeat(0)).take(width);
+   padded(left).cmp(padded(right))
 }
 
 fn looks_like_version(text: &str) -> bool {
@@ -119,18 +138,17 @@ fn looks_like_version(text: &str) -> bool {
 }
 
 /// string operators always, ordering only between version-looking operands.
-fn compare(lhs: &str, op: &str, rhs: &str) -> bool {
+fn compare(lhs: &str, op: Op, rhs: &str) -> bool {
+   let versions = looks_like_version(lhs) && looks_like_version(rhs);
    match op {
-      "in" => rhs.contains(lhs),
-      "not in" => !rhs.contains(lhs),
-      _ if !(looks_like_version(lhs) && looks_like_version(rhs)) => {
-         match op {
-            "==" | "===" => lhs == rhs,
-            "!=" => lhs != rhs,
-            _ => false,
-         }
+      Op::In => rhs.contains(lhs),
+      Op::NotIn => !rhs.contains(lhs),
+      Op::Equal | Op::Arbitrary if !versions => lhs == rhs,
+      Op::NotEqual if !versions => lhs != rhs,
+      Op::Compatible | Op::Less | Op::LessEqual | Op::Greater | Op::GreaterEqual if !versions => {
+         false
       },
-      "~=" => {
+      Op::Compatible => {
          let wanted = release(rhs);
          let prefix = wanted.len().saturating_sub(1);
          version_order(lhs, rhs) != Ordering::Less
@@ -139,22 +157,16 @@ fn compare(lhs: &str, op: &str, rhs: &str) -> bool {
                .take(prefix)
                .eq(wanted.iter().take(prefix))
       },
-      "==" | "!=" if rhs.ends_with(".*") => {
+      Op::Equal | Op::NotEqual if rhs.ends_with(".*") => {
          let prefix = release(rhs.strip_suffix(".*").unwrap_or(rhs));
-         release(lhs).iter().take(prefix.len()).eq(prefix.iter()) == (op == "==")
+         release(lhs).iter().take(prefix.len()).eq(prefix.iter()) == (op == Op::Equal)
       },
-      _ => {
-         let order = version_order(lhs, rhs);
-         match op {
-            "==" | "===" => order == Ordering::Equal,
-            "!=" => order != Ordering::Equal,
-            "<" => order == Ordering::Less,
-            "<=" => order != Ordering::Greater,
-            ">" => order == Ordering::Greater,
-            ">=" => order != Ordering::Less,
-            _ => false,
-         }
-      },
+      Op::Equal | Op::Arbitrary => version_order(lhs, rhs) == Ordering::Equal,
+      Op::NotEqual => version_order(lhs, rhs) != Ordering::Equal,
+      Op::Less => version_order(lhs, rhs) == Ordering::Less,
+      Op::LessEqual => version_order(lhs, rhs) != Ordering::Greater,
+      Op::Greater => version_order(lhs, rhs) == Ordering::Greater,
+      Op::GreaterEqual => version_order(lhs, rhs) != Ordering::Less,
    }
 }
 
@@ -196,14 +208,6 @@ impl<'marker> Parser<'marker> {
       self.at += 1;
       match token {
          Token::Literal(text) => Ok(text.to_owned()),
-         // platform_python_implementation is the one variable whose name differs from our vars key
-         Token::Name("platform_python_implementation") => {
-            Ok(self
-               .vars
-               .get("implementation_cap")
-               .cloned()
-               .unwrap_or_default())
-         },
          Token::Name(name) => {
             self
                .vars

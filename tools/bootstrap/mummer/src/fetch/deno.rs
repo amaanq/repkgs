@@ -3,6 +3,10 @@ use std::{
       BTreeMap,
       BTreeSet,
    },
+   fmt::{
+      Formatter,
+      Result as FormatResult,
+   },
    fs::read_to_string,
    io,
 };
@@ -20,11 +24,15 @@ use mummer::{
 };
 use serde::{
    Deserialize,
+   Deserializer,
    Serialize,
-};
-use serde_json::{
-   Map,
-   Value,
+   Serializer,
+   de::{
+      IgnoredAny,
+      MapAccess,
+      Visitor,
+   },
+   ser::SerializeMap as _,
 };
 
 use crate::{
@@ -54,8 +62,7 @@ const JSR: &str = "https://jsr.io";
 
 #[derive(Deserialize)]
 struct Lock {
-   #[serde(default)]
-   version: String,
+   version: Option<String>,
    #[serde(default)]
    npm:     BTreeMap<String, NpmEntry>,
    #[serde(default)]
@@ -233,14 +240,11 @@ impl Producer for Deno {
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
       let lock: Lock = serde_json::from_str(&read_to_string(lock_path("deno.lock")?)?)?;
-      let lock_version: u64 = if lock.version.is_empty() {
-         3
-      } else {
-         lock
-            .version
-            .parse()
-            .map_err(|_bad| io::Error::other("denoDeps: deno.lock version is not a number"))?
-      };
+      let lock_version = lock.version.as_deref().map_or(Ok(3), |version| {
+         version
+            .parse::<u64>()
+            .map_err(|_bad| io::Error::other("denoDeps: deno.lock version is not a number"))
+      })?;
       if lock_version < 4 {
          return Err(io::Error::other(
             "denoDeps: deno.lock older than version 4, regenerate it with deno >= 2",
@@ -336,10 +340,40 @@ fn content_type(url: &str) -> &'static str {
 #[derive(Deserialize)]
 struct Meta {
    manifest:      BTreeMap<String, ManifestEntry>,
-   #[serde(default, rename = "moduleGraph2")]
-   module_graph2: Option<BTreeMap<String, Value>>,
-   #[serde(default, rename = "moduleGraph1")]
-   module_graph1: Option<BTreeMap<String, Value>>,
+   #[serde(default, deserialize_with = "keys", rename = "moduleGraph2")]
+   module_graph2: Option<BTreeSet<String>>,
+   #[serde(default, deserialize_with = "keys", rename = "moduleGraph1")]
+   module_graph1: Option<BTreeSet<String>>,
+}
+
+/// The modules a jsr module graph names, its values unread.
+fn keys<'de, Input>(input: Input) -> Result<Option<BTreeSet<String>>, Input::Error>
+where
+   Input: Deserializer<'de>,
+{
+   input.deserialize_map(GraphKeys).map(Some)
+}
+
+struct GraphKeys;
+
+impl<'de> Visitor<'de> for GraphKeys {
+   type Value = BTreeSet<String>;
+
+   fn expecting(&self, formatter: &mut Formatter<'_>) -> FormatResult {
+      formatter.write_str("a jsr module graph")
+   }
+
+   fn visit_map<Access>(self, mut map: Access) -> Result<Self::Value, Access::Error>
+   where
+      Access: MapAccess<'de>,
+   {
+      let mut modules = BTreeSet::new();
+      while let Some(module) = map.next_key::<String>()? {
+         map.next_value::<IgnoredAny>()?;
+         modules.insert(module);
+      }
+      Ok(modules)
+   }
 }
 
 #[derive(Deserialize)]
@@ -359,7 +393,7 @@ fn jsr_modules(package: &JsrFetched) -> io::Result<Vec<(String, Row)>> {
    meta
       .manifest
       .iter()
-      .filter(|module| graph.contains_key(module.0))
+      .filter(|module| graph.contains(module.0))
       .map(|(path, entry)| {
          let url = format!("{JSR}/{}/{}{path}", package.name, package.version);
          let row = Row {
@@ -378,6 +412,18 @@ fn jsr_modules(package: &JsrFetched) -> io::Result<Vec<(String, Row)>> {
       .collect::<io::Result<_>>()
 }
 
+/// `{}`, an object deno wants present with nothing in it.
+struct Empty;
+
+impl Serialize for Empty {
+   fn serialize<Out>(&self, serializer: Out) -> Result<Out::Ok, Out::Error>
+   where
+      Out: Serializer,
+   {
+      serializer.serialize_map(Some(0))?.end()
+   }
+}
+
 #[derive(Serialize)]
 struct Dist<'entry> {
    tarball:   &'entry str,
@@ -387,7 +433,7 @@ struct Dist<'entry> {
 #[derive(Serialize)]
 struct Listed<'entry> {
    version:      &'entry str,
-   dependencies: Map<String, Value>,
+   dependencies: Empty,
    dist:         Dist<'entry>,
 }
 
@@ -395,15 +441,31 @@ struct Listed<'entry> {
 struct Packument<'entry> {
    name:      &'entry str,
    #[serde(rename = "dist-tags")]
-   dist_tags: Map<String, Value>,
+   dist_tags: Empty,
    #[serde(rename = "_deno.packumentFormat")]
    format:    &'static str,
    versions:  BTreeMap<&'entry str, Listed<'entry>>,
 }
 
+/// `{"<version>": {}, …}`, what jsr's meta.json lists.
+struct Listing<'entry>(BTreeSet<&'entry str>);
+
+impl Serialize for Listing<'_> {
+   fn serialize<Out>(&self, serializer: Out) -> Result<Out::Ok, Out::Error>
+   where
+      Out: Serializer,
+   {
+      let mut map = serializer.serialize_map(Some(self.0.len()))?;
+      for version in &self.0 {
+         map.serialize_entry(version, &Empty)?;
+      }
+      map.end()
+   }
+}
+
 #[derive(Serialize)]
 struct Versions<'entry> {
-   versions: BTreeMap<&'entry str, Map<String, Value>>,
+   versions: Listing<'entry>,
 }
 
 /// second stage of `deno`, reads the fetched jsr _meta.json files, each module
@@ -458,10 +520,12 @@ impl Producer for DenoFiles {
       for (name, versions) in &jsr_by_name {
          let url = format!("{JSR}/{name}/meta.json");
          let listing = Versions {
-            versions: versions
-               .iter()
-               .map(|package| (package.version.as_str(), Map::new()))
-               .collect(),
+            versions: Listing(
+               versions
+                  .iter()
+                  .map(|package| package.version.as_str())
+                  .collect(),
+            ),
          };
          layout.push(Entry::write(
             format!(
@@ -489,14 +553,14 @@ impl Producer for DenoFiles {
       for (name, versions) in &npm_by_name {
          let packument = Packument {
             name,
-            dist_tags: Map::new(),
+            dist_tags: Empty,
             format: "full",
             versions: versions
                .iter()
                .map(|package| {
                   (package.version.as_str(), Listed {
                      version:      &package.version,
-                     dependencies: Map::new(),
+                     dependencies: Empty,
                      dist:         Dist {
                         tarball:   &package.url,
                         integrity: &package.integrity,
