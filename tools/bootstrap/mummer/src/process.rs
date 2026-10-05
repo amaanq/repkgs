@@ -8,7 +8,12 @@ use std::{
       OsStr,
       OsString,
    },
-   fmt::Arguments,
+   fmt::{
+      Arguments,
+      Display,
+      Formatter,
+      Result as FormatResult,
+   },
    fs::{
       OpenOptions,
       read_to_string,
@@ -79,12 +84,87 @@ pub fn diagnostic(message: Arguments<'_>) {
    drop(writeln!(io::stderr().lock(), "{message}"));
 }
 
+/// The wrapper an invocation log line is from.
+#[derive(Clone, Copy)]
+pub enum Tool {
+   Cc,
+   Rustc,
+   Ghc,
+   Go,
+   Header,
+}
+
+impl Display for Tool {
+   #[inline]
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+      f.write_str(match *self {
+         Self::Cc => "cc",
+         Self::Rustc => "rustc",
+         Self::Ghc => "ghc",
+         Self::Go => "go",
+         Self::Header => "header",
+      })
+   }
+}
+
+/// What became of one invocation, as the build's cache summary counts it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+   Query,
+   Linked,
+   Uncacheable,
+   Unkeyed,
+   NoDaemon,
+   Cached,
+   CachedError,
+   Compiled,
+   CompiledError,
+   CompiledUnstored,
+   Failed,
+   UnsupportedCompiler,
+   UnsupportedOptions,
+   CompileHit,
+   PreprocessFailed,
+   Diagnostics,
+   Hit,
+   Miss,
+}
+
+impl Display for Outcome {
+   #[inline]
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+      f.write_str(match *self {
+         Self::Query => "query",
+         Self::Linked => "linked",
+         Self::Uncacheable => "uncacheable",
+         Self::Unkeyed => "unkeyed",
+         Self::NoDaemon => "no-daemon",
+         Self::Cached => "cached",
+         Self::CachedError => "cached-error",
+         Self::Compiled => "compiled",
+         Self::CompiledError => "compiled-error",
+         Self::CompiledUnstored => "compiled-unstored",
+         Self::Failed => "failed",
+         Self::UnsupportedCompiler => "unsupported-compiler",
+         Self::UnsupportedOptions => "unsupported-options",
+         Self::CompileHit => "compile-hit",
+         Self::PreprocessFailed => "preprocess-failed",
+         Self::Diagnostics => "diagnostics",
+         Self::Hit => "hit",
+         Self::Miss => "miss",
+      })
+   }
+}
+
 #[inline]
-pub fn log(tool: &str, outcome: &str, subject: &str, started: Instant) {
+pub fn log<Subject>(tool: Tool, outcome: Outcome, subject: Subject, started: Instant)
+where
+   Subject: Display,
+{
    if let Ok(path) = var("MUMMER_LOG")
       && !path.is_empty()
    {
-      let subject_text = subject.replace(['\t', '\r', '\n'], " ");
+      let subject_text = subject.to_string().replace(['\t', '\r', '\n'], " ");
       let record = format!(
          "{tool}\t{outcome}\t{subject_text}\t{}\n",
          started.elapsed().as_millis()
@@ -103,8 +183,8 @@ pub fn log(tool: &str, outcome: &str, subject: &str, started: Instant) {
 }
 
 #[inline]
-pub fn log_uncached(outcome: &str, args: &[String]) {
-   if outcome == "query" {
+pub fn log_uncached(outcome: Outcome, args: &[String]) {
+   if outcome == Outcome::Query {
       return;
    }
    if let Ok(path) = var("MUMMER_LOG_ARGS")

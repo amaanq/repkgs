@@ -41,7 +41,9 @@ use mummer::{
       write_file,
    },
    process::{
+      Outcome,
       Slot,
+      Tool,
       diagnostic,
       log,
       log_uncached,
@@ -284,12 +286,12 @@ pub fn run_ghc(args: &[String], socket: &Path) -> io::Result<i32> {
    let Some((mut client, key, dependencies)) = prepared else {
       let result = run_slotted(OsStr::new(compiler), arguments, Some(socket), false)?;
       let outcome = if invocation.cacheable {
-         "no-daemon"
+         Outcome::NoDaemon
       } else {
-         "uncacheable"
+         Outcome::Uncacheable
       };
-      log("ghc", outcome, &label, started);
-      if outcome == "uncacheable" {
+      log(Tool::Ghc, outcome, &label, started);
+      if outcome == Outcome::Uncacheable {
          log_uncached(outcome, arguments);
       }
       return Ok(result.status);
@@ -299,7 +301,7 @@ pub fn run_ghc(args: &[String], socket: &Path) -> io::Result<i32> {
       .and_then(|result| replay(&mut client, &store, &result))
    {
       Ok(()) => {
-         log("ghc", "cached", &label, started);
+         log(Tool::Ghc, Outcome::Cached, &label, started);
          return Ok(0);
       },
       Err(Miss::Failed(error)) => {
@@ -321,7 +323,7 @@ pub fn run_ghc(args: &[String], socket: &Path) -> io::Result<i32> {
    )?;
    io::stderr().lock().write_all(&result.stderr)?;
    if result.status != 0_i32 {
-      log("ghc", "failed", &explained, started);
+      log(Tool::Ghc, Outcome::Failed, &explained, started);
       return Ok(result.status);
    }
 
@@ -340,15 +342,15 @@ pub fn run_ghc(args: &[String], socket: &Path) -> io::Result<i32> {
       &result.stderr,
    );
    let outcome = match stored {
-      Ok(()) => "compiled",
+      Ok(()) => Outcome::Compiled,
       Err(error) => {
          diagnostic(format_args!(
             "mummer could not store Haskell result, {error}"
          ));
-         "compiled-unstored"
+         Outcome::CompiledUnstored
       },
    };
-   log("ghc", outcome, &explained, started);
+   log(Tool::Ghc, outcome, &explained, started);
    Ok(0)
 }
 

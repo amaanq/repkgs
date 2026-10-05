@@ -28,6 +28,8 @@ use base64::{
 use mummer::{
    files::write_file,
    process::{
+      Outcome,
+      Tool,
       diagnostic,
       log,
    },
@@ -232,7 +234,7 @@ pub fn run(socket: &Path) -> io::Result<()> {
                Ok(Some(Some((output, bytes)))) => {
                   let path = directory.join(output.to_string());
                   write_file(&path, &bytes, None)?;
-                  log("go", "cached", &action.to_string(), started);
+                  log(Tool::Go, Outcome::Cached, action, started);
                   ResponseBody::Hit {
                      output: output.encoded(),
                      size: bytes.len(),
@@ -284,13 +286,13 @@ pub fn run(socket: &Path) -> io::Result<()> {
                   cache = None;
                }
                log(
-                  "go",
+                  Tool::Go,
                   if cache.is_some() {
-                     "compiled"
+                     Outcome::Compiled
                   } else {
-                     "compiled-unstored"
+                     Outcome::CompiledUnstored
                   },
-                  &action.to_string(),
+                  action,
                   started,
                );
                ResponseBody::Stored { path }

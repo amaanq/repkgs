@@ -34,8 +34,10 @@ use mummer::{
       write_file,
    },
    process::{
+      Outcome,
       RunResult,
       Slot,
+      Tool,
       diagnostic,
       expand_response_files,
       log,
@@ -629,20 +631,20 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       let slot_socket = (!invocation.query).then_some(socket);
       let result = run_uncached(&invocation, driver.format(), compiler, slot_socket)?;
       let outcome = if invocation.query {
-         "query"
+         Outcome::Query
       } else if !invocation.cacheable {
          if invocation.links() || invocation.action == Action::Other {
-            "linked"
+            Outcome::Linked
          } else {
-            "uncacheable"
+            Outcome::Uncacheable
          }
       } else if unkeyed.is_some() {
-         "unkeyed"
+         Outcome::Unkeyed
       } else {
-         "no-daemon"
+         Outcome::NoDaemon
       };
       let explained = unkeyed.map_or_else(|| subject.clone(), |error| format!("{subject} {error}"));
-      log("cc", outcome, &explained, started);
+      log(Tool::Cc, outcome, &explained, started);
       log_uncached(outcome, &user);
       return Ok(result.status);
    };
@@ -651,11 +653,11 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    let miss = match hit {
       Ok(status) => {
          log(
-            "cc",
+            Tool::Cc,
             if status == 0_i32 {
-               "cached"
+               Outcome::Cached
             } else {
-               "cached-error"
+               Outcome::CachedError
             },
             &subject,
             started,
@@ -841,16 +843,16 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    let outcome = match stored {
       Ok(true) => {
          if result.status == 0_i32 {
-            "compiled"
+            Outcome::Compiled
          } else {
-            "compiled-error"
+            Outcome::CompiledError
          }
       },
       Ok(false) => {
          if result.status == 0_i32 {
-            "compiled-unstored"
+            Outcome::CompiledUnstored
          } else {
-            "failed"
+            Outcome::Failed
          }
       },
       Err(error) => {
@@ -858,13 +860,13 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
             "mummer could not store compiler result, {error}"
          ));
          if result.status == 0_i32 {
-            "compiled-unstored"
+            Outcome::CompiledUnstored
          } else {
-            "failed"
+            Outcome::Failed
          }
       },
    };
-   log("cc", outcome, &explained, started);
+   log(Tool::Cc, outcome, &explained, started);
    Ok(result.status)
 }
 

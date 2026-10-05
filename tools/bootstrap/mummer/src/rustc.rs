@@ -33,7 +33,9 @@ use mummer::{
       write_file,
    },
    process::{
+      Outcome,
       Slot,
+      Tool,
       diagnostic,
       log,
       log_uncached,
@@ -352,14 +354,14 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
          false,
       )?;
       let outcome = if invocation.query {
-         "query"
+         Outcome::Query
       } else if invocation.cacheable {
-         "no-daemon"
+         Outcome::NoDaemon
       } else {
-         "uncacheable"
+         Outcome::Uncacheable
       };
-      log("rustc", outcome, &label, started);
-      if outcome == "uncacheable" {
+      log(Tool::Rustc, outcome, &label, started);
+      if outcome == Outcome::Uncacheable {
          log_uncached(outcome, arguments);
       }
       return Ok(result.status);
@@ -368,7 +370,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
       .and_then(|result| replay(client, &store, &invocation, &result));
    let miss = match hit {
       Ok(()) => {
-         log("rustc", "cached", &label, started);
+         log(Tool::Rustc, Outcome::Cached, &label, started);
          return Ok(0);
       },
       Err(Miss::Failed(error)) => {
@@ -407,17 +409,17 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
       remove_if_exists(&record)?;
    }
    let Some(stored) = storing else {
-      log("rustc", "failed", &explained, started);
+      log(Tool::Rustc, Outcome::Failed, &explained, started);
       return Ok(result.status);
    };
    let outcome = match stored {
-      Ok(()) => "compiled",
+      Ok(()) => Outcome::Compiled,
       Err(error) => {
          diagnostic(format_args!("mummer could not store Rust result, {error}"));
-         "compiled-unstored"
+         Outcome::CompiledUnstored
       },
    };
-   log("rustc", outcome, &explained, started);
+   log(Tool::Rustc, outcome, &explained, started);
    Ok(0)
 }
 
