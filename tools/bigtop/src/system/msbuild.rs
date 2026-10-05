@@ -155,6 +155,10 @@ impl Element {
       let source = self.attr("Condition");
       source.is_empty() || condition(source, props, dir, meta).unwrap_or(false)
    }
+
+   fn holds(&self, props: &BTreeMap<String, String>, dir: &Path) -> bool {
+      self.passes(props, dir, &BTreeMap::new())
+   }
 }
 
 pub fn run(file: &Path) -> io::Result<()> {
@@ -225,7 +229,7 @@ impl Evaluation {
       let mut found = Vec::new();
       let mut seen = BTreeSet::new();
       for node in self.targets.get(target).into_iter().flatten() {
-         if node.tag != "MSBuild" || !node.passes(&self.props, dir, &BTreeMap::new()) {
+         if node.tag != "MSBuild" || !node.holds(&self.props, dir) {
             continue;
          }
          let referenced = item_refs(node.attr("Projects"), &self.items)?;
@@ -264,15 +268,13 @@ impl Evaluation {
       dir: &Path,
       seeds: &BTreeMap<String, String>,
    ) -> io::Result<()> {
-      if !node.passes(&self.props, dir, &BTreeMap::new()) {
+      if !node.holds(&self.props, dir) {
          return Ok(());
       }
       match node.tag.as_str() {
          "PropertyGroup" => {
             for property in node.elements() {
-               if seeds.contains_key(&property.tag)
-                  || !property.passes(&self.props, dir, &BTreeMap::new())
-               {
+               if seeds.contains_key(&property.tag) || !property.holds(&self.props, dir) {
                   continue;
                }
                if let Ok(value) = expand(&property.text(), &self.props, &BTreeMap::new()) {
@@ -282,7 +284,7 @@ impl Evaluation {
          },
          "ItemDefinitionGroup" => {
             for definition in node.elements() {
-               if definition.passes(&self.props, dir, &BTreeMap::new()) {
+               if definition.holds(&self.props, dir) {
                   metadata(
                      definition,
                      self.itemdefs.entry(definition.tag.clone()).or_default(),
@@ -334,7 +336,7 @@ impl Evaluation {
          }
          return Ok(());
       }
-      if !node.passes(&self.props, dir, &BTreeMap::new()) {
+      if !node.holds(&self.props, dir) {
          return Ok(());
       }
       let excluded: BTreeSet<String> = self
@@ -397,7 +399,7 @@ impl Evaluation {
    }
 }
 
-fn split_list(source: &str) -> impl Iterator<Item = &str> {
+pub fn split_list(source: &str) -> impl Iterator<Item = &str> {
    source
       .split(';')
       .map(str::trim)
