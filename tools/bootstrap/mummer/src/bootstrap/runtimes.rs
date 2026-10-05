@@ -18,6 +18,7 @@ use std::{
 use mummer::{
    config::BinaryFormat,
    files::{
+      utf8,
       remove_if_exists,
       write_file,
    },
@@ -257,7 +258,9 @@ impl Runtimes {
       }
       let sources = found
          .iter()
-         .map(|path| path.to_string_lossy().into_owned())
+         .map(|path| utf8(path).map(str::to_owned))
+         .collect::<io::Result<Vec<_>>>()?
+         .into_iter()
          .filter(|path| {
             path
                .strip_prefix(&format!("{}/", lib.dir))

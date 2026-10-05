@@ -32,6 +32,7 @@ use std::{
 };
 
 use misstep::{
+   report,
    Result,
    bail,
 };
@@ -77,8 +78,13 @@ fn run() -> Result<i32> {
    let directory = var_os("TMPDIR")
       .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from)
       .join("semaphore-compat");
-   let build = var_os("NIX_BUILD_TOP")
-      .map_or_else(|| "-".to_owned(), |top| top.to_string_lossy().into_owned());
+   let build = var_os("NIX_BUILD_TOP").map_or_else(
+      || Ok("-".to_owned()),
+      |top| {
+         top.into_string()
+            .map_err(|_raw| report!("NIX_BUILD_TOP is not UTF-8"))
+      },
+   )?;
    let semaphore = Sem::new()?;
    let mut proxy = Proxy::new(&semaphore, directory.join(handed), socket(), build)?;
    let mut command = Command::new(program);

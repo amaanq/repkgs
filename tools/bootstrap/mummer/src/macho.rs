@@ -17,6 +17,7 @@ use sha2::{
 
 use crate::{
    elf::prefixed_relative,
+   files::utf8,
    fixup::{
       Context,
       write_back,
@@ -260,7 +261,7 @@ fn resolve(context: &Context, here: &Path, path: &str) -> io::Result<Option<Path
 
 fn new_spelling(context: &Context, file: &Path, command: &Command) -> io::Result<Option<String>> {
    if command.kind == ID_DYLIB {
-      return Ok(Some(file.to_string_lossy().into_owned()));
+      return Ok(Some(utf8(file)?.to_owned()));
    }
 
    let path = command.path()?;

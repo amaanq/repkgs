@@ -36,6 +36,7 @@ use blake3::Hasher;
 use mummer::{
    config::BinaryFormat,
    files::{
+      utf8,
       remove_if_exists,
       write_file,
    },
@@ -413,19 +414,19 @@ impl Invocation {
 
    /// The cc1 command clang runs for this compile, which also carries what its
    /// config files and environment add, the output's own paths as tokens.
-   fn compile_job(&self) -> String {
+   fn compile_job(&self) -> io::Result<String> {
       let mut job = self
          .jobs
          .iter()
          .map(|tokens| format!("\"{}\"", tokens.join("\" \"")))
          .collect::<Vec<_>>()
          .join("\n");
-      let output = self.output.to_string_lossy();
+      let output = utf8(&self.output)?;
       if !output.is_empty() {
-         job = job.replace(output.as_ref(), "<output>");
+         job = job.replace(output, "<output>");
       }
       if let Some(ref depfile) = self.depfile {
-         job = job.replace(depfile.to_string_lossy().as_ref(), "<depfile>");
+         job = job.replace(utf8(depfile)?, "<depfile>");
       }
       // a preprocessed .S hands cc1as a file named <stem>-<6 random>.<ext> in
       // TMPDIR
@@ -450,7 +451,7 @@ impl Invocation {
          rest = &rest[end..];
       }
       masked.push_str(rest);
-      masked
+      Ok(masked)
    }
 
    const fn links(&self) -> bool {
@@ -525,7 +526,7 @@ impl Invocation {
          &mut hasher,
          self.toolchain_identities(cache, store, compiler)?,
       );
-      field(&mut hasher, store.key(&current_dir()?.to_string_lossy()));
+      field(&mut hasher, store.key(utf8(&current_dir()?)?));
       field(&mut hasher, match self.action {
          Action::Link => "link",
          Action::LinkSource => "link-one",
@@ -535,11 +536,11 @@ impl Invocation {
       // the toolchain's own paths move with every mummer build
       let toolchain = current_exe()
          .ok()
-         .and_then(|exe| Some(exe.parent()?.parent()?.to_string_lossy().into_owned()));
+         .and_then(|exe| Some(exe.parent()?.parent()?.to_str()?.to_owned()));
       for argument in &self.key_args {
          let mut bytes = argument.as_bytes().to_vec();
          store.mask_output(&mut bytes, false);
-         let masked = String::from_utf8_lossy(&bytes);
+         let masked = String::from_utf8(bytes).map_err(io::Error::other)?;
          let embedded =
             self.links() && (argument.contains("dynamic-linker") || argument.contains("rpath"));
          field(&mut hasher, match toolchain {
@@ -567,9 +568,9 @@ impl Invocation {
          self.action,
          Action::Compile | Action::Precompile | Action::Assembly | Action::Preprocess
       ) {
-         let mut bytes = self.compile_job().into_bytes();
+         let mut bytes = self.compile_job()?.into_bytes();
          store.mask_output(&mut bytes, false);
-         let job = String::from_utf8_lossy(&bytes);
+         let job = String::from_utf8(bytes).map_err(io::Error::other)?;
          field(&mut hasher, match toolchain {
             Some(ref root) if self.action == Action::Precompile => {
                job.replace(root.as_str(), "<toolchain>")
@@ -716,10 +717,7 @@ impl Wrapper for Compile<'_> {
          arguments.extend([
             "-MD".to_owned(),
             "-MF".to_owned(),
-            written
-               .dependency_path(invocation)
-               .to_string_lossy()
-               .into_owned(),
+            utf8(written.dependency_path(invocation))?.to_owned(),
          ]);
       } else if !own_depfile
          && invocation.action != Action::Link
@@ -732,10 +730,7 @@ impl Wrapper for Compile<'_> {
       if invocation.stdout {
          arguments.extend([
             "-o".to_owned(),
-            written
-               .output_path(invocation)
-               .to_string_lossy()
-               .into_owned(),
+            utf8(written.output_path(invocation))?.to_owned(),
          ]);
       }
       if invocation.links() {
@@ -971,7 +966,10 @@ pub fn jobs(compiler: &str, args: &[String]) -> io::Result<Vec<Vec<String>>> {
    if !printed.status.success() {
       return Ok(Vec::new());
    }
-   Ok(String::from_utf8_lossy(&printed.stderr)
+   let Ok(text) = String::from_utf8(printed.stderr) else {
+      return Ok(Vec::new());
+   };
+   Ok(text
       .lines()
       .filter(|line| line.starts_with(" \""))
       .map(job_tokens)
@@ -1003,8 +1001,8 @@ fn job_tokens(line: &str) -> Vec<String> {
 fn run_split(invocation: &Invocation) -> io::Result<i32> {
    let wrapper = args_os()
       .next()
-      .map(|name| on_path(&name.to_string_lossy()))
-      .ok_or_else(|| io::Error::other("mummer has no program name"))?;
+      .ok_or_else(|| io::Error::other("mummer has no program name"))
+      .and_then(|name| Ok(on_path(utf8(Path::new(&name))?)))?;
    let mut shared = Vec::new();
    let mut skip = false;
    for (index, arg) in invocation.args.iter().enumerate() {
@@ -1067,7 +1065,9 @@ fn prescanned(compiler: &str, args: &[String]) -> io::Result<Option<String>> {
    if !output.status.success() {
       return Ok(None);
    }
-   let text = String::from_utf8_lossy(&output.stdout).into_owned();
+   let Ok(text) = String::from_utf8(output.stdout) else {
+      return Ok(None);
+   };
    // fixed form ignores blanks, so "U S E M" is a USE statement and only an =
    // tells USEEI = .TRUE. apart from one
    let modular = text

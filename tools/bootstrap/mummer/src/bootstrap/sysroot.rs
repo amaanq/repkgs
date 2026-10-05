@@ -12,6 +12,7 @@ use std::{
 };
 
 use mummer::{
+   files::utf8,
    attrs::load,
    files::write_file,
 };
@@ -75,8 +76,8 @@ impl Recipe for Sysroot {
       let parts = attrs
          .parts
          .iter()
-         .map(|part| part.to_string_lossy())
-         .collect::<Vec<_>>();
+         .map(|part| utf8(part))
+         .collect::<io::Result<Vec<_>>>()?;
       write_file(
          &out.join("roots"),
          format!("{} {}\n", parts.join(" "), attrs.resource.display()).as_bytes(),

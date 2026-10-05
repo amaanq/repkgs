@@ -14,7 +14,10 @@ use std::{
    },
 };
 
-use mummer::syslibs::CargoBuild;
+use mummer::{
+   syslibs::CargoBuild,
+   files::utf8,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -176,10 +179,7 @@ fn sources_files(root: &Path) -> io::Result<Vec<PathBuf>> {
    while let Some(directory) = pending.pop() {
       for child in read_dir(&directory)? {
          let path = child?.path();
-         let name = path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
+         let name = utf8(Path::new(path.file_name().unwrap_or_default()))?.to_owned();
          if path.is_dir() {
             if !name.starts_with('.') && name != "target" && !name.starts_with("result") {
                pending.push(path);
@@ -321,10 +321,6 @@ fn vendored_of(recorded: Option<Value>) -> BTreeMap<String, String> {
    }
 }
 
-#[expect(
-   clippy::too_many_lines,
-   reason = "one linear read of act.toml and act.lock into a Package"
-)]
 fn parse(file: &Path) -> io::Result<Option<Package>> {
    let fail = |message: String| io::Error::other(format!("{}: {message}", file.display()));
    let act: Act =
@@ -409,10 +405,7 @@ fn parse(file: &Path) -> io::Result<Option<Package>> {
          )));
       }
    }
-   let name = dir
-      .file_name()
-      .map(|name| name.to_string_lossy().into_owned())
-      .unwrap_or_default();
+   let name = utf8(Path::new(dir.file_name().unwrap_or_default()))?.to_owned();
    let hook_file = dir.join("update.nu");
    let hook = hook_file.exists().then_some(hook_file);
    let hooks = match hook {

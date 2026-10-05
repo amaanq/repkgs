@@ -21,6 +21,7 @@ use std::{
 };
 
 use mummer::{
+   files::utf8,
    hackage::PackageId,
    syslibs::{
       Ecosystem,
@@ -110,10 +111,7 @@ pub fn write_entries(directory: &Path, eco: &str, entries: &Entries) -> io::Resu
 /// A union merge can leave an entry twice with different padding, which TOML
 /// rejects, so those lines are read one by one and equal repeats dropped.
 pub fn normalize(file: &Path) -> io::Result<()> {
-   let eco = file
-      .file_stem()
-      .map(|stem| stem.to_string_lossy().into_owned())
-      .unwrap_or_default();
+   let eco = utf8(Path::new(file.file_stem().unwrap_or_default()))?.to_owned();
    let raw = read_to_string(file)?;
    let entries = if let Ok(parsed) = parse(&raw, &eco) {
       parsed

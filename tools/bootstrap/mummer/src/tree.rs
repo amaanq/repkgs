@@ -45,7 +45,10 @@ use serde::{
 
 use crate::{
    elf::relative_from,
-   files::write_file,
+   files::{
+      utf8,
+      write_file,
+   },
    hash::Digest,
    process::Checked as _,
    store::{
@@ -159,17 +162,13 @@ pub fn walk(root: &Path) -> io::Result<Vec<Entry>> {
          } else {
             EntryKind::File
          };
-         let rel = path
-            .strip_prefix(root)
-            .map_err(io::Error::other)?
-            .to_string_lossy()
-            .into_owned();
+         let rel = utf8(path.strip_prefix(root).map_err(io::Error::other)?)?.to_owned();
          found.push(Entry {
             kind,
             size: meta.len(),
-            path: path.to_string_lossy().into_owned(),
+            path: utf8(&path)?.to_owned(),
             target: if kind == EntryKind::Link {
-               read_link(&path)?.to_string_lossy().into_owned()
+               utf8(&read_link(&path)?)?.to_owned()
             } else {
                String::new()
             },

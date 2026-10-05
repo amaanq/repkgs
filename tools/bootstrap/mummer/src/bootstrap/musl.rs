@@ -157,7 +157,7 @@ impl Musl {
          .filter(|file| !overridden.contains(&Self::stem_path(file)))
          .chain(specific)
          .collect::<Vec<_>>();
-      sources.sort_by_key(|path| path.to_string_lossy().into_owned());
+      sources.sort_by(|left, right| left.as_os_str().cmp(right.as_os_str()));
       Ok(sources)
    }
 
@@ -266,8 +266,9 @@ impl Musl {
             "src" => (&mut libc, obj.join(format!("{}.o", relative.display()))),
             "ldso" => (&mut ldso, obj.join(format!("{}.o", relative.display()))),
             "crt" => {
-               let stem = source.file_stem().unwrap_or_default().to_string_lossy();
-               (&mut crt, out.join(format!("lib/{stem}.o")))
+               let mut object = source.file_stem().unwrap_or_default().to_owned();
+               object.push(".o");
+               (&mut crt, out.join("lib").join(object))
             },
             _ => continue,
          };

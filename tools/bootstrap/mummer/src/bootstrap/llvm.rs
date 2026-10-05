@@ -16,6 +16,7 @@ use std::{
 };
 
 use mummer::{
+   files::utf8,
    attrs::load,
    files::remove_if_exists,
 };
@@ -92,7 +93,11 @@ impl Llvm {
                Ok(Item {
                   obj:   prefix
                      .join("obj")
-                     .join(format!("{}.o", name.to_string_lossy())),
+                     .join({
+                        let mut object = name.to_owned();
+                        object.push(".o");
+                        object
+                     }),
                   src:   source,
                   flags: Vec::new(),
                })
@@ -145,7 +150,7 @@ impl Llvm {
       for path in files(&format!(
          "{shown}/bin/{{clang-*,diagtool,git-clang-format,hmaptool,*-arch}}"
       ))? {
-         let name = path.file_name().unwrap_or_default().to_string_lossy();
+         let name = utf8(Path::new(path.file_name().unwrap_or_default()))?;
          if name
             .strip_prefix("clang-")
             .is_some_and(|suffix| suffix.starts_with(|ch: char| ch.is_ascii_digit()))
@@ -195,8 +200,7 @@ impl Llvm {
             continue;
          };
          let single_version =
-            filename
-               .to_string_lossy()
+            utf8(Path::new(filename))?
                .rsplit_once('.')
                .is_some_and(|(_, version)| {
                   version.len() == 1 && version.bytes().all(|byte| byte.is_ascii_digit())

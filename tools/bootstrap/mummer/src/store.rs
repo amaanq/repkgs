@@ -62,6 +62,7 @@ use crate::{
       runpath_text,
       segments,
    },
+   files::utf8,
    image::Image,
    store_path::{
       HASH_ALPHABET,
@@ -171,7 +172,7 @@ impl Store {
       let mut roots = BTreeMap::new();
       let toolchain = current_exe()
          .ok()
-         .and_then(|exe| Some(exe.parent()?.parent()?.to_string_lossy().into_owned()))
+         .and_then(|exe| Some(exe.parent()?.parent()?.to_str()?.to_owned()))
          .unwrap_or_default();
       for root in var("MUMMER_STORE_ROOTS")
          .unwrap_or_default()
@@ -448,7 +449,7 @@ impl Store {
             continue;
          }
          let (identity, libraries) = self.loaded_identity(cache, &file)?;
-         let name = file.file_name().unwrap_or_default().to_string_lossy();
+         let name = utf8(Path::new(file.file_name().unwrap_or_default()))?;
          found.insert(format!("{name}={identity}"));
          pending.extend(libraries);
       }
@@ -463,7 +464,7 @@ impl Store {
       file: &Path,
    ) -> io::Result<(InputId, Vec<PathBuf>)> {
       let memo = self
-         .stamp_key(&file.to_string_lossy())
+         .stamp_key(utf8(file)?)
          .map(|stamp| Key::digest(Namespace::Loaded, &stamp));
       if let Some(ref key) = memo
          && let Some(bytes) = cache.get(key)?
@@ -492,7 +493,7 @@ impl Store {
             hasher.update(outside.0);
             field(&mut hasher, format!("runpath {}", end - text.offset));
             hasher.update(outside.1);
-            let origin = file.parent().unwrap_or_else(|| Path::new("/"));
+            let origin = utf8(file.parent().unwrap_or_else(|| Path::new("/")))?;
             let directories = text
                .value
                .split(':')
@@ -500,8 +501,8 @@ impl Store {
                .map(|entry| {
                   PathBuf::from(
                      entry
-                        .replace("${ORIGIN}", &origin.to_string_lossy())
-                        .replace("$ORIGIN", &origin.to_string_lossy()),
+                        .replace("${ORIGIN}", origin)
+                        .replace("$ORIGIN", origin),
                   )
                })
                .collect::<Vec<_>>();
@@ -525,7 +526,7 @@ impl Store {
          let mut record = identity.to_string();
          for library in &libraries {
             record.push('\n');
-            record.push_str(&library.to_string_lossy());
+            record.push_str(utf8(library)?);
          }
          cache.put(&key, record.as_bytes())?;
       }

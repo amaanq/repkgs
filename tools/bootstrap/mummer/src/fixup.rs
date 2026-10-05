@@ -41,7 +41,10 @@ use crate::{
       shared_library,
       symbols,
    },
-   files::write_file,
+   files::{
+      utf8,
+      write_file,
+   },
    image::Image,
    macho,
    process::diagnostic,
@@ -163,11 +166,10 @@ pub fn run(
 }
 
 fn loader_location(path: &Path) -> io::Result<(String, PathBuf)> {
-   let name = path
+   let file_name = path
       .file_name()
-      .ok_or_else(|| io::Error::other("the loader has no file name"))?
-      .to_string_lossy()
-      .into_owned();
+      .ok_or_else(|| io::Error::other("the loader has no file name"))?;
+   let name = utf8(Path::new(file_name))?.to_owned();
    let directory = canonicalize(
       path
          .parent()
