@@ -11,6 +11,34 @@ use crate::{
    store::normalize,
 };
 
+pub const ET_EXEC: u16 = 2;
+pub const ET_DYN: u16 = 3;
+
+pub const SHT_SYMTAB: u32 = 2;
+pub const SHT_DYNAMIC: u32 = 6;
+pub const SHT_NOTE: u32 = 7;
+pub const SHT_NOBITS: u32 = 8;
+pub const SHT_DYNSYM: u32 = 11;
+pub const SHT_GNU_VERNEED: u32 = 0x6FFF_FFFE;
+
+pub const PT_NULL: u32 = 0;
+pub const PT_LOAD: u32 = 1;
+pub const PT_DYNAMIC: u32 = 2;
+pub const PT_INTERP: u32 = 3;
+
+pub const DT_NULL: u64 = 0;
+pub const DT_NEEDED: u64 = 1;
+pub const DT_STRTAB: u64 = 5;
+pub const DT_RPATH: u64 = 15;
+pub const DT_RUNPATH: u64 = 29;
+
+const SHN_UNDEF: u16 = 0;
+const SHN_ABS: u16 = 0xFFF1;
+const STB_GLOBAL: u8 = 1;
+const STB_WEAK: u8 = 2;
+const STT_OBJECT: u8 = 1;
+const STT_FUNC: u8 = 2;
+
 pub struct Section {
    pub name:   u32,
    pub kind:   u32,
@@ -58,7 +86,7 @@ pub fn sections(image: &Image) -> io::Result<Vec<Section>> {
             .map_err(io::Error::other)?,
          stride: image.size(start + 56)?,
       };
-      if section.kind != 8
+      if section.kind != SHT_NOBITS
          && section
             .offset
             .checked_add(section.size)
@@ -71,34 +99,56 @@ pub fn sections(image: &Image) -> io::Result<Vec<Section>> {
    Ok(sections)
 }
 
-/// The functions and data a symbol table of `kind` (2 for `.symtab`, 11 for
-/// `.dynsym`) defines with global or weak binding.
+pub struct Symbol {
+   pub entry:   usize,
+   pub strings: usize,
+}
+
+impl Symbol {
+   #[inline]
+   pub fn name_offset(&self, image: &Image) -> io::Result<usize> {
+      self
+         .strings
+         .checked_add(image.long_usize(self.entry)?)
+         .ok_or_else(|| io::Error::other("ELF symbol name offset overflows"))
+   }
+
+   #[inline]
+   pub fn name(&self, image: &Image) -> io::Result<String> {
+      image.string(self.name_offset(image)?)
+   }
+}
+
+#[inline]
+pub fn symbols(sections: &[Section], table: &Section) -> io::Result<impl Iterator<Item = Symbol>> {
+   let strings = sections
+      .get(table.link)
+      .ok_or_else(|| io::Error::other("ELF symbol table names no string table"))?
+      .offset;
+   if table.stride < 24 {
+      return Err(io::Error::other("ELF symbol entry is too short"));
+   }
+   Ok((table.offset..table.offset + table.size)
+      .step_by(table.stride)
+      .map(move |entry| Symbol { entry, strings }))
+}
+
+/// The functions and data a symbol table of `kind`, `SHT_SYMTAB` or
+/// `SHT_DYNSYM`, defines with global or weak binding.
 #[inline]
 pub fn defined_symbols(image: &Image, sections: &[Section], kind: u32) -> io::Result<Vec<String>> {
    let mut found = Vec::new();
    for table in sections.iter().filter(|section| section.kind == kind) {
-      let strings = sections
-         .get(table.link)
-         .ok_or_else(|| io::Error::other("ELF symbol table names no string table"))?;
-      if table.stride < 24 {
-         return Err(io::Error::other("ELF symbol entry is too short"));
-      }
-      for start in (table.offset..table.offset + table.size).step_by(table.stride) {
-         let info = image.byte(start + 4)?;
-         let index = image.word(start + 6)?;
-         if index == 0
-            || index == 0xFFF1
-            || !matches!(info >> 4_u8, 1 | 2)
-            || !matches!(info & 0xF, 1 | 2)
+      for symbol in symbols(sections, table)? {
+         let info = image.byte(symbol.entry + 4)?;
+         let index = image.word(symbol.entry + 6)?;
+         if matches!(index, SHN_UNDEF | SHN_ABS)
+            || !matches!(info >> 4_u8, STB_GLOBAL | STB_WEAK)
+            || !matches!(info & 0xF, STT_OBJECT | STT_FUNC)
          {
             continue;
          }
-         let name = usize::try_from(image.long(start)?).map_err(io::Error::other)?;
-         let offset = strings
-            .offset
-            .checked_add(name)
-            .ok_or_else(|| io::Error::other("ELF symbol name offset overflows"))?;
-         found.push(image.string(offset)?);
+         found.push(symbol.name(image)?);
       }
    }
    Ok(found)
@@ -130,13 +180,12 @@ pub struct Note {
 #[inline]
 pub fn notes(image: &Image, sections: &[Section]) -> io::Result<Vec<Note>> {
    let mut notes = Vec::new();
-   for section in sections.iter().filter(|section| section.kind == 7) {
+   for section in sections.iter().filter(|section| section.kind == SHT_NOTE) {
       let end = section.offset + section.size;
       let mut cursor = section.offset;
       while cursor + 12 <= end {
-         let owner_size = usize::try_from(image.long(cursor)?).map_err(io::Error::other)?;
-         let description_size =
-            usize::try_from(image.long(cursor + 4)?).map_err(io::Error::other)?;
+         let owner_size = image.long_usize(cursor)?;
+         let description_size = image.long_usize(cursor + 4)?;
          let kind = image.long(cursor + 8)?;
          let owner_start = cursor + 12;
          let description_start = owner_start + owner_size.next_multiple_of(4);
@@ -197,10 +246,12 @@ pub fn has_segment(segments: &[Segment], kind: u32) -> bool {
    segments.iter().any(|segment| segment.kind == kind)
 }
 
-fn file_offset(segments: &[Segment], address: u64) -> Option<usize> {
+#[must_use]
+#[inline]
+pub fn file_offset(segments: &[Segment], address: u64) -> Option<usize> {
    segments
       .iter()
-      .filter(|segment| segment.kind == 1)
+      .filter(|segment| segment.kind == PT_LOAD)
       .find(|segment| {
          address >= segment.address
             && address - segment.address < u64::try_from(segment.size).unwrap_or(u64::MAX)
@@ -225,19 +276,30 @@ pub struct Text {
    pub value:    String,
 }
 
+#[inline]
+pub fn dynamic_tags(
+   image: &Image,
+   offset: usize,
+   size: usize,
+) -> impl Iterator<Item = io::Result<(usize, u64)>> {
+   (offset..offset + size)
+      .step_by(16)
+      .map(|entry| image.quad(entry).map(|tag| (entry, tag)))
+      .take_while(|tag| !matches!(*tag, Ok((_, DT_NULL))))
+}
+
 fn dynamic(image: &Image, segments: &[Segment]) -> io::Result<Option<Dynamic>> {
-   let Some(segment) = segments.iter().find(|segment| segment.kind == 2) else {
+   let Some(segment) = segments.iter().find(|segment| segment.kind == PT_DYNAMIC) else {
       return Ok(None);
    };
    let mut table = Dynamic {
       strings: None,
       entries: Vec::new(),
    };
-   for offset in (segment.offset..segment.offset + segment.size).step_by(16) {
-      match image.quad(offset)? {
-         0 => break,
-         5 => table.strings = file_offset(segments, image.quad(offset + 8)?),
-         tag => table.entries.push((tag, image.size(offset + 8)?)),
+   for tag in dynamic_tags(image, segment.offset, segment.size) {
+      match tag? {
+         (entry, DT_STRTAB) => table.strings = file_offset(segments, image.quad(entry + 8)?),
+         (entry, kind) => table.entries.push((kind, image.size(entry + 8)?)),
       }
    }
    Ok(Some(table))
@@ -270,7 +332,7 @@ pub fn runpath_text(image: &Image, segments: &[Segment]) -> io::Result<Option<Te
          .find(|&&(tag, _)| tag == wanted)
          .map(|&(_, value)| value)
    };
-   let Some(entry) = by_tag(29).or_else(|| by_tag(15)) else {
+   let Some(entry) = by_tag(DT_RUNPATH).or_else(|| by_tag(DT_RPATH)) else {
       return Ok(None);
    };
    table_text(image, &table, entry)
@@ -289,7 +351,7 @@ pub fn needed(image: &Image, segments: &[Segment]) -> io::Result<Vec<Text>> {
    table
       .entries
       .iter()
-      .filter(|&&(tag, _)| tag == 1)
+      .filter(|&&(tag, _)| tag == DT_NEEDED)
       .filter_map(|&(_, entry)| table_text(image, &table, entry).transpose())
       .collect()
 }
@@ -300,7 +362,7 @@ pub fn needed(image: &Image, segments: &[Segment]) -> io::Result<Vec<Text>> {
 pub fn interpreter(image: &Image, segments: &[Segment]) -> io::Result<Option<Text>> {
    segments
       .iter()
-      .find(|segment| segment.kind == 3 || (segment.kind == 0 && segment.size > 1))
+      .find(|segment| segment.kind == PT_INTERP || (segment.kind == PT_NULL && segment.size > 1))
       .map(|segment| {
          Ok(Text {
             offset:   segment.offset,
@@ -334,6 +396,18 @@ pub fn relative_from(directory: &Path, target: &Path) -> PathBuf {
       relative.push(".");
    }
    relative
+}
+
+/// `relative_from`, spelled from `prefix`, as `$ORIGIN` or `@loader_path`.
+#[must_use]
+#[inline]
+pub fn prefixed_relative(prefix: &str, from: &Path, to: &Path) -> String {
+   let relative = relative_from(from, to);
+   if relative == Path::new(".") {
+      prefix.to_owned()
+   } else {
+      format!("{prefix}/{}", relative.display())
+   }
 }
 
 pub const RUNPATH_SLACK: usize = 48;
