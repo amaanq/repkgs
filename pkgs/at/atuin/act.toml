@@ -3,7 +3,13 @@ track = "github:atuinsh/atuin"
 fetch = { archive = true }
 with  = [ "cargo" ]
 deps  = [ "openssl" ]
-tools = [ "bash-interactive", "git" ]
+tools = [ "bash-interactive", "git", "postgresql" ]
+
+[steps.before]
+"cargo.test" = [ "atuin.start-postgres" ]
+
+[steps.after]
+"cargo.test" = [ "atuin.stop-postgres" ]
 
 [cargo]
 noDefaultFeatures = true
