@@ -4,7 +4,10 @@ use std::{
    io,
 };
 
-use mummer::hackage::PackageId;
+use mummer::{
+   hackage::PackageId,
+   hash::OutputHash,
+};
 use serde::Deserialize;
 use serde_json::Map;
 
@@ -13,7 +16,6 @@ use crate::{
       dispatch::Producer,
       drv::{
          Entry,
-         Hash,
          Row,
          attr,
          collect,
@@ -57,13 +59,13 @@ impl Producer for Hackage {
          rows.push(Row {
             file: format!("{id}.tar.gz"),
             url:  format!("{HACKAGE}/{id}/{id}.tar.gz"),
-            hash: Hash::Sri(entry.src.clone()),
+            hash: OutputHash::integrity(&entry.src)?,
          });
          targets.push(format!("{id}.cabal"));
          rows.push(Row {
             file: format!("{id}-r{}.cabal", entry.rev),
             url:  format!("{HACKAGE}/{id}/revision/{}.cabal", entry.rev),
-            hash: Hash::Sri(entry.cabal.clone()),
+            hash: OutputHash::integrity(&entry.cabal)?,
          });
       }
       let fetched = fetchurls(store, &rows)?;

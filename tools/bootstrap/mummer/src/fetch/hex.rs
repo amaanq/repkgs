@@ -5,6 +5,11 @@ use std::{
    path::Path,
 };
 
+use mummer::hash::{
+   Algorithm,
+   Digest,
+   OutputHash,
+};
 use serde_json::Map;
 
 use crate::{
@@ -12,7 +17,6 @@ use crate::{
       dispatch::Producer,
       drv::{
          Entry,
-         Hash,
          Row,
          attr,
          collect,
@@ -31,7 +35,7 @@ struct Package {
 }
 
 fn is_sha256(text: &str) -> bool {
-   text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_hexdigit())
+   Digest::from_hex(Algorithm::Sha256, text).is_ok()
 }
 
 /// the `"…"` strings of one line, in order.
@@ -133,9 +137,7 @@ fn rebar_lock(text: &str) -> io::Result<Vec<Package>> {
             .chunks(2)
             .filter_map(|pair| {
                match *pair {
-                  [name, hash] if is_sha256(hash) || is_sha256(&hash.to_lowercase()) => {
-                     Some((name.to_owned(), hash.to_lowercase()))
-                  },
+                  [name, hash] if is_sha256(hash) => Some((name.to_owned(), hash.to_lowercase())),
                   _ => None,
                }
             })
@@ -178,13 +180,13 @@ impl Producer for Hex {
          .iter()
          .map(|package| {
             let file = format!("{}-{}.tar", package.name, package.version);
-            Row {
+            Ok(Row {
                url: format!("{REPO}/{file}"),
                file,
-               hash: Hash::Sha256(package.sha256.clone()),
-            }
+               hash: OutputHash::hex(Algorithm::Sha256, &package.sha256)?,
+            })
          })
-         .collect();
+         .collect::<io::Result<Vec<_>>>()?;
       let fetched = fetchurls(store, &rows)?;
       let layout: Vec<Entry> = rows
          .iter()

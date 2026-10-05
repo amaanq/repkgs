@@ -7,6 +7,7 @@ use std::{
    io,
 };
 
+use mummer::hash::OutputHash;
 use serde::{
    Deserialize,
    Serialize,
@@ -18,7 +19,6 @@ use crate::{
       dispatch::Producer,
       drv::{
          Entry,
-         Hash,
          Row,
          attr,
          collect,
@@ -125,7 +125,7 @@ impl Producer for Go {
             rows.push(Row {
                file: format!("{path}-{file}"),
                url:  format!("{PROXY}/{dir}/{file}"),
-               hash: Hash::Sri(sri.clone()),
+               hash: OutputHash::integrity(sri)?,
             });
          }
       }

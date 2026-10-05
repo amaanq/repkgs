@@ -4,6 +4,7 @@ use std::{
    io,
 };
 
+use mummer::hash::OutputHash;
 use serde::{
    Deserialize,
    Serialize,
@@ -18,7 +19,6 @@ use crate::{
       dispatch::Producer,
       drv::{
          Entry,
-         Hash,
          Row,
          collect,
          fetchurls,
@@ -130,7 +130,7 @@ impl Producer for Bun {
          rows.push(Row {
             file: format!("{}-{version}.tgz", flat_name(name)),
             url:  tarball_url(name, version, registry),
-            hash: Hash::Sri(integrity.to_owned()),
+            hash: OutputHash::integrity(integrity)?,
          });
       }
       if !unhashed.is_empty() {

@@ -3,6 +3,10 @@ use std::{
    io,
 };
 
+use mummer::hash::{
+   Algorithm,
+   OutputHash,
+};
 use serde_json::Map;
 
 use crate::{
@@ -10,7 +14,6 @@ use crate::{
       dispatch::Producer,
       drv::{
          Entry,
-         Hash,
          Row,
          attr,
          collect,
@@ -106,13 +109,13 @@ impl Producer for Gems {
                format!("-{}", gem.platform)
             };
             let file = format!("{}-{}{suffix}.gem", gem.name, gem.version);
-            Row {
+            Ok(Row {
                url: format!("{RUBYGEMS}/{file}"),
                file,
-               hash: Hash::Sha256(gem.sha256.clone()),
-            }
+               hash: OutputHash::hex(Algorithm::Sha256, &gem.sha256)?,
+            })
          })
-         .collect();
+         .collect::<io::Result<Vec<_>>>()?;
       let fetched = fetchurls(store, &rows)?;
       let mut layout: Vec<Entry> = rows
          .iter()

@@ -12,3 +12,4 @@ pub mod store;
 pub mod syslibs;
 pub mod tree;
 pub mod unpack;
+pub mod hash;

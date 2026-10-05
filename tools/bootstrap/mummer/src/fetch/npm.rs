@@ -4,6 +4,7 @@ use std::{
    io,
 };
 
+use mummer::hash::OutputHash;
 use serde_json::{
    Map,
    Value,
@@ -13,7 +14,6 @@ use crate::{
    fetch::{
       dispatch::Producer,
       drv::{
-         Hash,
          Row,
          collect,
          fetchurls,
@@ -111,13 +111,13 @@ impl Producer for Npm {
       let rows: Vec<Row> = by_url
          .iter()
          .map(|(url, integrity)| {
-            Row {
+            Ok(Row {
                file: basename(url_path(url)).to_owned(),
                url:  url.clone(),
-               hash: Hash::Sri(integrity.clone()),
-            }
+               hash: OutputHash::integrity(integrity)?,
+            })
          })
-         .collect();
+         .collect::<io::Result<Vec<_>>>()?;
       let fetched = fetchurls(store, &rows)?;
       let outs: BTreeMap<&str, &str> = rows
          .iter()

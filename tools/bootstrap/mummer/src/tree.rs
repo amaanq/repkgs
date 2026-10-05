@@ -33,14 +33,11 @@ use std::{
 };
 
 use serde::Serialize;
-use sha2::{
-   Digest as _,
-   Sha256,
-};
 
 use crate::{
    elf::relative_from,
    files::write_file,
+   hash::Digest,
    store::{
       STORE_DIR,
       normalize,
@@ -223,21 +220,8 @@ where
 /// `ruby -x` stubs carry the real #! after a /bin/sh preamble, so env
 /// shebangs also match after the first line.
 fn fix(path: &Path, ledger: &Path, undo: bool) -> io::Result<()> {
-   const HEX: &[u8; 16] = b"0123456789abcdef";
-
    let bytes = read(path)?;
-   let record = |contents: &[u8]| {
-      let hash: String = Sha256::digest(contents)
-         .iter()
-         .flat_map(|byte| {
-            [
-               char::from(HEX[usize::from(byte >> 4_u8)]),
-               char::from(HEX[usize::from(byte & 15)]),
-            ]
-         })
-         .collect();
-      ledger.join(hash)
-   };
+   let record = |contents: &[u8]| ledger.join(Digest::sha256(contents).hex());
 
    let fixed = if undo {
       let original = record(&bytes);

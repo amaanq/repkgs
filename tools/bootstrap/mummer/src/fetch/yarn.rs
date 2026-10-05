@@ -4,6 +4,7 @@ use std::{
    io,
 };
 
+use mummer::hash::OutputHash;
 use serde_json::Map;
 
 use crate::{
@@ -11,7 +12,6 @@ use crate::{
       dispatch::Producer,
       drv::{
          Entry,
-         Hash,
          Row,
          collect,
          fetchurls,
@@ -143,7 +143,7 @@ impl Producer for Yarn {
          rows.push(Row {
             file,
             url,
-            hash: Hash::Sri(entry.integrity.clone().unwrap_or_default()),
+            hash: OutputHash::integrity(entry.integrity.as_deref().unwrap_or_default())?,
          });
       }
       let fetched = fetchurls(store, &rows)?;

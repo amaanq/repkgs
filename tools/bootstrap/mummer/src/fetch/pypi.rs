@@ -9,7 +9,13 @@ use std::{
    ptr::eq,
 };
 
-use mummer::syslibs::load;
+use mummer::{
+   hash::{
+      Algorithm,
+      OutputHash,
+   },
+   syslibs::load,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -20,7 +26,6 @@ use crate::{
       dispatch::Producer,
       drv::{
          Entry,
-         Hash,
          Row,
          attr,
          fetchurls,
@@ -196,7 +201,7 @@ impl<'package> Planned<'package> {
       let row = Row {
          file,
          url,
-         hash: Hash::Sha256(hash),
+         hash: OutputHash::hex(Algorithm::Sha256, &hash)?,
       };
       Ok((planned, Some(row)))
    }
