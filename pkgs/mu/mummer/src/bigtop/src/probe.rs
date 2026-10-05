@@ -19,6 +19,10 @@ use mummer::{
       put_directory,
    },
    files::write_file,
+   store::{
+      STORE_DIR,
+      mask_hashes,
+   },
    tree::{
       note,
       walk,
@@ -144,8 +148,48 @@ pub fn restore(key: &str, file: &Path, socket: &Path) -> io::Result<bool> {
    let Some(bytes) = client.get(key)? else {
       return Ok(false);
    };
-   write_file(file, &bytes, None)?;
+   let Some(text) = resolved(&ctx, &String::from_utf8_lossy(&bytes)) else {
+      note(
+         "probe-cache",
+         "stored results name a store path this build lacks",
+      );
+      return Ok(false);
+   };
+   write_file(file, text.as_bytes(), None)?;
    Ok(true)
+}
+
+/// Stored results with their store hashes put back from this build's roots,
+/// or None when they name any store path outside those roots, as results
+/// stored by another toolchain do.
+fn resolved(ctx: &Ctx, text: &str) -> Option<String> {
+   let mut resolved = text.to_owned();
+   for root in &ctx.roots {
+      let masked = mask_hashes(root);
+      let mut result = String::with_capacity(resolved.len());
+      let mut remaining = resolved.as_str();
+      while let Some(position) = remaining.find(&masked) {
+         let end = position + masked.len();
+         let whole = remaining[end..]
+            .chars()
+            .next()
+            .is_none_or(|next| !next.is_ascii_alphanumeric() && !"-._+?=".contains(next));
+         result.push_str(&remaining[..position]);
+         result.push_str(if whole { root } else { &masked });
+         remaining = &remaining[end..];
+      }
+      result.push_str(remaining);
+      resolved = result;
+   }
+   let prefix = format!("{STORE_DIR}/");
+   let known = resolved.match_indices(&prefix).all(|(position, _)| {
+      let tail = &resolved[position + prefix.len()..];
+      let name = tail.split('/').next().unwrap_or(tail);
+      ctx.roots.iter().any(|root| {
+         root.strip_prefix(&prefix) == Some(name) || tail.starts_with(&root[prefix.len()..])
+      })
+   });
+   known.then_some(resolved)
 }
 
 pub fn store(key: &str, file: &Path, socket: &Path) -> io::Result<()> {
@@ -157,10 +201,12 @@ pub fn store(key: &str, file: &Path, socket: &Path) -> io::Result<()> {
       return Ok(());
    };
    let text = read_to_string(file)?;
-   let kept = text
-      .split_inclusive('\n')
-      .filter(|line| !line.contains(&ctx.out))
-      .collect::<String>();
+   let kept = mask_hashes(
+      &text
+         .split_inclusive('\n')
+         .filter(|line| !line.contains(&ctx.out))
+         .collect::<String>(),
+   );
    if let Err(error) = client.put(key, kept.as_bytes()) {
       note("probe-cache", &format!("store failed with {error}"));
    }
