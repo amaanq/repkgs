@@ -41,6 +41,7 @@ use crate::{
       Attrs,
       Ctx,
    },
+   exports::Exports,
    implant,
    prepare::succeed,
    schema::{
@@ -156,6 +157,13 @@ struct Planned {
    path: String,
 }
 
+fn cpython(ctx: &Ctx) -> io::Result<&Exports> {
+   ctx.deps
+      .iter()
+      .find(|dep| dep.name.starts_with("cpython"))
+      .ok_or_else(|| io::Error::other("pkgs.cpython must be in dependencies"))
+}
+
 fn site_packages(ctx: &Ctx) -> io::Result<String> {
    Ok(format!(
       "{}/lib/{}/site-packages",
@@ -185,7 +193,7 @@ impl System for Pyapp {
    /// PYTHONPATH is the application's site-packages, filling up during the
    /// build, then the build backends.
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      let options: Options = ctx.options("pyapp")?;
+      let options: Options = ctx.options(self.name())?;
       let site = site_packages(ctx)?;
       create_dir_all(&site)?;
       let mut path = vec![site];
@@ -207,7 +215,7 @@ impl System for Pyapp {
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options("pyapp")?;
+      let options: Options = ctx.options(self.name())?;
       match verb {
          "build" => build(ctx, attrs, &options),
          "test" => {
@@ -219,7 +227,7 @@ impl System for Pyapp {
             Ok(())
          },
          "install" => install(ctx, &options),
-         _ => Err(unknown("pyapp", verb)),
+         _ => Err(unknown(self.name(), verb)),
       }
    }
 }
@@ -390,11 +398,7 @@ fn build_wheel(
 }
 
 fn env_python(ctx: &Ctx, mode: Mode) -> io::Result<()> {
-   let python = ctx
-      .deps
-      .iter()
-      .find(|dep| dep.name.starts_with("cpython"))
-      .ok_or_else(|| io::Error::other("pkgs.cpython must be in dependencies"))?;
+   let python = cpython(ctx)?;
    let dev = if mode == Mode::Dev {
       "${MOTLEY_PROJECT:+$MOTLEY_PROJECT:$MOTLEY_PROJECT/src:}"
    } else {
@@ -459,12 +463,7 @@ fn install_wheel(ctx: &Ctx, wheel: &str, scripts: bool) -> io::Result<()> {
 /// our interpreter and the application's site-packages first on sys.path,
 /// relative to the script itself.
 fn install(ctx: &Ctx, options: &Options) -> io::Result<()> {
-   let python = ctx
-      .deps
-      .iter()
-      .find(|dep| dep.name.starts_with("cpython"))
-      .map(|dep| dep.root.clone())
-      .ok_or_else(|| io::Error::other("pkgs.cpython must be in dependencies"))?;
+   let python = &cpython(ctx)?.root;
    let dev = if options.mode == Mode::Dev {
       "; p = os.environ.get('MOTLEY_PROJECT'); sys.path[0:0] = [p, os.path.join(p, 'src')] if p \
        else []"

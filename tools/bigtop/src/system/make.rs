@@ -83,7 +83,7 @@ impl System for Make {
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
-      let options: Options = ctx.options("make")?;
+      let options: Options = ctx.options(self.name())?;
       Ok(ctx.project_dir(&options.root))
    }
 
@@ -92,7 +92,7 @@ impl System for Make {
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options("make")?;
+      let options: Options = ctx.options(self.name())?;
       // PREFIX/prefix for hand-written Makefiles, configure'd ones ignore them.
       let mut flags = vec![format!("PREFIX={}", ctx.out), format!("prefix={}", ctx.out)];
       let platform = ctx.platform()?;
@@ -132,7 +132,7 @@ impl System for Make {
                install(ctx, &flags, &options.install_target)
             })
          },
-         _ => Err(unknown("make", verb)),
+         _ => Err(unknown(self.name(), verb)),
       }
    }
 }

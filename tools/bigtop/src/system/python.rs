@@ -26,6 +26,7 @@ use mummer::{
       sorted_entries,
       write_file,
    },
+   process::Checked as _,
    store::STORE_DIR,
    tree::writable,
 };
@@ -85,7 +86,7 @@ impl System for Python {
    /// the source tree comes last so a backend can build itself before any of
    /// the stack exists.
    fn setup(&self, ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      let options: Options = ctx.options("python")?;
+      let options: Options = ctx.options(self.name())?;
       let root = ctx.project_dir(&options.root);
       let dep_roots: Vec<String> = ctx.deps.iter().map(|dep| dep.root.clone()).collect();
       let mut path = Self::site_packages(&dep_roots);
@@ -104,12 +105,12 @@ impl System for Python {
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options("python")?;
+      let options: Options = ctx.options(self.name())?;
       match verb {
          "build" => Self::build(ctx, &options),
          "install" => Self::install(ctx, attrs),
          "test" => Self::test(ctx, &options),
-         _ => Err(unknown("python", verb)),
+         _ => Err(unknown(self.name(), verb)),
       }
    }
 }
@@ -133,14 +134,10 @@ impl Python {
    }
 
    fn python(code: &str) -> io::Result<String> {
-      let output = Command::new("python3")
+      let printed = Command::new("python3")
          .args(["-c", code])
-         .stderr(Stdio::inherit())
-         .output()?;
-      if !output.status.success() {
-         return Err(io::Error::other(format!("python3 -c {code} failed")));
-      }
-      Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+         .checked_output()?;
+      Ok(String::from_utf8_lossy(&printed).trim().to_owned())
    }
 
    /// maturin's PEP 517 backend only shells out to `maturin`, so call it

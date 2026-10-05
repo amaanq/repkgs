@@ -106,7 +106,7 @@ impl System for Meson {
          "build" => run("ninja", &[&format!("-j{}", ctx.njobs)], &[]),
          "test" => Self::test(ctx, &options),
          "install" => run("meson", &["install", "--no-rebuild"], &[]),
-         _ => Err(unknown("meson", verb)),
+         _ => Err(unknown(self.name(), verb)),
       }
    }
 }

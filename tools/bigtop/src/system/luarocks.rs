@@ -60,10 +60,10 @@ impl System for Luarocks {
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options("luarocks")?;
+      let options: Options = ctx.options(self.name())?;
       match verb {
          "install" => Self::install(ctx, &options),
-         _ => Err(unknown("luarocks", verb)),
+         _ => Err(unknown(self.name(), verb)),
       }
    }
 }
