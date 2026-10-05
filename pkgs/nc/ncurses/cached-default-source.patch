@@ -1,0 +1,36 @@
+--- a/aclocal.m4
++++ b/aclocal.m4
+@@ -3687,8 +3687,8 @@
+ 
+ 	if test "x$cf_cv_gnu_library_219" = xyes; then
+ 		cf_save="$CPPFLAGS"
++		CF_ADD_CFLAGS(-D_DEFAULT_SOURCE -D_XOPEN_SOURCE=$cf_gnu_xopen_source)
+ 		AC_CACHE_CHECK(if _XOPEN_SOURCE=$cf_gnu_xopen_source works with _DEFAULT_SOURCE,cf_cv_gnu_dftsrc_219,[
+-			CF_ADD_CFLAGS(-D_DEFAULT_SOURCE -D_XOPEN_SOURCE=$cf_gnu_xopen_source)
+ 			AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
+ 				#include <limits.h>
+ 				#include <sys/types.h>
+--- a/configure
++++ b/configure
+@@ -10902,10 +10902,6 @@
+ 		cf_save="$CPPFLAGS"
+ 		echo "$as_me:10903: checking if _XOPEN_SOURCE=$cf_gnu_xopen_source works with _DEFAULT_SOURCE" >&5
+ echo $ECHO_N "checking if _XOPEN_SOURCE=$cf_gnu_xopen_source works with _DEFAULT_SOURCE... $ECHO_C" >&6
+-if test "${cf_cv_gnu_dftsrc_219+set}" = set; then
+-  echo $ECHO_N "(cached) $ECHO_C" >&6
+-else
+-
+ cf_fix_cppflags=no
+ cf_new_cflags=
+ cf_new_cppflags=
+@@ -11004,6 +11000,10 @@
+ 
+ fi
+ 
++if test "${cf_cv_gnu_dftsrc_219+set}" = set; then
++  echo $ECHO_N "(cached) $ECHO_C" >&6
++else
++
+ 			cat >"conftest.$ac_ext" <<_ACEOF
+ #line 11008 "configure"
+ #include "confdefs.h"

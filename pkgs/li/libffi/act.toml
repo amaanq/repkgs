@@ -1,7 +1,8 @@
-tag   = "v{version}"
-track = "github:libffi/libffi"
-fetch = { asset = "libffi-{version}.tar.gz" }
-with  = [ "autotools" ]
+tag     = "v{version}"
+track   = "github:libffi/libffi"
+fetch   = { asset = "libffi-{version}.tar.gz" }
+with    = [ "autotools" ]
+patches = [ "cached-warning-flags.patch" ]
 
 [on.macos.autotools]
 flags = [ "--disable-symvers" ]

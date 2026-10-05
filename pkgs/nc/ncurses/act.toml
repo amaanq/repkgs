@@ -1,7 +1,7 @@
 track   = "gnu:ncurses"
 fetch   = { url = "https://ftpmirror.gnu.org/ncurses/ncurses-{version}.tar.gz" }
 with    = [ "autotools" ]
-patches = [ "relocatable.patch" ]
+patches = [ "relocatable.patch", "cached-default-source.patch" ]
 
 [test]
 bin     = [ "tic", "tput", "infocmp" ]
