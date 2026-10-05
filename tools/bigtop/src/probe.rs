@@ -30,10 +30,7 @@ use mummer::{
    },
 };
 use serde::Serialize;
-use serde_json::{
-   Value,
-   json,
-};
+use serde_json::Value;
 use tightrope::{
    client::Client,
    key::Key,
@@ -43,6 +40,15 @@ use crate::attrs::{
    Ctx,
    build_top,
 };
+
+#[derive(Serialize)]
+struct Record<'inputs, Extra> {
+   files:      Vec<String>,
+   args:       Option<&'inputs Extra>,
+   roots:      Vec<&'inputs String>,
+   cc:         Vec<&'inputs Value>,
+   toolchains: Vec<String>,
+}
 
 /// Leaves `$out` out, since a CA derivation's is a placeholder that changes
 /// with every input, and `store` keeps whatever names it out of the cache.
@@ -71,13 +77,13 @@ where
       .iter()
       .filter(|root| !cc.contains_key(root.as_str()))
       .collect::<Vec<_>>();
-   let record = json!({
-      "files": files,
-      "args": extra,
-      "roots": roots,
-      "cc": cc.values().collect::<Vec<_>>(),
-      "toolchains": toolchains,
-   });
+   let record = Record {
+      files,
+      args: extra,
+      roots,
+      cc: cc.values().collect(),
+      toolchains,
+   };
    format!("probe/{kind}/{}", hex(&serde_json::to_vec(&record)?)).parse()
 }
 

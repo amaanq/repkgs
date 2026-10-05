@@ -6,7 +6,6 @@ use std::{
 };
 
 use mummer::files::write_file;
-use serde_json::json;
 
 use crate::attrs::Ctx;
 
@@ -50,7 +49,7 @@ pub fn site(ctx: &Ctx, script: &Path) -> io::Result<String> {
    };
    let sites: Vec<&str> = original.split_whitespace().collect();
    let contents: Vec<Option<String>> = sites.iter().map(|site| read_to_string(site).ok()).collect();
-   let context = blake3::hash(&serde_json::to_vec(&json!([header, compile, contents]))?)
+   let context = blake3::hash(&serde_json::to_vec(&(&header, &compile, &contents))?)
       .to_hex()
       .to_string();
    let quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
