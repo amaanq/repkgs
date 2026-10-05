@@ -27,7 +27,11 @@ use std::{
 use tempfile::Builder;
 use tightrope::{
    client::Client,
-   digest,
+   digest::Digest,
+   key::{
+      Key,
+      Namespace,
+   },
 };
 
 use crate::{
@@ -67,7 +71,7 @@ struct Entry {
 
 struct Blob {
    mode: u32,
-   hash: String,
+   hash: Digest,
 }
 
 enum Kind {
@@ -77,7 +81,7 @@ enum Kind {
 }
 
 #[inline]
-pub fn put_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<()> {
+pub fn put_directory(cache: &mut Client, key: &Key, root: &Path) -> io::Result<()> {
    let store = Store::new();
    let mut listing = String::new();
    let mut pending = vec![root.to_path_buf()];
@@ -110,8 +114,8 @@ pub fn put_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<(
             pending.push(path);
          } else if metadata.is_file() {
             let data = stored(&store, read(&path)?);
-            let hash = digest(&data);
-            let blob_key = format!("b/{hash}");
+            let hash = Digest::of(&data);
+            let blob_key = Key::digest(Namespace::Blob, &hash);
             if !cache.has_many(from_ref(&blob_key))?[0] {
                cache.put(&blob_key, &data)?;
                uploaded += 1_i32;
@@ -161,16 +165,13 @@ fn parse_listing(text: &str) -> io::Result<Vec<Entry>> {
       let parsed = match kind {
          Some("f") => {
             let bits = u32::from_str_radix(mode, 8).map_err(io::Error::other)?;
-            if bits > 0o777
-               || reference.len() != 32
-               || !reference.bytes().all(|byte| byte.is_ascii_hexdigit())
-            {
-               return Err(io::Error::other("invalid cached file metadata"));
+            if bits > 0o777 {
+               return Err(io::Error::other("invalid cached file mode"));
             }
             leaves.insert(path.clone());
             Kind::File(Blob {
                mode: bits,
-               hash: reference.to_owned(),
+               hash: reference.parse()?,
             })
          },
          Some("l") => {
@@ -200,7 +201,7 @@ fn parse_listing(text: &str) -> io::Result<Vec<Entry>> {
 }
 
 #[inline]
-pub fn get_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<bool> {
+pub fn get_directory(cache: &mut Client, key: &Key, root: &Path) -> io::Result<bool> {
    let Some(listing) = cache.get(key)? else {
       return Ok(false);
    };
@@ -219,12 +220,12 @@ pub fn get_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<b
          .iter()
          .filter_map(|entry| {
             if let Kind::File(ref blob) = entry.kind {
-               Some(format!("b/{}", blob.hash))
+               Some(Key::digest(Namespace::Blob, &blob.hash))
             } else {
                None
             }
          })
-         .collect::<Vec<String>>();
+         .collect::<Vec<_>>();
       let mut values = cache.get_many(&keys)?.into_iter();
       for entry in batch {
          let destination = staging.path().join(&entry.path);
@@ -237,7 +238,7 @@ pub fn get_directory(cache: &mut Client, key: &str, root: &Path) -> io::Result<b
                let Some(Some(data)) = values.next() else {
                   return Ok(false);
                };
-               if digest(&data) != blob.hash {
+               if Digest::of(&data) != blob.hash {
                   return Err(io::Error::other("cached file content hash differs"));
                }
                write_file(&destination, &restored(&store, data), Some(blob.mode))?;

@@ -13,16 +13,17 @@ use std::{
 
 use blake3::Hasher;
 
-use crate::digest;
+use crate::digest::Digest;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Identity(String);
+/// A file as its content, `C:` and its digest.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Identity(Digest);
 
 impl Identity {
    #[must_use]
    #[inline]
    pub fn of(bytes: &[u8]) -> Self {
-      Self(format!("C:{}", digest(bytes)))
+      Self(Digest::of(bytes))
    }
 
    #[inline]
@@ -32,14 +33,14 @@ impl Identity {
    {
       let mut hasher = Hasher::new();
       hasher.update_reader(reader)?;
-      Ok(Self(format!("C:{}", &hasher.finalize().to_hex()[..32])))
+      Ok(Self(Digest::from(hasher.finalize())))
    }
 }
 
 impl Display for Identity {
    #[inline]
    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
-      f.write_str(&self.0)
+      write!(f, "C:{}", self.0)
    }
 }
 
@@ -48,12 +49,9 @@ impl FromStr for Identity {
 
    #[inline]
    fn from_str(text: &str) -> io::Result<Self> {
-      if text.len() != 34
-         || !text.starts_with("C:")
-         || !text.as_bytes()[2..].iter().all(u8::is_ascii_hexdigit)
-      {
-         return Err(io::Error::other("invalid cache identity"));
-      }
-      Ok(Self(text.to_owned()))
+      let digest = text
+         .strip_prefix("C:")
+         .ok_or_else(|| io::Error::other("invalid cache identity"))?;
+      Ok(Self(digest.parse()?))
    }
 }

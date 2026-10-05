@@ -31,6 +31,7 @@ use std::{
 };
 
 use tightrope::{
+   key::Key,
    read_line,
    request::Request,
 };
@@ -49,7 +50,7 @@ use crate::{
 const UPLOAD_QUEUE: usize = 4096;
 const REMOTE_PARALLEL: usize = 16;
 
-type Uploads = SyncSender<(String, Vec<u8>)>;
+type Uploads = SyncSender<(Key, Vec<u8>)>;
 
 pub struct Daemon {
    store:       Store,
@@ -99,7 +100,7 @@ impl Daemon {
       let remote = tier.map(Arc::new);
       let (uploads, uploader) = match remote {
          Some(ref shared) if shared.writes() => {
-            let (sender, receiver) = sync_channel::<(String, Vec<u8>)>(UPLOAD_QUEUE);
+            let (sender, receiver) = sync_channel::<(Key, Vec<u8>)>(UPLOAD_QUEUE);
             let writer = Arc::clone(shared);
             let uploader = Builder::new().name("upload".to_owned()).spawn(move || {
                for (key, value) in receiver {
@@ -127,7 +128,7 @@ impl Daemon {
 
    /// The local values, else the remote's, asked for together and kept
    /// locally so the next lookup stays here.
-   fn lookup(&self, keys: &[String]) -> io::Result<Vec<Option<Value>>> {
+   fn lookup(&self, keys: &[Key]) -> io::Result<Vec<Option<Value>>> {
       let mut values = keys
          .iter()
          .map(|key| self.store.get(key))
@@ -164,7 +165,7 @@ impl Daemon {
 
    /// Queues a value just stored for the remote, dropping it rather than
    /// holding up the build when the queue is full.
-   fn upload(&self, key: &str) -> io::Result<()> {
+   fn upload(&self, key: &Key) -> io::Result<()> {
       let queue = self
          .uploads
          .lock()
@@ -173,7 +174,7 @@ impl Daemon {
       let (Some(sender), Some(value)) = (queue, self.store.get(key)) else {
          return Ok(());
       };
-      match sender.try_send((key.to_owned(), value.read()?)) {
+      match sender.try_send((key.clone(), value.read()?)) {
          Ok(()) | Err(TrySendError::Disconnected(_)) => {},
          Err(TrySendError::Full(_)) => {
             if !self.dropped.swap(true, Ordering::Relaxed) {
@@ -288,7 +289,7 @@ impl Connection {
 
    /// The next request when it is a GET the client already pipelined, so a
    /// batch reaches the remote together.
-   fn buffered_get(&mut self) -> io::Result<Option<String>> {
+   fn buffered_get(&mut self) -> io::Result<Option<Key>> {
       let buffered = self.reader.buffer();
       if !buffered.starts_with(b"GET ") || !buffered.contains(&b'\n') {
          return Ok(None);

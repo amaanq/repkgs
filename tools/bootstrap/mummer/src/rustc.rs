@@ -56,7 +56,11 @@ use tempfile::{
 };
 use tightrope::{
    client::Client,
-   digest,
+   digest::Digest,
+   key::{
+      Key,
+      Namespace,
+   },
 };
 
 use crate::{
@@ -303,7 +307,7 @@ impl Invocation {
 struct Artifact {
    name:   String,
    mode:   u32,
-   hash:   String,
+   hash:   Digest,
    /// A link output kept as the linker wrote it, its RUNPATH settled on replay.
    #[serde(default)]
    settle: bool,
@@ -422,7 +426,7 @@ fn request_key(
    cache: &mut Client,
    compiler: &str,
    invocation: &Invocation,
-) -> io::Result<String> {
+) -> io::Result<Key> {
    let mut hasher = Hasher::new();
    field(&mut hasher, store.tool_id(compiler)?);
    field(&mut hasher, store.tool_identity(cache, compiler)?);
@@ -470,7 +474,10 @@ fn request_key(
       field(&mut hasher, name);
       field(&mut hasher, var(name).unwrap_or_default());
    }
-   Ok(format!("rs/{}", &hasher.finalize().to_hex()[..32]))
+   Ok(Key::digest(
+      Namespace::Rust,
+      &Digest::from(hasher.finalize()),
+   ))
 }
 
 /// A linker that is a mummer wrapper stands for the compiler its toolchain
@@ -523,7 +530,7 @@ fn target_libdir(compiler: &str, invocation: &Invocation) -> io::Result<PathBuf>
 fn store_result(
    cache: &mut Client,
    store: &mut Store,
-   request: &str,
+   request: &Key,
    invocation: &Invocation,
    unsettled: Option<&TempDir>,
    diagnostics: &[u8],
@@ -601,8 +608,8 @@ fn store_result(
       if invocation.links {
          store.mask_output(&mut bytes, false);
       }
-      let hash = digest(&bytes);
-      cache.put(&format!("b/{hash}"), &bytes)?;
+      let hash = Digest::of(&bytes);
+      cache.put(&Key::digest(Namespace::Blob, &hash), &bytes)?;
       artifacts.push(Artifact {
          name: stem(name, &invocation.suffix, "@"),
          mode: metadata(&output)?.permissions().mode() & 0o777,
@@ -613,10 +620,13 @@ fn store_result(
    if let Some(dependencies) = link_text {
       let mut link_bytes = store.mask_text(&dependencies).into_bytes();
       store.mask_output(&mut link_bytes, false);
-      cache.put(&format!("l/{key}"), &link_bytes)?;
+      cache.put(&Key::digest(Namespace::LinkDepfile, &key), &link_bytes)?;
    }
-   cache.put(&format!("o/{key}"), &serde_json::to_vec(&artifacts)?)?;
-   cache.put(&format!("e/{key}"), diagnostics)?;
+   cache.put(
+      &Key::digest(Namespace::Object, &key),
+      &serde_json::to_vec(&artifacts)?,
+   )?;
+   cache.put(&Key::digest(Namespace::Diagnostics, &key), diagnostics)?;
    manifest.publish(cache, request)
 }
 
@@ -632,9 +642,9 @@ fn replay(
    cache: &mut Client,
    store: &Store,
    invocation: &Invocation,
-   key: &str,
+   key: &Digest,
 ) -> Result<(), Miss> {
-   let Some(listing) = cache.get(&format!("o/{key}"))? else {
+   let Some(listing) = cache.get(&Key::digest(Namespace::Object, key))? else {
       return Err(Miss::ObjectGone);
    };
    let artifacts = serde_json::from_slice::<Vec<Artifact>>(&listing).map_err(io::Error::from)?;
@@ -651,21 +661,21 @@ fn replay(
             "invalid cached Rust artifact",
          )));
       }
-      let Some(bytes) = cache.get(&format!("b/{}", artifact.hash))? else {
+      let Some(bytes) = cache.get(&Key::digest(Namespace::Blob, &artifact.hash))? else {
          return Err(Miss::ObjectGone);
       };
-      if digest(&bytes) != artifact.hash {
+      if Digest::of(&bytes) != artifact.hash {
          return Err(Miss::Failed(io::Error::other(
             "Rust artifact content hash differs",
          )));
       }
       values.push(bytes);
    }
-   let Some(diagnostics) = cache.get(&format!("e/{key}"))? else {
+   let Some(diagnostics) = cache.get(&Key::digest(Namespace::Diagnostics, key))? else {
       return Err(Miss::ObjectGone);
    };
    let link_text = if artifacts.iter().any(|artifact| artifact.settle) {
-      let Some(mut link_bytes) = cache.get(&format!("l/{key}"))? else {
+      let Some(mut link_bytes) = cache.get(&Key::digest(Namespace::LinkDepfile, key))? else {
          return Err(Miss::ObjectGone);
       };
       store.mask_output(&mut link_bytes, true);

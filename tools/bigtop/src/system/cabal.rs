@@ -32,7 +32,10 @@ use mummer::{
    },
 };
 use serde::Deserialize;
-use tightrope::client::Client;
+use tightrope::{
+   client::Client,
+   key::Key,
+};
 
 use crate::{
    attrs::{
@@ -260,7 +263,7 @@ impl Cabal {
    /// module by module, where the units cache only covers dependencies. It
    /// is keyed on the package's identity alone, not its sources or inputs,
    /// since ghc hashes every module against the tree it finds.
-   fn dist_key(ctx: &Ctx, options: &Options) -> io::Result<String> {
+   fn dist_key(ctx: &Ctx, options: &Options) -> io::Result<Key> {
       let project = ctx.project_dir(&options.root);
       let mut cabals = Self::cabal_files(ctx, options)?
          .into_iter()
@@ -278,10 +281,7 @@ impl Cabal {
          &options.project,
          &ctx.platform,
       ))?;
-      Ok(format!(
-         "probe/cabal-dist/{}",
-         blake3::hash(&record).to_hex()
-      ))
+      format!("probe/cabal-dist/{}", blake3::hash(&record).to_hex()).parse()
    }
 
    fn plan() -> io::Result<Vec<Unit>> {
@@ -310,9 +310,10 @@ impl Cabal {
       let units = Self::units()?;
       let key = Self::unit_key()?;
       let got: Vec<bool> = parallel(ids, |id| {
+         let unit = format!("{key}/{id}").parse::<Key>()?;
          let Some(bytes) = Client::connect(socket)
             .ok()
-            .and_then(|mut client| client.get(&format!("{key}/{id}")).ok().flatten())
+            .and_then(|mut client| client.get(&unit).ok().flatten())
          else {
             return Ok(false);
          };
@@ -356,7 +357,7 @@ impl Cabal {
          }
          succeed(&mut command, "bsdtar")?;
          if let Ok(mut client) = Client::connect(socket) {
-            drop(client.put(&format!("{key}/{id}"), &read(&tar)?));
+            drop(client.put(&format!("{key}/{id}").parse()?, &read(&tar)?));
          }
          remove_file(&tar)
       })?;

@@ -11,10 +11,13 @@ use std::{
 
 use crate::{
    MAX_LINE,
-   check_key,
    decode,
    encode,
    identity::Identity,
+   key::{
+      Key,
+      check_token,
+   },
    read_line,
 };
 
@@ -55,8 +58,7 @@ impl Client {
    }
 
    #[inline]
-   pub fn get(&mut self, key: &str) -> io::Result<Option<Vec<u8>>> {
-      check_key(key)?;
+   pub fn get(&mut self, key: &Key) -> io::Result<Option<Vec<u8>>> {
       self.exchange(|reader| {
          writeln!(reader.get_mut(), "GET {key}")?;
          receive(reader)
@@ -64,8 +66,7 @@ impl Client {
    }
 
    #[inline]
-   pub fn get_many(&mut self, keys: &[String]) -> io::Result<Vec<Option<Vec<u8>>>> {
-      keys.iter().try_for_each(|key| check_key(key))?;
+   pub fn get_many(&mut self, keys: &[Key]) -> io::Result<Vec<Option<Vec<u8>>>> {
       self.exchange(|reader| {
          let mut values = Vec::with_capacity(keys.len());
          for batch in keys.chunks(BATCH) {
@@ -83,8 +84,7 @@ impl Client {
    }
 
    #[inline]
-   pub fn has_many(&mut self, keys: &[String]) -> io::Result<Vec<bool>> {
-      keys.iter().try_for_each(|key| check_key(key))?;
+   pub fn has_many(&mut self, keys: &[Key]) -> io::Result<Vec<bool>> {
       self.exchange(|reader| {
          let mut present = Vec::with_capacity(keys.len());
          for batch in keys.chunks(BATCH) {
@@ -106,8 +106,7 @@ impl Client {
    }
 
    #[inline]
-   pub fn put(&mut self, key: &str, value: &[u8]) -> io::Result<()> {
-      check_key(key)?;
+   pub fn put(&mut self, key: &Key, value: &[u8]) -> io::Result<()> {
       let frame = encode(value)?;
       self.exchange(|reader| {
          writeln!(reader.get_mut(), "PUT {key} {}", frame.len())?;
@@ -147,7 +146,7 @@ impl Client {
 
    #[inline]
    pub fn acquire(&mut self, build: &str) -> io::Result<()> {
-      check_key(build)?;
+      check_token(build)?;
       self.exchange(|reader| {
          writeln!(reader.get_mut(), "SLOT {build}")?;
          acknowledged(reader)
@@ -156,7 +155,7 @@ impl Client {
 
    #[inline]
    pub fn release(&mut self, build: &str) -> io::Result<()> {
-      check_key(build)?;
+      check_token(build)?;
       self.exchange(|reader| {
          writeln!(reader.get_mut(), "DONE {build}")?;
          acknowledged(reader)

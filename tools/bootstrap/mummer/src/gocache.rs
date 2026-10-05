@@ -1,6 +1,11 @@
 use std::{
    collections::BTreeMap,
    env::var_os,
+   fmt::{
+      Display,
+      Formatter,
+      Result as FormatResult,
+   },
    fs::create_dir_all,
    io::{
       self,
@@ -34,6 +39,11 @@ use serde::{
 use tightrope::{
    MAX_OBJECT,
    client::Client,
+   key::{
+      Hex,
+      Key,
+      Namespace,
+   },
 };
 
 #[derive(Deserialize)]
@@ -50,14 +60,14 @@ enum RequestCommand {
    #[serde(rename = "get")]
    Get {
       #[serde(rename = "ActionID")]
-      action: String,
+      action: GoId,
    },
    #[serde(rename = "put")]
    Put {
       #[serde(rename = "ActionID")]
-      action: String,
+      action: GoId,
       #[serde(rename = "OutputID")]
-      output: String,
+      output: GoId,
       #[serde(default, rename = "BodySize")]
       size:   usize,
    },
@@ -103,20 +113,45 @@ enum ResponseBody {
    Closed(BTreeMap<String, String>),
 }
 
-fn identifier(encoded: &str) -> io::Result<(Vec<u8>, String)> {
-   const HEX: &[u8; 16] = b"0123456789abcdef";
-   let bytes = STANDARD.decode(encoded).map_err(io::Error::other)?;
-   if bytes.len() != 32 {
-      return Err(io::Error::other(
-         "Go cache identifier must contain 32 bytes",
-      ));
+/// An action or output ID, 32 bytes Go sends in base64.
+#[derive(Clone, Copy, Deserialize)]
+#[serde(try_from = "String")]
+struct GoId([u8; 32]);
+
+impl GoId {
+   fn encoded(self) -> String {
+      STANDARD.encode(self.0)
    }
-   let mut hex = String::with_capacity(64);
-   for byte in &bytes {
-      hex.push(char::from(HEX[usize::from(*byte >> 4_u8)]));
-      hex.push(char::from(HEX[usize::from(*byte & 0x0F)]));
+}
+
+impl TryFrom<&[u8]> for GoId {
+   type Error = io::Error;
+
+   fn try_from(bytes: &[u8]) -> io::Result<Self> {
+      bytes
+         .try_into()
+         .map(Self)
+         .map_err(|_error| io::Error::other("Go cache identifier must contain 32 bytes"))
    }
-   Ok((bytes, hex))
+}
+
+impl TryFrom<String> for GoId {
+   type Error = io::Error;
+
+   fn try_from(encoded: String) -> io::Result<Self> {
+      Self::try_from(
+         STANDARD
+            .decode(encoded)
+            .map_err(io::Error::other)?
+            .as_slice(),
+      )
+   }
+}
+
+impl Display for GoId {
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+      Hex(&self.0).fmt(f)
+   }
 }
 
 fn next_line(input: &mut impl BufRead, limit: usize) -> io::Result<Option<String>> {
@@ -163,8 +198,8 @@ pub fn run(socket: &Path) -> io::Result<()> {
    create_dir_all(&directory)?;
    let mut input = BufReader::new(io::stdin());
    let stdout = io::stdout();
-   let mut output = stdout.lock();
-   reply(&mut output, &Response {
+   let mut writer = stdout.lock();
+   reply(&mut writer, &Response {
       id:   0,
       body: ResponseBody::Greeting {
          commands: ["get", "put", "close"],
@@ -180,27 +215,26 @@ pub fn run(socket: &Path) -> io::Result<()> {
       let body = match request.command {
          RequestCommand::Close => ResponseBody::Closed(BTreeMap::new()),
          RequestCommand::Get { action } => {
-            let (_, action_hex) = identifier(&action)?;
             let found = cache
                .as_mut()
                .map(|client| -> io::Result<_> {
-                  let Some(output_id) = client.get(&format!("go/a/{action_hex}"))? else {
+                  let Some(output_bytes) = client.get(&Key::hex(Namespace::GoAction, &action.0))?
+                  else {
                      return Ok(None);
                   };
-                  let encoded = STANDARD.encode(output_id);
-                  let (_, output_hex) = identifier(&encoded)?;
+                  let output = GoId::try_from(output_bytes.as_slice())?;
                   Ok(client
-                     .get(&format!("go/o/{output_hex}"))?
-                     .map(|bytes| (encoded, output_hex, bytes)))
+                     .get(&Key::hex(Namespace::GoOutput, &output.0))?
+                     .map(|bytes| (output, bytes)))
                })
                .transpose();
             match found {
-               Ok(Some(Some((encoded, output_hex, bytes)))) => {
-                  let path = directory.join(output_hex);
+               Ok(Some(Some((output, bytes)))) => {
+                  let path = directory.join(output.to_string());
                   write_file(&path, &bytes, None)?;
-                  log("go", "cached", &action_hex, started);
+                  log("go", "cached", &action.to_string(), started);
                   ResponseBody::Hit {
-                     output: encoded,
+                     output: output.encoded(),
                      size: bytes.len(),
                      path,
                   }
@@ -215,11 +249,9 @@ pub fn run(socket: &Path) -> io::Result<()> {
          },
          RequestCommand::Put {
             action,
-            output: output_id,
+            output,
             size,
          } => {
-            let (_, action_hex) = identifier(&action)?;
-            let (output_bytes, output_hex) = identifier(&output_id)?;
             if size > MAX_OBJECT {
                return Err(io::Error::other("Go cache body exceeds size limit"));
             }
@@ -239,12 +271,14 @@ pub fn run(socket: &Path) -> io::Result<()> {
             // a killed go build leaves a torn stream, storing it would poison
             // the action for every later build
             if bytes.len() == size {
-               let path = directory.join(&output_hex);
+               let path = directory.join(output.to_string());
                write_file(&path, &bytes, None)?;
                if let Some(client) = cache.as_mut()
                   && let Err(error) = client
-                     .put(&format!("go/o/{output_hex}"), &bytes)
-                     .and_then(|()| client.put(&format!("go/a/{action_hex}"), &output_bytes))
+                     .put(&Key::hex(Namespace::GoOutput, &output.0), &bytes)
+                     .and_then(|()| {
+                        client.put(&Key::hex(Namespace::GoAction, &action.0), &output.0)
+                     })
                {
                   diagnostic(format_args!("mummer Go cache upload failed, {error}"));
                   cache = None;
@@ -256,7 +290,7 @@ pub fn run(socket: &Path) -> io::Result<()> {
                   } else {
                      "compiled-unstored"
                   },
-                  &action_hex,
+                  &action.to_string(),
                   started,
                );
                ResponseBody::Stored { path }
@@ -267,7 +301,7 @@ pub fn run(socket: &Path) -> io::Result<()> {
             }
          },
       };
-      reply(&mut output, &Response {
+      reply(&mut writer, &Response {
          id: request.id,
          body,
       })?;

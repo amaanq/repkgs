@@ -33,7 +33,10 @@ use serde_json::{
    Value,
    json,
 };
-use tightrope::client::Client;
+use tightrope::{
+   client::Client,
+   key::Key,
+};
 
 use crate::attrs::{
    Ctx,
@@ -42,7 +45,7 @@ use crate::attrs::{
 
 /// Leaves `$out` out, since a CA derivation's is a placeholder that changes
 /// with every input, and `store` keeps whatever names it out of the cache.
-pub fn key<Extra>(kind: &str, scripts: &[String], extra: Option<&Extra>) -> io::Result<String>
+pub fn key<Extra>(kind: &str, scripts: &[String], extra: Option<&Extra>) -> io::Result<Key>
 where
    Extra: Serialize,
 {
@@ -74,10 +77,7 @@ where
       "cc": cc.values().collect::<Vec<_>>(),
       "toolchains": toolchains,
    });
-   Ok(format!(
-      "probe/{kind}/{}",
-      hex(&serde_json::to_vec(&record)?)
-   ))
+   format!("probe/{kind}/{}", hex(&serde_json::to_vec(&record)?)).parse()
 }
 
 /// The cc toolchain's files and a program it links, its own path masked and
@@ -140,7 +140,7 @@ fn daemon(ctx: &Ctx, socket: &Path) -> Option<Client> {
    Client::connect(socket).ok()
 }
 
-pub fn restore(key: &str, file: &Path, socket: &Path) -> io::Result<bool> {
+pub fn restore(key: &Key, file: &Path, socket: &Path) -> io::Result<bool> {
    let ctx = Ctx::load(&build_top()?)?;
    let Some(mut client) = daemon(&ctx, socket) else {
       return Ok(false);
@@ -192,7 +192,7 @@ fn resolved(ctx: &Ctx, text: &str) -> Option<String> {
    known.then_some(resolved)
 }
 
-pub fn store(key: &str, file: &Path, socket: &Path) -> io::Result<()> {
+pub fn store(key: &Key, file: &Path, socket: &Path) -> io::Result<()> {
    let ctx = Ctx::load(&build_top()?)?;
    if !file.exists() {
       return Ok(());
@@ -213,7 +213,7 @@ pub fn store(key: &str, file: &Path, socket: &Path) -> io::Result<()> {
    Ok(())
 }
 
-pub fn restore_dir(key: &str, dir: &Path, socket: &Path) -> io::Result<bool> {
+pub fn restore_dir(key: &Key, dir: &Path, socket: &Path) -> io::Result<bool> {
    let ctx = Ctx::load(&build_top()?)?;
    let Some(mut client) = daemon(&ctx, socket) else {
       return Ok(false);
@@ -221,7 +221,7 @@ pub fn restore_dir(key: &str, dir: &Path, socket: &Path) -> io::Result<bool> {
    get_directory(&mut client, key, dir)
 }
 
-pub fn store_dir(key: &str, dir: &Path, socket: &Path) -> io::Result<()> {
+pub fn store_dir(key: &Key, dir: &Path, socket: &Path) -> io::Result<()> {
    let ctx = Ctx::load(&build_top()?)?;
    if !dir.exists() {
       return Ok(());

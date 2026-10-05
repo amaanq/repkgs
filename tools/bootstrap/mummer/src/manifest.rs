@@ -21,7 +21,14 @@ use serde::{
    Deserialize,
    Serialize,
 };
-use tightrope::client::Client;
+use tightrope::{
+   client::Client,
+   digest::Digest,
+   key::{
+      Key,
+      Namespace,
+   },
+};
 
 #[derive(Deserialize, Serialize)]
 struct Input {
@@ -86,15 +93,18 @@ impl Manifest {
       })
    }
 
-   pub fn result_key(&self, request: &str) -> io::Result<String> {
+   pub fn result_key(&self, request: &Key) -> io::Result<Digest> {
       let mut hasher = Hasher::new();
-      field(&mut hasher, request);
+      field(&mut hasher, request.as_str());
       field(&mut hasher, serde_json::to_vec(self)?);
-      Ok(hasher.finalize().to_hex()[..32].to_owned())
+      Ok(Digest::from(hasher.finalize()))
    }
 
-   pub fn publish(&self, cache: &mut Client, request: &str) -> io::Result<()> {
-      cache.put(&format!("m/{request}"), &serde_json::to_vec(self)?)
+   pub fn publish(&self, cache: &mut Client, request: &Key) -> io::Result<()> {
+      cache.put(
+         &Key::of(Namespace::Manifest, request),
+         &serde_json::to_vec(self)?,
+      )
    }
 }
 
@@ -128,8 +138,8 @@ impl From<io::Error> for Miss {
    }
 }
 
-pub fn lookup(cache: &mut Client, store: &mut Store, request: &str) -> Result<String, Miss> {
-   let Some(bytes) = cache.get(&format!("m/{request}"))? else {
+pub fn lookup(cache: &mut Client, store: &mut Store, request: &Key) -> Result<Digest, Miss> {
+   let Some(bytes) = cache.get(&Key::of(Namespace::Manifest, request))? else {
       return Err(Miss::NewKey);
    };
    let manifest = serde_json::from_slice::<Manifest>(&bytes).map_err(io::Error::from)?;
@@ -185,9 +195,9 @@ pub fn prefetch(cache: &mut Client, store: &mut Store, paths: &[String]) -> io::
    let mut stamped = Vec::new();
    let mut keys = Vec::new();
    for path in paths {
-      if let Some(key) = store.stamp_key(path) {
+      if let Some(stamp) = store.stamp_key(path) {
          stamped.push(path);
-         keys.push(key);
+         keys.push(Key::digest(Namespace::Stamp, &stamp));
       }
    }
    let found = cache.get_many(&keys)?;

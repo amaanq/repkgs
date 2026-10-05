@@ -60,7 +60,11 @@ use serde::{
 };
 use tightrope::{
    client::Client,
-   digest,
+   digest::Digest,
+   key::{
+      Key,
+      Namespace,
+   },
 };
 
 use crate::manifest::{
@@ -262,7 +266,7 @@ impl Invocation {
 struct Artifact {
    path: String,
    mode: u32,
-   hash: String,
+   hash: Digest,
 }
 
 pub fn run_ghc(args: &[String], socket: &Path) -> io::Result<i32> {
@@ -356,7 +360,7 @@ fn prepare(
    arguments: &[String],
    invocation: &Invocation,
    socket: &Path,
-) -> Option<(Client, String, Vec<String>)> {
+) -> Option<(Client, Key, Vec<String>)> {
    let client = Client::connect(socket)
       .map_err(|error| diagnostic(format_args!("mummer Haskell cache unavailable, {error}")))
       .ok()?;
@@ -379,7 +383,7 @@ fn request_key(
    compiler: &str,
    arguments: &[String],
    invocation: &Invocation,
-) -> io::Result<String> {
+) -> io::Result<Key> {
    let info = Command::new(compiler).arg("--info").output()?;
    if !info.status.success() {
       return Err(io::Error::other(format!("{compiler} --info failed")));
@@ -409,13 +413,16 @@ fn request_key(
    let mut bytes = read(&invocation.source)?;
    store.mask_output(&mut bytes, false);
    field(&mut hasher, bytes);
-   Ok(format!("hs-module/{}", &hasher.finalize().to_hex()[..32]))
+   Ok(Key::digest(
+      Namespace::Haskell,
+      &Digest::from(hasher.finalize()),
+   ))
 }
 
 fn store_result(
    cache: &mut Client,
    store: &mut Store,
-   request: &str,
+   request: &Key,
    invocation: &Invocation,
    inputs: &[String],
    before: &[Option<SystemTime>],
@@ -437,8 +444,8 @@ fn store_result(
       }
       let mut bytes = read(path).map_err(|error| io::Error::other(format!("{path}: {error}")))?;
       store.mask_output(&mut bytes, false);
-      let hash = digest(&bytes);
-      cache.put(&format!("b/{hash}"), &bytes)?;
+      let hash = Digest::of(&bytes);
+      cache.put(&Key::digest(Namespace::Blob, &hash), &bytes)?;
       artifacts.push(Artifact {
          path: path.clone(),
          mode: metadata(path)?.permissions().mode() & 0o777,
@@ -446,8 +453,11 @@ fn store_result(
       });
    }
 
-   cache.put(&format!("o/{key}"), &serde_json::to_vec(&artifacts)?)?;
-   cache.put(&format!("e/{key}"), diagnostics)?;
+   cache.put(
+      &Key::digest(Namespace::Object, &key),
+      &serde_json::to_vec(&artifacts)?,
+   )?;
+   cache.put(&Key::digest(Namespace::Diagnostics, &key), diagnostics)?;
    manifest.publish(cache, request)
 }
 
@@ -460,8 +470,8 @@ fn modified(paths: &[String]) -> Vec<Option<SystemTime>> {
       .collect()
 }
 
-fn replay(cache: &mut Client, store: &Store, key: &str) -> Result<(), Miss> {
-   let Some(listing) = cache.get(&format!("o/{key}"))? else {
+fn replay(cache: &mut Client, store: &Store, key: &Digest) -> Result<(), Miss> {
+   let Some(listing) = cache.get(&Key::digest(Namespace::Object, key))? else {
       return Err(Miss::ObjectGone);
    };
    let artifacts = serde_json::from_slice::<Vec<Artifact>>(&listing).map_err(io::Error::from)?;
@@ -474,10 +484,10 @@ fn replay(cache: &mut Client, store: &Store, key: &str) -> Result<(), Miss> {
             "invalid cached Haskell artifact",
          )));
       }
-      let Some(mut bytes) = cache.get(&format!("b/{}", artifact.hash))? else {
+      let Some(mut bytes) = cache.get(&Key::digest(Namespace::Blob, &artifact.hash))? else {
          return Err(Miss::ObjectGone);
       };
-      if digest(&bytes) != artifact.hash {
+      if Digest::of(&bytes) != artifact.hash {
          return Err(Miss::Failed(io::Error::other(
             "Haskell artifact content hash differs",
          )));
@@ -486,7 +496,7 @@ fn replay(cache: &mut Client, store: &Store, key: &str) -> Result<(), Miss> {
       values.push(bytes);
    }
 
-   let Some(diagnostics) = cache.get(&format!("e/{key}"))? else {
+   let Some(diagnostics) = cache.get(&Key::digest(Namespace::Diagnostics, key))? else {
       return Err(Miss::ObjectGone);
    };
    for (artifact, bytes) in artifacts.iter().zip(values) {
