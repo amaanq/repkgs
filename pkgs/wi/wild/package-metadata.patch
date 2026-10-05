@@ -1,0 +1,246 @@
+--- a/linker-utils/src/elf.rs
++++ b/linker-utils/src/elf.rs
+@@ -310,6 +310,8 @@
+     pub const NOTE_GNU_PROPERTY_SECTION_NAME: &[u8] = NOTE_GNU_PROPERTY_SECTION_NAME_STR.as_bytes();
+     pub const NOTE_GNU_BUILD_ID_SECTION_NAME_STR: &str = ".note.gnu.build-id";
+     pub const NOTE_GNU_BUILD_ID_SECTION_NAME: &[u8] = NOTE_GNU_BUILD_ID_SECTION_NAME_STR.as_bytes();
++    pub const NOTE_PACKAGE_SECTION_NAME_STR: &str = ".note.package";
++    pub const NOTE_PACKAGE_SECTION_NAME: &[u8] = NOTE_PACKAGE_SECTION_NAME_STR.as_bytes();
+     pub const NOTE_GNU_STACK_SECTION_NAME_STR: &str = ".note.GNU-stack";
+     pub const NOTE_GNU_STACK_SECTION_NAME: &[u8] = NOTE_GNU_STACK_SECTION_NAME_STR.as_bytes();
+     pub const DEBUG_LOC_SECTION_NAME_STR: &str = ".debug_loc";
+--- a/libwild/src/args/elf.rs
++++ b/libwild/src/args/elf.rs
+@@ -63,6 +63,9 @@
+     pub(crate) gc_sections: bool,
+     pub(crate) build_id: BuildIdOption,
+ 
++    /// The JSON for a `.note.package` note, as systemd's package metadata spec describes.
++    pub(crate) package_metadata: Option<Vec<u8>>,
++
+     // Whether to emit errors if our input objects have undefined symbols that we can't resolve. If
+     // not specified, then the behaviour depends on whether we're emitting a shared object or an
+     // executable.
+@@ -298,6 +301,7 @@
+             needs_nodelete_handling: false,
+             should_write_linker_identity: true,
+             build_id: BuildIdOption::None,
++            package_metadata: None,
+             exclude_libs: ExcludeLibs::None,
+             no_undefined: None,
+             allow_shlib_undefined: false,
+@@ -1509,6 +1513,19 @@
+ 
+     parser
+         .declare_with_param()
++        .long("package-metadata")
++        .help("Write a .note.package note holding this JSON")
++        .execute(|args, _modifier_stack, value| {
++            args.package_metadata = if value.is_empty() {
++                None
++            } else {
++                Some(percent_decode(value)?)
++            };
++            Ok(())
++        });
++
++    parser
++        .declare_with_param()
+         .long("build-id")
+         .help("Generate build ID")
+         .execute(|args, _modifier_stack, value| {
+@@ -2486,3 +2503,29 @@
+         );
+     }
+ }
++
++/// Undoes the `%[xx]` escapes lld and GNU ld accept in `--package-metadata`, for characters a
++/// shell or build system would otherwise mangle.
++fn percent_decode(value: &str) -> crate::error::Result<Vec<u8>> {
++    let bytes = value.as_bytes();
++    let mut decoded = Vec::with_capacity(bytes.len());
++    let mut index = 0;
++    while index < bytes.len() {
++        if bytes[index] == b'%' && bytes.get(index + 1) == Some(&b'[') {
++            let end = bytes[index..]
++                .iter()
++                .position(|&byte| byte == b']')
++                .map(|offset| index + offset)
++                .with_context(|| format!("Unterminated %[ in package metadata `{value}`"))?;
++            let hex = &value[index + 2..end];
++            let byte = u8::from_str_radix(hex, 16)
++                .with_context(|| format!("Invalid %[{hex}] in package metadata `{value}`"))?;
++            decoded.push(byte);
++            index = end + 1;
++        } else {
++            decoded.push(bytes[index]);
++            index += 1;
++        }
++    }
++    Ok(decoded)
++}
+--- a/libwild/src/elf.rs
++++ b/libwild/src/elf.rs
+@@ -331,6 +331,7 @@
+     GnuVersionR,
+     NoteGnuProperty,
+     NoteGnuBuildId,
++    NotePackage,
+     SymtabLocal,
+     SymtabGlobal,
+     RelaDynRelative,
+@@ -399,6 +400,7 @@
+     pub(crate) const GNU_VERSION_R: PartId = SinglePartSectionId::GnuVersionR.part_id();
+     pub(crate) const NOTE_GNU_PROPERTY: PartId = SinglePartSectionId::NoteGnuProperty.part_id();
+     pub(crate) const NOTE_GNU_BUILD_ID: PartId = SinglePartSectionId::NoteGnuBuildId.part_id();
++    pub(crate) const NOTE_PACKAGE: PartId = SinglePartSectionId::NotePackage.part_id();
+     pub(crate) const SYMTAB_LOCAL: PartId = SinglePartSectionId::SymtabLocal.part_id();
+     pub(crate) const SYMTAB_GLOBAL: PartId = SinglePartSectionId::SymtabGlobal.part_id();
+     pub(crate) const RELA_DYN_RELATIVE: PartId = SinglePartSectionId::RelaDynRelative.part_id();
+@@ -445,6 +447,8 @@
+         SinglePartSectionId::NoteGnuProperty.output_section_id();
+     pub(crate) const NOTE_GNU_BUILD_ID: OutputSectionId =
+         SinglePartSectionId::NoteGnuBuildId.output_section_id();
++    pub(crate) const NOTE_PACKAGE: OutputSectionId =
++        SinglePartSectionId::NotePackage.output_section_id();
+     pub(crate) const SYMTAB_LOCAL: OutputSectionId =
+         SinglePartSectionId::SymtabLocal.output_section_id();
+     pub(crate) const SYMTAB_GLOBAL: OutputSectionId =
+@@ -1578,6 +1582,7 @@
+             gnu_hash_layout,
+             verdefs: Default::default(),
+             build_id_size,
++            package_metadata_size: args.package_metadata.as_ref().map(Vec::len),
+             needs_eh_frame_terminator: false,
+         }
+     }
+@@ -1653,6 +1658,10 @@
+             mem_sizes.increment(part_id::NOTE_GNU_BUILD_ID, build_id_sec_size);
+         }
+ 
++        if let Some(package_sec_size) = state.package_note_section_size::<C>() {
++            mem_sizes.increment(part_id::NOTE_PACKAGE, package_sec_size);
++        }
++
+         mem_sizes.increment(
+             part_id::NOTE_GNU_PROPERTY,
+             gnu_property_notes_section_size::<C>(&properties.gnu_property_notes),
+@@ -1740,6 +1749,10 @@
+             memory_offsets.increment(part_id::NOTE_GNU_BUILD_ID, build_id_sec_size);
+         }
+ 
++        if let Some(package_sec_size) = epilogue_state.package_note_section_size::<C>() {
++            memory_offsets.increment(part_id::NOTE_PACKAGE, package_sec_size);
++        }
++
+         if let Some(gnu_hash_layout) = epilogue_state.gnu_hash_layout.as_mut() {
+             gnu_hash_layout.symbol_base = dynsym_start_index;
+         }
+@@ -2409,6 +2422,7 @@
+         builder.add_section(output_section_id::SECTION_HEADERS);
+         builder.add_section(output_section_id::NOTE_GNU_PROPERTY);
+         builder.add_section(output_section_id::NOTE_GNU_BUILD_ID);
++        builder.add_section(output_section_id::NOTE_PACKAGE);
+         builder.add_section(output_section_id::INTERP);
+         builder.add_section(output_section_id::NOTE_ABI_TAG);
+         builder.add_section(output_section_id::HASH);
+@@ -3946,6 +3960,8 @@
+ pub(crate) const GNU_VERSION_ENTRY_SIZE: u64 = size_of::<Versym>() as u64;
+ 
+ pub(crate) const GNU_NOTE_NAME: &[u8] = b"GNU\0";
++pub(crate) const FDO_NOTE_NAME: &[u8] = b"FDO\0";
++pub(crate) const NT_FDO_PACKAGING_METADATA: object::elf::NoteType = object::elf::NoteType(0xcafe_1a7e);
+ /// For additional information on Elf_Prop, see
+ /// Linux Extensions to gABI at https://gitlab.com/x86-psABIs/Linux-ABI.
+ ///
+@@ -4850,6 +4866,7 @@
+     pub(crate) gnu_hash_layout: Option<GnuHashLayout>,
+     pub(crate) verdefs: Option<Vec<VersionDef>>,
+     build_id_size: Option<usize>,
++    package_metadata_size: Option<usize>,
+     pub(crate) needs_eh_frame_terminator: bool,
+ }
+ 
+@@ -5116,6 +5133,12 @@
+     fn gnu_build_id_note_section_size<C: ElfClass>(&self) -> Option<u64> {
+         Some(C::NOTE_HEADER_SIZE + GNU_NOTE_NAME.len() as u64 + self.build_id_size? as u64)
+     }
++
++    /// The JSON plus its terminating NUL, padded to the note's 4-byte alignment.
++    fn package_note_section_size<C: ElfClass>(&self) -> Option<u64> {
++        let descriptor = (self.package_metadata_size? as u64 + 1).next_multiple_of(4);
++        Some(C::NOTE_HEADER_SIZE + FDO_NOTE_NAME.len() as u64 + descriptor)
++    }
+ }
+ 
+ #[derive(Debug, Clone, Copy)]
+@@ -5452,6 +5475,13 @@
+             ty: sht::NOTE,
+             section_flags: shf::ALLOC,
+             min_alignment: alignment::NOTE_GNU_BUILD_ID,
++            ..Self::DEFAULT_DEFS
++        };
++        defs[output_section_id::NOTE_PACKAGE.as_usize()] = BuiltInSectionDetails {
++            kind: Self::primary_section(NOTE_PACKAGE_SECTION_NAME),
++            ty: sht::NOTE,
++            section_flags: shf::ALLOC,
++            min_alignment: alignment::NOTE_GNU_BUILD_ID,
+             ..Self::DEFAULT_DEFS
+         };
+         // Multi-part generated sections
+--- a/libwild/src/elf_writer.rs
++++ b/libwild/src/elf_writer.rs
+@@ -13,7 +13,9 @@
+ use crate::elf::ElfClass;
+ use crate::elf::ElfWord as _;
+ use crate::elf::GLOBAL_POINTER_SYMBOL_NAME;
++use crate::elf::FDO_NOTE_NAME;
+ use crate::elf::GNU_NOTE_NAME;
++use crate::elf::NT_FDO_PACKAGING_METADATA;
+ use crate::elf::GnuHashHeader;
+ use crate::elf::NonAddressableCounts;
+ use crate::elf::NoteProperty;
+@@ -120,6 +122,7 @@
+ use linker_utils::elf::secnames::DEBUG_RANGES_SECTION_NAME;
+ use linker_utils::elf::secnames::DYNSYM_SECTION_NAME_STR;
+ use linker_utils::elf::secnames::NOTE_GNU_BUILD_ID_SECTION_NAME_STR;
++use linker_utils::elf::secnames::NOTE_PACKAGE_SECTION_NAME_STR;
+ use linker_utils::elf::shf;
+ use linker_utils::elf::sht;
+ use linker_utils::loongarch64::highest_relocation_with_bias;
+@@ -246,6 +249,24 @@
+     Ok(())
+ }
+ 
++fn write_package_note<C: ElfClass>(buffer: &mut [u8], metadata: &[u8]) -> Result {
++    buffer.fill(0);
++    let (note_header, mut rest) = from_bytes_mut::<elf::NoteHeader<C>>(buffer)
++        .map_err(|_| insufficient_allocation(NOTE_PACKAGE_SECTION_NAME_STR))?;
++    note_header.set_name_size(FDO_NOTE_NAME.len() as u32);
++    note_header.set_descriptor_size(metadata.len() as u32 + 1);
++    note_header.set_type(NT_FDO_PACKAGING_METADATA);
++
++    let name_out = rest.split_off_mut(..FDO_NOTE_NAME.len()).unwrap();
++    name_out.copy_from_slice(FDO_NOTE_NAME);
++
++    rest.get_mut(..metadata.len())
++        .ok_or_else(|| insufficient_allocation(NOTE_PACKAGE_SECTION_NAME_STR))?
++        .copy_from_slice(metadata);
++
++    Ok(())
++}
++
+ fn compute_hash(sized_output: &SizedOutput<impl OutputFileData>) -> blake3::Hash {
+     timing_phase!("Compute build ID");
+     blake3::Hasher::new()
+@@ -4303,6 +4324,10 @@
+     let build_id_buffer = buffers.get_mut(part_id::NOTE_GNU_BUILD_ID);
+     build_id_buffer.fill(0);
+ 
++    if let Some(metadata) = layout.args().package_metadata.as_deref() {
++        write_package_note::<C>(buffers.get_mut(part_id::NOTE_PACKAGE), metadata)?;
++    }
++
+     for sorted_section in &layout.script_sorted_sections {
+         let crate::layout::FileLayout::Object(object) = layout.file_layout(sorted_section.file_id)
+         else {
