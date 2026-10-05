@@ -1,5 +1,6 @@
 use std::{
    env::{
+      args_os,
       current_dir,
       current_exe,
       temp_dir,
@@ -9,6 +10,7 @@ use std::{
    fs::{
       read,
       read_to_string,
+      remove_file,
    },
    io::{
       self,
@@ -34,11 +36,13 @@ use mummer::{
       log_uncached,
       run,
       run_slotted,
+      status_code,
    },
    store::{
       Store,
       field,
       mask_random_names,
+      on_path,
    },
 };
 use tempfile::Builder;
@@ -89,6 +93,7 @@ struct Invocation {
    cacheable:    bool,
    stdout:       bool,
    preprocessed: Option<String>,
+   split:        Vec<usize>,
 }
 
 impl Invocation {
@@ -112,10 +117,13 @@ impl Invocation {
          cacheable: true,
          stdout: false,
          preprocessed: None,
+         split: Vec::new(),
       };
       let mut sources = 0_i32;
       let mut header = false;
       let mut language: Option<String> = None;
+      let mut languages = false;
+      let mut positions = Vec::new();
       let mut wants_deps = false;
       let mut objects = false;
       let mut index = 0;
@@ -165,6 +173,7 @@ impl Invocation {
                if let Some(ref value) = next {
                   if arg == "-x" {
                      language = (value != "none").then(|| value.clone());
+                     languages = true;
                   }
                   consumed = true;
                }
@@ -177,6 +186,7 @@ impl Invocation {
                   && !given.is_empty()
                {
                   language = (given != "none").then(|| given.to_owned());
+                  languages = true;
                } else if arg.starts_with("-Wp,-MD,") || arg.starts_with("-Wp,-MMD,") {
                   keyed = false;
                   invocation.depfile = arg.splitn(3, ',').nth(2).map(PathBuf::from);
@@ -194,6 +204,7 @@ impl Invocation {
                   keyed = false;
                   invocation.source.clone_from(&arg);
                   sources += 1_i32;
+                  positions.push(index);
                   header |= language.as_deref().map_or_else(
                      || {
                         [".h", ".hh", ".hpp", ".hxx"]
@@ -265,6 +276,16 @@ impl Invocation {
       let extension = invocation.output.extension();
       if header && invocation.action == Action::Compile {
          invocation.action = Action::Precompile;
+      }
+      if invocation.action == Action::Other
+         && sources > 0_i32
+         && !languages
+         && !wants_deps
+         && invocation.cacheable
+         && !invocation.query
+         && invocation.linkfile.is_none()
+      {
+         invocation.split = positions;
       }
       let precompile = invocation.action == Action::Precompile;
       invocation.cacheable &= !invocation.query
@@ -586,6 +607,9 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    }
 
    let mut invocation = Invocation::parse(user.clone());
+   if !invocation.split.is_empty() && driver.format() == BinaryFormat::Elf {
+      return run_split(&invocation);
+   }
    if invocation.links() && driver.format() != BinaryFormat::Elf {
       invocation.cacheable = false;
    }
@@ -859,6 +883,59 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    };
    log("cc", outcome, &explained, started);
    Ok(result.status)
+}
+
+/// A compile and link in one call, run as this wrapper's compile of each
+/// source and its link of their objects, the way clang splits it itself,
+/// so each half caches.
+fn run_split(invocation: &Invocation) -> io::Result<i32> {
+   let wrapper = args_os()
+      .next()
+      .map(|name| on_path(&name.to_string_lossy()))
+      .ok_or_else(|| io::Error::other("mummer has no program name"))?;
+   let mut shared = Vec::new();
+   let mut skip = false;
+   for (index, arg) in invocation.args.iter().enumerate() {
+      if skip {
+         skip = false;
+      } else if arg == "-o" {
+         skip = true;
+      } else if !(invocation.split.contains(&index) || arg.starts_with("-o") && arg.len() > 2) {
+         shared.push(arg.clone());
+      }
+   }
+   let mut objects = Vec::new();
+   let mut link = Vec::new();
+   let mut status = 0_i32;
+   for (index, arg) in invocation.args.iter().enumerate() {
+      if !invocation.split.contains(&index) {
+         link.push(arg.clone());
+         continue;
+      }
+      let object = format!("{}.{}.o", invocation.output.display(), objects.len());
+      objects.push(object.clone());
+      link.push(object.clone());
+      status = status_code(
+         Command::new(&wrapper)
+            .args(&shared)
+            .args([arg.as_str(), "-c", "-o", &object, "-Qunused-arguments"])
+            .status()?,
+      );
+      if status != 0_i32 {
+         break;
+      }
+   }
+   if status == 0_i32 {
+      link.push("-Qunused-arguments".to_owned());
+      status = status_code(Command::new(&wrapper).args(&link).status()?);
+   }
+   for object in &objects {
+      match remove_file(object) {
+         Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+         Ok(()) | Err(_) => {},
+      }
+   }
+   Ok(status)
 }
 
 /// The source as flang prescans it with every INCLUDE inlined, or None when
