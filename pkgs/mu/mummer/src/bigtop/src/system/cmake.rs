@@ -222,7 +222,6 @@ impl Cmake {
             generator: &options.generator,
             flags:     &options.flags,
          }),
-         false,
       )?;
       let init = format!("{}/probe-init.cmake", ctx.build);
       let restored = probe::restore(&key, Path::new(&init), socket)?;
