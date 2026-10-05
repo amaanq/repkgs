@@ -36,13 +36,9 @@ use crate::attrs::{
    build_top,
 };
 
-/// `$out` unless `no_out`, since configure records the prefix.
-pub fn key<Extra>(
-   kind: &str,
-   scripts: &[String],
-   extra: Option<&Extra>,
-   no_out: bool,
-) -> io::Result<String>
+/// Leaves `$out` out, since a CA derivation's is a placeholder that changes
+/// with every input, and `store` keeps whatever names it out of the cache.
+pub fn key<Extra>(kind: &str, scripts: &[String], extra: Option<&Extra>) -> io::Result<String>
 where
    Extra: Serialize,
 {
@@ -73,10 +69,9 @@ where
       "roots": roots,
       "cc": cc.values().collect::<Vec<_>>(),
       "toolchains": toolchains,
-      "out": if no_out { None } else { Some(&ctx.out) },
    });
    Ok(format!(
-      "probe/v9/{kind}/{}",
+      "probe/v10/{kind}/{}",
       hex(&serde_json::to_vec(&record)?)
    ))
 }
@@ -161,7 +156,12 @@ pub fn store(key: &str, file: &Path, socket: &Path) -> io::Result<()> {
    let Some(mut client) = daemon(&ctx, socket) else {
       return Ok(());
    };
-   if let Err(error) = client.put(key, &read(file)?) {
+   let text = read_to_string(file)?;
+   let kept = text
+      .split_inclusive('\n')
+      .filter(|line| !line.contains(&ctx.out))
+      .collect::<String>();
+   if let Err(error) = client.put(key, kept.as_bytes()) {
       note("probe-cache", &format!("store failed with {error}"));
    }
    Ok(())
@@ -183,6 +183,19 @@ pub fn store_dir(key: &str, dir: &Path, socket: &Path) -> io::Result<()> {
    let Some(mut client) = daemon(&ctx, socket) else {
       return Ok(());
    };
+   for entry in walk(dir)? {
+      if entry.kind == 'f'
+         && read(&entry.path)?
+            .windows(ctx.out.len())
+            .any(|window| window == ctx.out.as_bytes())
+      {
+         note(
+            "probe-cache",
+            &format!("not stored, {} names $out", entry.rel),
+         );
+         return Ok(());
+      }
+   }
    put_directory(&mut client, key, dir)
 }
 

@@ -163,8 +163,6 @@ pub enum ProbeOperation {
       scripts: Vec<String>,
       #[pound(long)]
       extra:   Option<String>,
-      #[pound(long)]
-      no_out:  bool,
    },
    /// fetch a stored file, exit 1 when there is none.
    Restore { key: String, file: PathBuf },

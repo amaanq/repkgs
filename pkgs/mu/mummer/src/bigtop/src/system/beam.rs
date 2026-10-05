@@ -196,12 +196,7 @@ fn deps_key(tool: Tool, options: &Options) -> io::Result<String> {
       .file_name()
       .map(|name| name.to_string_lossy().into_owned())
       .unwrap_or_default();
-   probe::key(
-      &format!("{}-deps/{set}", tool.name()),
-      &[],
-      None::<&()>,
-      false,
-   )
+   probe::key(&format!("{}-deps/{set}", tool.name()), &[], None::<&()>)
 }
 
 struct Locked {
