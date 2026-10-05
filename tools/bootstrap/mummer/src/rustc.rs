@@ -440,7 +440,7 @@ fn request_key(
    field(&mut hasher, invocation.source.as_bytes());
    field(&mut hasher, read(&invocation.source)?);
    for external in &invocation.externs {
-      field(&mut hasher, store.input_id(external)?);
+      field(&mut hasher, store.input_id(external)?.to_string());
    }
    if invocation.links {
       field(&mut hasher, "linker");
@@ -462,7 +462,10 @@ fn request_key(
    libraries.retain(|library| library.is_file());
    libraries.sort_unstable();
    for library in libraries {
-      field(&mut hasher, store.input_id(&library.to_string_lossy())?);
+      field(
+         &mut hasher,
+         store.input_id(&library.to_string_lossy())?.to_string(),
+      );
    }
    for name in [
       "CARGO_PKG_NAME",

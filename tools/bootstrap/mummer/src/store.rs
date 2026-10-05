@@ -8,6 +8,11 @@ use std::{
       current_exe,
       var,
    },
+   fmt::{
+      Display,
+      Formatter,
+      Result as FormatResult,
+   },
    fs::{
       Metadata,
       canonicalize,
@@ -24,6 +29,7 @@ use std::{
       Path,
       PathBuf,
    },
+   str::FromStr,
    time::{
       Duration,
       SystemTime,
@@ -31,7 +37,14 @@ use std::{
    },
 };
 
-use blake3::Hasher;
+use blake3::{
+   Hash,
+   Hasher,
+};
+use serde::{
+   Deserialize,
+   Serialize,
+};
 use tightrope::{
    client::Client,
    digest::Digest,
@@ -62,12 +75,67 @@ const PATH_ENDS: &str = " \t\n\\:\"';,)]}>";
 const HASH_ALPHABET: &[u8] = b"0123456789abcdfghijklmnpqrsvwxyz";
 const RANDOM_NAMES: [(&str, usize); 3] = [("TryCompile-", 6), ("cmTC_", 5), ("/rustc", 6)];
 
+/// What a key records of an input file.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(try_from = "String", into = "String")]
+pub enum InputId {
+   /// A store path by name, when names alone identify the store.
+   Path(String),
+   Content(Identity),
+   /// A program's bytes outside its RUNPATH, which relinking rewrites.
+   Loaded(Hash),
+}
+
+impl Display for InputId {
+   #[inline]
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+      match *self {
+         Self::Path(ref path) => write!(f, "S:{path}"),
+         Self::Content(identity) => identity.fmt(f),
+         Self::Loaded(ref hash) => write!(f, "L:{}", hash.to_hex()),
+      }
+   }
+}
+
+impl FromStr for InputId {
+   type Err = io::Error;
+
+   #[inline]
+   fn from_str(text: &str) -> io::Result<Self> {
+      if let Some(path) = text.strip_prefix("S:") {
+         return Ok(Self::Path(path.to_owned()));
+      }
+      if let Some(hex) = text.strip_prefix("L:") {
+         return Hash::from_hex(hex)
+            .map(Self::Loaded)
+            .map_err(io::Error::other);
+      }
+      text.parse().map(Self::Content)
+   }
+}
+
+impl TryFrom<String> for InputId {
+   type Error = io::Error;
+
+   #[inline]
+   fn try_from(text: String) -> io::Result<Self> {
+      text.parse()
+   }
+}
+
+impl From<InputId> for String {
+   #[inline]
+   fn from(identity: InputId) -> Self {
+      identity.to_string()
+   }
+}
+
 pub struct Store {
    content:     bool,
    output:      String,
    output_hash: Vec<u8>,
    roots:       BTreeMap<String, String>,
-   identities:  HashMap<String, String>,
+   identities:  HashMap<String, InputId>,
    random:      Vec<(String, String)>,
 }
 
@@ -310,7 +378,7 @@ impl Store {
    }
 
    #[inline]
-   pub fn remember(&mut self, path: String, identity: String) {
+   pub fn remember(&mut self, path: String, identity: InputId) {
       self.identities.insert(path, identity);
    }
 
@@ -349,18 +417,18 @@ impl Store {
    }
 
    #[inline]
-   pub fn input_id(&self, path: &str) -> io::Result<String> {
+   pub fn input_id(&self, path: &str) -> io::Result<InputId> {
       if is_store_path(path) && !self.content {
-         return Ok(format!("S:{path}"));
+         return Ok(InputId::Path(path.to_owned()));
       }
       if let Some(identity) = self.identities.get(path) {
-         return Ok(identity.to_owned());
+         return Ok(identity.clone());
       }
       let mut bytes = read(path)?;
       if !is_store_path(path) {
          self.mask_output(&mut bytes, false);
       }
-      Ok(Identity::of(&bytes).to_string())
+      Ok(InputId::Content(Identity::of(&bytes)))
    }
 
    /// A program as the code it runs, itself and the libraries it loads
@@ -389,7 +457,7 @@ impl Store {
       &self,
       cache: &mut Client,
       file: &Path,
-   ) -> io::Result<(String, Vec<PathBuf>)> {
+   ) -> io::Result<(InputId, Vec<PathBuf>)> {
       let memo = self
          .stamp_key(&file.to_string_lossy())
          .map(|stamp| Key::digest(Namespace::Loaded, &stamp));
@@ -399,7 +467,7 @@ impl Store {
          let text = String::from_utf8(bytes).map_err(io::Error::other)?;
          let mut lines = text.lines();
          if let Some(identity) = lines.next() {
-            return Ok((identity.to_owned(), lines.map(PathBuf::from).collect()));
+            return Ok((identity.parse()?, lines.map(PathBuf::from).collect()));
          }
       }
       let image = Image { bytes: read(file)? };
@@ -445,12 +513,12 @@ impl Store {
          } else {
             hasher.update(&image.bytes);
          }
-         format!("L:{}", hasher.finalize().to_hex())
+         InputId::Loaded(hasher.finalize())
       } else {
-         Identity::of(&image.bytes).to_string()
+         InputId::Content(Identity::of(&image.bytes))
       };
       if let Some(key) = memo {
-         let mut record = identity.clone();
+         let mut record = identity.to_string();
          for library in &libraries {
             record.push('\n');
             record.push_str(&library.to_string_lossy());

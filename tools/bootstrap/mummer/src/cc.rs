@@ -519,7 +519,7 @@ impl Invocation {
       }
       prefetch(cache, store, &self.inputs)?;
       for path in &self.inputs {
-         field(&mut hasher, store.input_id(path)?);
+         field(&mut hasher, store.input_id(path)?.to_string());
       }
       Ok(Key::digest(Namespace::Cc, &Digest::from(hasher.finalize())))
    }
