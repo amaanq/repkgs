@@ -4,7 +4,7 @@ use std::{
    path::PathBuf,
 };
 
-use eyre::Result;
+use misstep::Result;
 use mummer::process::text_arguments;
 use pound::{
    Parse,

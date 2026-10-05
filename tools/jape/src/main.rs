@@ -31,7 +31,7 @@ use std::{
    time::Duration,
 };
 
-use eyre::{
+use misstep::{
    Result,
    bail,
 };
@@ -58,7 +58,7 @@ use crate::{
 };
 
 fn main() -> ExitCode {
-   run_main("jape", run)
+   run_main(run)
 }
 
 fn run() -> Result<i32> {

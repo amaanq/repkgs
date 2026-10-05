@@ -13,8 +13,7 @@ rust-version.workspace = true
 [dependencies]
 base64           = "0.23"
 blake3           = { workspace = true }
-color-eyre       = { workspace = true }
-eyre             = { workspace = true }
+misstep          = { workspace = true }
 mummer           = { workspace = true }
 percent-encoding = "2"
 pound            = "0.1.7"

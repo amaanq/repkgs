@@ -35,7 +35,7 @@ use std::{
    time::Duration,
 };
 
-use eyre::Result;
+use misstep::Result;
 use mummer::process::{
    run_main,
    text_arguments,
@@ -623,5 +623,5 @@ fn dispatch() -> Result<i32> {
 }
 
 fn main() -> ExitCode {
-   run_main("spieler", dispatch)
+   run_main(dispatch)
 }
