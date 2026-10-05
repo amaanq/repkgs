@@ -25,11 +25,17 @@ use mummer::{
       segments,
    },
    image::Image,
-   store::is_store_path,
+   store::{
+      Store,
+      is_store_path,
+   },
 };
 use serde::Deserialize;
 
-use crate::manifest::parse_depfile;
+use crate::manifest::{
+   Miss,
+   parse_depfile,
+};
 
 #[derive(Clone, Copy, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -90,7 +96,7 @@ pub struct PackageFlags {
 pub struct Driver {
    #[serde(rename = "cc")]
    compiler:    String,
-   fc:          String,
+   fc:          Option<String>,
    #[serde(rename = "binfmt")]
    format:      BinaryFormat,
    #[serde(skip)]
@@ -112,7 +118,7 @@ impl Default for Driver {
    fn default() -> Self {
       Self {
          compiler:    String::new(),
-         fc:          String::new(),
+         fc:          None,
          format:      BinaryFormat::Elf,
          configured:  false,
          libc:        String::new(),
@@ -128,10 +134,15 @@ impl Default for Driver {
 }
 
 impl Driver {
-   pub fn compiler(&self, language: Language) -> &str {
+   /// The C compiler, which also compiles C++ under its g++ driver mode.
+   pub fn cc(&self) -> &str {
+      &self.compiler
+   }
+
+   pub fn compiler(&self, language: Language) -> Option<&str> {
       match language {
-         Language::Cc | Language::Cxx => &self.compiler,
-         Language::Fortran => &self.fc,
+         Language::Cc | Language::Cxx => Some(&self.compiler),
+         Language::Fortran => self.fc.as_deref(),
       }
    }
 
@@ -455,6 +466,24 @@ pub fn settle_runpath(bytes: &[u8], dependencies: &str) -> io::Result<Settled> {
    path.push_str(&"_".repeat(text.capacity - 1 - path.len()));
    image.write(text.offset, path.as_bytes())?;
    Ok(Settled::Image(image.bytes))
+}
+
+/// A stored link output moved into this build's store paths, its RUNPATH
+/// settled from the link's dependency file when it was stored unsettled.
+pub fn replayed_link(
+   store: &Store,
+   mut bytes: Vec<u8>,
+   dependencies: Option<&str>,
+) -> Result<Vec<u8>, Miss> {
+   store.mask_output(&mut bytes, true);
+   store.resolve_bytes(&mut bytes);
+   let Some(text) = dependencies else {
+      return Ok(bytes);
+   };
+   match settle_runpath(&bytes, text)? {
+      Settled::Image(settled) => Ok(settled),
+      Settled::Room(_) => Err(Miss::RunpathRoom),
+   }
 }
 
 /// What settling an image came to.

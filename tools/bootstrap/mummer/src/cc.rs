@@ -70,6 +70,7 @@ use crate::{
       Driver,
       Language,
       Settled,
+      replayed_link,
       reserve,
       settle_runpath,
    },
@@ -535,17 +536,14 @@ impl Invocation {
 
 pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut Client) -> io::Result<bool> {
    let expanded = driver.arguments(Language::Cc, raw);
-   let mut invocation = Invocation::parse(
-      raw.to_vec(),
-      jobs(driver.compiler(Language::Cc), &expanded)?,
-   );
+   let mut invocation = Invocation::parse(raw.to_vec(), jobs(driver.cc(), &expanded)?);
    if invocation.action != Action::Compile || !invocation.cacheable {
       return Ok(false);
    }
    invocation.args = expanded;
    invocation.key_injected(raw);
    let mut store = Store::new();
-   let request = invocation.request_key(&mut store, cache, driver.compiler(Language::Cc))?;
+   let request = invocation.request_key(&mut store, cache, driver.cc())?;
    let key = match lookup(cache, &mut store, &request) {
       Ok(key) => key,
       Err(Miss::Failed(error)) => return Err(error),
@@ -813,13 +811,11 @@ pub fn run_cc(language: Language, raw: &[String], socket: &Path) -> io::Result<i
    let started = Instant::now();
    let user = expand_response_files(raw)?;
    let driver = Driver::load()?;
-   let compiler = driver.compiler(language);
-
-   if compiler.is_empty() {
+   let Some(compiler) = driver.compiler(language) else {
       return Err(io::Error::other(
          "a Fortran compile, but etc/mummer.json names no fc",
       ));
-   }
+   };
 
    let expanded = driver.arguments(language, &user);
    let mut invocation = Invocation::parse(user.clone(), jobs(compiler, &expanded)?);
@@ -1172,26 +1168,22 @@ fn cached(
    };
    let linked = objects.next().flatten();
    if status == 0 {
-      let Some(mut bytes) = object else {
+      let Some(object_bytes) = object else {
          return Err(Miss::ObjectGone);
       };
       let dep_text = if invocation.depfile.is_some() {
-         let Some(mut dep_bytes) = dependency else {
+         let Some(dep_bytes) = dependency else {
             return Err(Miss::ObjectGone);
          };
-         store.mask_output(&mut dep_bytes, true);
-         let raw = String::from_utf8(dep_bytes).map_err(io::Error::other)?;
-         Some(invocation.retarget(&store.resolve_all(&raw)))
+         Some(invocation.retarget(&store.replayed_text(dep_bytes)?))
       } else {
          None
       };
       let link_text = if invocation.links() {
-         let Some(mut link_bytes) = linked else {
+         let Some(link_bytes) = linked else {
             return Err(Miss::ObjectGone);
          };
-         store.mask_output(&mut link_bytes, true);
-         let raw = String::from_utf8(link_bytes).map_err(io::Error::other)?;
-         let text = store.resolve_all(&raw);
+         let text = store.replayed_text(link_bytes)?;
          let target = format!("{}:", invocation.output.display());
          Some(
             text
@@ -1201,14 +1193,7 @@ fn cached(
       } else {
          None
       };
-      store.mask_output(&mut bytes, true);
-      store.resolve_bytes(&mut bytes);
-      if let Some(ref text) = link_text {
-         bytes = match settle_runpath(&bytes, text)? {
-            Settled::Image(settled) => settled,
-            Settled::Room(_) => return Err(Miss::RunpathRoom),
-         };
-      }
+      let bytes = replayed_link(store, object_bytes, link_text.as_deref())?;
       if invocation.stdout {
          io::stdout().lock().write_all(&bytes)?;
       } else {

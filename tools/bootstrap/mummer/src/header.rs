@@ -82,10 +82,10 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
    let driver = Driver::load()?;
    let expanded = driver.arguments(Language::Cc, raw);
    let compiles_conftest = matches!(
-      jobs(driver.compiler(Language::Cc), &expanded)?.as_slice(),
+      jobs(driver.cc(), &expanded)?.as_slice(),
       [job] if job.last().is_some_and(|input| input == "conftest.c")
    );
-   if !is_store_path(driver.compiler(Language::Cc))
+   if !is_store_path(driver.cc())
       || !compiles_conftest
       || expanded.iter().any(|arg| reads_unreported_file(arg))
       || [
@@ -114,7 +114,7 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
    }
    let dependency_file = NamedTempFile::new_in(".")?;
    let slot = Slot::acquire(&mut cache)?;
-   let output = Command::new(driver.compiler(Language::Cc))
+   let output = Command::new(driver.cc())
       .args(expanded.iter().filter(|arg| *arg != "-c"))
       .args(["-E", "-MD", "-MF"])
       .arg(dependency_file.path())
@@ -146,7 +146,7 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
    };
    let mut hasher = Hasher::new();
    field(&mut hasher, context);
-   field(&mut hasher, driver.compiler(Language::Cc));
+   field(&mut hasher, driver.cc());
    field(&mut hasher, warnings);
    for arg in &expanded {
       field(&mut hasher, arg);
