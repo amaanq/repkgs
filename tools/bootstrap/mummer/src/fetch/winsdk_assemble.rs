@@ -5,7 +5,6 @@ use std::{
       copy,
       create_dir_all,
       read_dir,
-      read_to_string,
       rename,
    },
    io,
@@ -21,8 +20,14 @@ use std::{
 };
 
 use mummer::{
-   files::write_file,
+   attrs,
+   files::{
+      sorted_entries,
+      write_file,
+   },
+   process::Checked as _,
    store_path::StorePath,
+   unpack::Bsdtar,
 };
 use serde::{
    Deserialize,
@@ -33,26 +38,28 @@ use crate::{
    bootstrap::stage::{
       dirs,
       files,
-      run,
    },
-   fetch::msi::{
-      cabinets,
-      install_paths,
+   fetch::{
+      msi::{
+         cabinets,
+         install_paths,
+      },
+      winsdk::PayloadKind,
    },
 };
 
 #[derive(Deserialize)]
 struct Attrs {
    outputs:  BTreeMap<String, String>,
-   peanut:   String,
-   sevenzip: String,
+   peanut:   StorePath,
+   sevenzip: StorePath,
    payloads: Vec<Payload>,
 }
 
 #[derive(Deserialize)]
 struct Payload {
    file: String,
-   kind: String,
+   kind: PayloadKind,
    out:  StorePath,
 }
 
@@ -86,31 +93,20 @@ struct Overlay {
 }
 
 fn first_entry(directory: &Path) -> io::Result<PathBuf> {
-   let mut names: Vec<PathBuf> = read_dir(directory)?
-      .map(|entry| entry.map(|found| found.path()))
-      .collect::<io::Result<_>>()?;
-   names.sort();
-   names
+   sorted_entries(directory)?
       .into_iter()
       .next()
       .ok_or_else(|| io::Error::other(format!("{} is empty", directory.display())))
 }
 
-fn seven_zip(sevenzip: &str, archive: &Path, into: &Path) -> io::Result<()> {
-   let status = Command::new(format!("{sevenzip}/bin/7zz"))
+fn seven_zip(sevenzip: &StorePath, archive: &Path, into: &Path) -> io::Result<()> {
+   Command::new(sevenzip.join("bin/7zz"))
       .arg("x")
       .arg("-y")
       .arg(format!("-o{}", into.display()))
       .arg(archive)
       .stdout(Stdio::null())
-      .status()?;
-   if !status.success() {
-      return Err(io::Error::other(format!(
-         "7zz failed on {}",
-         archive.display()
-      )));
-   }
-   Ok(())
+      .checked()
 }
 
 /// every header dir as a case-insensitive VFS directory listing its own files,
@@ -121,11 +117,13 @@ fn vfs_overlay(out: &str, header_dirs: &[String]) -> io::Result<String> {
    for header_dir in header_dirs {
       for dir in dirs(&format!("{out}/{header_dir}/**"))? {
          let rel = format!("../../{}", dir.strip_prefix(out).unwrap_or(&dir).display());
-         let mut names: Vec<String> = read_dir(&dir)?
-            .filter_map(Result::ok)
-            .filter(|entry| entry.file_type().is_ok_and(|kind| !kind.is_dir()))
-            .map(|entry| entry.file_name().to_string_lossy().into_owned())
-            .collect();
+         let mut names = Vec::new();
+         for entry in read_dir(&dir)? {
+            let found = entry?;
+            if !found.file_type()?.is_dir() {
+               names.push(found.file_name().to_string_lossy().into_owned());
+            }
+         }
          if names.is_empty() {
             continue;
          }
@@ -223,98 +221,72 @@ fn write_facts(out: &str, version: &str) -> io::Result<()> {
    write_file(Path::new(&format!("{out}/etc/cc/cxxflags")), b"\n", None)
 }
 
-/// the CRT .vsix are zips with Contents/VC/Tools/MSVC/<v>/{include,lib}, the
-/// SDK .msi install below "Windows Kits/10/{Include,Lib}/<v>/" out of
-/// cabinets whose members are named by File-table id. Result:
-/// crt/{include,lib,redist} and sdk/{include,lib}/<v>/, plus a clang VFS
-/// overlay that makes the header dirs case-insensitive (SDK headers include
-/// each other in spellings that match no file) and lowercase symlinks for
-/// lld-link, which has no VFS.
-pub fn run_mode() -> io::Result<()> {
-   let attrs: Attrs = serde_json::from_str(&read_to_string(
-      var("NIX_ATTRS_JSON_FILE")
-         .map_err(|_unset| io::Error::other("NIX_ATTRS_JSON_FILE is not set"))?,
-   )?)?;
-   let out = attrs
-      .outputs
-      .get("out")
-      .cloned()
-      .ok_or_else(|| io::Error::other("no out output"))?;
-   let bin = format!("{}/bin", attrs.peanut);
-   let work = PathBuf::from(format!(
-      "{}/w",
-      var("NIX_BUILD_TOP").map_err(|_unset| io::Error::other("NIX_BUILD_TOP is not set"))?
-   ));
-   create_dir_all(format!("{out}/crt"))?;
-   create_dir_all(format!("{out}/sdk"))?;
-   create_dir_all(work.join("in"))?;
-
-   let work_text = work.to_string_lossy().into_owned();
+fn install_crt(attrs: &Attrs, tar: &Bsdtar, work: &Path, out: &str) -> io::Result<()> {
    for payload in attrs
       .payloads
       .iter()
-      .filter(|payload| payload.kind == "crt")
+      .filter(|payload| payload.kind == PayloadKind::Crt)
    {
-      run(&format!("{bin}/bsdtar"), &[
-         "-xf",
-         payload.out.as_str(),
-         "-C",
-         &work_text,
-         "Contents/VC",
-      ])?;
+      tar.extract(payload.out.as_ref(), work, &["Contents/VC"])?;
    }
    let vc = first_entry(&work.join("Contents/VC/Tools/MSVC"))?;
-   let vc_text = vc.to_string_lossy().into_owned();
-   run(&format!("{bin}/cp"), &[
-      "-r",
-      &format!("{vc_text}/include"),
-      &format!("{vc_text}/lib"),
-      &format!("{out}/crt/"),
-   ])?;
-
+   Command::new(attrs.peanut.join("bin/cp"))
+      .arg("-r")
+      .arg(vc.join("include"))
+      .arg(vc.join("lib"))
+      .arg(format!("{out}/crt/"))
+      .checked()?;
    let redist = PathBuf::from(format!("{out}/crt/redist"));
    create_dir_all(&redist)?;
-
    let dlls = files(&format!(
-      "{work_text}/Contents/VC/Redist/MSVC/*/*/Microsoft.VC*.{{CRT,OpenMP}}/*.dll"
+      "{}/Contents/VC/Redist/MSVC/*/*/Microsoft.VC*.{{CRT,OpenMP}}/*.dll",
+      work.display()
    ))?;
-
    if dlls.is_empty() {
       return Err(io::Error::other("windows-sdk has no redistributable DLLs"));
    }
-
    for dll in dlls {
       let name = dll
          .file_name()
          .ok_or_else(|| io::Error::other(format!("{} has no file name", dll.display())))?;
       copy(&dll, redist.join(name))?;
    }
+   Ok(())
+}
 
+/// The SDK's headers and libraries under `sdk/`, out of its .msi payloads, and
+/// the version they install.
+fn install_sdk(attrs: &Attrs, work: &Path, out: &str) -> io::Result<String> {
    // 7zz finds an msi's cabinets next to it by the names in its Media table
    for payload in attrs
       .payloads
       .iter()
-      .filter(|payload| payload.kind != "crt")
+      .filter(|payload| payload.kind != PayloadKind::Crt)
    {
       symlink(&payload.out, work.join("in").join(&payload.file))?;
    }
    for payload in attrs
       .payloads
       .iter()
-      .filter(|payload| payload.kind == "msi")
+      .filter(|payload| payload.kind == PayloadKind::Msi)
    {
-      unpack_msi(&attrs, &work, &out, payload)?;
+      unpack_msi(attrs, work, out, payload)?;
    }
-   run(&format!("{bin}/chmod"), &["-R", "u+w", &out])?;
+   Command::new(attrs.peanut.join("bin/chmod"))
+      .args(["-R", "u+w", out])
+      .checked()?;
    // clang's msvc driver appends the installer's spelling
    symlink("include", format!("{out}/sdk/Include"))?;
    symlink("lib", format!("{out}/sdk/Lib"))?;
-
-   let version = first_entry(Path::new(&format!("{out}/sdk/include")))?
+   let include = first_entry(Path::new(&format!("{out}/sdk/include")))?;
+   include
       .file_name()
-      .map(|name| name.to_string_lossy().into_owned())
-      .unwrap_or_default();
-   write_facts(&out, &version)?;
+      .and_then(|name| name.to_str())
+      .map(str::to_owned)
+      .ok_or_else(|| io::Error::other(format!("{} names no SDK version", include.display())))
+}
+
+fn lowercase_links(out: &str) -> io::Result<()> {
    for file in files(&format!("{out}/{{crt,sdk}}/lib/**/*"))? {
       let Some(name) = file
          .file_name()
@@ -331,4 +303,35 @@ pub fn run_mode() -> io::Result<()> {
       }
    }
    Ok(())
+}
+
+/// the CRT .vsix are zips with Contents/VC/Tools/MSVC/<v>/{include,lib}, the
+/// SDK .msi install below "Windows Kits/10/{Include,Lib}/<v>/" out of
+/// cabinets whose members are named by File-table id. Result:
+/// crt/{include,lib,redist} and sdk/{include,lib}/<v>/, plus a clang VFS
+/// overlay that makes the header dirs case-insensitive (SDK headers include
+/// each other in spellings that match no file) and lowercase symlinks for
+/// lld-link, which has no VFS.
+pub fn run_mode() -> io::Result<()> {
+   let attrs = attrs::load::<Attrs>()?;
+   let out = attrs
+      .outputs
+      .get("out")
+      .ok_or_else(|| io::Error::other("no out output"))?;
+   let work = PathBuf::from(format!(
+      "{}/w",
+      var("NIX_BUILD_TOP").map_err(|_unset| io::Error::other("NIX_BUILD_TOP is not set"))?
+   ));
+   create_dir_all(format!("{out}/crt"))?;
+   create_dir_all(format!("{out}/sdk"))?;
+   create_dir_all(work.join("in"))?;
+   install_crt(
+      &attrs,
+      &Bsdtar::new(attrs.peanut.join("bin/bsdtar")),
+      &work,
+      out,
+   )?;
+   let version = install_sdk(&attrs, &work, out)?;
+   write_facts(out, &version)?;
+   lowercase_links(out)
 }

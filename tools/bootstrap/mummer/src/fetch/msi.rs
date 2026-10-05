@@ -56,38 +56,40 @@ struct Pool {
 
 pub type Table = Vec<BTreeMap<String, Cell>>;
 
-fn int_at(bytes: &[u8], at: usize, width: usize) -> u64 {
-   let mut value = 0_u64;
-   for (index, byte) in bytes
-      .get(at..at + width)
-      .unwrap_or_default()
-      .iter()
-      .enumerate()
-   {
-      value |= u64::from(*byte) << (8 * index);
-   }
-   value
+/// The `width` little-endian bytes at `at`, at most four.
+fn int_at(bytes: &[u8], at: usize, width: usize) -> io::Result<u32> {
+   let field = at
+      .checked_add(width)
+      .and_then(|end| bytes.get(at..end))
+      .filter(|field| field.len() <= 4)
+      .ok_or_else(|| io::Error::other("msi: a table ends inside a field"))?;
+   let mut word = [0_u8; 4];
+   word[..field.len()].copy_from_slice(field);
+   Ok(u32::from_le_bytes(word))
 }
 
 fn string_pool(dir: &Path) -> io::Result<Pool> {
    let pool = read(dir.join("!_StringPool"))?;
    let data = read(dir.join("!_StringData"))?;
+   let length_of = |value: u32| usize::try_from(value).map_err(io::Error::other);
    let mut strings = vec![None];
    let mut index = 4;
    let mut offset = 0;
    while index < pool.len() {
-      let mut length = usize::try_from(int_at(&pool, index, 2)).map_err(io::Error::other)?;
-      let refs = int_at(&pool, index + 2, 2);
+      let mut length = length_of(int_at(&pool, index, 2)?)?;
+      let refs = int_at(&pool, index + 2, 2)?;
       index += 4;
       if length == 0 && refs != 0 {
-         length = usize::try_from(int_at(&pool, index, 4)).map_err(io::Error::other)?;
+         length = length_of(int_at(&pool, index, 4)?)?;
          index += 4;
       }
-      let bytes = data.get(offset..offset + length).unwrap_or_default();
+      let bytes = data
+         .get(offset..offset + length)
+         .ok_or_else(|| io::Error::other("msi: a string runs past the string data"))?;
       strings.push(Some(String::from_utf8_lossy(bytes).into_owned()));
       offset += length;
    }
-   let reference = if int_at(&pool, 0, 4) >= 0x8000_0000 {
+   let reference = if int_at(&pool, 0, 4)? >= 0x8000_0000 {
       3
    } else {
       2
@@ -95,11 +97,11 @@ fn string_pool(dir: &Path) -> io::Result<Pool> {
    Ok(Pool { strings, reference })
 }
 
-fn rows(raw: &[u8], kinds: &[Kind], pool: &Pool) -> Vec<Vec<Cell>> {
+fn rows(raw: &[u8], kinds: &[Kind], pool: &Pool) -> io::Result<Vec<Vec<Cell>>> {
    let widths: Vec<usize> = kinds.iter().map(|kind| kind.width(pool)).collect();
    let row_width: usize = widths.iter().sum();
    if row_width == 0 {
-      return Vec::new();
+      return Ok(Vec::new());
    }
    let count = raw.len() / row_width;
    let mut starts = Vec::with_capacity(widths.len());
@@ -115,26 +117,21 @@ fn rows(raw: &[u8], kinds: &[Kind], pool: &Pool) -> Vec<Vec<Cell>> {
             .zip(&widths)
             .zip(&starts)
             .map(|((kind, width), column_start)| {
-               let value = int_at(raw, column_start + row * width, *width);
-               match *kind {
+               let value = int_at(raw, column_start + row * width, *width)?;
+               Ok(match *kind {
                   Kind::Text => {
+                     let at = usize::try_from(value).map_err(io::Error::other)?;
                      Cell::Text(
-                        usize::try_from(value)
-                           .ok()
-                           .and_then(|at| pool.strings.get(at))
-                           .cloned()
-                           .flatten(),
+                        pool
+                           .strings
+                           .get(at)
+                           .ok_or_else(|| io::Error::other("msi: a cell names no pooled string"))?
+                           .clone(),
                      )
                   },
-                  Kind::Short => {
-                     Cell::Int((value != 0).then(|| i64::try_from(value).unwrap_or(0) - 0x8000))
-                  },
-                  Kind::Long => {
-                     Cell::Int(
-                        (value != 0).then(|| i64::try_from(value).unwrap_or(0) - 0x8000_0000),
-                     )
-                  },
-               }
+                  Kind::Short => Cell::Int((value != 0).then(|| i64::from(value) - 0x8000)),
+                  Kind::Long => Cell::Int((value != 0).then(|| i64::from(value) - 0x8000_0000)),
+               })
             })
             .collect()
       })
@@ -147,7 +144,7 @@ pub fn table(dir: &Path, name: &str) -> io::Result<Table> {
       &read(dir.join("!_Columns"))?,
       &[Kind::Text, Kind::Short, Kind::Text, Kind::Short],
       &pool,
-   );
+   )?;
    let mut names = Vec::new();
    let mut kinds = Vec::new();
    for column in columns {
@@ -171,7 +168,7 @@ pub fn table(dir: &Path, name: &str) -> io::Result<Table> {
    if names.is_empty() || !file.exists() {
       return Ok(Vec::new());
    }
-   Ok(rows(&read(file)?, &kinds, &pool)
+   Ok(rows(&read(file)?, &kinds, &pool)?
       .into_iter()
       .map(|row| names.iter().cloned().zip(row).collect())
       .collect())

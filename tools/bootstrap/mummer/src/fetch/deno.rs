@@ -3,10 +3,6 @@ use std::{
       BTreeMap,
       BTreeSet,
    },
-   fmt::{
-      Formatter,
-      Result as FormatResult,
-   },
    fs::read_to_string,
    io,
 };
@@ -27,11 +23,6 @@ use serde::{
    Deserializer,
    Serialize,
    Serializer,
-   de::{
-      IgnoredAny,
-      MapAccess,
-      Visitor,
-   },
    ser::SerializeMap as _,
 };
 
@@ -45,6 +36,7 @@ use crate::{
          collect,
          fetchurls,
          json_file,
+         keys,
          lock_path,
          say,
          stage,
@@ -340,40 +332,17 @@ fn content_type(url: &str) -> &'static str {
 #[derive(Deserialize)]
 struct Meta {
    manifest:      BTreeMap<String, ManifestEntry>,
-   #[serde(default, deserialize_with = "keys", rename = "moduleGraph2")]
+   #[serde(default, deserialize_with = "graph_keys", rename = "moduleGraph2")]
    module_graph2: Option<BTreeSet<String>>,
-   #[serde(default, deserialize_with = "keys", rename = "moduleGraph1")]
+   #[serde(default, deserialize_with = "graph_keys", rename = "moduleGraph1")]
    module_graph1: Option<BTreeSet<String>>,
 }
 
-/// The modules a jsr module graph names, its values unread.
-fn keys<'de, Input>(input: Input) -> Result<Option<BTreeSet<String>>, Input::Error>
+fn graph_keys<'de, Input>(input: Input) -> Result<Option<BTreeSet<String>>, Input::Error>
 where
    Input: Deserializer<'de>,
 {
-   input.deserialize_map(GraphKeys).map(Some)
-}
-
-struct GraphKeys;
-
-impl<'de> Visitor<'de> for GraphKeys {
-   type Value = BTreeSet<String>;
-
-   fn expecting(&self, formatter: &mut Formatter<'_>) -> FormatResult {
-      formatter.write_str("a jsr module graph")
-   }
-
-   fn visit_map<Access>(self, mut map: Access) -> Result<Self::Value, Access::Error>
-   where
-      Access: MapAccess<'de>,
-   {
-      let mut modules = BTreeSet::new();
-      while let Some(module) = map.next_key::<String>()? {
-         map.next_value::<IgnoredAny>()?;
-         modules.insert(module);
-      }
-      Ok(modules)
-   }
+   keys(input).map(Some)
 }
 
 #[derive(Deserialize)]

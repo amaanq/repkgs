@@ -4,7 +4,11 @@ use std::{
       BTreeSet,
    },
    env::var,
-   fmt::Display,
+   fmt::{
+      Display,
+      Formatter,
+      Result as FormatResult,
+   },
    fs::read_to_string,
    io::{
       self,
@@ -22,8 +26,14 @@ use mummer::{
 };
 use serde::{
    Deserialize,
+   Deserializer,
    Serialize,
-   de::DeserializeOwned,
+   de::{
+      DeserializeOwned,
+      IgnoredAny,
+      MapAccess,
+      Visitor,
+   },
 };
 
 use crate::nix_store::{
@@ -80,6 +90,36 @@ where
       .collect::<Vec<_>>()
       .join(", ");
    Err(io::Error::other(format!("{message}: {listed}")))
+}
+
+/// A JSON object's keys, its values unread.
+pub fn keys<'de, Input>(input: Input) -> Result<BTreeSet<String>, Input::Error>
+where
+   Input: Deserializer<'de>,
+{
+   input.deserialize_map(Keys)
+}
+
+struct Keys;
+
+impl<'de> Visitor<'de> for Keys {
+   type Value = BTreeSet<String>;
+
+   fn expecting(&self, formatter: &mut Formatter<'_>) -> FormatResult {
+      formatter.write_str("an object")
+   }
+
+   fn visit_map<Access>(self, mut map: Access) -> Result<Self::Value, Access::Error>
+   where
+      Access: MapAccess<'de>,
+   {
+      let mut found = BTreeSet::new();
+      while let Some(key) = map.next_key::<String>()? {
+         map.next_value::<IgnoredAny>()?;
+         found.insert(key);
+      }
+      Ok(found)
+   }
 }
 
 pub fn say(message: &str) {
