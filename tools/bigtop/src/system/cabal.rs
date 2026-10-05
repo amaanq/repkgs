@@ -45,6 +45,7 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
+      utf8,
    },
    prepare::succeed,
    probe,
@@ -144,7 +145,7 @@ impl System for Cabal {
    /// feeds it from mummerd's slots.
    fn setup(&self, ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
       let options = ctx.options::<Options>("cabal")?;
-      let repo = format!("{}/repo", ctx.build);
+      let repo = ctx.build.join("repo");
       create_dir_all(&repo)?;
       for source in sorted_entries(Path::new(&*options.deps))? {
          let Some(name) = source
@@ -154,7 +155,7 @@ impl System for Cabal {
             continue;
          };
          if name.ends_with(".tar.gz") || Self::is_cabal(&name) {
-            symlink(format!("{}/{name}", options.deps), format!("{repo}/{name}"))?;
+            symlink(format!("{}/{name}", options.deps), repo.join(&name))?;
          }
       }
       let output = Command::new("ghc").arg("--info").output()?;
@@ -167,7 +168,7 @@ impl System for Cabal {
          .nth(1)
          .and_then(|rest| rest.split('"').next())
          .ok_or_else(|| io::Error::other("ghc --info names no Project Unit Id"))?;
-      let cabal_dir = format!("{}/cabal", ctx.build);
+      let cabal_dir = ctx.build.join("cabal");
       let units = format!("{STORE}/{unit_id}");
       let ghc_path = tool("ghc")?;
       let ghc_store = ghc_path
@@ -180,9 +181,9 @@ impl System for Cabal {
       create_dir_all(&cabal_dir)?;
       create_dir_all(format!("{units}/package.db"))?;
       Self::recache(&units)?;
-      let ghc = format!("{}/ghc", ctx.build);
+      let ghc = ctx.build.join("ghc");
       write_file(
-         Path::new(&ghc),
+         &ghc,
          format!(
             "#!{}\nexec {} {} \"$@\"\n",
             tool("sh")?.display(),
@@ -193,11 +194,13 @@ impl System for Cabal {
          Some(0o755),
       )?;
       write_file(
-         Path::new(&format!("{cabal_dir}/config")),
+         &cabal_dir.join("config"),
          format!(
-            "repository local\n  url: file+noindex://{repo}\nstore-dir: {STORE}\njobs: \
-             {}\nsemaphore: True\nwith-compiler: {ghc}\nwith-hc-pkg: {}\n",
+            "repository local\n  url: file+noindex://{}\nstore-dir: {STORE}\njobs: {}\nsemaphore: \
+             True\nwith-compiler: {}\nwith-hc-pkg: {}\n",
+            repo.display(),
             ctx.njobs,
+            ghc.display(),
             tool("ghc-pkg")?.display()
          )
          .as_bytes(),
@@ -219,7 +222,7 @@ impl System for Cabal {
          None,
       )?;
       Ok([
-         ("CABAL_DIR", cabal_dir),
+         ("CABAL_DIR", utf8(&cabal_dir)?.to_owned()),
          ("CABAL_UNITS", units),
          ("CABAL_UNIT_KEY", unit_key),
       ]
@@ -334,7 +337,7 @@ impl Cabal {
          else {
             return Ok(false);
          };
-         let tar = format!("{}/{id}.tar.zst", ctx.build);
+         let tar = format!("{}/{id}.tar.zst", ctx.build.display());
          write_file(Path::new(&tar), &bytes, None)?;
          succeed(Command::new("bsdtar").args(["-xf", &tar, "-C", &units]))?;
          remove_file(&tar)?;
@@ -362,7 +365,7 @@ impl Cabal {
          .filter(|id| !before.contains(id))
          .collect::<Vec<String>>();
       parallel(&new, |id| {
-         let tar = format!("{}/{id}.tar.zst", ctx.build);
+         let tar = format!("{}/{id}.tar.zst", ctx.build.display());
          let mut command = Command::new("bsdtar");
          command.args(["-c", "--zstd", "-f", &tar, "-C", &units, id]);
          let conf = format!("package.db/{id}.conf");
@@ -505,7 +508,7 @@ impl Cabal {
    }
 
    fn install(ctx: &Ctx, options: &Options) -> io::Result<()> {
-      let bin = format!("{}/bin", ctx.out);
+      let bin = ctx.out.join("bin");
       create_dir_all(&bin)?;
       for exe in &options.exes {
          let target = format!("exe:{exe}");
@@ -513,7 +516,7 @@ impl Cabal {
          args.extend(strs(&options.flags));
          args.push(&target);
          let built = capture("cabal", &args)?;
-         copy(built.trim(), format!("{bin}/{exe}"))?;
+         copy(built.trim(), bin.join(exe))?;
       }
       Ok(())
    }

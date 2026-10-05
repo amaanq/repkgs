@@ -47,6 +47,7 @@ use crate::{
    attrs::{
       Ctx,
       nix_store,
+      utf8,
    },
    exports::{
       exports_of,
@@ -102,8 +103,9 @@ pub fn write(
    vars: &BTreeMap<String, String>,
 ) -> io::Result<()> {
    let store_dir = nix_store();
-   let rel = |path: &str| relative(path, &ctx.out, &store_dir);
-   let bin = Path::new(&ctx.out).join("bin");
+   let root = utf8(&ctx.out)?;
+   let rel = |path: &str| relative(path, root, &store_dir);
+   let bin = ctx.out.join("bin");
    create_dir_all(&bin)?;
    let platform = ctx.platform()?;
    let executable = format!("{name}{}", platform.ext.exe);

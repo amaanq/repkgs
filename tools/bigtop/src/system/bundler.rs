@@ -32,6 +32,7 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
+      utf8,
    },
    prepare::succeed,
    schema::{
@@ -67,7 +68,7 @@ options! {
 }
 
 fn app_dir(ctx: &Ctx) -> io::Result<String> {
-   Ok(format!("{}/lib/{}", ctx.out, ctx.spec()?.name))
+   Ok(format!("{}/lib/{}", ctx.out.display(), ctx.spec()?.name))
 }
 
 pub struct Bundler;
@@ -119,9 +120,12 @@ impl System for Bundler {
          ("BUNDLE_RETRY".to_owned(), "0".to_owned()),
          (
             "BUNDLE_USER_HOME".to_owned(),
-            format!("{}/bundle-home", ctx.build),
+            format!("{}/bundle-home", ctx.build.display()),
          ),
-         ("GEM_HOME".to_owned(), format!("{}/gem-home", ctx.build)),
+         (
+            "GEM_HOME".to_owned(),
+            format!("{}/gem-home", ctx.build.display()),
+         ),
          ("MAKEFLAGS".to_owned(), format!("-j{}", ctx.njobs)),
       ]);
       syslibs::check(attrs, Path::new(&app), ctx.spec()?.sys.as_deref(), None)?;
@@ -161,7 +165,7 @@ fn cross_rbconfig(ctx: &Ctx, env: &mut BTreeMap<String, String>) -> io::Result<(
       .into_iter()
       .next()
       .ok_or_else(|| io::Error::other("the target ruby has no rbconfig.rb"))?;
-   let dir = format!("{}/cross-rbconfig", ctx.build);
+   let dir = format!("{}/cross-rbconfig", ctx.build.display());
    create_dir_all(&dir)?;
    copy(&target, format!("{dir}/rbconfig.rb"))?;
    let mut rubylib = vec![dir];
@@ -224,16 +228,12 @@ fn build(options: &Options) -> io::Result<()> {
 fn install(ctx: &Ctx, options: &Options) -> io::Result<()> {
    let app = app_dir(ctx)?;
    let ruby = dep_root(ctx, "ruby", "the bin stubs run the target ruby")?;
-   let bin = format!("{}/bin", ctx.out);
+   let bin = ctx.out.join("bin");
    create_dir_all(&bin)?;
    let spec = ctx.spec()?;
    for name in spec.bin.iter().flatten() {
       let stub = bin_stub(ctx, options, name, &app, &ruby)?;
-      write_file(
-         Path::new(&format!("{bin}/{name}")),
-         stub.as_bytes(),
-         Some(0o755),
-      )?;
+      write_file(&bin.join(name), stub.as_bytes(), Some(0o755))?;
    }
    Ok(())
 }
@@ -253,7 +253,7 @@ fn bin_stub(
       .find(|rel| Path::new(root).join(rel).exists())
       .ok_or_else(|| io::Error::other(format!("{name} is neither exe/ nor bin/ of the app")))?;
    let rel_app = root
-      .strip_prefix(&ctx.out)
+      .strip_prefix(utf8(&ctx.out)?)
       .unwrap_or(root)
       .trim_start_matches('/');
    Ok([

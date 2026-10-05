@@ -40,6 +40,7 @@ use tightrope::{
 use crate::attrs::{
    Ctx,
    build_top,
+   utf8,
 };
 
 #[derive(Serialize)]
@@ -206,10 +207,11 @@ pub fn store(key: &Key, file: &Path, socket: &Path) -> io::Result<()> {
       return Ok(());
    };
    let text = read_to_string(file)?;
+   let out = utf8(&ctx.out)?;
    let kept = mask_hashes(
       &text
          .split_inclusive('\n')
-         .filter(|line| !line.contains(&ctx.out))
+         .filter(|line| !line.contains(out))
          .collect::<String>(),
    );
    if let Err(error) = client.put(key, kept.as_bytes()) {
@@ -234,11 +236,12 @@ pub fn store_dir(key: &Key, dir: &Path, socket: &Path) -> io::Result<()> {
    let Some(mut client) = daemon(&ctx, socket) else {
       return Ok(());
    };
+   let out = ctx.out.as_os_str().as_encoded_bytes();
    for entry in walk(dir)? {
       if entry.kind == EntryKind::File
          && read(&entry.path)?
-            .windows(ctx.out.len())
-            .any(|window| window == ctx.out.as_bytes())
+            .windows(out.len())
+            .any(|window| window == out)
       {
          note(
             "probe-cache",

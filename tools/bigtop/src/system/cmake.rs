@@ -22,6 +22,7 @@ use crate::{
       Attrs,
       Ctx,
       Def,
+      utf8,
    },
    probe,
    schema::Field,
@@ -74,7 +75,7 @@ impl System for Cmake {
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
-      Ok(PathBuf::from(&ctx.build))
+      Ok(ctx.build.clone())
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
@@ -121,7 +122,7 @@ impl Cmake {
       let mut defs = vec![
          (
             "CMAKE_INSTALL_PREFIX".to_owned(),
-            Def::Text(ctx.out.clone()),
+            Def::Text(utf8(&ctx.out)?.to_owned()),
          ),
          (
             "CMAKE_BUILD_TYPE".to_owned(),
@@ -218,7 +219,7 @@ impl Cmake {
             flags:     &options.flags,
          }),
       )?;
-      let init = format!("{}/probe-init.cmake", ctx.build);
+      let init = format!("{}/probe-init.cmake", ctx.build.display());
       let restored = probe::restore(&key, Path::new(&init), socket)?;
       note("cmake-probes", if restored { "restored" } else { "cold" });
       let source = srcdir.to_string_lossy();

@@ -96,7 +96,7 @@ impl System for Cargo {
          Some(deps) => Some(deps.to_owned()),
          None => None,
       };
-      let home = format!("{}/cargo-home", ctx.build);
+      let home = format!("{}/cargo-home", ctx.build.display());
       let mut env = Env::from(Self::configure(ctx, attrs, vendor.as_deref(), &home)?);
       syslibs::check(
          attrs,
@@ -144,7 +144,7 @@ impl Cargo {
    }
 
    fn arguments(ctx: &Ctx, options: &Options) -> io::Result<Vec<String>> {
-      let home = PathBuf::from(format!("{}/cargo-home", ctx.build));
+      let home = ctx.build.join("cargo-home");
       let mut args = feature_flags(
          &ctx.project_dir(&options.root),
          &Self::build(options, Some(home)),
@@ -181,7 +181,7 @@ impl Cargo {
          ("CARGO_HOME".to_owned(), home.to_owned()),
          (
             "CARGO_TARGET_DIR".to_owned(),
-            format!("{}/target", ctx.build),
+            format!("{}/target", ctx.build.display()),
          ),
          ("RUSTC".to_owned(), rustc.to_string_lossy().into_owned()),
       ]);
@@ -206,7 +206,7 @@ impl Cargo {
          on_path("cc").to_string_lossy().into_owned(),
       );
       let mut rustflags = vec![
-         format!("--remap-path-prefix={}=/src", ctx.src),
+         format!("--remap-path-prefix={}=/src", ctx.src.display()),
          format!("--remap-path-prefix={home}=/cargo"),
       ];
       if let Some(deps) = vendor {
@@ -263,7 +263,7 @@ impl Cargo {
    // the toolchain carries std for the build machine only, the target's is
    // <toolchain>-std.
    fn cross_sysroot(ctx: &Ctx, attrs: &Attrs, rustc: &Path, target: &str) -> io::Result<String> {
-      let sysroot = format!("{}/rust-sysroot", ctx.build);
+      let sysroot = format!("{}/rust-sysroot", ctx.build.display());
 
       if Path::new(&sysroot).is_dir() {
          return Ok(sysroot);
@@ -306,7 +306,7 @@ impl Cargo {
       deps: &str,
       patches: &BTreeMap<String, Vec<PathBuf>>,
    ) -> io::Result<String> {
-      let dir = format!("{}/vendor", ctx.build);
+      let dir = format!("{}/vendor", ctx.build.display());
       create_dir_all(&dir)?;
       let names = file_names(Path::new(deps))?;
       for name in &names {
@@ -392,10 +392,10 @@ impl Cargo {
          names.push(name);
       }
       names.sort();
-      let bin = format!("{}/bin", ctx.out);
+      let bin = ctx.out.join("bin");
       create_dir_all(&bin)?;
       for name in names {
-         copy(format!("{release}/{name}"), format!("{bin}/{name}"))?;
+         copy(format!("{release}/{name}"), bin.join(&name))?;
       }
       Ok(())
    }

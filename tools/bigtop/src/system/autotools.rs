@@ -39,6 +39,7 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
+      utf8,
    },
    probe,
    schema::{
@@ -117,7 +118,7 @@ impl System for Autotools {
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
       let options = ctx.options::<Options>(self.name())?;
       Ok(if options.out_of_tree {
-         PathBuf::from(&ctx.build)
+         ctx.build.clone()
       } else {
          ctx.project_dir(&options.root)
       })
@@ -147,7 +148,7 @@ impl System for Autotools {
 impl Autotools {
    fn build_dir(ctx: &Ctx, options: &Options) -> PathBuf {
       if options.out_of_tree {
-         PathBuf::from(&ctx.build)
+         ctx.build.clone()
       } else {
          ctx.project_dir(&options.root)
       }
@@ -172,7 +173,7 @@ impl Autotools {
          format!("--host={}", platform.gnu_triple),
          format!("--build={build}"),
       ];
-      let cache = format!("{}/config.cache", ctx.build);
+      let cache = ctx.build.join("config.cache");
       let key = probe::key(
          "autotools",
          slice::from_ref(&script),
@@ -182,9 +183,9 @@ impl Autotools {
             host:   &host_flags,
          }),
       )?;
-      let restored = probe::restore(&key, Path::new(&cache), socket)?;
+      let restored = probe::restore(&key, &cache, socket)?;
       note("config.cache", if restored { "restored" } else { "cold" });
-      Self::backports(Path::new(&ctx.src))?;
+      Self::backports(&ctx.src)?;
       copy(
          Path::new(&attrs.peanut).join("bin/install"),
          Self::install_tool(ctx),
@@ -201,8 +202,8 @@ impl Autotools {
       let install = format!("{} -c", Self::install_tool(ctx).display());
       let config_site = site(ctx, Path::new(&script))?;
       let env = [
-         ("PKGS_PREFIX", ctx.out.as_str()),
-         ("PKGS_CONFIG_CACHE", &cache),
+         ("PKGS_PREFIX", utf8(&ctx.out)?),
+         ("PKGS_CONFIG_CACHE", utf8(&cache)?),
          ("INSTALL", &install),
          ("CONFIG_SITE", &config_site),
       ];
@@ -224,7 +225,7 @@ impl Autotools {
             },
          };
       if reusable {
-         probe::store(&key, Path::new(&cache), socket)?;
+         probe::store(&key, &cache, socket)?;
       } else {
          note(
             "config.cache",
@@ -333,13 +334,13 @@ impl Autotools {
 
    /// configure's INSTALL.
    fn install_tool(ctx: &Ctx) -> PathBuf {
-      PathBuf::from(format!("{}/install", ctx.build))
+      ctx.build.join("install")
    }
 
    fn unrecord_install_tool(ctx: &Ctx) -> io::Result<()> {
       let recorded = Self::install_tool(ctx);
       let needle = recorded.as_os_str().as_encoded_bytes();
-      let out = Path::new(&ctx.out);
+      let out = &ctx.out;
       if !out.exists() {
          return Ok(());
       }

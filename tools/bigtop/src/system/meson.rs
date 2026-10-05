@@ -27,6 +27,7 @@ use crate::{
       Ctx,
       Def,
       Platform,
+      utf8,
    },
    schema::Field,
    system::{
@@ -96,7 +97,7 @@ impl System for Meson {
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
-      Ok(PathBuf::from(&ctx.build))
+      Ok(ctx.build.clone())
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
@@ -168,7 +169,7 @@ impl Meson {
          machine.push(("subsystem", Self::text("macos")));
       }
 
-      let host = Self::machine_file(&format!("{}/cross.ini", ctx.build), &[
+      let host = Self::machine_file(&format!("{}/cross.ini", ctx.build.display()), &[
          ("binaries", binaries),
          ("properties", vec![
             ("needs_exe_wrapper", Literal::Flag(true)),
@@ -188,8 +189,9 @@ impl Meson {
          ]),
          ("host_machine", machine),
       ])?;
-      let native =
-         Self::machine_file(&format!("{}/native.ini", ctx.build), &[("binaries", vec![
+      let native = Self::machine_file(&format!("{}/native.ini", ctx.build.display()), &[(
+         "binaries",
+         vec![
             ("c", Literal::Text(var("CC_FOR_BUILD").unwrap_or_default())),
             (
                "cpp",
@@ -201,7 +203,8 @@ impl Meson {
                "pkg-config",
                Literal::Text(var("PKG_CONFIG_FOR_BUILD").unwrap_or_default()),
             ),
-         ])])?;
+         ],
+      )])?;
       Ok(vec![
          "--cross-file".to_owned(),
          host,
@@ -223,7 +226,7 @@ impl Meson {
    fn configure(ctx: &Ctx, options: &Options) -> io::Result<()> {
       let platform = ctx.platform()?;
       let mut defs = vec![
-         ("prefix".to_owned(), Def::Text(ctx.out.clone())),
+         ("prefix".to_owned(), Def::Text(utf8(&ctx.out)?.to_owned())),
          ("libdir".to_owned(), Def::Text("lib".to_owned())),
          ("sbindir".to_owned(), Def::Text("bin".to_owned())),
          ("buildtype".to_owned(), Def::Text("plain".to_owned())),

@@ -13,6 +13,7 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
+      utf8,
    },
    schema::{
       Field,
@@ -79,7 +80,7 @@ impl Luarocks {
       let mut args = vec![
          "make",
          "--tree",
-         &ctx.out,
+         utf8(&ctx.out)?,
          &server,
          "--deps-mode",
          "one",
@@ -95,12 +96,12 @@ impl Luarocks {
       args.extend(strs(&options.flags));
       args.extend(options.rockspec.as_deref());
       run("luarocks", &args, &[])?;
-      let bin = format!("{}/bin", ctx.out);
-      let Ok(names) = file_names(Path::new(&bin)) else {
+      let bin = ctx.out.join("bin");
+      let Ok(names) = file_names(&bin) else {
          return Ok(());
       };
       for name in names {
-         let path = format!("{bin}/{name}");
+         let path = bin.join(name);
          let mut text = read_to_string(&path)?;
          if let Some(start) = text.find("LUAROCKS_SYSCONFDIR='")
             && let Some(length) = text[start..].find("' ")
@@ -109,9 +110,9 @@ impl Luarocks {
          }
          let rewritten = text
             .replacen("\nexec ", "\ntree=$(cd \"${0%/*}/..\" && pwd)\nexec ", 1)
-            .replace(&ctx.out, "'\"$tree\"'");
-         writable(Path::new(&path))?;
-         write_file(Path::new(&path), rewritten.as_bytes(), None)?;
+            .replace(utf8(&ctx.out)?, "'\"$tree\"'");
+         writable(&path)?;
+         write_file(&path, rewritten.as_bytes(), None)?;
       }
       Ok(())
    }

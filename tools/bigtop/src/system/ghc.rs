@@ -29,6 +29,7 @@ use crate::{
       Attrs,
       Ctx,
       text,
+      utf8,
    },
    implant,
    system::command::run,
@@ -184,7 +185,11 @@ fn close_db(ctx: &Ctx, db: &Path) -> io::Result<()> {
       }
    }
 
-   run(&format!("{}/bin/ghc-pkg", ctx.out), &["recache"], &[])
+   run(
+      &format!("{}/bin/ghc-pkg", ctx.out.display()),
+      &["recache"],
+      &[],
+   )
 }
 
 /// Every `"word"` (no quote inside) that `rename` maps, scanned left to right
@@ -243,7 +248,7 @@ fn our_tools(text: &str) -> String {
 }
 
 fn wrappers(ctx: &Ctx, pairs: &[(&str, &str)]) -> io::Result<()> {
-   for file in matching(&format!("{}/bin/*", ctx.out), Kind::Regular)? {
+   for file in matching(&format!("{}/bin/*", ctx.out.display()), Kind::Regular)? {
       rewrite(&file, |text| replace_all(text, pairs))?;
    }
    Ok(())
@@ -251,19 +256,16 @@ fn wrappers(ctx: &Ctx, pairs: &[(&str, &str)]) -> io::Result<()> {
 
 /// from the unpacked bindist in the working directory.
 pub fn install(ctx: &Ctx) -> io::Result<()> {
-   let prefix = format!("--prefix={}", ctx.out);
+   let prefix = format!("--prefix={}", ctx.out.display());
    let settings = toolchain(ctx);
    let mut configure = vec!["./configure", prefix.as_str()];
    configure.extend(settings.iter().map(String::as_str));
    run("sh", &configure, &[])?;
    run("make", &["install"], &[])?;
 
-   wrappers(ctx, &[
-      ("#!/bin/sh", LOCATE_TOP),
-      (ctx.out.as_str(), "$top"),
-   ])?;
+   wrappers(ctx, &[("#!/bin/sh", LOCATE_TOP), (utf8(&ctx.out)?, "$top")])?;
    let db = matching(
-      &format!("{}/lib/ghc-*/lib/package.conf.d", ctx.out),
+      &format!("{}/lib/ghc-*/lib/package.conf.d", ctx.out.display()),
       Kind::Directories,
    )?
    .into_iter()
@@ -279,20 +281,28 @@ pub fn install_deb(ctx: &Ctx, attrs: &Attrs) -> io::Result<()> {
    // ghc-pkg runs below, before finish: interpreter and RUNPATH now, the stub
    // when finish repeats it
    implant::run(
-      &Path::new(&ctx.src).join("usr"),
+      &ctx.src.join("usr"),
       Path::new(text(&ctx.platform, "interp")),
       None,
       &attrs.dependencies,
    )?;
 
-   let lib = format!("{}/lib/ghc/lib", ctx.out);
-   create_dir_all(format!("{}/lib", ctx.out))?;
+   let lib = format!("{}/lib/ghc/lib", ctx.out.display());
+   create_dir_all(ctx.out.join("lib"))?;
    run(
       "cp",
-      &["-r", "usr/lib/ghc", &format!("{}/lib/ghc", ctx.out)],
+      &[
+         "-r",
+         "usr/lib/ghc",
+         &format!("{}/lib/ghc", ctx.out.display()),
+      ],
       &[],
    )?;
-   run("cp", &["-r", "usr/bin", &format!("{}/bin", ctx.out)], &[])?;
+   run(
+      "cp",
+      &["-r", "usr/bin", &format!("{}/bin", ctx.out.display())],
+      &[],
+   )?;
    run(
       "cp",
       &[

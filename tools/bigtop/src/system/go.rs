@@ -81,8 +81,8 @@ impl System for Go {
          None,
       )?;
       Ok([
-         ("GOCACHE", format!("{}/go-cache", ctx.build)),
-         ("GOPATH", format!("{}/go", ctx.build)),
+         ("GOCACHE", format!("{}/go-cache", ctx.build.display())),
+         ("GOPATH", format!("{}/go", ctx.build.display())),
          ("GOSUMDB", "off".to_owned()),
          ("GOTOOLCHAIN", "local".to_owned()),
          (
@@ -107,7 +107,7 @@ impl System for Go {
       let options = ctx.options::<Options>(self.name())?;
       match verb {
          "build" => {
-            let bin = format!("{}/bin/", ctx.build);
+            let bin = format!("{}/bin/", ctx.build.display());
             create_dir_all(&bin)?;
             let jobs = format!("-p={}", ctx.njobs);
             let common = Self::common_args(ctx, attrs, &options)?;
@@ -164,16 +164,16 @@ impl Go {
    }
 
    fn install(ctx: &Ctx) -> io::Result<()> {
-      let built = format!("{}/bin", ctx.build);
+      let built = ctx.build.join("bin");
       let wanted = ctx.spec()?.bin;
-      let names = file_names(Path::new(&built))?;
-      let out = format!("{}/bin", ctx.out);
+      let names = file_names(&built)?;
+      let out = ctx.out.join("bin");
       create_dir_all(&out)?;
       for name in names
          .iter()
          .filter(|name| wanted.as_ref().is_none_or(|list| list.contains(name)))
       {
-         copy(format!("{built}/{name}"), format!("{out}/{name}"))?;
+         copy(built.join(name), out.join(name))?;
       }
       Ok(())
    }
