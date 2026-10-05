@@ -65,7 +65,10 @@ fn apply(env: &BTreeMap<String, Value>) {
       match *value {
          Value::String(ref text) => export(name, text),
          Value::Array(ref items) => {
-            let joined: Vec<&str> = items.iter().filter_map(Value::as_str).collect();
+            let joined = items
+               .iter()
+               .filter_map(Value::as_str)
+               .collect::<Vec<&str>>();
             export(name, &joined.join(":"));
          },
          Value::Bool(flag) => export(name, &flag.to_string()),
@@ -97,9 +100,10 @@ fn nu_phase(attrs: &Attrs, index: usize, name: &str, body: &str, top: &str) -> i
       ])
       .checked()
       .map_err(|error| io::Error::other(format!("phase {name}, {error}")))?;
-   let handed: BTreeMap<String, String> =
-      serde_json::from_str(&read_to_string(format!("{top}/phase-env.json"))?)?;
-   let current: BTreeMap<String, String> = vars().collect();
+   let handed = serde_json::from_str::<BTreeMap<String, String>>(&read_to_string(format!(
+      "{top}/phase-env.json"
+   ))?)?;
+   let current = vars().collect::<BTreeMap<String, String>>();
    let mut removed = Env::default();
    for key in current.keys() {
       if !handed.contains_key(key) && !nu_internal(key) {

@@ -37,10 +37,10 @@ use crate::{
 };
 
 fn dll_directories(pes: &[PathBuf], sysroot: &Path, deps: &[String]) -> io::Result<Vec<String>> {
-   let mut directories: Vec<PathBuf> = pes
+   let mut directories = pes
       .iter()
       .filter_map(|path| path.parent().map(Path::to_path_buf))
-      .collect();
+      .collect::<Vec<PathBuf>>();
 
    for dep in deps {
       directories.extend([Path::new(dep).join("bin"), Path::new(dep).join("lib")]);
@@ -104,10 +104,10 @@ pub fn run(output: &Path, launch: &Path, sysroot: &Path, deps: &[String]) -> io:
          .replace(out.as_ref(), "{root}")
          .replace(&store_dir, "{store}")
    };
-   let pes: Vec<PathBuf> = glob(&format!("{out}/**/*.{{exe,dll,pyd}}"))?
+   let pes = glob(&format!("{out}/**/*.{{exe,dll,pyd}}"))?
       .into_iter()
       .filter(|path| path.is_file())
-      .collect();
+      .collect::<Vec<PathBuf>>();
    // a DLL can arrive transitively (libssh2 through libgit2's pkg-config
    // Requires), and unlike ELF there is no RUNPATH to find it, so every
    // package in the closure is a provider
@@ -134,12 +134,12 @@ pub fn run(output: &Path, launch: &Path, sysroot: &Path, deps: &[String]) -> io:
          .file_name()
          .ok_or_else(|| io::Error::other("PE executable has no name"))?
          .to_string_lossy();
-      let path: Vec<String> = needed
+      let path = needed
          .iter()
          .filter(|needed_dir| Path::new(needed_dir) != directory)
          .map(|needed_dir| relative(needed_dir))
          .chain(prepended.iter().cloned())
-         .collect();
+         .collect::<Vec<String>>();
 
       if path.is_empty() && !inject {
          continue;
@@ -173,10 +173,10 @@ pub fn run(output: &Path, launch: &Path, sysroot: &Path, deps: &[String]) -> io:
       );
    }
 
-   let foreign: Vec<String> = needed
+   let foreign = needed
       .into_iter()
       .filter(|directory| !Path::new(directory).starts_with(output))
-      .collect();
+      .collect::<Vec<String>>();
 
    if !foreign.is_empty() {
       record_dll_dirs(output, foreign)?;

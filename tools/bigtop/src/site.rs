@@ -47,16 +47,19 @@ pub fn site(ctx: &Ctx, script: &Path) -> io::Result<String> {
    ) else {
       return Ok(original);
    };
-   let sites: Vec<&str> = original.split_whitespace().collect();
-   let contents: Vec<Option<String>> = sites.iter().map(|site| read_to_string(site).ok()).collect();
+   let sites = original.split_whitespace().collect::<Vec<&str>>();
+   let contents = sites
+      .iter()
+      .map(|site| read_to_string(site).ok())
+      .collect::<Vec<Option<String>>>();
    let context = blake3::hash(&serde_json::to_vec(&(&header, &compile, &contents))?)
       .to_hex()
       .to_string();
    let quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
-   let prefix: Vec<String> = sites
+   let prefix = sites
       .iter()
       .map(|site| format!("if test -r {0}; then . {0}; fi", quote(site)))
-      .collect();
+      .collect::<Vec<String>>();
    let site_text = [
       prefix.join("\n"),
       format!("CONFIG_SITE={}", quote(&original)),

@@ -112,10 +112,10 @@ pub fn write(
    create_dir_all(&bin)?;
    let platform = ctx.platform()?;
    let executable = format!("{name}{}", platform.ext.exe);
-   let env: BTreeMap<String, Variable> = vars
+   let env = vars
       .iter()
       .map(|(key, value)| (key.clone(), Variable::Set(rel(value))))
-      .collect();
+      .collect::<BTreeMap<String, Variable>>();
    let record = Record {
       env:     &env,
       program: rel(program),
@@ -165,9 +165,9 @@ pub fn run(
    };
    (context.scripts_env, context.binaries_env) =
       runtime_env(context.deps, &context.out, &context.store)?;
-   let mut names: Vec<String> = read_dir(&context.bin)?
+   let mut names = read_dir(&context.bin)?
       .map(|entry| entry.map(|found| found.file_name().to_string_lossy().into_owned()))
-      .collect::<io::Result<_>>()?;
+      .collect::<io::Result<Vec<String>>>()?;
    names.sort();
    for name in names {
       let path = context.bin.join(&name);
@@ -281,10 +281,10 @@ fn target<'env>(
       return Ok(None);
    }
    if context.ldso && has_segment(&segments(&image)?, PT_INTERP) {
-      let libpath: Vec<String> = lib_dirs(context.interp, context.deps)?
+      let libpath = lib_dirs(context.interp, context.deps)?
          .iter()
          .map(|dir| context.storerel(dir))
-         .collect();
+         .collect::<Vec<String>>();
       return Ok(Some(Target {
          env:     &context.binaries_env,
          program: context.storerel(&context.interp.to_string_lossy()),
@@ -322,14 +322,14 @@ fn script_interpreter(
    head: &[u8],
 ) -> io::Result<Option<Interpreter>> {
    let text = String::from_utf8_lossy(head);
-   let line: Vec<&str> = text
+   let line = text
       .lines()
       .next()
       .unwrap_or_default()
       .get(2..)
       .unwrap_or_default()
       .split_whitespace()
-      .collect();
+      .collect::<Vec<&str>>();
    let Some(&first) = line.first() else {
       return Ok(None);
    };

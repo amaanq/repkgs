@@ -118,16 +118,16 @@ pub fn run(output: &Path, debug: &Path) -> io::Result<()> {
 }
 
 pub fn macho(output: &Path, debug: &Path) -> io::Result<()> {
-   let files: Vec<Entry> = walk(output)?
+   let files = walk(output)?
       .into_iter()
       .filter(|entry| entry.kind == EntryKind::File)
-      .collect();
+      .collect::<Vec<Entry>>();
    strip_archives(&files, &["a", "o"])?;
 
-   let candidates: Vec<&Entry> = files
+   let candidates = files
       .iter()
       .filter(|entry| entry.size > SMALL_ELF && !has_extension(&entry.rel, &["a", "o", "rlib"]))
-      .collect();
+      .collect::<Vec<&Entry>>();
    let inspected = parallel(&candidates, |entry| {
       Ok(macho_uuid(entry)?.map(|uuid| (entry.path.as_str(), uuid)))
    })?;
@@ -142,7 +142,7 @@ pub fn macho(output: &Path, debug: &Path) -> io::Result<()> {
       return Ok(());
    }
 
-   let grouped: Vec<(String, Vec<&str>)> = groups.into_iter().collect();
+   let grouped = groups.into_iter().collect::<Vec<(String, Vec<&str>)>>();
    create_dir_all(debug.join("lib/debug"))?;
 
    parallel(&grouped, |group| {

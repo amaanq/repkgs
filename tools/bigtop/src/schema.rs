@@ -358,7 +358,7 @@ pub fn run(check: Option<&Path>) -> io::Result<()> {
    };
 
    if let Some(path) = check {
-      let recorded: Schema = serde_json::from_str(&read_to_string(path)?)?;
+      let recorded = serde_json::from_str::<Schema>(&read_to_string(path)?)?;
 
       if recorded != current {
          return Err(io::Error::other(format!(
