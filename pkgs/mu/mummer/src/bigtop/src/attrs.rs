@@ -251,7 +251,8 @@ impl OptionType for VersionCheck {
    }
 }
 
-/// How much DWARF a compile keeps when the package has a debug output.
+/// How much DWARF a compile keeps when the package has a debug output, line
+/// tables unless a package asks for full.
 #[derive(Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(try_from = "String")]
 pub enum DebugInfo {
