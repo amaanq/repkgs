@@ -1,10 +1,7 @@
-{ tree, ... }:
+{ fetch, ... }:
 [
   {
     cargo.deps = null;
-    source = tree {
-      dir = "tests/builder/cargo/src";
-      name = "src";
-    };
+    source = fetch.files "src" (import ./src.nix);
   }
 ]

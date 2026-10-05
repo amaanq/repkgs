@@ -1,10 +1,7 @@
-{ tree, ... }:
+{ fetch, ... }:
 [
   {
     npm.script = null;
-    source = tree {
-      dir = "tests/builder/npm/src";
-      name = "src";
-    };
+    source = fetch.files "src" (import ./src.nix);
   }
 ]

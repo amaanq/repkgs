@@ -1,9 +1,6 @@
-{ tree, ... }:
+{ fetch, ... }:
 [
   {
-    source = tree {
-      dir = "tests/builder/cc/src";
-      name = "src";
-    };
+    source = fetch.files "src" (import ./src.nix);
   }
 ]

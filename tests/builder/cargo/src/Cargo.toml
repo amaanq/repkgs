@@ -1,8 +1,0 @@
-[package]
-name    = "test-cargo"
-version = "0.1.0"
-edition = "2021"
-
-# a stripping release profile like many crates ship, which the builder's cargo settings override
-[profile.release]
-strip = true

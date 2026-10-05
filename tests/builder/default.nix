@@ -69,8 +69,8 @@ let
           {
             pkg = set.pkgs."test-${name}";
             inherit (set.pkgs."test-${name}") debug;
-            src = "${dir}/src";
           }
+          // (if builtins.pathExists (dir + "/src") then { src = "${dir}/src"; } else { })
         else
           { }
       )

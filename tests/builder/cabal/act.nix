@@ -1,9 +1,6 @@
-{ tree, ... }:
+{ fetch, ... }:
 [
   {
-    source = tree {
-      dir = "tests/builder/cabal/src";
-      name = "src";
-    };
+    source = fetch.files "src" (import ./src.nix);
   }
 ]
