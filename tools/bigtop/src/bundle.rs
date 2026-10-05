@@ -82,11 +82,11 @@ pub fn run() -> io::Result<()> {
       remove_dir_all(out.join("lib/debug"))?;
    }
    unwrap_launchers(&out.join("bin"))?;
-   let mut queue: Vec<PathBuf> = walk(out)?
+   let mut queue = walk(out)?
       .into_iter()
       .filter(|entry| entry.kind == EntryKind::File)
       .map(|entry| PathBuf::from(entry.path))
-      .collect();
+      .collect::<Vec<PathBuf>>();
    let libc = queue
       .iter()
       .find_map(|file| interpreter_directory(file).transpose())
@@ -184,11 +184,11 @@ fn relink(tree: &Tree<'_>, file: &Path) -> io::Result<Vec<PathBuf>> {
       }
    }
    if let Some(entry) = runpath_text(&image, &segments)? {
-      let mut kept: Vec<&str> = entry
+      let mut kept = entry
          .value
          .split(':')
          .filter(|dir| !dir.is_empty() && !names_store_path(dir))
-         .collect();
+         .collect::<Vec<&str>>();
       let origin = format!("$ORIGIN{reldir}");
       if !kept.contains(&origin.as_str()) {
          kept.push(&origin);
@@ -255,12 +255,12 @@ fn unwrap_launchers(bin: &Path) -> io::Result<()> {
    if !bin.is_dir() {
       return Ok(());
    }
-   let records: Vec<Entry> = walk(bin)?
+   let records = walk(bin)?
       .into_iter()
       .filter(|entry| {
          !entry.rel.contains('/') && entry.rel.starts_with('.') && entry.rel.ends_with(".launch")
       })
-      .collect();
+      .collect::<Vec<Entry>>();
    for record in records {
       let name = &record.rel[1..record.rel.len() - ".launch".len()];
       remove_if_exists(&bin.join(name))?;

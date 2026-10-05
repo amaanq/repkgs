@@ -122,7 +122,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
       deps:    ctx.deps.iter().map(|dep| dep.root.clone()).collect(),
    };
    write_request(out, &request)?;
-   let exported: Value = serde_json::from_str(&read_to_string(out.join("exports.json"))?)?;
+   let exported = serde_json::from_str::<Value>(&read_to_string(out.join("exports.json"))?)?;
    note("exports", &serde_json::to_string(&exported)?);
    set_current_dir(&top)?;
    succeed(Command::new("chmod").arg("-R").arg("u+w").arg(&ctx.out))?;
@@ -165,9 +165,9 @@ pub fn tests() -> io::Result<()> {
 
 fn install_map(spec: &Spec, out: &Path, exe: &str) -> io::Result<()> {
    for (dest, from) in &spec.install {
-      let patterns: Vec<&str> = match *from {
+      let patterns = match *from {
          Value::String(ref one) => vec![one.as_str()],
-         Value::Array(ref many) => many.iter().filter_map(Value::as_str).collect(),
+         Value::Array(ref many) => many.iter().filter_map(Value::as_str).collect::<Vec<_>>(),
          Value::Null | Value::Bool(_) | Value::Number(_) | Value::Object(_) => {
             return Err(io::Error::other(format!(
                "install {dest}: expected a glob or a list of globs"
@@ -304,19 +304,22 @@ fn relocate(
          )?;
       },
    }
-   let denied: Vec<String> = if platform.cross {
+   let denied = if platform.cross {
       attrs
          .build_dependencies
          .iter()
          .filter(|tool| !attrs.dependencies.contains(tool))
          .cloned()
-         .collect()
+         .collect::<Vec<String>>()
    } else {
       Vec::new()
    };
    if !ldso {
       let sdk = (platform.binfmt == BinaryFormat::MachO).then(|| Path::new(&platform.sysroot));
-      let mut shown: Vec<String> = denied.iter().map(|path| format!("--deny {path}")).collect();
+      let mut shown = denied
+         .iter()
+         .map(|path| format!("--deny {path}"))
+         .collect::<Vec<String>>();
 
       if let Some(path) = sdk {
          shown.push(format!("--sdk {}", path.display()));
@@ -368,14 +371,21 @@ fn version_check(spec: &Spec, ctx: &Ctx, platform: &Platform, top: &str) -> io::
       return Ok(());
    }
 
-   let given: Vec<String> = match line {
+   let given = match line {
       VersionCheck::Enabled(_) => vec!["--version".to_owned()],
-      VersionCheck::Command(ref command) => command.split(' ').map(str::to_owned).collect(),
+      VersionCheck::Command(ref command) => {
+         command.split(' ').map(str::to_owned).collect::<Vec<_>>()
+      },
    };
-   let command: Vec<String> = if given.first().is_some_and(|first| bins.contains(first)) {
+   let command = if given.first().is_some_and(|first| bins.contains(first)) {
       given
    } else {
-      bins.iter().take(1).cloned().chain(given).collect()
+      bins
+         .iter()
+         .take(1)
+         .cloned()
+         .chain(given)
+         .collect::<Vec<_>>()
    };
    if command.is_empty() {
       return Ok(());
@@ -437,7 +447,7 @@ impl Probe<'_> {
          .map(|package| package.to_string_lossy().into_owned())
          .unwrap_or_default();
       let store = PathBuf::from(nix_store());
-      let dll_roots: Vec<String> = exports_of(dest)?
+      let dll_roots = exports_of(dest)?
          .dll_dirs
          .iter()
          .filter_map(|directory| {
@@ -448,9 +458,9 @@ impl Probe<'_> {
                .next()
                .map(|name| store.join(name).to_string_lossy().into_owned())
          })
-         .collect();
+         .collect::<Vec<String>>();
 
-      let mut linked: Vec<&str> = Vec::new();
+      let mut linked = Vec::<&str>::new();
       for store_root in ctx
          .roots
          .iter()
@@ -488,7 +498,7 @@ impl Probe<'_> {
    fn run(&self, root: &Path) -> io::Result<()> {
       remove_if_exists(Path::new(&self.audit))?;
       let shown = self.command.join(" ");
-      let emulator_env: Vec<OsString> = vars_os()
+      let emulator_env = vars_os()
          .filter(|entry| {
             entry
                .0
@@ -500,7 +510,7 @@ impl Probe<'_> {
             name.push(value);
             name
          })
-         .collect();
+         .collect::<Vec<OsString>>();
 
       let output = Command::new("env")
          .arg("-i")
@@ -524,7 +534,7 @@ impl Probe<'_> {
             String::from_utf8_lossy(&printed)
          )));
       }
-      let mut missed: Vec<&str> = Vec::new();
+      let mut missed = Vec::<&str>::new();
       let listed = match read_to_string(&self.audit) {
          Ok(listed) => listed,
          Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
@@ -558,7 +568,7 @@ struct Tally<'log> {
 }
 
 fn tally<'log>(names: impl Iterator<Item = &'log str>) -> Vec<Tally<'log>> {
-   let mut tallies: Vec<Tally<'log>> = Vec::new();
+   let mut tallies = Vec::<Tally<'log>>::new();
    for name in names {
       match tallies.iter_mut().find(|tally| tally.name == name) {
          Some(tally) => tally.count += 1,
@@ -579,7 +589,7 @@ fn cache_summary() -> io::Result<()> {
       Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
       Err(error) => return Err(error),
    };
-   let mut runs: Vec<Run<'_>> = Vec::new();
+   let mut runs = Vec::<Run<'_>>::new();
    for line in text.lines() {
       let mut fields = line.split('\t');
       let (Some(tool), Some(outcome)) = (fields.next(), fields.next()) else {
@@ -602,11 +612,11 @@ fn cache_summary() -> io::Result<()> {
             .filter(|run| run.tool == tool.name)
             .map(|run| run.outcome),
       );
-      let cached: usize = outcomes
+      let cached = outcomes
          .iter()
          .filter(|outcome| CACHED.contains(&outcome.name))
          .map(|outcome| outcome.count)
-         .sum();
+         .sum::<usize>();
       let mut part = format!(
          "{} cached={cached}/{} ({}%)",
          tool.name,
@@ -635,13 +645,13 @@ fn cache_summary() -> io::Result<()> {
 }
 
 fn miss_notes(tool: &str, runs: &[Run<'_>]) {
-   let reasons: Vec<&str> = runs
+   let reasons = runs
       .iter()
       .filter(|run| {
          run.tool == tool && run.outcome.starts_with("compiled") && run.subject.contains(' ')
       })
       .filter_map(|run| run.subject.rsplit(' ').next())
-      .collect();
+      .collect::<Vec<&str>>();
    if reasons.is_empty() {
       return;
    }
@@ -650,10 +660,10 @@ fn miss_notes(tool: &str, runs: &[Run<'_>]) {
          .iter()
          .map(|reason| reason.split(':').next().unwrap_or(reason)),
    );
-   let shown: Vec<String> = kinds
+   let shown = kinds
       .iter()
       .map(|kind| format!("{}={}", kind.name, kind.count))
-      .collect();
+      .collect::<Vec<String>>();
    note(&format!("{tool}-misses"), &shown.join(" "));
    let mut stale = tally(
       reasons
@@ -661,11 +671,11 @@ fn miss_notes(tool: &str, runs: &[Run<'_>]) {
          .filter_map(|reason| reason.strip_prefix("inputs-changed:")),
    );
    stale.sort_by(|left, right| right.count.cmp(&left.count).then(left.name.cmp(right.name)));
-   let top: Vec<String> = stale
+   let top = stale
       .iter()
       .take(5)
       .map(|path| format!("{} ×{}", path.name, path.count))
-      .collect();
+      .collect::<Vec<String>>();
    if !top.is_empty() {
       note(&format!("{tool}-stale"), &top.join(", "));
    }
@@ -678,10 +688,10 @@ fn uncached_notes() {
    let Ok(listed) = read_to_string(path) else {
       return;
    };
-   let lines: Vec<&str> = listed.lines().collect();
+   let lines = listed.lines().collect::<Vec<&str>>();
    let stride = lines.len().div_ceil(5).max(1);
    for line in lines.iter().step_by(stride).take(5) {
-      let shown: String = line.chars().take(300).collect();
+      let shown = line.chars().take(300).collect::<String>();
       note("uncached", &shown);
    }
 }

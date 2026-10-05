@@ -76,12 +76,12 @@ pub fn compute(
    cache: bool,
 ) -> io::Result<BTreeMap<String, Value>> {
    let top = build_top()?;
-   let bins: Vec<PathBuf> = attrs
+   let bins = attrs
       .build_dependencies
       .iter()
       .map(|root| Path::new(root).join("bin"))
-      .collect();
-   let mut env: BTreeMap<String, Value> = BTreeMap::new();
+      .collect::<Vec<PathBuf>>();
+   let mut env = BTreeMap::<String, Value>::new();
    sandbox_dirs(&mut env, &top, &bins, out)?;
    reproducible(&mut env, attrs);
    toolchain(&mut env, attrs, spec, deps, &top, &bins)?;
@@ -199,7 +199,10 @@ fn toolchain(
    top: &str,
    bins: &[PathBuf],
 ) -> io::Result<()> {
-   let mut roots: Vec<String> = deps.iter().map(|dep| dep.root.clone()).collect();
+   let mut roots = deps
+      .iter()
+      .map(|dep| dep.root.clone())
+      .collect::<Vec<String>>();
    roots.extend(attrs.build_dependencies.iter().cloned());
    roots.extend(spec.lock_trees().map(str::to_owned));
    if let Some(cc) = find_tool(bins, "cc") {
@@ -210,7 +213,7 @@ fn toolchain(
       let listed = read_to_string(package.join("etc/roots"))?;
       roots.extend(listed.split_whitespace().map(str::to_owned));
    }
-   let mut store_roots: Vec<String> = Vec::new();
+   let mut store_roots = Vec::<String>::new();
    for root in roots {
       if !store_roots.contains(&root) {
          store_roots.push(root);
@@ -276,10 +279,10 @@ fn package_cc(
       (true, true) => ("-g", "full"),
    };
    let given = |field: fn(&Cc) -> &[String]| cc.map(field).unwrap_or_default().to_vec();
-   let mut cflags: Vec<String> = dirs(deps, |dep| &dep.include_dirs)
+   let mut cflags = dirs(deps, |dep| &dep.include_dirs)
       .into_iter()
       .map(|dir| format!("-isystem{dir}"))
-      .collect();
+      .collect::<Vec<String>>();
    cflags.extend(
       [
          "-O2",
@@ -293,10 +296,10 @@ fn package_cc(
    cflags.extend(given(|found| found.cflags.as_deref().unwrap_or_default()));
    let mut cxxflags = harden(Line::Cxx);
    cxxflags.extend(given(|found| found.cxxflags.as_deref().unwrap_or_default()));
-   let mut ldflags: Vec<String> = dirs(deps, |dep| &dep.lib_dirs)
+   let mut ldflags = dirs(deps, |dep| &dep.lib_dirs)
       .into_iter()
       .map(|dir| format!("-L{dir}"))
-      .collect();
+      .collect::<Vec<String>>();
    ldflags.extend(harden(Line::Link));
    ldflags.extend(given(|found| found.ldflags.as_deref().unwrap_or_default()));
    match cc.and_then(|found| found.linker) {

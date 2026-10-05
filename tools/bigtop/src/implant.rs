@@ -58,12 +58,12 @@ pub fn run(
          );
       }
    }
-   let mut done: Vec<String> = parallel(&files, |entry| {
+   let mut done = parallel(&files, |entry| {
       implant(entry, directory, &dirs, &padded, stub)
    })?
    .into_iter()
    .flatten()
-   .collect();
+   .collect::<Vec<String>>();
    done.sort();
    for rel in done {
       note("implant", &rel);
@@ -89,7 +89,7 @@ fn implant(
       return Ok(None);
    }
    let existing = runpath(&image, &segments)?.unwrap_or_default();
-   let mut wanted: Vec<&str> = Vec::new();
+   let mut wanted = Vec::<&str>::new();
    for dir in dirs
       .iter()
       .map(String::as_str)

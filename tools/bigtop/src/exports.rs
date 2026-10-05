@@ -109,7 +109,7 @@ fn package_name(root: &Path) -> String {
 
 fn linkable_libraries(root: &Path, extensions: &Extensions) -> io::Result<Vec<String>> {
    let suffix = extensions.import.as_ref().unwrap_or(&extensions.shared);
-   let mut names: Vec<(String, String)> = Vec::new();
+   let mut names = Vec::<(String, String)>::new();
    let entries = match read_dir(root.join("lib")) {
       Ok(entries) => entries,
       Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -189,8 +189,8 @@ pub fn exports_of(root: &Path) -> io::Result<Exports> {
 }
 
 pub fn closure(roots: &[String]) -> io::Result<Vec<Exports>> {
-   let mut done: Vec<Exports> = Vec::new();
-   let mut todo: Vec<String> = roots.to_vec();
+   let mut done = Vec::<Exports>::new();
+   let mut todo = roots.to_vec();
    let mut next = 0;
    while next < todo.len() {
       let root = todo[next].clone();
@@ -313,19 +313,19 @@ pub fn write_request(root: &Path, request: &Request) -> io::Result<()> {
    );
 
    if let Some(directories) = exports.remove("dllDirs") {
-      let absolute: Vec<String> = serde_json::from_value(directories)?;
+      let absolute = serde_json::from_value::<Vec<String>>(directories)?;
 
       if !absolute.is_empty() {
          let root_text = root.to_string_lossy();
          let store_dir = nix_store();
-         let relative: Vec<String> = absolute
+         let relative = absolute
             .iter()
             .map(|directory| {
                directory
                   .replace(root_text.as_ref(), "{root}")
                   .replace(&store_dir, "{store}")
             })
-            .collect();
+            .collect::<Vec<String>>();
          exports.insert("dllDirs".to_owned(), serde_json::to_value(relative)?);
       }
    }
@@ -371,11 +371,11 @@ fn find_dependencies(text: &str, wanted: &mut Vec<String>) {
       let Some(inner) = trimmed.strip_prefix('(') else {
          continue;
       };
-      let name: String = inner
+      let name = inner
          .trim_start()
          .chars()
          .take_while(|character| character.is_alphanumeric() || matches!(character, '_' | '-'))
-         .collect();
+         .collect::<String>();
       if !name.is_empty() {
          wanted.push(name.to_ascii_lowercase());
       }
@@ -388,7 +388,7 @@ fn walk(directory: &Path, suffix: &str, found: &mut Vec<PathBuf>) -> io::Result<
       Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
       Err(error) => return Err(error),
    };
-   let mut children: Vec<_> = entries.collect::<io::Result<_>>()?;
+   let mut children = entries.collect::<io::Result<Vec<_>>>()?;
    children.sort_by_key(DirEntry::file_name);
    for child in children {
       let path = child.path();
@@ -427,7 +427,10 @@ fn required_deps(
       find_dependencies(&read_to_string(config)?, &mut wanted);
    }
    let out_text = out.to_string_lossy();
-   let roots: Vec<&String> = deps.iter().filter(|root| **root != out_text).collect();
+   let roots = deps
+      .iter()
+      .filter(|root| **root != out_text)
+      .collect::<Vec<&String>>();
    if roots.is_empty() || wanted.is_empty() {
       return Ok(Vec::new());
    }
@@ -473,9 +476,9 @@ fn list(directory: &Path) -> io::Result<Vec<PathBuf>> {
       },
       Err(error) => return Err(error),
    };
-   let mut paths: Vec<_> = entries
+   let mut paths = entries
       .map(|result| result.map(|child| child.path()))
-      .collect::<io::Result<_>>()?;
+      .collect::<io::Result<Vec<_>>>()?;
    paths.sort_unstable();
    Ok(paths)
 }
