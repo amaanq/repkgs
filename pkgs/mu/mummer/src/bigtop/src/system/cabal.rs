@@ -1,6 +1,7 @@
 use std::{
    env::var,
    fs::{
+      File,
       copy,
       create_dir_all,
       read,
@@ -12,6 +13,7 @@ use std::{
    os::unix::fs::symlink,
    path::Path,
    process::Command,
+   time::SystemTime,
 };
 
 use mummer::{
@@ -31,6 +33,7 @@ use crate::{
       Ctx,
    },
    prepare::succeed,
+   probe,
    schema::{
       Condition,
       Field,
@@ -234,8 +237,30 @@ impl Cabal {
       args
    }
 
+   fn cabal_files(ctx: &Ctx, options: &Options) -> io::Result<Vec<String>> {
+      Ok(walk(&ctx.project_dir(&options.root))?
+         .into_iter()
+         .filter(|entry| {
+            entry.kind == 'f'
+               && Self::is_cabal(&entry.rel)
+               && !entry.rel.starts_with("dist-newstyle/")
+         })
+         .map(|entry| entry.path)
+         .collect())
+   }
+
+   /// The package's own build tree, which ghc's recompilation check reuses
+   /// module by module, where the units cache only covers dependencies.
+   fn dist_key(ctx: &Ctx, options: &Options) -> io::Result<String> {
+      probe::key(
+         "cabal-dist",
+         &Self::cabal_files(ctx, options)?,
+         Some(&(Self::targets(options), &options.project)),
+      )
+   }
+
    fn plan() -> io::Result<Vec<Unit>> {
-      let plan: Plan = serde_json::from_str(&read_to_string("dist-newstyle/cache/plan.json")?)?;
+      let plan = serde_json::from_str::<Plan>(&read_to_string("dist-newstyle/cache/plan.json")?)?;
       Ok(plan
          .install_plan
          .into_iter()
@@ -316,6 +341,23 @@ impl Cabal {
 
    fn build(ctx: &Ctx, attrs: &Attrs, options: &Options, socket: &Path) -> io::Result<()> {
       let targets = Self::targets(options);
+      let dist = if ctx.cache {
+         let key = Self::dist_key(ctx, options)?;
+         let restored = probe::restore_dir(&key, Path::new("dist-newstyle"), socket)?;
+         note("cabal-dist", if restored { "restored" } else { "cold" });
+         if restored {
+            // ghc counts an object older than its interface as missing
+            let now = SystemTime::now();
+            for entry in walk(Path::new("dist-newstyle"))? {
+               if entry.kind == 'f' {
+                  File::open(&entry.path)?.set_modified(now)?;
+               }
+            }
+         }
+         Some(key)
+      } else {
+         None
+      };
       let mut dry = vec!["build", "--dry-run"];
       dry.extend(strs(&targets));
       run("cabal", &dry, &[])?;
@@ -337,21 +379,16 @@ impl Cabal {
       if ctx.cache {
          Self::save_units(ctx, &before, socket)?;
       }
+      if let Some(ref key) = dist {
+         probe::store_dir(key, Path::new("dist-newstyle"), socket)?;
+      }
       Ok(())
    }
 
    /// cabal test errors out (Cabal-7043) when the package declares no
    /// test-suite, which executable-only packages often do not.
    fn test(ctx: &Ctx, options: &Options) -> io::Result<()> {
-      let cabals: Vec<String> = walk(&ctx.project_dir(&options.root))?
-         .into_iter()
-         .filter(|entry| {
-            entry.kind == 'f'
-               && Self::is_cabal(&entry.rel)
-               && !entry.rel.starts_with("dist-newstyle/")
-         })
-         .map(|entry| entry.path)
-         .collect();
+      let cabals = Self::cabal_files(ctx, options)?;
       let declares_tests = |path: &String| {
          read_to_string(path).is_ok_and(|text| {
             text.lines().any(|line| {
