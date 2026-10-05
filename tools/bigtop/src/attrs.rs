@@ -161,42 +161,52 @@ pub enum Def {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Platform {
-   pub binfmt:       BinaryFormat,
    #[serde(default)]
-   pub hardening:    BTreeMap<Hardening, bool>,
+   pub name:              String,
+   pub binfmt:            BinaryFormat,
    #[serde(default)]
-   pub cross:        bool,
+   pub hardening:         BTreeMap<Hardening, bool>,
    #[serde(default)]
-   pub cpu:          String,
+   pub cross:             bool,
    #[serde(default)]
-   pub os:           String,
-   pub posix:        bool,
-   pub ext:          Extensions,
-   pub bits:         u8,
-   pub endian:       String,
+   pub transparent:       bool,
    #[serde(default)]
-   pub build_triple: String,
+   pub probe:             String,
    #[serde(default)]
-   pub launch:       String,
+   pub cpu:               String,
    #[serde(default)]
-   pub interp:       String,
+   pub os:                String,
+   pub posix:             bool,
+   pub ext:               Extensions,
+   pub bits:              u8,
+   pub endian:            String,
    #[serde(default)]
-   pub reloc_stub:   String,
+   pub build_triple:      String,
    #[serde(default)]
-   pub sysroot:      String,
+   pub build_rust_triple: String,
    #[serde(default)]
-   pub gnu_triple:   String,
+   pub dlaudit:           String,
    #[serde(default)]
-   pub rust_triple:  String,
+   pub launch:            String,
    #[serde(default)]
-   pub emulator:     Vec<String>,
+   pub interp:            String,
    #[serde(default)]
-   pub os_names:     OsNames,
+   pub reloc_stub:        String,
    #[serde(default)]
-   pub names:        Names,
+   pub sysroot:           String,
+   #[serde(default)]
+   pub gnu_triple:        String,
+   #[serde(default)]
+   pub rust_triple:       String,
+   #[serde(default)]
+   pub emulator:          Vec<String>,
+   #[serde(default)]
+   pub os_names:          OsNames,
+   #[serde(default)]
+   pub names:             Names,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Extensions {
    pub exe:    String,
    pub shared: String,
@@ -442,24 +452,6 @@ impl Ctx {
 
 pub fn text<'value>(value: &'value Value, name: &str) -> &'value str {
    value.get(name).and_then(Value::as_str).unwrap_or_default()
-}
-
-pub fn flag(value: &Value, name: &str) -> bool {
-   value.get(name).and_then(Value::as_bool).unwrap_or(false)
-}
-
-pub fn words(value: &Value, name: &str) -> Vec<String> {
-   value
-      .get(name)
-      .and_then(Value::as_array)
-      .map(|list| {
-         list
-            .iter()
-            .filter_map(Value::as_str)
-            .map(str::to_owned)
-            .collect()
-      })
-      .unwrap_or_default()
 }
 
 pub fn nix_store() -> String {

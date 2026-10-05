@@ -26,6 +26,7 @@ use std::{
 };
 
 use mummer::{
+   config::BinaryFormat,
    files::{
       glob,
       remove_if_exists,
@@ -47,13 +48,11 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
+      Platform,
       Spec,
       VersionCheck,
       build_top,
-      flag,
       nix_store,
-      text,
-      words,
    },
    debug,
    exports::{
@@ -115,10 +114,10 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
       .as_deref()
       .ok_or_else(|| io::Error::other("no debug output"))?;
    create_dir_all(debug)?;
-   relocate(&attrs, &spec, &ctx, debug)?;
+   relocate(&attrs, &spec, &ctx, &platform, debug)?;
    let request = Request {
       name:    spec.name.clone(),
-      ext:     platform.ext,
+      ext:     platform.ext.clone(),
       exports: spec.exports.clone(),
       deps:    ctx.deps.iter().map(|dep| dep.root.clone()).collect(),
    };
@@ -136,7 +135,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
       succeed(Command::new("mv").arg(&ctx.out).arg(&ctx.dest))?;
    }
 
-   version_check(&spec, &ctx, &top, &request.ext.exe)?;
+   version_check(&spec, &ctx, &platform, &top)?;
    cache_summary()
 }
 
@@ -258,14 +257,19 @@ fn layout_check(out: &Path) -> io::Result<()> {
    Ok(())
 }
 
-fn relocate(attrs: &Attrs, spec: &Spec, ctx: &Ctx, debug: &str) -> io::Result<()> {
+fn relocate(
+   attrs: &Attrs,
+   spec: &Spec,
+   ctx: &Ctx,
+   platform: &Platform,
+   debug: &str,
+) -> io::Result<()> {
    let out = Path::new(&ctx.out);
-   let platform = &ctx.platform;
    let implanted = spec.prebuilt_is(&Value::Bool(true));
    let ldso = spec.prebuilt_is(&Value::String("ldso".to_owned()));
-   match text(platform, "binfmt") {
-      "elf" => {
-         let interp = Path::new(text(platform, "interp"));
+   match platform.binfmt {
+      BinaryFormat::Elf => {
+         let interp = Path::new(&platform.interp);
          if spec.debug {
             debug::run(out, Path::new(debug))?;
          }
@@ -273,35 +277,34 @@ fn relocate(attrs: &Attrs, spec: &Spec, ctx: &Ctx, debug: &str) -> io::Result<()
             implant::run(
                out,
                interp,
-               Some(Path::new(text(platform, "relocStub"))),
+               Some(Path::new(&platform.reloc_stub)),
                &attrs.dependencies,
             )?;
          }
          launch(
             out,
-            Path::new(text(platform, "launch")),
+            Path::new(&platform.launch),
             interp,
             ldso,
             &attrs.dependencies,
          )?;
       },
-      "macho" => {
+      BinaryFormat::MachO => {
          if spec.debug {
             debug::macho(out, Path::new(debug))?;
          }
       },
-      "coff" => {
+      BinaryFormat::Coff => {
          debug::strip_archives(&walk(out)?, &["lib", "obj", "a"])?;
          pe::run(
             out,
-            Path::new(text(platform, "launch")),
-            Path::new(text(platform, "sysroot")),
+            Path::new(&platform.launch),
+            Path::new(&platform.sysroot),
             &attrs.dependencies,
          )?;
       },
-      format => return Err(io::Error::other(format!("unknown binary format {format}"))),
    }
-   let denied: Vec<String> = if flag(platform, "cross") {
+   let denied: Vec<String> = if platform.cross {
       attrs
          .build_dependencies
          .iter()
@@ -312,13 +315,13 @@ fn relocate(attrs: &Attrs, spec: &Spec, ctx: &Ctx, debug: &str) -> io::Result<()
       Vec::new()
    };
    if !ldso {
-      let sdk = (text(platform, "binfmt") == "macho").then(|| Path::new(text(platform, "sysroot")));
+      let sdk = (platform.binfmt == BinaryFormat::MachO).then(|| Path::new(&platform.sysroot));
       let mut shown: Vec<String> = denied.iter().map(|path| format!("--deny {path}")).collect();
 
       if let Some(path) = sdk {
          shown.push(format!("--sdk {}", path.display()));
       }
-      let loader = Some(text(platform, "interp"))
+      let loader = Some(platform.interp.as_str())
          .filter(|path| !path.is_empty())
          .map(Path::new);
       if let Some(path) = loader {
@@ -348,8 +351,8 @@ struct Probe<'check> {
 
 // run in place and from a copy of the closure under another root, where an
 // absolute store path would show
-fn version_check(spec: &Spec, ctx: &Ctx, top: &str, exe: &str) -> io::Result<()> {
-   let platform = &ctx.platform;
+fn version_check(spec: &Spec, ctx: &Ctx, platform: &Platform, top: &str) -> io::Result<()> {
+   let exe = platform.ext.exe.as_str();
    let dest = Path::new(&ctx.dest);
    let bins = bins(spec, dest, exe);
    let line = spec
@@ -357,12 +360,10 @@ fn version_check(spec: &Spec, ctx: &Ctx, top: &str, exe: &str) -> io::Result<()>
       .version
       .clone()
       .unwrap_or(VersionCheck::Enabled(!bins.is_empty()));
-   let emulator = words(platform, "emulator");
+   let emulator = platform.emulator.clone();
 
    if line == VersionCheck::Enabled(false)
-      || (flag(platform, "cross")
-         && !ctx.tests_run
-         && (text(platform, "os") != "windows" || emulator.is_empty()))
+      || (platform.cross && !ctx.tests_run && (platform.os != "windows" || emulator.is_empty()))
    {
       return Ok(());
    }
@@ -396,7 +397,7 @@ fn version_check(spec: &Spec, ctx: &Ctx, top: &str, exe: &str) -> io::Result<()>
    // via qemu's -E when emulated. The audit libc needs surplus static TLS
    // (librustc_driver), taken from every thread's stack, 64K, tokio workers
    // have 2M
-   let dlaudit = text(platform, "dlaudit");
+   let dlaudit = &platform.dlaudit;
    if !dlaudit.is_empty() {
       let emulated = !prefix.is_empty();
       for setting in [
@@ -420,17 +421,17 @@ fn version_check(spec: &Spec, ctx: &Ctx, top: &str, exe: &str) -> io::Result<()>
       allowed: spec.tests.dlopen.as_deref().unwrap_or_default(),
    };
    probe.run(dest)?;
-   probe.relocated(ctx)?;
+   probe.relocated(ctx, &platform.launch)?;
    note("version", &format!("{} -> {want}", command.join(" ")));
    Ok(())
 }
 
 impl Probe<'_> {
-   fn relocated(&self, ctx: &Ctx) -> io::Result<()> {
+   fn relocated(&self, ctx: &Ctx, launch: &str) -> io::Result<()> {
       let dest = Path::new(&ctx.dest);
       let root = PathBuf::from(format!("{}/relocated", self.top));
       create_dir_all(&root)?;
-      let launch_root = Path::new(text(&ctx.platform, "launch"))
+      let launch_root = Path::new(launch)
          .parent()
          .and_then(Path::parent)
          .map(|package| package.to_string_lossy().into_owned())
