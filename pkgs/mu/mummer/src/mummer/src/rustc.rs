@@ -50,6 +50,10 @@ use serde::{
    Deserialize,
    Serialize,
 };
+use tempfile::{
+   TempDir,
+   tempdir,
+};
 use tightrope::{
    client::Client,
    digest,
@@ -59,6 +63,8 @@ use crate::{
    driver::{
       Driver,
       Language,
+      Settled,
+      settle_runpath,
    },
    manifest::{
       Manifest,
@@ -295,11 +301,18 @@ impl Invocation {
 
 #[derive(Deserialize, Serialize)]
 struct Artifact {
-   name: String,
-   mode: u32,
-   hash: String,
+   name:   String,
+   mode:   u32,
+   hash:   String,
+   /// A link output kept as the linker wrote it, its RUNPATH settled on replay.
+   #[serde(default)]
+   settle: bool,
 }
 
+#[expect(
+   clippy::too_many_lines,
+   reason = "the lookup, the miss and the store are one linear path"
+)]
 pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
    let Some((compiler, arguments)) = args.split_first() else {
       return Err(io::Error::other("rustcwrap requires a compiler"));
@@ -364,16 +377,28 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
    };
    let explained = format!("{label} {miss}");
    let (command, link_records) = invocation.recorded(arguments)?;
+   let unsettled = invocation.links.then(tempdir).transpose()?;
    let result = run(
       OsStr::new(compiler),
       &command,
       Slot::acquire(client).ok().flatten(),
       true,
-      &[],
+      unsettled
+         .as_ref()
+         .map(|directory| ("MUMMER_UNSETTLED_DIR", directory.path().as_os_str()))
+         .as_slice(),
    )?;
    io::stderr().lock().write_all(&result.stderr)?;
-   let storing = (result.status == 0_i32)
-      .then(|| store_result(client, &mut store, key, &invocation, &result.stderr));
+   let storing = (result.status == 0_i32).then(|| {
+      store_result(
+         client,
+         &mut store,
+         key,
+         &invocation,
+         unsettled.as_ref(),
+         &result.stderr,
+      )
+   });
    for record in link_records {
       match remove_file(record) {
          Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
@@ -503,6 +528,7 @@ fn store_result(
    store: &mut Store,
    request: &str,
    invocation: &Invocation,
+   unsettled: Option<&TempDir>,
    diagnostics: &[u8],
 ) -> io::Result<()> {
    let dep_path = invocation
@@ -513,7 +539,7 @@ fn store_result(
    inputs.extend_from_slice(&invocation.externs);
    inputs.extend(invocation.static_archives());
    inputs.push(invocation.source.clone());
-   if invocation.links {
+   let link_text = if invocation.links {
       let (depfile, linked) = invocation.link_records()?;
       let program = linker_program(&read_to_string(&linked)?);
       if program.as_deref() != Some(invocation.linker()) {
@@ -523,7 +549,8 @@ fn store_result(
          )));
       }
       let out_dir = absolute(&invocation.out_dir)?;
-      for input in parse_depfile(&read_to_string(&depfile)?) {
+      let dependencies = read_to_string(&depfile)?;
+      for input in parse_depfile(&dependencies) {
          let path = absolute(&input)?;
          // codegen units and rustc's tempdir, removed once linked
          if path.starts_with(&out_dir) && !path.exists() {
@@ -531,7 +558,10 @@ fn store_result(
          }
          inputs.push(input);
       }
-   }
+      Some(dependencies)
+   } else {
+      None
+   };
    inputs.sort_unstable();
    inputs.dedup();
    let variables = text
@@ -566,7 +596,11 @@ fn store_result(
          .and_then(OsStr::to_str)
          .ok_or_else(|| io::Error::other("Rust output name is not UTF-8"))?;
       relative_path(name)?;
-      let mut bytes = read(&output)?;
+      let raw = unsettled
+         .map(|directory| directory.path().join(name))
+         .filter(|path| path.is_file());
+      let settle = raw.is_some();
+      let mut bytes = read(raw.as_deref().unwrap_or(&output))?;
       if invocation.links {
          store.mask_output(&mut bytes, false);
       }
@@ -576,7 +610,13 @@ fn store_result(
          name: stem(name, &invocation.suffix, "@"),
          mode: metadata(&output)?.permissions().mode() & 0o777,
          hash,
+         settle,
       });
+   }
+   if let Some(dependencies) = link_text {
+      let mut link_bytes = store.mask_text(&dependencies).into_bytes();
+      store.mask_output(&mut link_bytes, false);
+      cache.put(&format!("l/{key}"), &link_bytes)?;
    }
    cache.put(&format!("o/{key}"), &serde_json::to_vec(&artifacts)?)?;
    cache.put(&format!("e/{key}"), diagnostics)?;
@@ -627,10 +667,27 @@ fn replay(
    let Some(diagnostics) = cache.get(&format!("e/{key}"))? else {
       return Err(Miss::ObjectGone);
    };
+   let link_text = if artifacts.iter().any(|artifact| artifact.settle) {
+      let Some(mut link_bytes) = cache.get(&format!("l/{key}"))? else {
+         return Err(Miss::ObjectGone);
+      };
+      store.mask_output(&mut link_bytes, true);
+      Some(store.resolve_all(&String::from_utf8(link_bytes).map_err(io::Error::other)?))
+   } else {
+      None
+   };
    for (artifact, mut bytes) in artifacts.iter().zip(values) {
       if invocation.links {
          store.mask_output(&mut bytes, true);
          store.resolve_bytes(&mut bytes);
+      }
+      if let Some(ref text) = link_text
+         && artifact.settle
+      {
+         bytes = match settle_runpath(&bytes, text)? {
+            Settled::Image(settled) => settled,
+            Settled::Room(_) => return Err(Miss::RunpathRoom),
+         };
       }
       write_file(
          &invocation
