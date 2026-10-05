@@ -75,8 +75,8 @@ pub struct Vendor {
 }
 
 pub fn vendor_layout(store: &mut Store, text: &str, prefix: &str) -> io::Result<Vendor> {
-   let lock: Lock = toml::from_str(text).map_err(io::Error::other)?;
-   let foreign: Vec<String> = lock
+   let lock = toml::from_str::<Lock>(text).map_err(io::Error::other)?;
+   let foreign = lock
       .package
       .iter()
       .filter(|package| {
@@ -92,7 +92,7 @@ pub fn vendor_layout(store: &mut Store, text: &str, prefix: &str) -> io::Result<
             package.source.as_deref().unwrap_or_default()
          )
       })
-      .collect();
+      .collect::<Vec<String>>();
    reject("cargoVendor: unsupported sources", &foreign)?;
    let mut crates = Vec::new();
    let mut rows = Vec::new();

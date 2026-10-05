@@ -62,7 +62,7 @@ impl Producer for PypiVendor {
    }
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
-      let mut stage: Stage = serde_json::from_str(&read_to_string(attr("stage_attrs")?)?)?;
+      let mut stage = serde_json::from_str::<Stage>(&read_to_string(attr("stage_attrs")?)?)?;
       let tar = Bsdtar::new(store_attr("peanut")?.join("bin/bsdtar"));
       let mut locks = Vec::new();
 

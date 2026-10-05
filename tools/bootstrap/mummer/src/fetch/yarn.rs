@@ -38,7 +38,7 @@ fn parse_lock(text: &str) -> io::Result<Vec<Locked>> {
          "yarnDeps: yarn.lock is yarn berry (v2+), only yarn classic v1 is supported",
       ));
    }
-   let mut entries: Vec<Locked> = Vec::new();
+   let mut entries = Vec::<Locked>::new();
    for line in text.lines() {
       if line.is_empty() || line.starts_with('#') {
          continue;

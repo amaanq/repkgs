@@ -83,7 +83,7 @@ impl System for Make {
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       Ok(ctx.project_dir(&options.root))
    }
 
@@ -92,7 +92,7 @@ impl System for Make {
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       // PREFIX/prefix for hand-written Makefiles, configure'd ones ignore them.
       let mut flags = vec![format!("PREFIX={}", ctx.out), format!("prefix={}", ctx.out)];
       let platform = ctx.platform()?;
@@ -198,7 +198,7 @@ pub fn test(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
 }
 
 pub fn install(_ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
-   let mut args: Vec<&str> = strs(targets).collect();
+   let mut args = strs(targets).collect::<Vec<&str>>();
    args.extend(strs(flags));
    run("make", &args, &[])
 }

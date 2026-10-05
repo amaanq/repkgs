@@ -116,9 +116,9 @@ fn host(url: &str) -> &str {
 /// `--max-age` serves from the cache without revalidating.
 pub fn cached(url: &str, max_age: Duration) -> io::Result<Response> {
    let file = cache_file(url)?;
-   let old: Option<Cached> = read_to_string(&file)
+   let old = read_to_string(&file)
       .ok()
-      .and_then(|text| serde_json::from_str(&text).ok());
+      .and_then(|text| serde_json::from_str::<Cached>(&text).ok());
    if let Some(ref hit) = old
       && now().saturating_sub(hit.fetched) < max_age.as_secs()
    {
@@ -176,10 +176,10 @@ pub fn cached(url: &str, max_age: Duration) -> io::Result<Response> {
    // an org with SAML enforcement rejects a token not authorized for it, public
    // data is still anonymous
    if status == 403 && body.contains("SAML") {
-      let anonymous: Vec<Header> = headers
+      let anonymous = headers
          .into_iter()
          .filter(|header| header.name != "Authorization")
-         .collect();
+         .collect::<Vec<Header>>();
       response = get(&agent, url, &anonymous)?;
       status = response.status().as_u16();
       body = response

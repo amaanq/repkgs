@@ -179,7 +179,7 @@ impl Invocation {
          split: Vec::new(),
          jobs,
       };
-      let (compile_jobs, link_jobs): (Vec<_>, Vec<_>) = invocation.jobs.iter().partition(|job| {
+      let (compile_jobs, link_jobs) = invocation.jobs.iter().partition::<Vec<_>, _>(|job| {
          job.get(1)
             .is_some_and(|mode| matches!(mode.as_str(), "-cc1" | "-cc1as" | "-fc1"))
       });

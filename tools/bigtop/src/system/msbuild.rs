@@ -162,7 +162,7 @@ impl Element {
 }
 
 pub fn run(file: &Path) -> io::Result<()> {
-   let input: Input = serde_json::from_reader(io::stdin().lock())?;
+   let input = serde_json::from_reader::<_, Input>(io::stdin().lock())?;
    let result = evaluate(file, &input.properties, input.itemdefs)?;
    let mut stdout = io::stdout().lock();
    serde_json::to_writer(&mut stdout, &result)?;
@@ -339,11 +339,11 @@ impl Evaluation {
       if !node.holds(&self.props, dir) {
          return Ok(());
       }
-      let excluded: BTreeSet<String> = self
+      let excluded = self
          .item_paths(node.attr("Exclude"), dir)?
          .into_iter()
          .map(|entry| entry.1)
-         .collect();
+         .collect::<BTreeSet<String>>();
       let mut defaults = self.itemdefs.get(&node.tag).cloned().unwrap_or_default();
       defaults.extend(
          node
@@ -532,7 +532,7 @@ fn string_method(expression: &str, props: &BTreeMap<String, String>) -> io::Resu
    let invalid = || io::Error::other(format!("cannot evaluate $({expression})"));
    let (property, rest) = expression.split_once('.').ok_or_else(invalid)?;
    let (method, arguments) = rest.split_once('(').ok_or_else(invalid)?;
-   let args: Vec<&str> = arguments
+   let args = arguments
       .strip_suffix(')')
       .ok_or_else(invalid)?
       .split(',')
@@ -542,7 +542,7 @@ fn string_method(expression: &str, props: &BTreeMap<String, String>) -> io::Resu
             .trim_matches('\'')
             .trim_matches('"')
       })
-      .collect();
+      .collect::<Vec<&str>>();
    let value = props.get(property).map_or("", String::as_str);
    let first = args.first().copied().ok_or_else(invalid)?;
    match method {
@@ -594,11 +594,11 @@ fn item_refs(spec: &str, items: &[Item]) -> io::Result<String> {
          let (kind, rest) = piece.split_once(')').ok_or_else(invalid)?;
          (kind, "%(Identity)", rest)
       };
-      let matching: Vec<String> = items
+      let matching = items
          .iter()
          .filter(|item| item.kind == kind)
          .map(|item| pattern.replace("%(Identity)", &item.include))
-         .collect();
+         .collect::<Vec<String>>();
       result.push_str(&matching.join(";"));
       result.push_str(rest);
    }
@@ -654,7 +654,7 @@ fn lex(source: &str) -> Vec<String> {
 }
 
 fn tokens(source: &str) -> Vec<String> {
-   let mut result: Vec<String> = Vec::new();
+   let mut result = Vec::<String>::new();
    for segment in segments(source) {
       let (piece, text) = match segment {
          Segment::Text(text) => (text, true),

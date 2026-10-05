@@ -194,7 +194,7 @@ fn github(purl: &Purl) -> io::Result<Vec<Candidate>> {
       &repo,
       ten_minutes(),
    )?;
-   let found: Vec<Candidate> = array(&releases)
+   let found = array(&releases)
       .iter()
       .filter(|release| {
          !release
@@ -211,7 +211,7 @@ fn github(purl: &Purl) -> io::Result<Vec<Candidate>> {
             "tag": tag,
          }))
       })
-      .collect();
+      .collect::<Vec<Candidate>>();
    if !found.is_empty() {
       return Ok(found);
    }
@@ -287,10 +287,10 @@ fn pypi(purl: &Purl) -> io::Result<Vec<Candidate>> {
    Ok(releases
       .iter()
       .filter_map(|(release, files)| {
-         let kept: Vec<&Value> = array(files)
+         let kept = array(files)
             .iter()
             .filter(|file| !file.get("yanked").and_then(Value::as_bool).unwrap_or(false))
-            .collect();
+            .collect::<Vec<&Value>>();
          let first = kept.first()?;
          let sdist = kept
             .iter()
@@ -384,7 +384,7 @@ fn listing(url: &str, name: &str, pattern: Option<&str>) -> io::Result<Vec<Candi
    let matcher = Regex::new(pattern.unwrap_or(&default)).map_err(io::Error::other)?;
    let dated = Regex::new(r"(\d{4}-\d{2}-\d{2})").map_err(io::Error::other)?;
    let page = fetch(url, name, Duration::from_secs(6 * HOUR))?.body;
-   let mut found: Vec<Candidate> = Vec::new();
+   let mut found = Vec::<Candidate>::new();
 
    for line in page.lines() {
       let day = dated
@@ -471,7 +471,7 @@ fn applesdk(purl: &Purl) -> io::Result<Vec<Candidate>> {
    .map_err(io::Error::other)?;
    let versioned =
       Regex::new(r#"pkg-info[^>]* version="(\d+\.\d+)[.\d]*""#).map_err(io::Error::other)?;
-   let mut paths: Vec<&str> = Vec::new();
+   let mut paths = Vec::<&str>::new();
    for hit in listed.captures_iter(&catalog) {
       if let Some(path) = hit.get(1).map(|group| group.as_str())
          && !paths.contains(&path)

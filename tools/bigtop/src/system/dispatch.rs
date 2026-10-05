@@ -76,7 +76,7 @@ pub trait System: Sync {
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
-      let options: Root = ctx.options(self.name())?;
+      let options = ctx.options::<Root>(self.name())?;
       Ok(ctx.project_dir(&options.root))
    }
 

@@ -334,8 +334,8 @@ fn parse(file: &Path) -> io::Result<Option<Package>> {
       .ok_or_else(|| fail("no parent directory".to_owned()))?
       .to_path_buf();
    let lock_file = dir.join("act.lock");
-   let mut lock: Map<String, Value> = if lock_file.exists() {
-      toml::from_str(&read_to_string(&lock_file)?)
+   let mut lock = if lock_file.exists() {
+      toml::from_str::<Map<String, Value>>(&read_to_string(&lock_file)?)
          .map_err(|error| io::Error::other(format!("{}: {error}", lock_file.display())))?
    } else {
       Map::new()

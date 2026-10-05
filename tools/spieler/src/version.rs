@@ -96,7 +96,7 @@ fn underscored(text: &str) -> bool {
 }
 
 fn dashed(text: &str) -> bool {
-   let parts: Vec<&str> = text.split('-').collect();
+   let parts = text.split('-').collect::<Vec<&str>>();
    parts.len() > 1
       && parts
          .iter()

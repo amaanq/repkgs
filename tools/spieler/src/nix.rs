@@ -136,10 +136,10 @@ pub fn sri(hex: &str) -> io::Result<String> {
    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
       return Err(io::Error::other(format!("not a sha256 hex digest: {hex}")));
    }
-   let bytes: Vec<u8> = (0..hex.len())
+   let bytes = (0..hex.len())
       .step_by(2)
       .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).map_err(io::Error::other))
-      .collect::<io::Result<_>>()?;
+      .collect::<io::Result<Vec<u8>>>()?;
    Ok(format!("sha256-{}", STANDARD.encode(bytes)))
 }
 

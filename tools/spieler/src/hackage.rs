@@ -94,19 +94,19 @@ fn solve(src: &Path, sub: &str, options: &Value, old: &Entries) -> io::Result<Ve
    ])?;
    let work = top.join(sub);
    let project = work.join("cabal.project");
-   let mut versions: BTreeMap<String, Vec<String>> = BTreeMap::new();
+   let mut versions = BTreeMap::<String, Vec<String>>::new();
    for key in old.keys() {
-      let package: PackageId = key.parse()?;
+      let package = key.parse::<PackageId>()?;
       versions
          .entry(package.name().to_owned())
          .or_default()
          .push(format!("=={}", package.version()));
    }
 
-   let preferences: Vec<String> = versions
+   let preferences = versions
       .into_iter()
       .map(|(name, releases)| format!("{name} {}", releases.join(" || ")))
-      .collect();
+      .collect::<Vec<String>>();
    let base = read_to_string(&project).unwrap_or_else(|_missing| "packages: .".to_owned());
    let extra = options
       .get("project")
@@ -124,7 +124,7 @@ fn solve(src: &Path, sub: &str, options: &Value, old: &Entries) -> io::Result<Ve
             .output(),
       );
    }
-   let flags: Vec<String> = options
+   let flags = options
       .get("flags")
       .and_then(Value::as_array)
       .map(|listed| {
@@ -132,7 +132,7 @@ fn solve(src: &Path, sub: &str, options: &Value, old: &Entries) -> io::Result<Ve
             .iter()
             .filter_map(Value::as_str)
             .map(str::to_owned)
-            .collect()
+            .collect::<Vec<String>>()
       })
       .unwrap_or_default();
    let output = Command::new(&cabal)
@@ -152,7 +152,7 @@ fn solve(src: &Path, sub: &str, options: &Value, old: &Entries) -> io::Result<Ve
    remove_dir_all(&top)?;
    if !output.status.success() {
       let stderr = String::from_utf8_lossy(&output.stderr);
-      let lines: Vec<&str> = stderr.lines().collect();
+      let lines = stderr.lines().collect::<Vec<&str>>();
       let kept = lines.len().saturating_sub(8);
       return Err(io::Error::other(format!(
          "cabal freeze: {}",

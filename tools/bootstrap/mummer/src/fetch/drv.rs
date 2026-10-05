@@ -253,7 +253,7 @@ impl Plan {
    }
 
    pub fn submit(self, store: &mut Store) -> io::Result<()> {
-      let (rows, places): (Vec<_>, Vec<_>) = self.fetches.into_iter().unzip();
+      let (rows, places) = self.fetches.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
       let fetched = fetchurls(store, &rows)?;
       let mut layout = places
          .into_iter()

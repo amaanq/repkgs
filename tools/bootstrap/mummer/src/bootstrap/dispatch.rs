@@ -128,7 +128,7 @@ fn summary(log: &Path) {
    let Ok(text) = read_to_string(log) else {
       return;
    };
-   let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
+   let mut kinds = BTreeMap::<&str, usize>::new();
    for line in text.lines() {
       let Some(outcome) = line.split('\t').nth(1) else {
          continue;
@@ -137,10 +137,10 @@ fn summary(log: &Path) {
          *kinds.entry(outcome).or_default() += 1;
       }
    }
-   let parts: Vec<String> = kinds
+   let parts = kinds
       .iter()
       .map(|(kind, count)| format!("{kind}={count}"))
-      .collect();
+      .collect::<Vec<String>>();
    drop(writeln!(
       io::stderr().lock(),
       "== cache: {}",

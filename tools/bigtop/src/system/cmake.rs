@@ -78,7 +78,7 @@ impl System for Cmake {
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       match verb {
          "configure" => Self::configure(ctx, attrs, &options, socket),
          "build" => {
@@ -201,11 +201,11 @@ impl Cmake {
    fn configure(ctx: &Ctx, attrs: &Attrs, options: &Options, socket: &Path) -> io::Result<()> {
       let defs = Self::defaults(ctx, attrs, options)?;
       let srcdir = ctx.project_dir(&options.root);
-      let scripts: Vec<String> = walk(&srcdir)?
+      let scripts = walk(&srcdir)?
          .into_iter()
          .filter(|entry| entry.kind == EntryKind::File)
          .map(|entry| entry.path)
-         .collect();
+         .collect::<Vec<String>>();
       let key = probe::key(
          "cmake",
          &scripts,
@@ -222,10 +222,10 @@ impl Cmake {
       let restored = probe::restore(&key, Path::new(&init), socket)?;
       note("cmake-probes", if restored { "restored" } else { "cold" });
       let source = srcdir.to_string_lossy();
-      let rendered: Vec<String> = defs
+      let rendered = defs
          .iter()
          .map(|entry| format!("-D{}={}", entry.0, Self::render(&entry.1)))
-         .collect();
+         .collect::<Vec<String>>();
       let mut args = vec!["-S", &source, "-B", ".", "-G", &options.generator];
       if restored {
          args.extend(["-C", &init]);

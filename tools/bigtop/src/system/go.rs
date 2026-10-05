@@ -68,7 +68,7 @@ impl System for Go {
 
    /// compile, asm and link take a host-wide mummerd slot like cc and rustc do.
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       let platform = ctx.platform()?;
       let (mode, proxy) = options.deps.as_deref().map_or_else(
          || ("vendor", "off".to_owned()),
@@ -104,7 +104,7 @@ impl System for Go {
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       match verb {
          "build" => {
             let bin = format!("{}/bin/", ctx.build);

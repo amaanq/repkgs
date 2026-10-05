@@ -49,7 +49,7 @@ impl Producer for Luarocks {
    }
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
-      let locks: Locks = read_toml(attr("locks")?)?;
+      let locks = read_toml::<Locks, _>(attr("locks")?)?;
       let mut plan = Plan::new("luarocks-set");
       let mut manifest = String::from("commands = {}\nmodules = {}\nrepository = {\n");
       for (name, entry) in &locks.luarocks {
@@ -72,7 +72,7 @@ impl Producer for Luarocks {
       manifest.push('}');
       say(&format!("luaRocksSet: {} rocks", locks.luarocks.len()));
       let lua_version = attr("luaVersion")?;
-      let major_minor: Vec<&str> = lua_version.split('.').take(2).collect();
+      let major_minor = lua_version.split('.').take(2).collect::<Vec<&str>>();
       plan.add(Entry::write(
          manifest,
          format!("manifest-{}", major_minor.join(".")),

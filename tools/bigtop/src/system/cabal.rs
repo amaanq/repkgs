@@ -143,7 +143,7 @@ impl System for Cabal {
    /// to ghc itself, outside the ghc-options that unit ids hash, and jape
    /// feeds it from mummerd's slots.
    fn setup(&self, ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      let options: Options = ctx.options("cabal")?;
+      let options = ctx.options::<Options>("cabal")?;
       let repo = format!("{}/repo", ctx.build);
       create_dir_all(&repo)?;
       for source in sorted_entries(Path::new(&*options.deps))? {
@@ -227,7 +227,7 @@ impl System for Cabal {
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options("cabal")?;
+      let options = ctx.options::<Options>("cabal")?;
       match verb {
          "build" => Self::build(ctx, attrs, &options, socket),
          "test" => Self::test(ctx, &options),
@@ -327,7 +327,7 @@ impl Cabal {
    fn restore(ctx: &Ctx, ids: &[String], socket: &Path) -> io::Result<()> {
       let units = Self::exported("CABAL_UNITS")?;
       let key = Self::exported("CABAL_UNIT_KEY")?;
-      let got: Vec<bool> = parallel(ids, |id| {
+      let got = parallel(ids, |id| {
          let unit = format!("{key}/{id}").parse::<Key>()?;
          let Some(bytes) = Client::connect(socket)
             .ok()
@@ -361,10 +361,10 @@ impl Cabal {
    fn save_units(ctx: &Ctx, before: &[String], socket: &Path) -> io::Result<()> {
       let units = Self::exported("CABAL_UNITS")?;
       let key = Self::exported("CABAL_UNIT_KEY")?;
-      let new: Vec<String> = Self::unit_dirs(&units)?
+      let new = Self::unit_dirs(&units)?
          .into_iter()
          .filter(|id| !before.contains(id))
-         .collect();
+         .collect::<Vec<String>>();
       parallel(&new, |id| {
          let tar = format!("{}/{id}.tar.zst", ctx.build);
          let mut command = Command::new("bsdtar");
@@ -455,14 +455,20 @@ impl Cabal {
       dry.extend(strs(&targets));
       run("cabal", &dry, &[])?;
       let planned = Self::plan()?;
-      let names: Vec<String> = planned.iter().map(|unit| unit.pkg_name.clone()).collect();
+      let names = planned
+         .iter()
+         .map(|unit| unit.pkg_name.clone())
+         .collect::<Vec<String>>();
       syslibs::check_names(
          &syslibs::wanted_for(attrs, Ecosystem::Hackage, &names)?,
          ctx.spec()?.sys.as_deref(),
          "lock",
       )?;
       if ctx.cache {
-         let ids: Vec<String> = planned.into_iter().map(|unit| unit.id).collect();
+         let ids = planned
+            .into_iter()
+            .map(|unit| unit.id)
+            .collect::<Vec<String>>();
          Self::restore(ctx, &ids, socket)?;
       }
       let before = Self::unit_dirs(&Self::exported("CABAL_UNITS")?)?;

@@ -138,7 +138,7 @@ fn event(event: &Event<'_>) {
 }
 
 fn children(directory: &Path) -> io::Result<Vec<DirEntry>> {
-   let mut entries: Vec<_> = read_dir(directory)?.collect::<io::Result<_>>()?;
+   let mut entries = read_dir(directory)?.collect::<io::Result<Vec<_>>>()?;
    entries.sort_by_key(DirEntry::file_name);
    Ok(entries)
 }
@@ -211,14 +211,14 @@ pub fn shebangs(directory: &Path, undo: bool) -> io::Result<()> {
       return Ok(());
    }
 
-   let candidates: Vec<PathBuf> = walk(directory)?
+   let candidates = walk(directory)?
       .into_iter()
       .filter(|entry| entry.kind == EntryKind::File && entry.size < SMALL_FILE)
       .map(|entry| PathBuf::from(entry.path))
       .filter(|path| {
          undo || metadata(path).is_ok_and(|meta| meta.permissions().mode() & 0o100 != 0)
       })
-      .collect();
+      .collect::<Vec<PathBuf>>();
 
    if !undo {
       create_dir_all(&ledger)?;
@@ -255,10 +255,10 @@ where
 {
    let chunk = items.len().div_ceil(workers.max(1)).max(1);
    scope(|threads| {
-      let handles: Vec<_> = items
+      let handles = items
          .chunks(chunk)
          .map(|batch| threads.spawn(|| batch.iter().map(&work).collect::<io::Result<Vec<Out>>>()))
-         .collect();
+         .collect::<Vec<_>>();
       let mut results = Vec::with_capacity(items.len());
       for handle in handles {
          results.extend(
@@ -402,9 +402,9 @@ pub fn prune(root: &Path) -> io::Result<Vec<Entry>> {
    for docs in DOCS {
       remove_tree_if_exists(&root.join(docs))?;
    }
-   let (bundles, mut inventory): (Vec<Entry>, Vec<Entry>) = walk(root)?
-      .into_iter()
-      .partition(|entry| entry.kind == EntryKind::Dir && extension_is(&entry.rel, "dSYM"));
+   let (bundles, mut inventory) = walk(root)?.into_iter().partition::<Vec<Entry>, _>(|entry| {
+      entry.kind == EntryKind::Dir && extension_is(&entry.rel, "dSYM")
+   });
 
    for bundle in &bundles {
       remove_tree_if_exists(Path::new(&bundle.path))?;
@@ -431,12 +431,12 @@ pub fn prune(root: &Path) -> io::Result<Vec<Entry>> {
       } else if rel.starts_with("share/man/") && extension_is(rel, "gz") {
          compressed.push(entry.path.clone());
       } else if precompiled(rel) {
-         let shown: Vec<_> = inventory
+         let shown = inventory
             .iter()
             .filter(|other| precompiled(&other.rel))
             .take(3)
             .map(|other| other.rel.as_str())
-            .collect();
+            .collect::<Vec<_>>();
          return Err(io::Error::other(format!(
             "precompiled headers in output do not relocate: {}",
             shown.join(" ")
@@ -549,7 +549,7 @@ fn scripts(root: &Path, prefix: &str) -> io::Result<()> {
       let Ok(script) = String::from_utf8(bytes) else {
          continue;
       };
-      let mut lines: Vec<&str> = script.split('\n').collect();
+      let mut lines = script.split('\n').collect::<Vec<&str>>();
       if lines.last() == Some(&"") {
          lines.pop();
       }
@@ -562,7 +562,7 @@ fn scripts(root: &Path, prefix: &str) -> io::Result<()> {
       if !shell || !lines.iter().any(|line| assigns(line)) {
          continue;
       }
-      let fixed: Vec<String> = lines
+      let fixed = lines
          .iter()
          .map(|line| {
             if assigns(line) {
@@ -571,7 +571,7 @@ fn scripts(root: &Path, prefix: &str) -> io::Result<()> {
                line.replace(prefix, &variable)
             }
          })
-         .collect();
+         .collect::<Vec<String>>();
       write_file(&path, fixed.join("\n").as_bytes(), None)?;
       note(
          "script",
@@ -651,16 +651,16 @@ fn leaks(inventory: &[Entry], prefix: &str) -> io::Result<()> {
    let mut detail = Vec::new();
    for hit in hits.iter().take(10) {
       let (rel, bytes) = (&hit.0, &hit.1);
-      let mut shown: Vec<String> = Vec::new();
+      let mut shown = Vec::<String>::new();
       for run in bytes
          .split(|byte| !(byte.is_ascii_graphic() || *byte == b' ' || *byte == b'\t'))
          .filter(|run| run.len() >= needle.len() && find(run, needle).is_some())
       {
-         let masked: String = String::from_utf8_lossy(run)
+         let masked = String::from_utf8_lossy(run)
             .replace(prefix, "$out")
             .chars()
             .take(120)
-            .collect();
+            .collect::<String>();
          if !shown.contains(&masked) {
             shown.push(masked);
          }

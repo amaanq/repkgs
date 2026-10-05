@@ -172,7 +172,7 @@ impl Deno {
 
    fn jsr(store: &mut Store, lock: &Lock) -> io::Result<Vec<JsrFetched>> {
       let mut rows = Vec::new();
-      let mut ids: Vec<(String, String)> = Vec::new();
+      let mut ids = Vec::<(String, String)>::new();
       for (key, entry) in &lock.jsr {
          let id = PackageId::try_from(key.as_str())?;
          let (name, version) = (id.name, id.version);
@@ -201,7 +201,7 @@ impl Deno {
    }
 
    fn https(store: &mut Store, lock: &Lock) -> io::Result<Vec<HttpsFetched>> {
-      let rows: Vec<Row> = lock
+      let rows = lock
          .remote
          .iter()
          .map(|(url, sha256)| {
@@ -212,7 +212,7 @@ impl Deno {
                hash: OutputHash::hex(Algorithm::Sha256, sha256)?,
             })
          })
-         .collect::<io::Result<Vec<_>>>()?;
+         .collect::<io::Result<Vec<Row>>>()?;
       let fetched = fetchurls(store, &rows)?;
       Ok(rows
          .iter()
@@ -234,7 +234,7 @@ impl Producer for Deno {
    }
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
-      let lock: Lock = serde_json::from_str(&read_to_string(lock_path("deno.lock")?)?)?;
+      let lock = serde_json::from_str::<Lock>(&read_to_string(lock_path("deno.lock")?)?)?;
       let lock_version = lock.version.as_deref().map_or(Ok(3), |version| {
          version
             .parse::<u64>()
@@ -254,12 +254,12 @@ impl Producer for Deno {
          jsr.len(),
          https.len()
       ));
-      let inputs: Vec<DrvPath> = npm
+      let inputs = npm
          .iter()
          .map(|entry| entry.drv.clone())
          .chain(jsr.iter().map(|entry| entry.drv.clone()))
          .chain(https.iter().map(|entry| entry.drv.clone()))
-         .collect();
+         .collect::<Vec<DrvPath>>();
       stage(
          store,
          "deno-deps",
@@ -357,7 +357,7 @@ struct ManifestEntry {
 /// jsr's publish-time module graph names them, test data, docs and CI files in
 /// the manifest are not fetched.
 fn jsr_modules(package: &JsrFetched) -> io::Result<Vec<(String, Row)>> {
-   let meta: Meta = serde_json::from_str(&read_to_string(&package.meta)?)?;
+   let meta = serde_json::from_str::<Meta>(&read_to_string(&package.meta)?)?;
    let graph = meta
       .module_graph2
       .or(meta.module_graph1)
@@ -475,7 +475,7 @@ impl DenoFiles {
             cache_path(&package.url)?,
          ));
       }
-      let mut jsr_by_name: BTreeMap<&str, Vec<&JsrFetched>> = BTreeMap::new();
+      let mut jsr_by_name = BTreeMap::<&str, Vec<&JsrFetched>>::new();
       for package in &fetched.jsr {
          jsr_by_name.entry(&package.name).or_default().push(package);
       }
@@ -506,7 +506,7 @@ impl DenoFiles {
    /// registry nothing more).
    fn npm_layout(npm: &[NpmFetched]) -> io::Result<Vec<Entry>> {
       let mut layout = Vec::new();
-      let mut npm_by_name: BTreeMap<&str, Vec<&NpmFetched>> = BTreeMap::new();
+      let mut npm_by_name = BTreeMap::<&str, Vec<&NpmFetched>>::new();
       for package in npm {
          layout.push(Entry::unpack(
             package.tarball.to_string(),
@@ -551,28 +551,28 @@ impl Producer for DenoFiles {
    }
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
-      let fetched: Staged = serde_json::from_str(&read_to_string(attr("stage_attrs")?)?)?;
-      let (module_urls, module_rows): (Vec<_>, Vec<_>) = fetched
+      let fetched = serde_json::from_str::<Staged>(&read_to_string(attr("stage_attrs")?)?)?;
+      let (module_urls, module_rows) = fetched
          .jsr
          .iter()
          .map(jsr_modules)
          .collect::<io::Result<Vec<_>>>()?
          .into_iter()
          .flatten()
-         .unzip();
+         .unzip::<_, _, Vec<_>, Vec<_>>();
       let modules = fetchurls(store, &module_rows)?;
       say(&format!("denoDeps: {} jsr modules", modules.len()));
       let mut layout = Self::remote_layout(&fetched, &module_urls, &modules)?;
       layout.extend(Self::npm_layout(&fetched.npm)?);
       // the first stage's files are laid out too, so they are inputs of the
       // collecting derivation as well
-      let inputs: Vec<DrvPath> = modules
+      let inputs = modules
          .into_iter()
          .map(|made| made.drv)
          .chain(fetched.npm.iter().map(|package| package.drv.clone()))
          .chain(fetched.jsr.iter().map(|package| package.drv.clone()))
          .chain(fetched.https.iter().map(|module| module.drv.clone()))
-         .collect();
+         .collect::<Vec<DrvPath>>();
       collect(store, "deno-deps", &layout, &inputs)
    }
 }

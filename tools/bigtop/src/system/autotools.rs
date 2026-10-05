@@ -115,7 +115,7 @@ impl System for Autotools {
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       Ok(if options.out_of_tree {
          PathBuf::from(&ctx.build)
       } else {
@@ -128,7 +128,7 @@ impl System for Autotools {
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       match verb {
          "configure" => Self::configure(ctx, attrs, &options, socket),
          "build" => make::build(ctx, &options.make_flags, &options.build_target),

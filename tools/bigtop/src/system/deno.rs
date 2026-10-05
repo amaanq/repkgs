@@ -60,7 +60,7 @@ impl System for Deno {
    /// deno adds gen/ and `*_cache_v2` next to npm/ and remote/, so `DENO_DIR`
    /// is a writable copy of the fetched one.
    fn setup(&self, ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       let deno_dir = format!("{}/deno-dir", ctx.build);
       succeed(
          Command::new("cp").args(["-r", &options.deps, &deno_dir]),
@@ -79,7 +79,7 @@ impl System for Deno {
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       match verb {
          "build" => {
             if !options.check || options.entry.is_empty() {
@@ -120,12 +120,12 @@ impl Deno {
          Command::new("cp").args(["-r", &options.deps, &format!("{app}/deno-dir")]),
          "cp",
       )?;
-      let config: Vec<String> = ["deno.json", "deno.jsonc"]
+      let config = ["deno.json", "deno.jsonc"]
          .iter()
          .map(|name| format!("{app}/{name}"))
          .filter(|path| Path::new(path).exists())
          .map(|path| format!("--config={path}"))
-         .collect();
+         .collect::<Vec<String>>();
       for (name, module) in &options.entry {
          let mut args = vec![
             "run".to_owned(),

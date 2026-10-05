@@ -48,7 +48,7 @@ const LIBRARY_DIRS: [&str; 4] = [
 /// configure settings that point a bindist at our toolchain.
 pub fn toolchain(ctx: &Ctx) -> Vec<String> {
    let target = text(&ctx.platform, "clangTarget");
-   let mut settings: Vec<String> = [
+   let mut settings = [
       "CC=cc",
       "CXX=c++",
       "LD=ld",

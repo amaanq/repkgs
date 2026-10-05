@@ -147,15 +147,15 @@ where
 /// `--all` also yields packages with nothing to poll (in-tree source, frozen
 /// upstream).
 fn selected(names: &[String], all: bool) -> io::Result<Vec<Package>> {
-   let found: Vec<Package> = sources::discover(&root())?
+   let found = sources::discover(&root())?
       .into_iter()
       .filter(|package| all || package.tracked)
-      .collect();
-   let missing: Vec<&str> = names
+      .collect::<Vec<Package>>();
+   let missing = names
       .iter()
       .map(String::as_str)
       .filter(|name| !found.iter().any(|package| package.name == *name))
-      .collect();
+      .collect::<Vec<&str>>();
    if !missing.is_empty() {
       return Err(io::Error::other(format!(
          "no act.toml for {}",
@@ -180,7 +180,7 @@ fn planned(names: &[String], prerelease: bool) -> io::Result<Vec<Entry>> {
 
 /// Rows aligned in columns, the way nu prints a table without an index.
 fn table(headers: &[&str], rows: &[Vec<String>]) -> String {
-   let widths: Vec<usize> = headers
+   let widths = headers
       .iter()
       .enumerate()
       .map(|(column, header)| {
@@ -191,7 +191,7 @@ fn table(headers: &[&str], rows: &[Vec<String>]) -> String {
             .max()
             .unwrap_or(0)
       })
-      .collect();
+      .collect::<Vec<usize>>();
    let line = |cells: Vec<&str>| {
       cells
          .iter()
@@ -216,7 +216,7 @@ fn table(headers: &[&str], rows: &[Vec<String>]) -> String {
 }
 
 fn list(names: &[String]) -> io::Result<()> {
-   let rows: Vec<Vec<String>> = selected(names, false)?
+   let rows = selected(names, false)?
       .iter()
       .map(|package| {
          vec![
@@ -226,7 +226,7 @@ fn list(names: &[String]) -> io::Result<()> {
             package.hooks.join(" "),
          ]
       })
-      .collect();
+      .collect::<Vec<Vec<String>>>();
    writeln!(
       io::stdout().lock(),
       "{}",
@@ -241,7 +241,7 @@ fn check(names: &[String], json: bool, prerelease: bool) -> io::Result<i32> {
       print_json(&plan)?;
       return Ok(0);
    }
-   let problems: Vec<Vec<String>> = plan
+   let problems = plan
       .iter()
       .filter(|entry| entry.to.is_none() && entry.note.is_some())
       .map(|entry| {
@@ -251,8 +251,8 @@ fn check(names: &[String], json: bool, prerelease: bool) -> io::Result<i32> {
             entry.note.clone().unwrap_or_default(),
          ]
       })
-      .collect();
-   let pending: Vec<Vec<String>> = plan
+      .collect::<Vec<Vec<String>>>();
+   let pending = plan
       .iter()
       .filter(|entry| entry.to.is_some())
       .map(|entry| {
@@ -263,7 +263,7 @@ fn check(names: &[String], json: bool, prerelease: bool) -> io::Result<i32> {
             entry.note.clone().unwrap_or_default(),
          ]
       })
-      .collect();
+      .collect::<Vec<Vec<String>>>();
    if !problems.is_empty() {
       say(&table(&["name", "from", "note"], &problems));
    }
@@ -362,8 +362,8 @@ fn apply(
    prerelease: bool,
    commit: bool,
 ) -> io::Result<()> {
-   let entries: Vec<Entry> = match plan {
-      Some(file) => serde_json::from_str(&read_to_string(file)?)?,
+   let entries = match plan {
+      Some(file) => serde_json::from_str::<Vec<Entry>>(&read_to_string(file)?)?,
       None => planned(names, prerelease)?,
    };
    let mut rows = Vec::new();
@@ -421,11 +421,11 @@ fn rehash(names: &[String]) -> io::Result<()> {
 }
 
 fn lock(names: &[String], prune: bool) -> io::Result<()> {
-   let packages: Vec<Package> = selected(if prune { &[] } else { names }, true)?
+   let packages = selected(if prune { &[] } else { names }, true)?
       .into_iter()
       .filter(|package| !package.locks.is_empty())
-      .collect();
-   let mut used: BTreeMap<String, Vec<String>> = BTreeMap::new();
+      .collect::<Vec<Package>>();
+   let mut used = BTreeMap::<String, Vec<String>>::new();
    for package in &packages {
       say(&package.name);
       for found in locks::add(package)? {
@@ -438,10 +438,10 @@ fn lock(names: &[String], prune: bool) -> io::Result<()> {
       }
    }
    if prune {
-      let listed: Vec<Used> = used
+      let listed = used
          .into_iter()
          .map(|(eco, keys)| Used { eco, keys })
-         .collect();
+         .collect::<Vec<Used>>();
       locks::prune(&listed)?;
    }
    Ok(())

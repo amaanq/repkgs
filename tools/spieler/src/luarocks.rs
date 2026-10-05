@@ -53,10 +53,10 @@ fn solve(src: &Path) -> io::Result<Vec<Pick>> {
       OsStr::new("toolchain"),
       OsStr::new("--no-out-link"),
    ])?;
-   let bins: Vec<PathBuf> = built
+   let bins = built
       .lines()
       .map(|line| PathBuf::from(line.trim()).join("bin"))
-      .collect();
+      .collect::<Vec<PathBuf>>();
    let luarocks = bins
       .first()
       .ok_or_else(|| io::Error::other("luarocks did not build"))?
@@ -104,7 +104,7 @@ fn solve(src: &Path) -> io::Result<Vec<Pick>> {
          String::from_utf8_lossy(&made.stdout),
          String::from_utf8_lossy(&made.stderr)
       );
-      let lines: Vec<&str> = text.lines().collect();
+      let lines = text.lines().collect::<Vec<&str>>();
       let kept = lines.len().saturating_sub(10);
       return Err(io::Error::other(format!(
          "luarocks make: {}",
