@@ -28,6 +28,7 @@ use crate::{
       closure,
       exports_of,
       record_dll_dirs,
+      relative,
    },
    launchers::entries::{
       Record,
@@ -99,11 +100,7 @@ fn dll_directories(pes: &[PathBuf], sysroot: &Path, deps: &[String]) -> io::Resu
 pub fn run(output: &Path, launch: &Path, sysroot: &Path, deps: &[String]) -> io::Result<()> {
    let out = output.to_string_lossy();
    let store_dir = nix_store();
-   let relative = |path: &str| {
-      path
-         .replace(out.as_ref(), "{root}")
-         .replace(&store_dir, "{store}")
-   };
+   let package_relative = |path: &str| relative(path, &out, &store_dir);
    let pes = glob(&format!("{out}/**/*.{{exe,dll,pyd}}"))?
       .into_iter()
       .filter(|path| path.is_file())
@@ -137,7 +134,7 @@ pub fn run(output: &Path, launch: &Path, sysroot: &Path, deps: &[String]) -> io:
       let path = needed
          .iter()
          .filter(|needed_dir| Path::new(needed_dir) != directory)
-         .map(|needed_dir| relative(needed_dir))
+         .map(|needed_dir| package_relative(needed_dir))
          .chain(prepended.iter().cloned())
          .collect::<Vec<String>>();
 

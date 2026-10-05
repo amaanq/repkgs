@@ -212,6 +212,10 @@ pub fn exports_of(root: &Path) -> io::Result<Exports> {
    })
 }
 
+pub fn relative(path: &str, package_root: &str, store_dir: &str) -> String {
+   path.replace(package_root, "{root}").replace(store_dir, "{store}")
+}
+
 pub fn closure(roots: &[String]) -> io::Result<Vec<Exports>> {
    let mut done = Vec::<Exports>::new();
    let mut todo = roots.to_vec();
@@ -341,11 +345,7 @@ pub fn write_request(root: &Path, request: &Request) -> io::Result<()> {
          let store_dir = nix_store();
          let relative = absolute
             .iter()
-            .map(|directory| {
-               directory
-                  .replace(root_text.as_ref(), "{root}")
-                  .replace(&store_dir, "{store}")
-            })
+            .map(|directory| relative(directory, &root_text, &store_dir))
             .collect::<Vec<String>>();
          exports.insert("dllDirs".to_owned(), serde_json::to_value(relative)?);
       }
