@@ -27,6 +27,7 @@ use mummer::{
       glob,
       write_file,
    },
+   syslibs::Ecosystem,
    tree::note,
 };
 use serde::{
@@ -201,7 +202,7 @@ impl System for Pyapp {
          ctx.spec()?.sys.as_deref(),
          None,
       )?;
-      env.extend(syslibs::active(attrs, "python", &ctx.deps)?.env);
+      env.extend(syslibs::active(attrs, Ecosystem::Python, &ctx.deps)?.env);
       Ok(env.into())
    }
 
@@ -367,7 +368,7 @@ fn build_wheel(
 
       let tables = syslibs::tables(attrs)?;
       let mut settings = tables
-         .get("python")
+         .get(&Ecosystem::Python)
          .and_then(|table| table.get(name))
          .map(|entry| entry.config_settings.clone())
          .unwrap_or_default();

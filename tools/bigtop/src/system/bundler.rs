@@ -21,6 +21,7 @@ use mummer::{
       glob,
       write_file,
    },
+   syslibs::Ecosystem,
    tree::{
       note,
       shebangs,
@@ -136,7 +137,7 @@ impl System for Bundler {
          ("MAKEFLAGS".to_owned(), format!("-j{}", ctx.njobs)),
       ]);
       syslibs::check(attrs, Path::new(&app), ctx.spec()?.sys.as_deref(), None)?;
-      env.extend(syslibs::active(attrs, "gems", &ctx.deps)?.env);
+      env.extend(syslibs::active(attrs, Ecosystem::Gems, &ctx.deps)?.env);
       gem_build_env(attrs, ctx, &mut env)?;
       cross_rbconfig(ctx, &mut env)?;
       Ok(env.into())
@@ -190,7 +191,7 @@ fn cross_rbconfig(ctx: &Ctx, env: &mut BTreeMap<String, String>) -> io::Result<(
 /// `BUNDLE_BUILD__<GEM>` is how `bundle config build.<gem> <flags>` reaches
 /// `gem install` without a config file.
 fn gem_build_env(attrs: &Attrs, ctx: &Ctx, env: &mut BTreeMap<String, String>) -> io::Result<()> {
-   let flags = syslibs::active(attrs, "gems", &ctx.deps)?.flags;
+   let flags = syslibs::active(attrs, Ecosystem::Gems, &ctx.deps)?.flags;
    if flags.is_empty() {
       return Ok(());
    }

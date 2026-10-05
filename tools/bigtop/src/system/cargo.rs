@@ -23,6 +23,7 @@ use mummer::{
    store::on_path,
    syslibs::{
       CargoBuild,
+      Ecosystem,
       feature_flags,
    },
    tree::note,
@@ -188,7 +189,7 @@ impl Cargo {
       let platform = ctx.platform()?;
       let target = platform.rust_triple;
       env.insert("CARGO_BUILD_TARGET".to_owned(), target.clone());
-      let sys = syslibs::active(attrs, "cargo", &ctx.deps)?.env;
+      let sys = syslibs::active(attrs, Ecosystem::Cargo, &ctx.deps)?.env;
       env.insert("PKG_CONFIG_ALLOW_CROSS".to_owned(), "1".to_owned());
       if !sys.is_empty() {
          let names: Vec<&str> = sys.keys().map(String::as_str).collect();

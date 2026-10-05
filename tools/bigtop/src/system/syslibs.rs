@@ -18,6 +18,7 @@ use mummer::{
    syslibs::{
       self,
       CargoBuild,
+      Ecosystem,
       Tables,
       load,
    },
@@ -50,10 +51,10 @@ pub struct Active {
 
 // the table entries of one ecosystem whose library is among the dependencies,
 // {root} filled in
-pub fn active(attrs: &Attrs, ecosystem: &str, deps: &[Exports]) -> io::Result<Active> {
+pub fn active(attrs: &Attrs, ecosystem: Ecosystem, deps: &[Exports]) -> io::Result<Active> {
    let tables = tables(attrs)?;
    let table = tables
-      .get(ecosystem)
+      .get(&ecosystem)
       .ok_or_else(|| io::Error::other(format!("sys-libs has no {ecosystem} table")))?;
    let mut found = Active {
       env:   BTreeMap::new(),
@@ -89,7 +90,11 @@ pub fn active(attrs: &Attrs, ecosystem: &str, deps: &[Exports]) -> io::Result<Ac
    Ok(found)
 }
 
-pub fn wanted_for(attrs: &Attrs, ecosystem: &str, names: &[String]) -> io::Result<Vec<String>> {
+pub fn wanted_for(
+   attrs: &Attrs,
+   ecosystem: Ecosystem,
+   names: &[String],
+) -> io::Result<Vec<String>> {
    Ok(syslibs::wanted_for(&tables(attrs)?, ecosystem, names))
 }
 

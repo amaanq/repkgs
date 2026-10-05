@@ -10,6 +10,11 @@ use std::{
       BTreeSet,
       HashMap,
    },
+   fmt::{
+      Display,
+      Formatter,
+      Result as FmtResult,
+   },
    fs::{
       canonicalize,
       read_to_string,
@@ -20,6 +25,7 @@ use std::{
       PathBuf,
    },
    process::Command,
+   str::FromStr,
 };
 
 use serde::{
@@ -40,14 +46,72 @@ pub struct Entry {
    pub config_settings: BTreeMap<String, String>,
 }
 
-pub type Tables = BTreeMap<String, BTreeMap<String, Entry>>;
+/// The package ecosystems sys-libs.json has a table for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum Ecosystem {
+   Cargo,
+   Go,
+   Python,
+   Gems,
+   Hackage,
+}
 
-pub const LOCKS: [(&str, &str); 4] = [
-   ("cargo", "Cargo.lock"),
-   ("go", "go.sum"),
-   ("python", "uv.lock"),
-   ("gems", "Gemfile.lock"),
-];
+impl Ecosystem {
+   /// The lock file a source of this ecosystem carries, none for Hackage,
+   /// whose set is solved apart from the source.
+   #[must_use]
+   #[inline]
+   pub const fn lock_file(self) -> Option<&'static str> {
+      match self {
+         Self::Cargo => Some("Cargo.lock"),
+         Self::Go => Some("go.sum"),
+         Self::Python => Some("uv.lock"),
+         Self::Gems => Some("Gemfile.lock"),
+         Self::Hackage => None,
+      }
+   }
+
+   const ALL: [Self; 5] = [
+      Self::Cargo,
+      Self::Go,
+      Self::Python,
+      Self::Gems,
+      Self::Hackage,
+   ];
+}
+
+impl Display for Ecosystem {
+   #[inline]
+   #[expect(
+      clippy::renamed_function_params,
+      reason = "formatter describes the argument"
+   )]
+   fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
+      formatter.write_str(match *self {
+         Self::Cargo => "cargo",
+         Self::Go => "go",
+         Self::Python => "python",
+         Self::Gems => "gems",
+         Self::Hackage => "hackage",
+      })
+   }
+}
+
+impl FromStr for Ecosystem {
+   type Err = io::Error;
+
+   #[inline]
+   fn from_str(text: &str) -> io::Result<Self> {
+      Self::ALL
+         .into_iter()
+         .find(|ecosystem| ecosystem.to_string() == text)
+         .ok_or_else(|| io::Error::other(format!("no ecosystem {text}")))
+   }
+}
+
+pub type Tables = BTreeMap<Ecosystem, BTreeMap<String, Entry>>;
 
 #[inline]
 pub fn load(path: &Path) -> io::Result<Tables> {
@@ -57,9 +121,9 @@ pub fn load(path: &Path) -> io::Result<Tables> {
 /// Package names in one ecosystem's lock file.
 #[must_use]
 #[inline]
-pub fn locked(ecosystem: &str, text: &str) -> Vec<String> {
+pub fn locked(ecosystem: Ecosystem, text: &str) -> Vec<String> {
    match ecosystem {
-      "cargo" | "python" => {
+      Ecosystem::Cargo | Ecosystem::Python => {
          text
             .lines()
             .filter_map(|line| line.strip_prefix("name = \""))
@@ -67,7 +131,7 @@ pub fn locked(ecosystem: &str, text: &str) -> Vec<String> {
             .map(str::to_owned)
             .collect()
       },
-      "go" => {
+      Ecosystem::Go => {
          text
             .lines()
             .filter_map(|line| line.split(' ').next())
@@ -75,7 +139,7 @@ pub fn locked(ecosystem: &str, text: &str) -> Vec<String> {
             .map(str::to_owned)
             .collect()
       },
-      "gems" => {
+      Ecosystem::Gems => {
          text
             .lines()
             .filter_map(|line| line.strip_prefix("    "))
@@ -84,27 +148,23 @@ pub fn locked(ecosystem: &str, text: &str) -> Vec<String> {
             .map(|(name, _)| name.to_owned())
             .collect()
       },
-      _ => Vec::new(),
+      Ecosystem::Hackage => Vec::new(),
    }
 }
 
 /// Our packages the locked names of one ecosystem can link, sorted.
 #[must_use]
 #[inline]
-pub fn wanted_for(tables: &Tables, ecosystem: &str, names: &[String]) -> Vec<String> {
-   let mut found = Vec::new();
-   if let Some(table) = tables.get(ecosystem) {
-      for (name, entry) in table {
-         if let Some(ref package) = entry.pkg
-            && names.contains(name)
-            && !found.contains(package)
-         {
-            found.push(package.clone());
-         }
-      }
-   }
-   found.sort();
-   found
+pub fn wanted_for(tables: &Tables, ecosystem: Ecosystem, names: &[String]) -> Vec<String> {
+   tables
+      .get(&ecosystem)
+      .into_iter()
+      .flatten()
+      .filter(|&(name, _)| names.contains(name))
+      .filter_map(|(_, entry)| entry.pkg.clone())
+      .collect::<BTreeSet<_>>()
+      .into_iter()
+      .collect()
 }
 
 /// Our packages the lock files in `dir` can link, sorted, what act.lock's `sys`
@@ -112,24 +172,22 @@ pub fn wanted_for(tables: &Tables, ecosystem: &str, names: &[String]) -> Vec<Str
 /// for.
 #[inline]
 pub fn wanted(tables: &Tables, dir: &Path, cargo: Option<&CargoBuild>) -> io::Result<Vec<String>> {
-   let mut found = Vec::new();
-   for (ecosystem, file) in LOCKS {
+   let mut found = BTreeSet::new();
+   for ecosystem in Ecosystem::ALL {
+      let Some(file) = ecosystem.lock_file() else {
+         continue;
+      };
       let Ok(text) = read_to_string(dir.join(file)) else {
          continue;
       };
       let names = match (ecosystem, cargo) {
-         ("cargo", Some(build)) => shipped_crates(dir, build)?,
-         ("cargo", None) => continue,
+         (Ecosystem::Cargo, Some(build)) => shipped_crates(dir, build)?,
+         (Ecosystem::Cargo, None) => continue,
          _ => locked(ecosystem, &text),
       };
-      for pkg in wanted_for(tables, ecosystem, &names) {
-         if !found.contains(&pkg) {
-            found.push(pkg);
-         }
-      }
+      found.extend(wanted_for(tables, ecosystem, &names));
    }
-   found.sort();
-   Ok(found)
+   Ok(found.into_iter().collect())
 }
 
 /// What a cargo build turns on, from its recipe's `[cargo]` options, and the
@@ -180,7 +238,15 @@ struct NodeDep {
 
 #[derive(Deserialize)]
 struct DepKind {
-   kind: Option<String>,
+   kind: Option<Dependency>,
+}
+
+/// A dependency kind cargo metadata names, a normal one being none.
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Dependency {
+   Dev,
+   Build,
 }
 
 fn metadata(dir: &Path, flags: &[String], build: &CargoBuild) -> io::Result<Metadata> {
@@ -286,7 +352,7 @@ fn shipped_crates(dir: &Path, build: &CargoBuild) -> io::Result<Vec<String>> {
          let dev_only = dependency
             .dep_kinds
             .iter()
-            .all(|kind| kind.kind.as_deref() == Some("dev"));
+            .all(|kind| kind.kind == Some(Dependency::Dev));
          if !(member && dev_only) {
             pending.push(&dependency.pkg);
          }

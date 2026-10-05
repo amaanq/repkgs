@@ -16,7 +16,10 @@ use mummer::{
       OutputHash,
    },
    store_path::StorePath,
-   syslibs::load,
+   syslibs::{
+      Ecosystem,
+      load,
+   },
 };
 use serde::{
    Deserialize,
@@ -647,7 +650,7 @@ impl Request {
       let mut sdists = no_binary.into_iter().collect::<BTreeSet<_>>();
       sdists.extend(
          sys_libs
-            .get("python")
+            .get(&Ecosystem::Python)
             .into_iter()
             .flat_map(|table| table.iter())
             .filter(|&(_name, entry)| entry.pkg.is_some())
