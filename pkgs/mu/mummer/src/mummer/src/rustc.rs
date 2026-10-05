@@ -10,6 +10,7 @@ use std::{
       read,
       read_dir,
       read_to_string,
+      remove_file,
    },
    io::{
       self,
@@ -19,6 +20,7 @@ use std::{
    path::{
       Path,
       PathBuf,
+      absolute,
    },
    process::Command,
    time::Instant,
@@ -69,6 +71,7 @@ struct Invocation {
    search:    Vec<PathBuf>,
    statics:   Vec<String>,
    sysroot:   Option<PathBuf>,
+   links:     bool,
    cacheable: bool,
    query:     bool,
 }
@@ -89,6 +92,7 @@ impl Invocation {
          search:    Vec::new(),
          statics:   Vec::new(),
          sysroot:   None,
+         links:     false,
          cacheable: true,
          query:     false,
       };
@@ -198,9 +202,9 @@ impl Invocation {
          }
          index += 1;
       }
+      invocation.links = !library;
       invocation.cacheable &= !invocation.query
          && sources == 1_i32
-         && library
          && dep_info
          && !invocation.out_dir.as_os_str().is_empty()
          && !invocation.name.is_empty();
@@ -228,6 +232,42 @@ impl Invocation {
          self.statics.push(format!("lib{name}.a"));
          self.statics.push(format!("{name}.lib"));
       }
+   }
+
+   /// rustc's default for cc-flavored targets unless `-C linker` names one,
+   /// checked against the command rustc ran before a result is stored.
+   fn linker(&self) -> &str {
+      self
+         .key_args
+         .iter()
+         .rev()
+         .find_map(|argument| argument.strip_prefix("-C=linker="))
+         .unwrap_or("cc")
+   }
+
+   /// The linker's dependency file and rustc's record of the link command.
+   fn link_records(&self) -> io::Result<(PathBuf, PathBuf)> {
+      let base = absolute(&self.out_dir)?.join(format!("{}{}", self.name, self.suffix));
+      Ok((
+         base.with_added_extension("link.d"),
+         base.with_added_extension("link-args"),
+      ))
+   }
+
+   /// The command to run on a miss, which for a linking compile also writes
+   /// the link records, and those records' paths.
+   fn recorded(&self, arguments: &[String]) -> io::Result<(Vec<String>, Vec<PathBuf>)> {
+      let mut command = arguments.to_vec();
+      if !self.links {
+         return Ok((command, Vec::new()));
+      }
+      let (depfile, linked) = self.link_records()?;
+      command.push(format!(
+         "-Clink-arg=-Wl,--dependency-file={}",
+         depfile.display()
+      ));
+      command.push(format!("--print=link-args={}", linked.display()));
+      Ok((command, vec![depfile, linked]))
    }
 
    fn static_archives(&self) -> Vec<String> {
@@ -305,7 +345,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
       return Ok(result.status);
    };
    let hit = lookup(client, &mut store, key)
-      .and_then(|result| replay(client, &invocation.out_dir, &invocation.suffix, &result));
+      .and_then(|result| replay(client, &store, &invocation, &result));
    let miss = match hit {
       Ok(()) => {
          log("rustc", "cached", &label, started);
@@ -320,19 +360,27 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
       Err(miss) => miss,
    };
    let explained = format!("{label} {miss}");
+   let (command, link_records) = invocation.recorded(arguments)?;
    let result = run(
       OsStr::new(compiler),
-      arguments,
+      &command,
       Slot::acquire(client).ok().flatten(),
       true,
       &[],
    )?;
    io::stderr().lock().write_all(&result.stderr)?;
-   if result.status != 0_i32 {
+   let storing = (result.status == 0_i32)
+      .then(|| store_result(client, &mut store, key, &invocation, &result.stderr));
+   for record in link_records {
+      match remove_file(record) {
+         Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+         Ok(()) | Err(_) => {},
+      }
+   }
+   let Some(stored) = storing else {
       log("rustc", "failed", &explained, started);
       return Ok(result.status);
-   }
-   let stored = store_result(client, &mut store, key, &invocation, &result.stderr);
+   };
    let outcome = match stored {
       Ok(()) => "compiled",
       Err(error) => {
@@ -356,6 +404,10 @@ fn request_key(store: &Store, compiler: &str, invocation: &Invocation) -> io::Re
    field(&mut hasher, read(&invocation.source)?);
    for external in &invocation.externs {
       field(&mut hasher, store.input_id(external)?);
+   }
+   if invocation.links {
+      field(&mut hasher, "linker");
+      field(&mut hasher, store.tool_id(invocation.linker())?);
    }
    // empty while the rust build compiles core and std themselves
    let mut libraries = match read_dir(target_libdir(compiler, invocation)?) {
@@ -429,6 +481,25 @@ fn store_result(
    inputs.extend_from_slice(&invocation.externs);
    inputs.extend(invocation.static_archives());
    inputs.push(invocation.source.clone());
+   if invocation.links {
+      let (depfile, linked) = invocation.link_records()?;
+      let program = linker_program(&read_to_string(&linked)?);
+      if program.as_deref() != Some(invocation.linker()) {
+         return Err(io::Error::other(format!(
+            "rustc linked with {program:?}, not the keyed {}",
+            invocation.linker()
+         )));
+      }
+      let out_dir = absolute(&invocation.out_dir)?;
+      for input in parse_depfile(&read_to_string(&depfile)?) {
+         let path = absolute(&input)?;
+         // codegen units and rustc's tempdir, removed once linked
+         if path.starts_with(&out_dir) && !path.exists() {
+            continue;
+         }
+         inputs.push(input);
+      }
+   }
    inputs.sort_unstable();
    inputs.dedup();
    let variables = text
@@ -463,7 +534,10 @@ fn store_result(
          .and_then(OsStr::to_str)
          .ok_or_else(|| io::Error::other("Rust output name is not UTF-8"))?;
       relative_path(name)?;
-      let bytes = read(&output)?;
+      let mut bytes = read(&output)?;
+      if invocation.links {
+         store.mask_output(&mut bytes, false);
+      }
       let hash = digest(&bytes);
       cache.put(&format!("b/{hash}"), &bytes)?;
       artifacts.push(Artifact {
@@ -485,7 +559,12 @@ fn stem(name: &str, from: &str, to: &str) -> String {
    }
 }
 
-fn replay(cache: &mut Client, directory: &Path, suffix: &str, key: &str) -> Result<(), Miss> {
+fn replay(
+   cache: &mut Client,
+   store: &Store,
+   invocation: &Invocation,
+   key: &str,
+) -> Result<(), Miss> {
    let Some(listing) = cache.get(&format!("o/{key}"))? else {
       return Err(Miss::ObjectGone);
    };
@@ -516,13 +595,48 @@ fn replay(cache: &mut Client, directory: &Path, suffix: &str, key: &str) -> Resu
    let Some(diagnostics) = cache.get(&format!("e/{key}"))? else {
       return Err(Miss::ObjectGone);
    };
-   for (artifact, bytes) in artifacts.iter().zip(values) {
+   for (artifact, mut bytes) in artifacts.iter().zip(values) {
+      if invocation.links {
+         store.mask_output(&mut bytes, true);
+         store.resolve_bytes(&mut bytes);
+      }
       write_file(
-         &directory.join(stem(&artifact.name, "@", suffix)),
+         &invocation
+            .out_dir
+            .join(stem(&artifact.name, "@", &invocation.suffix)),
          &bytes,
          Some(artifact.mode),
       )?;
    }
    io::stderr().lock().write_all(&diagnostics)?;
    Ok(())
+}
+
+/// The program in rustc's `--print link-args` record, past the environment
+/// assignments it starts with.
+fn linker_program(record: &str) -> Option<String> {
+   let mut characters = record.chars().peekable();
+   loop {
+      while characters
+         .next_if(|character| character.is_whitespace())
+         .is_some()
+      {}
+      let quoted = characters.peek() == Some(&'"');
+      let mut word = String::new();
+      let mut inside = false;
+      while let Some(character) = characters.next() {
+         match character {
+            '\\' if inside => word.push(characters.next()?),
+            '"' => inside = !inside,
+            blank if blank.is_whitespace() && !inside => break,
+            other => word.push(other),
+         }
+      }
+      if quoted {
+         return Some(word);
+      }
+      if word.is_empty() {
+         return None;
+      }
+   }
 }
