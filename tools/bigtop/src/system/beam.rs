@@ -3,7 +3,6 @@ use std::{
    fs::{
       copy,
       create_dir_all,
-      read_dir,
       read_to_string,
    },
    io,
@@ -16,7 +15,10 @@ use std::{
 };
 
 use mummer::{
-   files::write_file,
+   files::{
+      sorted_entries,
+      write_file,
+   },
    store::on_path,
    tree::note,
 };
@@ -142,11 +144,11 @@ fn options(tool: Tool, ctx: &Ctx) -> io::Result<(Options, Vec<String>)> {
 }
 
 fn sorted_names(dir: &str) -> io::Result<Vec<String>> {
-   let mut names: Vec<String> = read_dir(dir)?
-      .map(|entry| entry.map(|found| found.file_name().to_string_lossy().into_owned()))
-      .collect::<io::Result<_>>()?;
-   names.sort();
-   Ok(names)
+   Ok(sorted_entries(Path::new(dir))?
+      .iter()
+      .filter_map(|path| path.file_name())
+      .map(|name| name.to_string_lossy().into_owned())
+      .collect())
 }
 
 /// a Hex tarball's contents.tar.gz into `dest`.
@@ -177,7 +179,7 @@ fn install_escript(ctx: &Ctx, file: &str) -> io::Result<()> {
    let name = Path::new(file)
       .file_name()
       .map(|name| name.to_string_lossy().into_owned())
-      .unwrap_or_default();
+      .ok_or_else(|| io::Error::other(format!("escript {file} has no file name")))?;
    let dir = format!("{}/lib/escript", ctx.out);
    create_dir_all(&dir)?;
    let placed = format!("{dir}/{name}");
@@ -239,13 +241,13 @@ fn mix_lock(text: &str) -> Vec<Locked> {
    found
 }
 
-fn env(tool: Tool, ctx: &Ctx, attrs: &Attrs) -> io::Result<Vec<(String, String)>> {
+fn env(tool: Tool, ctx: &Ctx, attrs: &Attrs) -> io::Result<Vec<(&'static str, String)>> {
    let shared = [
       ("ERL_AFLAGS", "+B".to_owned()),
       ("LANG", "C.UTF-8".to_owned()),
       ("ERL_COMPILER_OPTIONS", "deterministic".to_owned()),
    ];
-   let own: Vec<(&str, String)> = match tool {
+   let own = match tool {
       Tool::Rebar3 => {
          vec![
             ("HOME", ctx.build.clone()),
@@ -276,11 +278,7 @@ fn env(tool: Tool, ctx: &Ctx, attrs: &Attrs) -> io::Result<Vec<(String, String)>
          ]
       },
    };
-   Ok(own
-      .into_iter()
-      .chain(shared)
-      .map(|pair| (pair.0.to_owned(), pair.1))
-      .collect())
+   Ok(own.into_iter().chain(shared).collect())
 }
 
 fn checkout_name(tar: &str) -> &str {
@@ -334,15 +332,18 @@ fn setup(tool: Tool, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<Env>
    let restored = probe::restore_dir(&key, Path::new(compiled), socket)?;
    note(kind, if restored { "restored" } else { "cold" });
    if matches!(tool, Tool::Mix) {
-      let env: Vec<(&str, &str)> = vars
+      let env = vars
          .iter()
-         .map(|pair| (pair.0.as_str(), pair.1.as_str()))
-         .collect();
+         .map(|&(name, ref value)| (name, value.as_str()))
+         .collect::<Vec<_>>();
       run("mix", &["deps.compile", "--skip-umbrella-children"], &env)?;
       probe::store_dir(&key, Path::new(compiled), socket)?;
    }
    Ok(Env::from(
-      vars.into_iter().collect::<BTreeMap<String, String>>(),
+      vars
+         .into_iter()
+         .map(|(name, value)| (name.to_owned(), value))
+         .collect::<BTreeMap<_, _>>(),
    ))
 }
 
