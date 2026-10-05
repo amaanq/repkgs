@@ -59,6 +59,7 @@ use crate::{
       VersionCheck,
       build_top,
       nix_store,
+      utf8,
    },
    debug,
    exports::{
@@ -82,7 +83,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    let ctx = Ctx::load(&top)?;
    let platform = ctx.platform()?;
    let exe = platform.ext.exe.as_str();
-   let out = Path::new(&ctx.out);
+   let out = ctx.out.as_path();
    install_map(&spec, out, exe)?;
    if keep_tree {
       let tree = attrs
@@ -108,7 +109,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
       spec.sys.as_deref().unwrap_or_default(),
       &ctx.deps,
       out,
-      Path::new(&ctx.build),
+      &ctx.build,
       platform.binfmt,
    )?;
    shebangs(out, true)?;
@@ -130,7 +131,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    note("exports", &serde_json::to_string(&exported)?);
    set_current_dir(&top)?;
    succeed(Command::new("chmod").arg("-R").arg("u+w").arg(&ctx.out))?;
-   relativize(&ctx.out, &ctx.dest)?;
+   relativize(utf8(&ctx.out)?, utf8(&ctx.dest)?)?;
 
    if platform.os == "windows" {
       succeed(Command::new("cp").arg("-rL").arg(&ctx.out).arg(&ctx.dest))?;
@@ -158,7 +159,7 @@ pub fn tests() -> io::Result<()> {
    let result = var("PKGS_RESULT").map_err(|_unset| io::Error::other("PKGS_RESULT is not set"))?;
    create_dir_all(&result)?;
    let mut rendered = serde_json::to_vec_pretty(&Passed {
-      package: &ctx.out,
+      package: utf8(&ctx.out)?,
       passed:  true,
    })?;
    rendered.push(b'\n');
@@ -268,7 +269,7 @@ fn relocate(
    platform: &Platform,
    debug: &str,
 ) -> io::Result<()> {
-   let out = Path::new(&ctx.out);
+   let out = ctx.out.as_path();
    let implanted = spec.prebuilt == Prebuilt::Implanted;
    let ldso = spec.prebuilt == Prebuilt::Ldso;
    match platform.binfmt {
@@ -337,11 +338,11 @@ fn relocate(
 
       echo(&format!(
          "reloc-fixup {} --dest {} {}",
-         ctx.out,
-         ctx.dest,
+         ctx.out.display(),
+         ctx.dest.display(),
          shown.join(" ")
       ));
-      fixup::run(out, Some(Path::new(&ctx.dest)), sdk, loader, &denied)?;
+      fixup::run(out, Some(ctx.dest.as_path()), sdk, loader, &denied)?;
    }
    Ok(())
 }
@@ -360,7 +361,7 @@ struct Probe<'check> {
 // absolute store path would show
 fn version_check(spec: &Spec, ctx: &Ctx, platform: &Platform, top: &str) -> io::Result<()> {
    let exe = platform.ext.exe.as_str();
-   let dest = Path::new(&ctx.dest);
+   let dest = ctx.dest.as_path();
    let bins = bins(spec, dest, exe);
    let line = spec
       .tests
@@ -442,7 +443,7 @@ fn version_check(spec: &Spec, ctx: &Ctx, platform: &Platform, top: &str) -> io::
 
 impl Probe<'_> {
    fn relocated(&self, ctx: &Ctx, launch: &str) -> io::Result<()> {
-      let dest = Path::new(&ctx.dest);
+      let dest = ctx.dest.as_path();
       let root = PathBuf::from(format!("{}/relocated", self.top));
       create_dir_all(&root)?;
       let launch_root = Path::new(launch)

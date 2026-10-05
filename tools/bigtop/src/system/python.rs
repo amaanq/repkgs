@@ -36,6 +36,7 @@ use crate::{
       Attrs,
       Ctx,
       nix_store,
+      utf8,
    },
    exports::closure,
    schema::Field,
@@ -147,7 +148,7 @@ impl Python {
    /// maturin's PEP 517 backend only shells out to `maturin`, so call it
    /// directly.
    fn build(ctx: &Ctx, options: &Options) -> io::Result<()> {
-      let dist = format!("{}/dist", ctx.build);
+      let dist = format!("{}/dist", ctx.build.display());
       match options.backend.as_str() {
          "maturin" => {
             let jobs = format!("-j{}", ctx.njobs);
@@ -200,7 +201,7 @@ impl Python {
    /// puts our and our dependencies' site-packages on sys.path itself, relative
    /// to its own location.
    fn install(ctx: &Ctx, attrs: &Attrs) -> io::Result<()> {
-      let dist = format!("{}/dist", ctx.build);
+      let dist = format!("{}/dist", ctx.build.display());
       let mut wheels = sorted_entries(Path::new(&dist))?;
       wheels.retain(|path| path.extension().is_some_and(|extension| extension == "whl"));
       let wheel = wheels
@@ -208,6 +209,7 @@ impl Python {
          .ok_or_else(|| io::Error::other("no wheel in dist"))?
          .to_string_lossy()
          .into_owned();
+      let out = utf8(&ctx.out)?;
       let has_installer = Command::new("python3")
          .args(["-c", "import installer"])
          .stdout(Stdio::null())
@@ -221,7 +223,7 @@ impl Python {
                "-m",
                "installer",
                "--prefix",
-               &ctx.out,
+               out,
                "--no-compile-bytecode",
                &wheel,
             ],
@@ -230,11 +232,11 @@ impl Python {
       } else {
          let version =
             Self::python("import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')")?;
-         let site = format!("{}/lib/python{version}/site-packages", ctx.out);
+         let site = format!("{}/lib/python{version}/site-packages", ctx.out.display());
          create_dir_all(&site)?;
          run("bsdtar", &["-xf", &wheel, "-C", &site], &[])?;
       }
-      let lib = format!("{}/lib", ctx.out);
+      let lib = format!("{}/lib", ctx.out.display());
       run(
          "python3",
          &[
@@ -246,18 +248,18 @@ impl Python {
             "-o",
             "1",
             "-s",
-            &ctx.out,
+            out,
             &lib,
          ],
          &[],
       )?;
-      let mut roots = vec![ctx.out.clone()];
+      let mut roots = vec![out.to_owned()];
       roots.extend(ctx.deps.iter().map(|dep| dep.root.clone()));
       let store = nix_store();
       let rels = Self::site_packages(&roots)
          .iter()
          .map(|site| {
-            site.strip_prefix(&ctx.out).map_or_else(
+            site.strip_prefix(out).map_or_else(
                || {
                   format!(
                      "../../{}",
@@ -273,18 +275,14 @@ impl Python {
           [os.path.join(os.path.dirname(os.path.realpath(__file__)), p) for p in {}]",
          serde_json::to_string(&rels)?
       );
-      Self::boot_scripts(
-         &Path::new(&ctx.out).join("bin"),
-         &boot,
-         ctx.platform()?.cross,
-      )?;
+      Self::boot_scripts(&ctx.out.join("bin"), &boot, ctx.platform()?.cross)?;
       // whoever depends on or runs this module gets our dependencies'
       // site-packages too, finish merges this into the final exports.json
       let mut rendered = serde_json::to_vec_pretty(&Propagate {
          propagate: &attrs.dependencies,
       })?;
       rendered.push(b'\n');
-      write_file(&Path::new(&ctx.out).join("exports.json"), &rendered, None)
+      write_file(&ctx.out.join("exports.json"), &rendered, None)
    }
 
    fn boot_scripts(bin: &Path, boot: &str, cross: bool) -> io::Result<()> {
@@ -327,14 +325,14 @@ impl Python {
          .module
          .clone()
          .unwrap_or_else(|| spec.name.replace('-', "_"));
-      let mut path = Self::site_packages(slice::from_ref(&ctx.out));
+      let mut path = Self::site_packages(&[utf8(&ctx.out)?.to_owned()]);
       path.push(var("PYTHONPATH").unwrap_or_default());
       let joined = path.join(":");
       let env = [("PYTHONPATH", joined.as_str())];
       set_current_dir(&ctx.build)?;
       run("python3", &["-c", &format!("import {module}")], &env)?;
       if options.pytest {
-         let tests = format!("{}/tests", ctx.src);
+         let tests = format!("{}/tests", ctx.src.display());
          run("python3", &["-m", "pytest", "-q", &tests], &env)?;
       }
       Ok(())

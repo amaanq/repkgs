@@ -270,7 +270,7 @@ fn prepare_install(manager: Manager, ctx: &Ctx, options: &Options) -> io::Result
          )?;
          set_permissions("package-lock.json", PermissionsExt::from_mode(0o644))
       },
-      Manager::Bun => fill_bun_cache(&options.deps, &format!("{}/bun-cache", ctx.build)),
+      Manager::Bun => fill_bun_cache(&options.deps, &format!("{}/bun-cache", ctx.build.display())),
       Manager::Pnpm | Manager::Yarn => Ok(()),
    }
 }
@@ -314,7 +314,10 @@ fn manager_env(manager: Manager, ctx: &Ctx, options: &Options) -> Vec<(String, S
    let settings = match manager {
       Manager::Npm => {
          vec![
-            ("npm_config_cache", format!("{}/npm-cache", ctx.build)),
+            (
+               "npm_config_cache",
+               format!("{}/npm-cache", ctx.build.display()),
+            ),
             ("npm_config_offline", "true".to_owned()),
             ("npm_config_progress", "false".to_owned()),
             ("npm_config_audit", "false".to_owned()),
@@ -326,7 +329,7 @@ fn manager_env(manager: Manager, ctx: &Ctx, options: &Options) -> Vec<(String, S
       Manager::Pnpm => {
          vec![
             ("registry", format!("file:/{}/registry/", options.deps)),
-            ("store_dir", format!("{}/pnpm-store", ctx.build)),
+            ("store_dir", format!("{}/pnpm-store", ctx.build.display())),
             ("offline", "true".to_owned()),
             ("pm_on_fail", "ignore".to_owned()),
             ("minimum_release_age", "0".to_owned()),
@@ -337,7 +340,10 @@ fn manager_env(manager: Manager, ctx: &Ctx, options: &Options) -> Vec<(String, S
       },
       Manager::Yarn => {
          vec![
-            ("YARN_CACHE_FOLDER", format!("{}/yarn-cache", ctx.build)),
+            (
+               "YARN_CACHE_FOLDER",
+               format!("{}/yarn-cache", ctx.build.display()),
+            ),
             ("YARN_YARN_OFFLINE_MIRROR", options.deps.to_string()),
             ("YARN_ENABLE_PROGRESS_BARS", "false".to_owned()),
             ("YARN_DISABLE_SELF_UPDATE_CHECK", "true".to_owned()),
@@ -345,8 +351,11 @@ fn manager_env(manager: Manager, ctx: &Ctx, options: &Options) -> Vec<(String, S
       },
       Manager::Bun => {
          vec![
-            ("BUN_INSTALL_CACHE_DIR", format!("{}/bun-cache", ctx.build)),
-            ("BUN_INSTALL", format!("{}/bun-home", ctx.build)),
+            (
+               "BUN_INSTALL_CACHE_DIR",
+               format!("{}/bun-cache", ctx.build.display()),
+            ),
+            ("BUN_INSTALL", format!("{}/bun-home", ctx.build.display())),
             ("DO_NOT_TRACK", "1".to_owned()),
          ]
       },
@@ -465,7 +474,7 @@ fn install(
       },
       Manager::Bun => {
          if !compile.is_empty() {
-            let bin = format!("{}/bin", ctx.out);
+            let bin = format!("{}/bin", ctx.out.display());
             create_dir_all(&bin)?;
             for (exe, entry) in compile {
                let outfile = format!("{bin}/{exe}");
@@ -492,9 +501,13 @@ fn install(
 /// `bin` as a string means one executable named like the package, npm strips
 /// a scope.
 fn install_tree(ctx: &Ctx) -> io::Result<()> {
-   let tree = format!("{}/lib/node_modules/{}", ctx.out, ctx.spec()?.name);
-   create_dir_all(format!("{}/lib/node_modules", ctx.out))?;
-   create_dir_all(format!("{}/bin", ctx.out))?;
+   let tree = format!(
+      "{}/lib/node_modules/{}",
+      ctx.out.display(),
+      ctx.spec()?.name
+   );
+   create_dir_all(format!("{}/lib/node_modules", ctx.out.display()))?;
+   create_dir_all(format!("{}/bin", ctx.out.display()))?;
    succeed(Command::new("cp").args(["-r", ".", &tree]))?;
    let package = serde_json::from_str::<PackageJson>(&read_to_string("package.json")?)?;
    let bins = match package.bin {
@@ -513,7 +526,10 @@ fn install_tree(ctx: &Ctx) -> io::Result<()> {
       None => BTreeMap::new(),
    };
    for (name, path) in &bins {
-      symlink(format!("{tree}/{path}"), format!("{}/bin/{name}", ctx.out))?;
+      symlink(
+         format!("{tree}/{path}"),
+         format!("{}/bin/{name}", ctx.out.display()),
+      )?;
    }
    Ok(())
 }

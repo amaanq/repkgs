@@ -136,13 +136,13 @@ pub fn prepare(source: Source<'_>) -> io::Result<Prepared> {
       .collect();
    let ctx = Ctx {
       spec: attrs.spec.clone(),
-      out,
-      dest: attrs.outputs.out.clone(),
+      out: PathBuf::from(out),
+      dest: PathBuf::from(&attrs.outputs.out),
       deps,
       roots,
       njobs,
-      src: cwd.to_string_lossy().into_owned(),
-      build,
+      src: cwd.clone(),
+      build: PathBuf::from(build),
       platform,
       tests_run,
       cache,

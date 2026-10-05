@@ -166,7 +166,7 @@ pub fn setup(attrs: &Attrs, source: Source<'_>, socket: &Path) -> io::Result<Ctx
    }
    set_current_dir(match attrs.plan.setups.first() {
       Some(system) => dispatch::workdir(system, &ctx)?,
-      None => Path::new(&ctx.src).to_path_buf(),
+      None => ctx.src.clone(),
    })?;
    Ok(ctx)
 }
@@ -176,7 +176,7 @@ pub fn phase(attrs: &Attrs, ctx: &mut Ctx, index: usize, socket: &Path) -> io::R
    set_phase(&step.name);
    let workdir = match attrs.plan.setups.first() {
       Some(system) => dispatch::workdir(system, ctx)?,
-      None => Path::new(&ctx.src).to_path_buf(),
+      None => ctx.src.clone(),
    };
    match step.kind {
       Kind::System {

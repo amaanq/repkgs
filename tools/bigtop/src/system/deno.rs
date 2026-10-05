@@ -61,7 +61,7 @@ impl System for Deno {
    /// is a writable copy of the fetched one.
    fn setup(&self, ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
       let options = ctx.options::<Options>(self.name())?;
-      let deno_dir = format!("{}/deno-dir", ctx.build);
+      let deno_dir = format!("{}/deno-dir", ctx.build.display());
       succeed(Command::new("cp").args(["-r", &options.deps, &deno_dir]))?;
       succeed(Command::new("chmod").args(["-R", "u+w", &deno_dir]))?;
       Ok([
@@ -100,8 +100,8 @@ impl Deno {
    /// need relinking first.
    fn install(ctx: &Ctx, options: &Options) -> io::Result<()> {
       let deno = dep_root(ctx, "deno", "deno applications run on it")?;
-      let app = format!("{}/lib/{}", ctx.out, ctx.spec()?.name);
-      create_dir_all(format!("{}/lib", ctx.out))?;
+      let app = format!("{}/lib/{}", ctx.out.display(), ctx.spec()?.name);
+      create_dir_all(ctx.out.join("lib"))?;
       succeed(Command::new("cp").args([
          "-r",
          &ctx.project_dir(&options.root).to_string_lossy(),

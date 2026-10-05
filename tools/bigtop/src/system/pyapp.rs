@@ -167,7 +167,7 @@ fn cpython(ctx: &Ctx) -> io::Result<&Exports> {
 fn site_packages(ctx: &Ctx) -> io::Result<String> {
    Ok(format!(
       "{}/lib/{}/site-packages",
-      ctx.out,
+      ctx.out.display(),
       ctx.spec()?.name
    ))
 }
@@ -239,7 +239,7 @@ impl System for Pyapp {
 fn build(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<()> {
    let plan: Vec<Planned> =
       serde_json::from_str(&read_to_string(format!("{}/plan.json", options.deps))?)?;
-   let built = format!("{}/wheels", ctx.build);
+   let built = format!("{}/wheels", ctx.build.display());
    create_dir_all(&built)?;
    for sdist in plan
       .iter()
@@ -256,18 +256,18 @@ fn build(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<()> {
    }
    for tree in plan.iter().filter(|entry| matches!(entry.kind, Kind::Tree)) {
       let source = if tree.file.is_empty() {
-         format!("{}/{}", ctx.src, tree.path)
+         format!("{}/{}", ctx.src.display(), tree.path)
       } else {
          format!("{}/{}", options.deps, tree.file)
       };
       note("tree", &tree.name);
-      let dir = format!("{}/sdist/{}", ctx.build, tree.name);
+      let dir = format!("{}/sdist/{}", ctx.build.display(), tree.name);
 
       if Path::new(&dir).exists() {
          remove_dir_all(&dir)?;
       }
 
-      create_dir_all(format!("{}/sdist", ctx.build))?;
+      create_dir_all(format!("{}/sdist", ctx.build.display()))?;
       run("cp", &["-rH", "--no-preserve=mode", &source, &dir], &[])?;
       build_wheel(ctx, attrs, options, &dir, &tree.name, &built)?;
    }
@@ -286,7 +286,7 @@ fn build(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<()> {
       install_wheel(ctx, wheel, options.mode != Mode::Project)?;
    }
    if options.mode == Mode::Project {
-      let project = format!("{}/project", ctx.build);
+      let project = format!("{}/project", ctx.build.display());
       run("python3", &wheel_args(&project), &[])?;
       let own = glob(&format!("{project}/*.whl"))?
          .into_iter()
@@ -299,7 +299,7 @@ fn build(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<()> {
 
    let platform = ctx.platform()?;
    implant::run(
-      Path::new(&ctx.out),
+      ctx.out.as_path(),
       Path::new(&platform.interp),
       Some(Path::new(&platform.reloc_stub)),
       &attrs.dependencies,
@@ -328,7 +328,7 @@ fn build_sdist(
    outdir: &str,
 ) -> io::Result<()> {
    note("sdist", name);
-   let dir = format!("{}/sdist/{name}", ctx.build);
+   let dir = format!("{}/sdist/{name}", ctx.build.display());
    create_dir_all(&dir)?;
    run(
       "bsdtar",
@@ -365,7 +365,7 @@ fn build_wheel(
       command.args(&wheel_args(outdir)[..7]);
 
       if Path::new(&vendor).exists() {
-         let home = format!("{}/cargo-home/{name}", ctx.build);
+         let home = format!("{}/cargo-home/{name}", ctx.build.display());
          command.envs(Cargo::configure(ctx, attrs, Some(&vendor), &home)?);
          command.env_remove("RUSTFLAGS");
          command.env(
@@ -404,7 +404,7 @@ fn env_python(ctx: &Ctx, mode: Mode) -> io::Result<()> {
    } else {
       ""
    };
-   let bin = format!("{}/bin", ctx.out);
+   let bin = format!("{}/bin", ctx.out.display());
    create_dir_all(&bin)?;
    let wrapper = format!("{bin}/python3");
    let text = format!(
@@ -424,7 +424,7 @@ exec {}/bin/python3 "$@"
 /// installer only knows prefix layouts, so the wheel is staged and moved.
 /// Dependency scripts are dropped, the project's own land in $out/bin.
 fn install_wheel(ctx: &Ctx, wheel: &str, scripts: bool) -> io::Result<()> {
-   let stage = format!("{}/stage", ctx.build);
+   let stage = format!("{}/stage", ctx.build.display());
    if symlink_metadata(&stage).is_ok() {
       remove_dir_all(&stage)?;
    }
@@ -447,7 +447,7 @@ fn install_wheel(ctx: &Ctx, wheel: &str, scripts: bool) -> io::Result<()> {
    }
    let bin = format!("{stage}/bin");
    if scripts && Path::new(&bin).exists() {
-      let out_bin = format!("{}/bin", ctx.out);
+      let out_bin = format!("{}/bin", ctx.out.display());
       create_dir_all(&out_bin)?;
       for script in glob(&format!("{bin}/*"))? {
          let name = script.file_name().unwrap_or_default().to_owned();
@@ -473,7 +473,7 @@ fn install(ctx: &Ctx, options: &Options) -> io::Result<()> {
        os.path.join(os.path.dirname(os.path.realpath(__file__)), '../lib/{}/site-packages')){dev}",
       ctx.spec()?.name
    );
-   for script in glob(&format!("{}/bin/*", ctx.out))? {
+   for script in glob(&format!("{}/bin/*", ctx.out.display()))? {
       if symlink_metadata(&script)?.is_symlink() {
          continue;
       }

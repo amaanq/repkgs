@@ -68,7 +68,7 @@ pub fn site(ctx: &Ctx, script: &Path) -> io::Result<String> {
       String::new(),
    ]
    .join("\n");
-   let destination = format!("{}/mummer-config.site", ctx.build);
+   let destination = format!("{}/mummer-config.site", ctx.build.display());
    write_file(Path::new(&destination), site_text.as_bytes(), None)?;
    Ok(destination)
 }

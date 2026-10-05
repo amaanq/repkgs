@@ -94,7 +94,10 @@ impl System for Make {
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
       let options = ctx.options::<Options>(self.name())?;
       // PREFIX/prefix for hand-written Makefiles, configure'd ones ignore them.
-      let mut flags = vec![format!("PREFIX={}", ctx.out), format!("prefix={}", ctx.out)];
+      let mut flags = vec![
+         format!("PREFIX={}", ctx.out.display()),
+         format!("prefix={}", ctx.out.display()),
+      ];
       let platform = ctx.platform()?;
 
       if platform.cross {
@@ -111,7 +114,7 @@ impl System for Make {
             }
             let via_shell = sh_shebang(&script)?;
             let shell = var("CONFIG_SHELL").unwrap_or_default();
-            let prefix = format!("--prefix={}", ctx.out);
+            let prefix = format!("--prefix={}", ctx.out.display());
             let mut args = Vec::new();
             if via_shell {
                args.push(script.as_str());
@@ -173,7 +176,7 @@ fn with_programs(
    }
    install()?;
    for program in programs {
-      let plain = Path::new(&ctx.out).join("bin").join(program);
+      let plain = ctx.out.join("bin").join(program);
       if plain.exists() {
          rename(&plain, format!("{}{exe}", plain.display()))?;
       }

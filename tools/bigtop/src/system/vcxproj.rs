@@ -34,6 +34,7 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
+      utf8,
    },
    schema::{
       Condition,
@@ -177,7 +178,7 @@ impl System for Vcxproj {
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
-      Ok(PathBuf::from(&ctx.build))
+      Ok(ctx.build.clone())
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
@@ -187,7 +188,7 @@ impl System for Vcxproj {
          "build" => {
             run(
                "ninja",
-               &["-C", &ctx.build, &format!("-j{}", ctx.njobs)],
+               &["-C", utf8(&ctx.build)?, &format!("-j{}", ctx.njobs)],
                &[],
             )
          },
@@ -430,7 +431,7 @@ fn quoted_paths(paths: &[String]) -> String {
 }
 
 fn project(ctx: &Ctx, file: String, props: &BTreeMap<String, String>) -> io::Result<Project> {
-   let path = format!("{}/{file}", ctx.src);
+   let path = format!("{}/{file}", ctx.src.display());
    let dir = Path::new(&path).parent().unwrap_or_else(|| Path::new("."));
    let toolset = BTreeMap::from([(
       "Link".to_owned(),
@@ -461,7 +462,7 @@ fn project(ctx: &Ctx, file: String, props: &BTreeMap<String, String>) -> io::Res
       .filter(|target| !target.is_empty())
       .map_or_else(|| stem.as_ref(), String::as_str);
    let name = format!("{target}{ext}");
-   let object_dir = format!("{}/obj/{stem}", ctx.build);
+   let object_dir = format!("{}/obj/{stem}", ctx.build.display());
    let refs = evaluated
       .items
       .iter()
@@ -473,7 +474,7 @@ fn project(ctx: &Ctx, file: String, props: &BTreeMap<String, String>) -> io::Res
          )
       })
       .collect();
-   let default_outdir = format!("{}/out/", ctx.build);
+   let default_outdir = format!("{}/out/", ctx.build.display());
    let outdir = win_path(
       evaluated
          .props
@@ -697,7 +698,7 @@ fn projects(ctx: &Ctx, options: &Options) -> io::Result<Vec<Project>> {
          }
          continue;
       }
-      let path = format!("{}/{file}", ctx.src);
+      let path = format!("{}/{file}", ctx.src.display());
       let dir = Path::new(&path).parent().unwrap_or_else(|| Path::new("."));
       let evaluated = evaluate(Path::new(&path), &options.properties, BTreeMap::new())?;
       for expanded in evaluated.sub_projects("Build", dir)? {
@@ -742,22 +743,21 @@ fn configure(ctx: &Ctx, options: &Options) -> io::Result<()> {
       );
    }
    write_file(
-      &Path::new(&ctx.build).join("build.ninja"),
+      &ctx.build.join("build.ninja"),
       ninja_file(&projects)?.as_bytes(),
       None,
    )?;
    write_file(
-      &Path::new(&ctx.build).join("projects.json"),
+      &ctx.build.join("projects.json"),
       &serde_json::to_vec(&projects)?,
       None,
    )
 }
 
 fn install(ctx: &Ctx, options: &Options) -> io::Result<()> {
-   let projects: Vec<Project> =
-      serde_json::from_slice(&read(Path::new(&ctx.build).join("projects.json"))?)?;
+   let projects: Vec<Project> = serde_json::from_slice(&read(ctx.build.join("projects.json"))?)?;
    for project in projects {
-      let directory = Path::new(&ctx.out).join(
+      let directory = ctx.out.join(
          options
             .install
             .get(&project.kind)
@@ -771,7 +771,7 @@ fn install(ctx: &Ctx, options: &Options) -> io::Result<()> {
          copy(&project.output, directory.join(name))?;
       }
       if let Some(implib) = project.implib.filter(|path| Path::new(path).exists()) {
-         let lib = Path::new(&ctx.out).join("lib");
+         let lib = ctx.out.join("lib");
          create_dir_all(&lib)?;
          let name = Path::new(&implib)
             .file_name()

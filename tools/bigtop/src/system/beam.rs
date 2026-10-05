@@ -28,6 +28,7 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
+      utf8,
    },
    launchers::entries::write,
    probe,
@@ -180,9 +181,9 @@ fn install_escript(ctx: &Ctx, file: &str) -> io::Result<()> {
       .file_name()
       .map(|name| name.to_string_lossy().into_owned())
       .ok_or_else(|| io::Error::other(format!("escript {file} has no file name")))?;
-   let dir = format!("{}/lib/escript", ctx.out);
+   let dir = ctx.out.join("lib/escript");
    create_dir_all(&dir)?;
-   let placed = format!("{dir}/{name}");
+   let placed = format!("{}/{name}", dir.display());
    copy(file, &placed)?;
    let erlang = dep_root(ctx, "erlang", "escripts run under the target erlang")?;
    write(
@@ -250,8 +251,11 @@ fn env(tool: Tool, ctx: &Ctx, attrs: &Attrs) -> io::Result<Vec<(&'static str, St
    let own = match tool {
       Tool::Rebar3 => {
          vec![
-            ("HOME", ctx.build.clone()),
-            ("REBAR_CACHE_DIR", format!("{}/rebar3-cache", ctx.build)),
+            ("HOME", utf8(&ctx.build)?.to_owned()),
+            (
+               "REBAR_CACHE_DIR",
+               format!("{}/rebar3-cache", ctx.build.display()),
+            ),
             ("REBAR_OFFLINE", "1".to_owned()),
          ]
       },
@@ -259,7 +263,7 @@ fn env(tool: Tool, ctx: &Ctx, attrs: &Attrs) -> io::Result<Vec<(&'static str, St
          let rebar3 = on_path("rebar3");
          vec![
             ("MIX_ENV", "prod".to_owned()),
-            ("MIX_HOME", format!("{}/mix-home", ctx.build)),
+            ("MIX_HOME", format!("{}/mix-home", ctx.build.display())),
             (
                "MIX_ARCHIVES",
                format!("{}/lib/archives", tool_root(attrs, "hex")?),
@@ -273,7 +277,7 @@ fn env(tool: Tool, ctx: &Ctx, attrs: &Attrs) -> io::Result<Vec<(&'static str, St
                },
             ),
             ("MIX_OS_DEPS_COMPILE_PARTITION_COUNT", ctx.njobs.to_string()),
-            ("HEX_HOME", format!("{}/hex-home", ctx.build)),
+            ("HEX_HOME", format!("{}/hex-home", ctx.build.display())),
             ("HEX_OFFLINE", "1".to_owned()),
          ]
       },
@@ -388,12 +392,12 @@ fn mix_install(ctx: &Ctx, escripts: &[String]) -> io::Result<()> {
       return Ok(());
    }
    let name = ctx.spec()?.name;
-   let release = format!("{}/lib/{name}", ctx.out);
+   let release = format!("{}/lib/{name}", ctx.out.display());
    run("mix", &["release", "--overwrite", "--path", &release], &[])?;
-   let bin = format!("{}/bin", ctx.out);
+   let bin = ctx.out.join("bin");
    create_dir_all(&bin)?;
    for file in sorted_names(&format!("{release}/bin"))? {
-      symlink(format!("../lib/{name}/bin/{file}"), format!("{bin}/{file}"))?;
+      symlink(format!("../lib/{name}/bin/{file}"), bin.join(&file))?;
    }
    Ok(())
 }
