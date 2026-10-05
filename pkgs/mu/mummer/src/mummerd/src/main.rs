@@ -87,7 +87,7 @@ use signal_hook::{
 };
 
 use crate::{
-   remote::Remote,
+   remote::cache::Remote,
    server::{
       Connection,
       Daemon,
@@ -104,26 +104,32 @@ use crate::{
 #[pound(name = "mummerd")]
 struct Options {
    /// The Unix socket to listen on.
-   socket:       PathBuf,
+   socket:          PathBuf,
    /// Cache budget in GiB, zero means unlimited.
    #[pound(long, env = "MUMMERD_SIZE", default = "100")]
-   size:         u64,
+   size:            u64,
    /// A second, slower pack directory that takes what the budget pushes out.
    #[pound(long, env = "MUMMERD_COLD")]
-   cold:         Option<PathBuf>,
+   cold:            Option<PathBuf>,
    /// Budget of the cold directory in GiB, zero means unlimited.
    #[pound(long, env = "MUMMERD_COLD_SIZE", default = "0")]
-   cold_size:    u64,
+   cold_size:       u64,
    /// Concurrent compiler slots, default the number of CPUs.
    #[pound(long, env = "MUMMERD_SLOTS")]
-   slots:        Option<usize>,
-   /// A Bazel HTTP cache asked on a local miss, such as bazel-remote.
+   slots:           Option<usize>,
+   /// A REAPI cache asked on a local miss, `grpc://host:port/instance` or
+   /// `grpcs://` for TLS, such as `NativeLink`.
    #[pound(long, env = "MUMMERD_REMOTE")]
-   remote:       Option<String>,
-   /// A file holding `user:password` for the remote, which also makes this
-   /// machine write to it.
-   #[pound(long, env = "MUMMERD_REMOTE_TOKEN")]
-   remote_token: Option<PathBuf>,
+   remote:          Option<String>,
+   /// The CA a `grpcs://` remote's certificate must chain to, else the web's.
+   #[pound(long, env = "MUMMERD_REMOTE_CA")]
+   remote_ca:       Option<PathBuf>,
+   /// A PEM file with this machine's client certificate chain and key.
+   #[pound(long, env = "MUMMERD_REMOTE_IDENTITY")]
+   remote_identity: Option<PathBuf>,
+   /// Also write to the remote, which only a trusted builder should.
+   #[pound(long)]
+   remote_writes:   bool,
 }
 
 struct Socket {
@@ -242,18 +248,24 @@ fn main() -> Result<()> {
       .map_or_else(|| PathBuf::from("/nix/store"), PathBuf::from);
    let remote = options
       .remote
+      .as_deref()
       .filter(|url| !url.is_empty())
       .map(|url| {
          Remote::new(
-            &url,
+            url,
             options
-               .remote_token
+               .remote_ca
                .as_deref()
                .filter(|path| !path.as_os_str().is_empty()),
+            options
+               .remote_identity
+               .as_deref()
+               .filter(|path| !path.as_os_str().is_empty()),
+            options.remote_writes,
          )
       })
       .transpose()
-      .wrap_err("could not read the remote token")?;
+      .wrap_err("could not set up the remote cache")?;
    if let Some(ref tier) = remote {
       note(format_args!(
          "remote tier {}, {}",

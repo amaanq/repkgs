@@ -37,7 +37,7 @@ use tightrope::{
 
 use crate::{
    identity::Identities,
-   remote::Remote,
+   remote::cache::Remote,
    slots::Slots,
    store::{
       Store,
