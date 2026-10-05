@@ -5,6 +5,7 @@ use std::{
    },
    fs::read_to_string,
    io,
+   iter::Peekable,
 };
 
 use mummer::hash::OutputHash;
@@ -93,6 +94,36 @@ fn flow_pairs(text: &str) -> io::Result<Vec<(String, String)>> {
    Ok(pairs)
 }
 
+/// The six-space `key: value` lines of a block mapping pnpm writes for a
+/// resolution.
+fn block_pairs<'text>(
+   lines: &mut Peekable<impl Iterator<Item = &'text str>>,
+) -> io::Result<Vec<(String, String)>> {
+   let mut block = Vec::new();
+   while let Some(next) = lines.next_if(|next| indent(next) == 6) {
+      let (key, field) = next
+         .trim()
+         .split_once(':')
+         .ok_or_else(|| io::Error::other(format!("pnpmDeps: unexpected line {next}")))?;
+      block.push((key.to_owned(), unquote(field)));
+   }
+   Ok(block)
+}
+
+impl From<Vec<(String, String)>> for Resolution {
+   fn from(pairs: Vec<(String, String)>) -> Self {
+      let mut resolution = Self::default();
+      for (key, field) in pairs {
+         match key.as_str() {
+            "integrity" => resolution.integrity = Some(field),
+            "tarball" => resolution.tarball = Some(field),
+            _ => {},
+         }
+      }
+      resolution
+   }
+}
+
 fn indent(line: &str) -> usize {
    line.len() - line.trim_start_matches(' ').len()
 }
@@ -129,31 +160,12 @@ fn packages(text: &str) -> io::Result<BTreeMap<String, Resolution>> {
             && let Some(id) = current.as_deref()
             && let Some(value) = body.strip_prefix("resolution:")
          {
-            let mut resolution = Resolution::default();
             let pairs = if value.trim().is_empty() {
-               let mut block = Vec::new();
-               while let Some(next) = lines.peek().copied() {
-                  if indent(next) != 6 {
-                     break;
-                  }
-                  lines.next();
-                  let (key, field) = next.trim().split_once(':').ok_or_else(|| {
-                     io::Error::other(format!("pnpmDeps: unexpected line {next}"))
-                  })?;
-                  block.push((key.to_owned(), unquote(field)));
-               }
-               block
+               block_pairs(&mut lines)?
             } else {
                flow_pairs(value)?
             };
-            for (key, field) in pairs {
-               match key.as_str() {
-                  "integrity" => resolution.integrity = Some(field),
-                  "tarball" => resolution.tarball = Some(field),
-                  _ => {},
-               }
-            }
-            found.insert(id.to_owned(), resolution);
+            found.insert(id.to_owned(), Resolution::from(pairs));
          }
       }
    }
