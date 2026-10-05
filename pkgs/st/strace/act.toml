@@ -1,7 +1,8 @@
-tag   = "v{version}"
-track = "github:strace/strace"
-fetch = { asset = "strace-{version}.tar.xz" }
-with  = [ "autotools" ]
+tag     = "v{version}"
+track   = "github:strace/strace"
+fetch   = { asset = "strace-{version}.tar.xz" }
+with    = [ "autotools" ]
+patches = [ "source-date-epoch.patch" ]
 
 [test]
 version = "-V"

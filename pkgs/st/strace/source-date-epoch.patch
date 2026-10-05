@@ -1,0 +1,28 @@
+--- a/configure.ac
++++ b/configure.ac
+@@ -32,9 +32,9 @@
+ AM_MAINTAINER_MODE
+ AC_CANONICAL_HOST
+ 
+-RPM_CHANGELOGTIME="$(LC_TIME=C date -u '+%a %b %d %Y')"
++RPM_CHANGELOGTIME="$(LC_TIME=C date -u ${SOURCE_DATE_EPOCH:+-d @$SOURCE_DATE_EPOCH} '+%a %b %d %Y')"
+ AC_SUBST(RPM_CHANGELOGTIME)
+-DEB_CHANGELOGTIME="$(LC_TIME=C date -u -R)"
++DEB_CHANGELOGTIME="$(LC_TIME=C date -u -R ${SOURCE_DATE_EPOCH:+-d @$SOURCE_DATE_EPOCH})"
+ AC_SUBST(DEB_CHANGELOGTIME)
+ 
+ AC_PROG_CC
+--- a/configure
++++ b/configure
+@@ -3867,9 +3867,9 @@
+ 
+ 
+ 
+-RPM_CHANGELOGTIME="$(LC_TIME=C date -u '+%a %b %d %Y')"
++RPM_CHANGELOGTIME="$(LC_TIME=C date -u ${SOURCE_DATE_EPOCH:+-d @$SOURCE_DATE_EPOCH} '+%a %b %d %Y')"
+ 
+-DEB_CHANGELOGTIME="$(LC_TIME=C date -u -R)"
++DEB_CHANGELOGTIME="$(LC_TIME=C date -u -R ${SOURCE_DATE_EPOCH:+-d @$SOURCE_DATE_EPOCH})"
+ 
+ 
+ 
