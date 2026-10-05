@@ -685,7 +685,6 @@ impl Wrapper for Compile<'_> {
             OsStr::new(self.compiler),
             args,
             Slot::acquire(cache).ok().flatten(),
-            true,
             &[("MUMMER_ABSENT_LOG", written.absent_log.path().as_os_str())],
          )
       };
@@ -1030,7 +1029,7 @@ fn run_uncached(
 ) -> io::Result<RunResult> {
    let linking = invocation.links() || invocation.action == Action::Other;
    if invocation.query || !linking || format != BinaryFormat::Elf {
-      return run_slotted(OsStr::new(compiler), &invocation.args, slot_socket, false);
+      return run_slotted(OsStr::new(compiler), &invocation.args, slot_socket);
    }
    let scratch = Builder::new()
       .prefix(".mummer-")
@@ -1040,7 +1039,7 @@ fn run_uncached(
    let dependencies = link_depfile(&mut arguments, scratch.path());
    let (result, _linked) =
       settled_link(&invocation.output, &mut arguments, &dependencies, |args| {
-         run_slotted(OsStr::new(compiler), args, slot_socket, false)
+         run_slotted(OsStr::new(compiler), args, slot_socket)
       })?;
    Ok(result)
 }

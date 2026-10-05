@@ -364,7 +364,6 @@ impl Wrapper for Crate<'_> {
          OsStr::new(self.compiler),
          &command,
          Slot::acquire(cache).ok().flatten(),
-         true,
          unsettled
             .as_ref()
             .map(|directory| ("MUMMER_UNSETTLED_DIR", directory.path().as_os_str()))
@@ -437,7 +436,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
       Err(refused) => (Outcome::Uncacheable, refused.label),
    };
    let slot = (outcome != Outcome::Query).then_some(socket);
-   let result = run_slotted(OsStr::new(compiler), arguments, slot, false)?;
+   let result = run_slotted(OsStr::new(compiler), arguments, slot)?;
    uncached(Tool::Rustc, outcome, label, arguments, started);
    Ok(result.status)
 }
