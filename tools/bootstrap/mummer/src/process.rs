@@ -34,6 +34,7 @@ use std::{
       ExitStatus,
       Stdio,
    },
+   str::FromStr,
    time::Instant,
 };
 
@@ -85,7 +86,7 @@ pub fn diagnostic(message: Arguments<'_>) {
 }
 
 /// The wrapper an invocation log line is from.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
    Cc,
    Rustc,
@@ -94,16 +95,38 @@ pub enum Tool {
    Header,
 }
 
-impl Display for Tool {
+impl Tool {
+   const ALL: [Self; 5] = [Self::Cc, Self::Rustc, Self::Ghc, Self::Go, Self::Header];
+
+   #[must_use]
    #[inline]
-   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
-      f.write_str(match *self {
+   pub const fn name(self) -> &'static str {
+      match self {
          Self::Cc => "cc",
          Self::Rustc => "rustc",
          Self::Ghc => "ghc",
          Self::Go => "go",
          Self::Header => "header",
-      })
+      }
+   }
+}
+
+impl Display for Tool {
+   #[inline]
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+      f.write_str(self.name())
+   }
+}
+
+impl FromStr for Tool {
+   type Err = io::Error;
+
+   #[inline]
+   fn from_str(text: &str) -> io::Result<Self> {
+      Self::ALL
+         .into_iter()
+         .find(|tool| tool.name() == text)
+         .ok_or_else(|| io::Error::other(format!("unknown tool {text}")))
    }
 }
 
@@ -130,10 +153,32 @@ pub enum Outcome {
    Miss,
 }
 
-impl Display for Outcome {
+impl Outcome {
+   const ALL: [Self; 18] = [
+      Self::Query,
+      Self::Linked,
+      Self::Uncacheable,
+      Self::Unkeyed,
+      Self::NoDaemon,
+      Self::Cached,
+      Self::CachedError,
+      Self::Compiled,
+      Self::CompiledError,
+      Self::CompiledUnstored,
+      Self::Failed,
+      Self::UnsupportedCompiler,
+      Self::UnsupportedOptions,
+      Self::CompileHit,
+      Self::PreprocessFailed,
+      Self::Diagnostics,
+      Self::Hit,
+      Self::Miss,
+   ];
+
+   #[must_use]
    #[inline]
-   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
-      f.write_str(match *self {
+   pub const fn name(self) -> &'static str {
+      match self {
          Self::Query => "query",
          Self::Linked => "linked",
          Self::Uncacheable => "uncacheable",
@@ -152,8 +197,71 @@ impl Display for Outcome {
          Self::Diagnostics => "diagnostics",
          Self::Hit => "hit",
          Self::Miss => "miss",
-      })
+      }
    }
+
+   /// Answered from the cache, the compiler never ran.
+   #[must_use]
+   #[inline]
+   pub const fn is_cached(self) -> bool {
+      matches!(
+         self,
+         Self::Cached | Self::CachedError | Self::Hit | Self::CompileHit
+      )
+   }
+
+   /// The compiler ran because the cache had no answer.
+   #[must_use]
+   #[inline]
+   pub const fn is_compiled(self) -> bool {
+      matches!(
+         self,
+         Self::Compiled | Self::CompiledError | Self::CompiledUnstored
+      )
+   }
+}
+
+impl Display for Outcome {
+   #[inline]
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+      f.write_str(self.name())
+   }
+}
+
+impl FromStr for Outcome {
+   type Err = io::Error;
+
+   #[inline]
+   fn from_str(text: &str) -> io::Result<Self> {
+      Self::ALL
+         .into_iter()
+         .find(|outcome| outcome.name() == text)
+         .ok_or_else(|| io::Error::other(format!("unknown outcome {text}")))
+   }
+}
+
+/// One line of the invocation log `log` writes.
+pub struct Logged<'log> {
+   pub tool:    Tool,
+   pub outcome: Outcome,
+   pub subject: &'log str,
+}
+
+/// The invocations a log recorded, less queries and lines it cannot read.
+#[inline]
+pub fn logged(text: &str) -> impl Iterator<Item = Logged<'_>> {
+   text.lines().filter_map(|line| {
+      let mut fields = line.split('\t');
+      let tool = fields.next()?.parse().ok()?;
+      let outcome = fields.next()?.parse().ok()?;
+      (outcome != Outcome::Query).then(|| {
+         Logged {
+            tool,
+            outcome,
+            subject: fields.next().unwrap_or_default(),
+         }
+      })
+   })
 }
 
 #[inline]

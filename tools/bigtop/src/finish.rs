@@ -32,6 +32,11 @@ use mummer::{
       remove_if_exists,
    },
    fixup,
+   process::{
+      Logged,
+      Tool,
+      logged,
+   },
    store::normalize,
    tree::{
       note,
@@ -69,8 +74,6 @@ use crate::{
    prepare::succeed,
    system::syslibs,
 };
-
-const CACHED: [&str; 4] = ["cached", "cached-error", "hit", "compile-hit"];
 
 pub fn run(keep_tree: bool) -> io::Result<()> {
    let attrs = Attrs::load()?;
@@ -557,19 +560,16 @@ impl Probe<'_> {
    }
 }
 
-struct Run<'log> {
-   tool:    &'log str,
-   outcome: &'log str,
-   subject: &'log str,
-}
-
-struct Tally<'log> {
-   name:  &'log str,
+struct Tally<Name> {
+   name:  Name,
    count: usize,
 }
 
-fn tally<'log>(names: impl Iterator<Item = &'log str>) -> Vec<Tally<'log>> {
-   let mut tallies = Vec::<Tally<'log>>::new();
+fn tally<Name>(names: impl Iterator<Item = Name>) -> Vec<Tally<Name>>
+where
+   Name: PartialEq,
+{
+   let mut tallies = Vec::<Tally<Name>>::new();
    for name in names {
       match tallies.iter_mut().find(|tally| tally.name == name) {
          Some(tally) => tally.count += 1,
@@ -590,20 +590,7 @@ fn cache_summary() -> io::Result<()> {
       Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
       Err(error) => return Err(error),
    };
-   let mut runs = Vec::<Run<'_>>::new();
-   for line in text.lines() {
-      let mut fields = line.split('\t');
-      let (Some(tool), Some(outcome)) = (fields.next(), fields.next()) else {
-         continue;
-      };
-      if outcome != "query" {
-         runs.push(Run {
-            tool,
-            outcome,
-            subject: fields.next().unwrap_or_default(),
-         });
-      }
-   }
+   let runs = logged(&text).collect::<Vec<_>>();
    let tools = tally(runs.iter().map(|run| run.tool));
    let mut parts = Vec::new();
    for tool in &tools {
@@ -615,7 +602,7 @@ fn cache_summary() -> io::Result<()> {
       );
       let cached = outcomes
          .iter()
-         .filter(|outcome| CACHED.contains(&outcome.name))
+         .filter(|outcome| outcome.name.is_cached())
          .map(|outcome| outcome.count)
          .sum::<usize>();
       let mut part = format!(
@@ -624,12 +611,9 @@ fn cache_summary() -> io::Result<()> {
          tool.count,
          cached * 100 / tool.count.max(1)
       );
-      for outcome in outcomes
-         .iter()
-         .filter(|outcome| !CACHED.contains(&outcome.name))
-      {
+      for outcome in outcomes.iter().filter(|outcome| !outcome.name.is_cached()) {
          part.push(' ');
-         part.push_str(outcome.name);
+         part.push_str(outcome.name.name());
          part.push('=');
          part.push_str(&outcome.count.to_string());
       }
@@ -645,12 +629,10 @@ fn cache_summary() -> io::Result<()> {
    Ok(())
 }
 
-fn miss_notes(tool: &str, runs: &[Run<'_>]) {
+fn miss_notes(tool: Tool, runs: &[Logged<'_>]) {
    let reasons = runs
       .iter()
-      .filter(|run| {
-         run.tool == tool && run.outcome.starts_with("compiled") && run.subject.contains(' ')
-      })
+      .filter(|run| run.tool == tool && run.outcome.is_compiled() && run.subject.contains(' '))
       .filter_map(|run| run.subject.rsplit(' ').next())
       .collect::<Vec<&str>>();
    if reasons.is_empty() {
