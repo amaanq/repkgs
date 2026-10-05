@@ -860,7 +860,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
 
 /// The jobs the compiler driver would run for `args`, each as its tokens,
 /// or none when it refuses them, which leaves the call uncacheable.
-fn jobs(compiler: &str, args: &[String]) -> io::Result<Vec<Vec<String>>> {
+pub fn jobs(compiler: &str, args: &[String]) -> io::Result<Vec<Vec<String>>> {
    let printed = Command::new(compiler).arg("-###").args(args).output()?;
    if !printed.status.success() {
       return Ok(Vec::new());
@@ -1014,7 +1014,7 @@ fn run_uncached(
    Ok(result)
 }
 
-fn uncacheable_marker(arg: &str) -> bool {
+pub fn uncacheable_marker(arg: &str) -> bool {
    arg.starts_with('@')
       || arg.contains(",@")
       || [

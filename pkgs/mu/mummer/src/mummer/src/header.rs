@@ -37,7 +37,11 @@ use tempfile::NamedTempFile;
 use tightrope::client::Client;
 
 use crate::{
-   cc::cached_header,
+   cc::{
+      cached_header,
+      jobs,
+      uncacheable_marker,
+   },
    driver::{
       Driver,
       Language,
@@ -64,8 +68,13 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
    }
    let driver = Driver::load()?;
    let expanded = driver.arguments(Language::Cc, raw);
+   let compiles_conftest = matches!(
+      jobs(driver.compiler(Language::Cc), &expanded)?.as_slice(),
+      [job] if job.last().is_some_and(|input| input == "conftest.c")
+   );
    if !is_store_path(driver.compiler(Language::Cc))
-      || !supported_arguments(&expanded)
+      || !compiles_conftest
+      || expanded.iter().any(|arg| reads_unreported_file(arg))
       || [
          "CCC_OVERRIDE_OPTIONS",
          "CL",
@@ -205,90 +214,22 @@ fn normalize_source(source: &str, diagnostics: &str) -> Option<String> {
    Some(lines.join("\n"))
 }
 
-fn supported_arguments(args: &[String]) -> bool {
-   let mut arguments = args.iter();
-   while let Some(arg) = arguments.next() {
-      if matches!(
-         arg.as_str(),
-         "-I" | "-isystem" | "-iquote" | "-idirafter" | "-D" | "-U"
-      ) {
-         if arguments.next().is_none() {
-            return false;
-         }
-         continue;
-      }
-      if matches!(
-         arg.as_str(),
-         "conftest.c"
-            | "-c"
-            | "--start-no-unused-arguments"
-            | "--end-no-unused-arguments"
-            | "-O0"
-            | "-O1"
-            | "-O2"
-            | "-O3"
-            | "-Os"
-            | "-Oz"
-            | "-Og"
-            | "-Ofast"
-            | "-g"
-            | "-g0"
-            | "-g1"
-            | "-g2"
-            | "-g3"
-            | "-ggdb"
-            | "-gline-tables-only"
-            | "-fPIC"
-            | "-fPIE"
-            | "-fpic"
-            | "-fpie"
-            | "-fno-omit-frame-pointer"
-            | "-mno-omit-leaf-frame-pointer"
-            | "-fstack-protector"
-            | "-fstack-protector-strong"
-            | "-fstack-protector-all"
-            | "-fno-stack-protector"
-            | "-fno-builtin"
-            | "-fno-plt"
-            | "-fstack-clash-protection"
-            | "-fstrict-flex-arrays=1"
-            | "-fwrapv"
-            | "-ftrivial-auto-var-init=zero"
-            | "-fzero-call-used-regs=used-gpr"
-            | "-mbranch-protection=standard"
-            | "-pthread"
-      ) || [
-         "-D",
-         "-U",
-         "-I",
-         "-isystem",
-         "-iquote",
-         "-idirafter",
-         "-std=",
-         "--target=",
-         "--sysroot=",
-         "-resource-dir=",
-         "-march=",
-         "-mcpu=",
-         "-mtune=",
-         "-B",
-         "-ffile-prefix-map=",
-         "-fdebug-prefix-map=",
-         "-fmacro-prefix-map=",
-         "-fcf-protection=",
-         "-fvisibility=",
-         "-rtlib=",
-         "-unwindlib=",
-         "-fuse-ld=",
-         "--ld-path=",
+/// An option that makes the compiler read a file its preprocessor does not
+/// report, which the probe key could not cover.
+fn reads_unreported_file(arg: &str) -> bool {
+   uncacheable_marker(arg)
+      || [
+         "-fplugin",
+         "-fpass-plugin",
+         "-fsanitize-ignorelist=",
+         "-fsanitize-blacklist=",
+         "-fxray-",
+         "-fmodule-file",
+         "-fprebuilt-module-path",
+         "-include-pch",
+         "-Xclang",
+         "-mllvm",
       ]
       .iter()
       .any(|prefix| arg.starts_with(prefix))
-         || (arg.starts_with("-W") && !arg.contains(','))
-      {
-         continue;
-      }
-      return false;
-   }
-   true
 }
