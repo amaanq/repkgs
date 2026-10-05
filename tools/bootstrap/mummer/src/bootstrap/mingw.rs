@@ -5,20 +5,27 @@ use std::{
    },
    io,
    path::Path,
+   process::Command,
 };
+
+use mummer::attrs::load;
 
 use crate::bootstrap::{
    dispatch::Recipe,
    stage::{
+      LibcAttrs,
       Stage,
-      TargetProfile,
       cc_facts,
-      cores,
-      run,
-      run_in_env,
+      configure,
+      execute,
+      make_parallel,
+      make_target,
       say,
       tool,
-      wanted,
+   },
+   target::{
+      Cpu,
+      Profile,
    },
 };
 
@@ -43,33 +50,31 @@ impl Mingw {
       args: &[&str],
       vars: &[(&str, &str)],
    ) -> io::Result<()> {
-      let build = Path::new(&stage.build_top).join(format!("build-{}", sub.replace('/', "-")));
+      let build = stage
+         .build_top
+         .join(format!("build-{}", sub.replace('/', "-")));
       create_dir_all(&build)?;
-      let sh = tool("sh")?.to_string_lossy().into_owned();
-      let mut env = Vec::from(BINUTILS);
-      env.push(("CONFIG_SHELL", &sh));
-      env.extend_from_slice(vars);
-      let configure_script = src
-         .join(sub)
-         .join("configure")
-         .to_string_lossy()
-         .into_owned();
-      let prefix_arg = format!("--prefix={}", stage.out());
-      let host_arg = format!("--host={}", stage.clang_target);
-      let build_arg = format!("--build={}", stage.build_triple);
-      let mut configure = vec![
-         configure_script.as_str(),
-         &prefix_arg,
-         &host_arg,
-         &build_arg,
-         "--disable-dependency-tracking",
-      ];
-      configure.extend_from_slice(args);
-      run_in_env(Some(&build), "sh", &configure, &env)?;
-      let jobs = cores().to_string();
-      let shell_arg = format!("SHELL={sh}");
-      run_in_env(Some(&build), "make", &["-j", &jobs, &shell_arg], &env)?;
-      run_in_env(Some(&build), "make", &["install", &shell_arg], &env)
+      let shell = tool("sh")?.display().to_string();
+      let environment = || {
+         BINUTILS
+            .iter()
+            .copied()
+            .chain([("CONFIG_SHELL", shell.as_str())])
+            .chain(vars.iter().copied())
+      };
+      execute(
+         configure(
+            &build,
+            &src.join(sub).join("configure"),
+            stage.out.display(),
+         )
+         .args(stage.host_build())
+         .arg("--disable-dependency-tracking")
+         .args(args)
+         .envs(environment()),
+      )?;
+      execute(make_parallel(&build)?.envs(environment()))?;
+      execute(make_target(&build, "install")?.envs(environment()))
    }
 }
 
@@ -79,7 +84,8 @@ impl Recipe for Mingw {
    }
 
    fn run(&self, stage: &Stage) -> io::Result<()> {
-      let out = stage.out();
+      let attrs = load::<LibcAttrs>()?;
+      let out = &stage.out;
       let src = stage.unpack("mingw-w64", &[])?;
       Self::configure_make(
          stage,
@@ -93,45 +99,49 @@ impl Recipe for Mingw {
          &[],
       )?;
       cc_facts(out, &[("include-dirs", &["include"])])?;
-      if stage.headers_only() {
+      if attrs.headers_only() {
          return Ok(());
       }
 
-      let rt = wanted(stage.compiler_rt.as_deref(), "compiler-rt")?;
-      let cc = format!(
-         "clang {} -resource-dir={rt} -isystem {out}/include --start-no-unused-arguments \
-          -rtlib=compiler-rt -unwindlib=none -fuse-ld=lld -L{out}/lib --end-no-unused-arguments",
-         stage.target().join(" "),
+      let cc = stage.raw_cc(
+         attrs.required_compiler_rt()?,
+         &[
+            "-isystem".to_owned(),
+            out.join("include").display().to_string(),
+         ],
+         &[format!("-L{}/lib", out.display())],
       );
-      let mut crt_args = if stage.cpu == "aarch64" {
+      let mut crt_args = if stage.cpu == Cpu::Aarch64 {
          vec!["--disable-lib32", "--disable-lib64", "--enable-libarm64"]
       } else {
          vec!["--disable-lib32", "--enable-lib64"]
       };
       crt_args.extend(["--with-default-msvcrt=ucrt", "--enable-cfguard"]);
-      let includes = format!("-I{out}/include");
+      let includes = format!("-I{}/include", out.display());
       Self::configure_make(stage, &src, "mingw-w64-crt", &crt_args, &[
          ("CC", &cc),
          ("CCAS", &cc),
          ("CPPFLAGS", &includes),
       ])?;
       for lib in ["ssp", "ssp_nonshared"] {
-         run("llvm-ar", &["rcs", &format!("{out}/lib/lib{lib}.a")])?;
+         execute(
+            Command::new("llvm-ar")
+               .arg("rcs")
+               .arg(out.join(format!("lib/lib{lib}.a"))),
+         )?;
       }
-      let TargetProfile::Mingw(machine) = stage.profile()? else {
+      let Profile::Mingw(machine) = stage.profile else {
          return Err(io::Error::other("combase requires a mingw target"));
       };
+      execute(
+         Command::new("llvm-dlltool")
+            .args(["-m", machine.dlltool(), "-d"])
+            .arg(src.join("mingw-w64-crt/libarm32/combase.def"))
+            .arg("-l")
+            .arg(out.join("lib/libcombase.a")),
+      )?;
 
-      run("llvm-dlltool", &[
-         "-m",
-         machine.dlltool(),
-         "-d",
-         &format!("{}/mingw-w64-crt/libarm32/combase.def", src.display()),
-         "-l",
-         &format!("{out}/lib/libcombase.a"),
-      ])?;
-
-      let ldflags = format!("-L{out}/lib");
+      let ldflags = format!("-L{}/lib", out.display());
       Self::configure_make(
          stage,
          &src,
@@ -144,7 +154,7 @@ impl Recipe for Mingw {
             ("LDFLAGS", &ldflags),
          ],
       )?;
-      let count = read_dir(format!("{out}/lib"))?
+      let count = read_dir(out.join("lib"))?
          .try_fold(0_usize, |count, entry| entry.map(|_entry| count + 1))?;
       say(&format!("mingw-w64: {count} files in lib/"));
       Ok(())

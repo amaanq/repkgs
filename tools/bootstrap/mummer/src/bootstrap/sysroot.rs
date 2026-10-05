@@ -7,20 +7,30 @@ use std::{
    },
    io,
    os::unix::fs::symlink,
-   path::Path,
+   path::PathBuf,
+   process::Command,
 };
 
-use mummer::files::write_file;
+use mummer::{
+   attrs::load,
+   files::write_file,
+};
+use serde::Deserialize;
 
 use crate::bootstrap::{
    dispatch::Recipe,
    stage::{
       Stage,
+      execute,
       files,
-      run,
-      wanted,
    },
 };
+
+#[derive(Deserialize)]
+struct Attrs {
+   resource: PathBuf,
+   parts:    Vec<PathBuf>,
+}
 
 pub struct Sysroot;
 
@@ -33,28 +43,43 @@ impl Recipe for Sysroot {
    /// both ship include/scsi. MacOSX.sdk brings a real usr/, ELF sysroots
    /// alias it.
    fn run(&self, stage: &Stage) -> io::Result<()> {
-      let out = stage.out();
-      let resource = wanted(stage.resource.as_deref(), "resource")?;
-      create_dir_all(format!("{out}/include"))?;
-      create_dir_all(format!("{out}/lib"))?;
-      for part in &stage.parts {
-         run("cp", &["-rsf", &format!("{part}/."), &format!("{out}/")])?;
+      let attrs = load::<Attrs>()?;
+      let out = &stage.out;
+      create_dir_all(out.join("include"))?;
+      create_dir_all(out.join("lib"))?;
+      for part in &attrs.parts {
+         execute(
+            Command::new("cp")
+               .arg("-rsf")
+               .arg(format!("{}/.", part.display()))
+               .arg(format!("{}/", out.display())),
+         )?;
       }
-      run("cp", &["-rs", resource, &format!("{out}/lib/clang")])?;
-      if !Path::new(&format!("{out}/usr")).exists() {
-         symlink(".", format!("{out}/usr"))?;
+      execute(
+         Command::new("cp")
+            .arg("-rs")
+            .arg(&attrs.resource)
+            .arg(out.join("lib/clang")),
+      )?;
+      if !out.join("usr").exists() {
+         symlink(".", out.join("usr"))?;
       }
-      symlink("lib", format!("{out}/lib64"))?;
-      for object in files(&format!("{out}/lib/*crt*.o"))? {
+      symlink("lib", out.join("lib64"))?;
+      for object in files(&format!("{}/lib/*crt*.o", out.display()))? {
          if object.is_symlink() {
             let target = canonicalize(&object)?;
             remove_file(&object)?;
             copy(target, &object)?;
          }
       }
+      let parts = attrs
+         .parts
+         .iter()
+         .map(|part| part.to_string_lossy())
+         .collect::<Vec<_>>();
       write_file(
-         Path::new(&format!("{out}/roots")),
-         format!("{} {resource}\n", stage.parts.join(" ")).as_bytes(),
+         &out.join("roots"),
+         format!("{} {}\n", parts.join(" "), attrs.resource.display()).as_bytes(),
          None,
       )
    }

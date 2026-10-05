@@ -1,21 +1,20 @@
 use std::{
    collections::BTreeMap,
-   env::{
-      set_var,
-      var,
-   },
+   env::set_var,
+   ffi::OsStr,
    fs::read_to_string,
    io::{
       self,
       Write as _,
    },
-   path::{
-      Path,
-      PathBuf,
-   },
+   path::Path,
+   process::Command,
 };
 
-use mummer::store::STORE_DIR;
+use mummer::{
+   attrs::load,
+   store::STORE_DIR,
+};
 use serde_json::Value;
 
 use crate::bootstrap::{
@@ -34,7 +33,7 @@ use crate::bootstrap::{
    runtimes::Runtimes,
    stage::{
       Stage,
-      run,
+      execute,
    },
    sysroot::Sysroot,
    vcruntime::Vcruntime,
@@ -93,10 +92,7 @@ fn text_of(value: &Value) -> Option<String> {
 /// space-joined, and the compile cache's roots, every store path handed to
 /// the stage plus what its sysroot links to.
 fn export(stage: &Stage) -> io::Result<()> {
-   let path = var("NIX_ATTRS_JSON_FILE")
-      .map_err(|_unset| io::Error::other("NIX_ATTRS_JSON_FILE is not set"))?;
-   let attrs: BTreeMap<String, Value> = serde_json::from_str(&read_to_string(path)?)?;
-   let store = var("NIX_STORE").unwrap_or_else(|_unset| STORE_DIR.to_owned());
+   let attrs = load::<BTreeMap<String, Value>>()?;
    let mut roots = Vec::new();
    for (key, value) in &attrs {
       if matches!(key.as_str(), "outputs" | "args" | "builder") {
@@ -105,23 +101,25 @@ fn export(stage: &Stage) -> io::Result<()> {
       let Some(text) = text_of(value) else {
          continue;
       };
-      if matches!(*value, Value::String(_)) && text.contains(&format!("{store}/")) {
+      if matches!(*value, Value::String(_)) && text.contains(&format!("{STORE_DIR}/")) {
          roots.push(text.clone());
       }
       export_var(key, &text);
    }
-   if let Some(sysroot) = stage.sysroot.as_deref()
-      && let Ok(linked) = read_to_string(format!("{sysroot}/roots"))
-   {
-      roots.push(linked);
+   if let Some(sysroot) = stage.sysroot.as_deref() {
+      match read_to_string(sysroot.join("roots")) {
+         Ok(linked) => roots.push(linked),
+         Err(error) if error.kind() == io::ErrorKind::NotFound => {},
+         Err(error) => return Err(error),
+      }
    }
-   export_var("out", stage.out());
-   export_var("MUMMER_LOG", &format!("{}/mummer.log", stage.build_top));
-   export_var("MUMMER_STORE_ROOTS", &roots.join(" "));
+   export_var("out", &stage.out);
+   export_var("MUMMER_LOG", stage.build_top.join("mummer.log"));
+   export_var("MUMMER_STORE_ROOTS", roots.join(" "));
    Ok(())
 }
 
-fn export_var(key: &str, value: &str) {
+fn export_var(key: &str, value: impl AsRef<OsStr>) {
    // SAFETY: export runs before the recipe spawns any thread
    unsafe { set_var(key, value) }
 }
@@ -157,6 +155,6 @@ pub fn mode(name: &str) -> io::Result<()> {
    let stage = Stage::load()?;
    export(&stage)?;
    recipe(name)?.run(&stage)?;
-   summary(&PathBuf::from(&stage.build_top).join("mummer.log"));
-   run("chmod", &["-R", "go-w", stage.out()])
+   summary(&stage.build_top.join("mummer.log"));
+   execute(Command::new("chmod").args(["-R", "go-w"]).arg(&stage.out))
 }

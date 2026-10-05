@@ -4,7 +4,7 @@ use std::{
       remove_dir_all,
    },
    io,
-   path::PathBuf,
+   process::Command,
 };
 
 use crate::bootstrap::{
@@ -13,10 +13,10 @@ use crate::bootstrap::{
       Stage,
       cores,
       dirs,
-      run_in,
-      run_in_env,
+      execute,
+      make_parallel,
+      make_target,
       tool,
-      wanted,
    },
 };
 
@@ -29,44 +29,41 @@ impl Recipe for Cmake {
 
    fn run(&self, stage: &Stage) -> io::Result<()> {
       let source = stage.unpack("cmake", &[])?;
-      let build = PathBuf::from(&stage.build_top).join("build");
+      let build = stage.build_top.join("build");
       create_dir_all(&build)?;
-      let shell = tool("sh")?.to_string_lossy().into_owned();
-      let make = tool("make")?.to_string_lossy().into_owned();
-      let jobs = cores().to_string();
-      let sysroot = wanted(stage.sysroot.as_deref(), "sysroot")?;
-      run_in_env(
-         Some(&build),
-         &shell,
-         &[
-            &source.join("bootstrap").to_string_lossy(),
-            &format!("--prefix={}", stage.out()),
-            &format!("--parallel={jobs}"),
-            "--no-system-libs",
-            "--no-qt-gui",
-            "--",
-            "-DCMAKE_USE_OPENSSL=OFF",
-            "-DBUILD_TESTING=OFF",
-            "-DBUILD_CursesDialog=OFF",
-            "-DCMake_BUILD_LTO=OFF",
-            &format!("-DCMAKE_SYSTEM_PREFIX_PATH={sysroot}"),
-         ],
-         &[
-            ("CC", "cc"),
-            ("CXX", "c++"),
-            ("MAKE", &make),
-            ("CONFIG_SHELL", &shell),
-         ],
+      let shell = tool("sh")?;
+      execute(
+         Command::new(&shell)
+            .arg(source.join("bootstrap"))
+            .arg(format!("--prefix={}", stage.out.display()))
+            .arg(format!("--parallel={}", cores()))
+            .args([
+               "--no-system-libs",
+               "--no-qt-gui",
+               "--",
+               "-DCMAKE_USE_OPENSSL=OFF",
+               "-DBUILD_TESTING=OFF",
+               "-DBUILD_CursesDialog=OFF",
+               "-DCMake_BUILD_LTO=OFF",
+            ])
+            .arg(format!(
+               "-DCMAKE_SYSTEM_PREFIX_PATH={}",
+               stage.sysroot()?.display()
+            ))
+            .env("CC", "cc")
+            .env("CXX", "c++")
+            .env("MAKE", tool("make")?)
+            .env("CONFIG_SHELL", &shell)
+            .current_dir(&build),
       )?;
-
-      let shell_arg = format!("SHELL={shell}");
-      run_in(&build, "make", &["-j", &jobs, &shell_arg])?;
-      run_in(&build, "make", &["install/fast", &shell_arg])?;
-
-      for path in dirs(&format!("{}/{{doc,share/cmake-*/Help}}", stage.out()))? {
+      execute(&mut make_parallel(&build)?)?;
+      execute(&mut make_target(&build, "install/fast")?)?;
+      for path in dirs(&format!(
+         "{}/{{doc,share/cmake-*/Help}}",
+         stage.out.display()
+      ))? {
          remove_dir_all(path)?;
       }
-
       Ok(())
    }
 }

@@ -5,7 +5,6 @@ use std::{
       rename,
    },
    io,
-   path::Path,
    process::{
       Command,
       Stdio,
@@ -20,7 +19,7 @@ use crate::bootstrap::{
       Stage,
       cc_facts,
       dirs,
-      run_in,
+      execute,
       say,
    },
 };
@@ -57,15 +56,19 @@ impl Recipe for AppleSdk {
    }
 
    fn run(&self, stage: &Stage) -> io::Result<()> {
-      let src = stage.src()?;
-      let tmp = format!("{}/x", stage.build_top);
+      let tmp = stage.build_top.join("x");
       create_dir_all(&tmp)?;
-      let tmp_path = Path::new(&tmp);
-      run_in(tmp_path, "bsdtar", &["-xf", src, "Payload"])?;
-      write_file(&tmp_path.join("pbzx.py"), PBZX.as_bytes(), None)?;
+      execute(
+         Command::new("bsdtar")
+            .arg("-xf")
+            .arg(stage.src()?)
+            .arg("Payload")
+            .current_dir(&tmp),
+      )?;
+      write_file(&tmp.join("pbzx.py"), PBZX.as_bytes(), None)?;
       let mut python = Command::new("python3")
          .args(["pbzx.py", "Payload"])
-         .current_dir(tmp_path)
+         .current_dir(&tmp)
          .stdout(Stdio::piped())
          .spawn()?;
       let stdout = python
@@ -74,14 +77,15 @@ impl Recipe for AppleSdk {
          .ok_or_else(|| io::Error::other("python3 has no stdout"))?;
       let tar = Command::new("bsdtar")
          .args(["-xf", "-", "*/SDKs/MacOSX*.*.sdk/*"])
-         .current_dir(tmp_path)
+         .current_dir(&tmp)
          .stdin(stdout)
          .status()?;
       if !python.wait()?.success() || !tar.success() {
          return Err(io::Error::other("unpacking the SDK payload failed"));
       }
       let sdk = dirs(&format!(
-         "{tmp}/Library/Developer/CommandLineTools/SDKs/MacOSX*.*.sdk"
+         "{}/Library/Developer/CommandLineTools/SDKs/MacOSX*.*.sdk",
+         tmp.display()
       ))?
       .into_iter()
       .next()
@@ -89,7 +93,7 @@ impl Recipe for AppleSdk {
       say(&format!(
          "{} -> {}",
          sdk.file_name().unwrap_or_default().to_string_lossy(),
-         stage.out()
+         stage.out.display()
       ));
       for junk in ["usr/share", "usr/bin", "System/Library/Perl"] {
          let path = sdk.join(junk);
@@ -97,8 +101,8 @@ impl Recipe for AppleSdk {
             remove_dir_all(path)?;
          }
       }
-      rename(&sdk, stage.out())?;
-      cc_facts(stage.out(), &[
+      rename(&sdk, &stage.out)?;
+      cc_facts(&stage.out, &[
          ("include-dirs", &["usr/include"]),
          ("flags", &FLAGS),
          ("cxxflags", &[]),

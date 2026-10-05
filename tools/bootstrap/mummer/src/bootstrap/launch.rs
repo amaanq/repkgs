@@ -4,17 +4,30 @@ use std::{
       metadata,
    },
    io,
+   path::PathBuf,
+   process::Command,
 };
+
+use mummer::attrs::load;
+use serde::Deserialize;
 
 use crate::bootstrap::{
    dispatch::Recipe,
    stage::{
       Stage,
-      run,
+      execute,
       say,
-      wanted,
+   },
+   target::{
+      Cpu,
+      Os,
    },
 };
+
+#[derive(Deserialize)]
+struct Attrs {
+   launch: PathBuf,
+}
 
 pub struct Launch;
 
@@ -25,21 +38,24 @@ impl Recipe for Launch {
 
    /// static linkage leaves no interpreter or RUNPATH of its own to relocate.
    fn run(&self, stage: &Stage) -> io::Result<()> {
-      let source = wanted(stage.launch.as_deref(), "launch")?;
-      let bin = format!("{}/bin", stage.out());
+      let attrs = load::<Attrs>()?;
+      let bin = stage.out.join("bin");
       create_dir_all(&bin)?;
-      let windows = stage.os == "windows";
-      let linkage = if windows || stage.cpu == "powerpc64le" {
+      let linkage = if stage.os == Os::Windows || stage.cpu == Cpu::Powerpc64le {
          "-static"
       } else {
          "-static-pie"
       };
-      let suffix = if windows { ".exe" } else { "" };
-      let exe = format!("{bin}/launch{suffix}");
-      run("cc", &[
-         "-std=c17", "-O2", "-Wall", "-Wextra", "-Werror", linkage, "-o", &exe, source,
-      ])?;
-      run("llvm-strip", &["--strip-all", &exe])?;
+      let exe = bin.join(format!("launch{}", stage.profile.exe()));
+      execute(
+         Command::new("cc")
+            .args([
+               "-std=c17", "-O2", "-Wall", "-Wextra", "-Werror", linkage, "-o",
+            ])
+            .arg(&exe)
+            .arg(&attrs.launch),
+      )?;
+      execute(Command::new("llvm-strip").arg("--strip-all").arg(&exe))?;
       say(&format!("launch: {}", metadata(&exe)?.len()));
       Ok(())
    }
