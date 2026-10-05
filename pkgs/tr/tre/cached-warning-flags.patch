@@ -1,0 +1,23 @@
+--- a/configure
++++ b/configure
+@@ -5566,9 +5566,7 @@
+         fi
+         rm -f conftest.*
+       fi
+-      if test -n "$vl_cv_prog_cc_warnings"; then
+-        CFLAGS="$CFLAGS $vl_cv_prog_cc_warnings"
+-      else
++      if test -z "$vl_cv_prog_cc_warnings"; then
+         vl_cv_prog_cc_warnings="unknown"
+       fi
+      ;;
+@@ -5576,6 +5574,9 @@
+ fi
+ { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $vl_cv_prog_cc_warnings" >&5
+ printf "%s\n" "$vl_cv_prog_cc_warnings" >&6; }
++    if test "$vl_cv_prog_cc_warnings" != "unknown"; then
++      CFLAGS="$CFLAGS $vl_cv_prog_cc_warnings"
++    fi
+   fi
+ 
+ fi
