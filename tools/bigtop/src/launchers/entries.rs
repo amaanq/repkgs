@@ -240,20 +240,11 @@ fn target<'env>(
    path: &Path,
    name: &str,
 ) -> io::Result<Option<Target<'env>>> {
-   let mut head = [0_u8; 256];
-   let mut file = File::open(path)?;
-   let mut filled = 0;
-   while filled < head.len() {
-      let count = file.read(&mut head[filled..])?;
-      if count == 0 {
-         break;
-      }
-      filled += count;
-   }
-   drop(file);
+   let mut head = Vec::with_capacity(256);
+   File::open(path)?.take(256).read_to_end(&mut head)?;
    let real = format!("{{root}}/bin/.{name}");
    if head.starts_with(b"#!") {
-      let Some(interpreter) = script_interpreter(context, path, name, &head[..filled])? else {
+      let Some(interpreter) = script_interpreter(context, path, name, &head)? else {
          return Ok(None);
       };
       let script = if symlink_metadata(path)?.is_symlink() {
