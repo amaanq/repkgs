@@ -79,18 +79,19 @@ enum Action {
 }
 
 struct Invocation {
-   args:      Vec<String>,
-   key_args:  Vec<String>,
-   source:    String,
-   target:    String,
-   inputs:    Vec<String>,
-   output:    PathBuf,
-   depfile:   Option<PathBuf>,
-   linkfile:  Option<PathBuf>,
-   action:    Action,
-   query:     bool,
-   cacheable: bool,
-   stdout:    bool,
+   args:         Vec<String>,
+   key_args:     Vec<String>,
+   source:       String,
+   target:       String,
+   inputs:       Vec<String>,
+   output:       PathBuf,
+   depfile:      Option<PathBuf>,
+   linkfile:     Option<PathBuf>,
+   action:       Action,
+   query:        bool,
+   cacheable:    bool,
+   stdout:       bool,
+   preprocessed: Option<String>,
 }
 
 impl Invocation {
@@ -112,6 +113,7 @@ impl Invocation {
          query: false,
          cacheable: true,
          stdout: false,
+         preprocessed: None,
       };
       let mut sources = 0_i32;
       let mut header = false;
@@ -177,7 +179,9 @@ impl Invocation {
                   wants_deps = true;
                } else if !arg.starts_with('-')
                   && [
-                     ".c", ".cc", ".cpp", ".cxx", ".c++", ".C", ".S", ".s", ".sx", ".m",
+                     ".c", ".cc", ".cpp", ".cxx", ".c++", ".C", ".S", ".s", ".sx", ".m", ".f",
+                     ".F", ".f77", ".for", ".FOR", ".f90", ".F90", ".f95", ".F95", ".f03", ".F03",
+                     ".f08", ".F08",
                   ]
                   .iter()
                   .any(|suffix| arg.ends_with(suffix))
@@ -374,6 +378,20 @@ impl Invocation {
       matches!(self.action, Action::Link | Action::LinkSource)
    }
 
+   /// Keeps a Fortran compile cacheable only with its prescanned source.
+   fn prescan(&mut self, language: Language, compiler: &str) -> io::Result<()> {
+      if language != Language::Fortran {
+         return Ok(());
+      }
+      self.preprocessed = if self.cacheable && self.action == Action::Compile {
+         prescanned(compiler, &self.args)?
+      } else {
+         None
+      };
+      self.cacheable &= self.preprocessed.is_some();
+      Ok(())
+   }
+
    fn key_injected(&mut self, user: &[String]) {
       for arg in &self.args {
          if !user.contains(arg) {
@@ -526,6 +544,12 @@ impl Invocation {
             _ => store.key(&job),
          });
       }
+      if let Some(ref text) = self.preprocessed {
+         field(&mut hasher, "prescanned");
+         let mut bytes = store.mask_for_replay(text).into_bytes();
+         store.mask_output(&mut bytes, false);
+         field(&mut hasher, bytes);
+      }
       if self.action != Action::Link {
          field(&mut hasher, "source");
          field(&mut hasher, mask_random_names(&self.source));
@@ -586,11 +610,11 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    }
 
    let mut invocation = Invocation::parse(user.clone());
-   if (invocation.links() && driver.format() != BinaryFormat::Elf) || language == Language::Fortran
-   {
+   if invocation.links() && driver.format() != BinaryFormat::Elf {
       invocation.cacheable = false;
    }
    invocation.args = driver.arguments(language, &invocation.args);
+   invocation.prescan(language, compiler)?;
    let mut store = Store::new();
    let mut manifest_store = invocation.manifest_store();
    store.learn_random(&invocation.args);
@@ -711,8 +735,9 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    let plain_assembly = Path::new(&invocation.source)
       .extension()
       .is_some_and(|extension| extension == "s");
+   let self_contained = plain_assembly || invocation.preprocessed.is_some();
 
-   if own_depfile && !plain_assembly {
+   if own_depfile && !self_contained {
       arguments.extend([
          "-MD".to_owned(),
          "-MF".to_owned(),
@@ -757,7 +782,7 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    let stored = (|| -> io::Result<bool> {
       let dependencies = if invocation.action == Action::Link {
          String::new()
-      } else if own_depfile && plain_assembly {
+      } else if own_depfile && self_contained {
          format!("o: {}", invocation.source)
       } else {
          read_to_string(dependency_path)?
@@ -850,6 +875,48 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    };
    log("cc", outcome, &explained, started);
    Ok(result.status)
+}
+
+/// The source as flang prescans it with every INCLUDE inlined, or None when
+/// that fails or a statement uses or defines a module, whose `.mod` files
+/// the key cannot see.
+fn prescanned(compiler: &str, args: &[String]) -> io::Result<Option<String>> {
+   let mut arguments = Vec::with_capacity(args.len() + 3);
+   let mut words = args.iter();
+   while let Some(arg) = words.next() {
+      match arg.as_str() {
+         "-c" => {},
+         "-o" => {
+            words.next();
+         },
+         _ => arguments.push(arg.as_str()),
+      }
+   }
+   arguments.extend(["-E", "-Xflang", "-fpreprocess-include-lines"]);
+   let output = Command::new(compiler).args(&arguments).output()?;
+   if !output.status.success() {
+      return Ok(None);
+   }
+   let text = String::from_utf8_lossy(&output.stdout).into_owned();
+   // fixed form ignores blanks, so "U S E M" is a USE statement too
+   let modular = text
+      .lines()
+      .filter(|line| !line.starts_with('#'))
+      .flat_map(|line| line.split(';'))
+      .map(|statement| {
+         statement
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase()
+      })
+      .any(|statement| {
+         let body = statement.trim_start_matches(|character: char| character.is_ascii_digit());
+         ["use", "module", "submodule"]
+            .iter()
+            .any(|keyword| body.starts_with(keyword))
+      });
+   Ok((!modular).then_some(text))
 }
 
 fn run_uncached(
