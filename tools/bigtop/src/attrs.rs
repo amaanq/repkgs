@@ -33,7 +33,10 @@ use serde_json::{
 };
 
 use crate::{
-   exports::Exports,
+   exports::{
+      Exported,
+      Exports,
+   },
    hardening::{
       Choice,
       Hardening,
@@ -123,7 +126,7 @@ pub struct Spec {
    pub version:  String,
    pub debug:    bool,
    #[serde(default)]
-   pub prebuilt: Value,
+   pub prebuilt: Prebuilt,
    #[serde(default)]
    pub root:     Option<String>,
    #[serde(default)]
@@ -137,7 +140,7 @@ pub struct Spec {
    #[serde(default)]
    pub tests:    Tests,
    #[serde(default)]
-   pub exports:  Value,
+   pub exports:  Exported,
    #[serde(default)]
    pub cc:       Option<Cc>,
    #[serde(default)]
@@ -148,6 +151,36 @@ pub struct Spec {
    pub sys:      Option<Vec<String>>,
    #[serde(flatten)]
    pub systems:  Map<String, Value>,
+}
+
+#[derive(Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(try_from = "PrebuiltSpelling")]
+pub enum Prebuilt {
+   #[default]
+   Source,
+   Implanted,
+   Ldso,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum PrebuiltSpelling {
+   Unset(()),
+   Flag(bool),
+   Mode(String),
+}
+
+impl TryFrom<PrebuiltSpelling> for Prebuilt {
+   type Error = io::Error;
+
+   fn try_from(spelling: PrebuiltSpelling) -> io::Result<Self> {
+      match spelling {
+         PrebuiltSpelling::Unset(()) | PrebuiltSpelling::Flag(false) => Ok(Self::Source),
+         PrebuiltSpelling::Flag(true) => Ok(Self::Implanted),
+         PrebuiltSpelling::Mode(mode) if mode == "ldso" => Ok(Self::Ldso),
+         PrebuiltSpelling::Mode(mode) => Err(io::Error::other(format!("unknown prebuilt {mode}"))),
+      }
+   }
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -378,10 +411,6 @@ impl Spec {
          .iter()
          .filter_map(|name| self.systems.get(name)?.get("deps")?.as_str())
          .filter(|tree| is_store_path(tree))
-   }
-
-   pub fn prebuilt_is(&self, wanted: &Value) -> bool {
-      self.prebuilt == *wanted
    }
 }
 

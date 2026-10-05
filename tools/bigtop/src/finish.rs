@@ -49,6 +49,7 @@ use crate::{
       Attrs,
       Ctx,
       Platform,
+      Prebuilt,
       Spec,
       VersionCheck,
       build_top,
@@ -265,8 +266,8 @@ fn relocate(
    debug: &str,
 ) -> io::Result<()> {
    let out = Path::new(&ctx.out);
-   let implanted = spec.prebuilt_is(&Value::Bool(true));
-   let ldso = spec.prebuilt_is(&Value::String("ldso".to_owned()));
+   let implanted = spec.prebuilt == Prebuilt::Implanted;
+   let ldso = spec.prebuilt == Prebuilt::Ldso;
    match platform.binfmt {
       BinaryFormat::Elf => {
          let interp = Path::new(&platform.interp);

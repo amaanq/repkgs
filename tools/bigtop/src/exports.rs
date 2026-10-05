@@ -67,12 +67,36 @@ pub struct Exports {
    pub root:           String,
 }
 
+#[derive(Clone, Default, Deserialize)]
+#[serde(try_from = "Value")]
+pub enum Exported {
+   #[default]
+   Defaults,
+   Hidden,
+   Own(Map<String, Value>),
+}
+
+impl TryFrom<Value> for Exported {
+   type Error = io::Error;
+
+   fn try_from(value: Value) -> io::Result<Self> {
+      match value {
+         Value::Null => Ok(Self::Defaults),
+         Value::Bool(false) => Ok(Self::Hidden),
+         Value::Object(fields) => Ok(Self::Own(fields)),
+         Value::Bool(true) | Value::Number(_) | Value::String(_) | Value::Array(_) => {
+            Err(io::Error::other("exports must be a record or false"))
+         },
+      }
+   }
+}
+
 #[derive(Deserialize)]
 pub struct Request {
    pub name:    String,
    pub ext:     Extensions,
    #[serde(default)]
-   pub exports: Value,
+   pub exports: Exported,
    #[serde(default)]
    pub deps:    Vec<String>,
 }
@@ -247,7 +271,7 @@ pub fn write(root: &Path) -> io::Result<()> {
 
 pub fn write_request(root: &Path, request: &Request) -> io::Result<()> {
    let own = match request.exports {
-      Value::Bool(false) => {
+      Exported::Hidden => {
          [
             "includeDirs",
             "libDirs",
@@ -259,11 +283,8 @@ pub fn write_request(root: &Path, request: &Request) -> io::Result<()> {
          .map(|field| (field.to_owned(), Value::Array(Vec::new())))
          .collect()
       },
-      Value::Null => Map::new(),
-      Value::Object(ref fields) => fields.clone(),
-      Value::Bool(true) | Value::Number(_) | Value::String(_) | Value::Array(_) => {
-         return Err(io::Error::other("exports must be a record or false"));
-      },
+      Exported::Defaults => Map::new(),
+      Exported::Own(ref fields) => fields.clone(),
    };
    let mut exports = match serde_json::to_value(exports_of(root)?)? {
       Value::Object(fields) => fields,
