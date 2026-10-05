@@ -1,6 +1,5 @@
 use std::{
    collections::BTreeMap,
-   env::var,
    fs::{
       DirEntry,
       read_dir,
@@ -17,10 +16,7 @@ use std::{
    },
 };
 
-use mummer::{
-   files::write_file,
-   store::STORE_DIR,
-};
+use mummer::files::write_file;
 use serde::{
    Deserialize,
    Serialize,
@@ -31,7 +27,10 @@ use serde_json::{
 };
 
 use crate::{
-   attrs::Extensions,
+   attrs::{
+      Extensions,
+      nix_store,
+   },
    targets::Cpu,
 };
 
@@ -318,13 +317,13 @@ pub fn write_request(root: &Path, request: &Request) -> io::Result<()> {
 
       if !absolute.is_empty() {
          let root_text = root.to_string_lossy();
-         let nix_store = var("NIX_STORE").unwrap_or_else(|_| STORE_DIR.to_owned());
+         let store_dir = nix_store();
          let relative: Vec<String> = absolute
             .iter()
             .map(|directory| {
                directory
                   .replace(root_text.as_ref(), "{root}")
-                  .replace(&nix_store, "{store}")
+                  .replace(&store_dir, "{store}")
             })
             .collect();
          exports.insert("dllDirs".to_owned(), serde_json::to_value(relative)?);

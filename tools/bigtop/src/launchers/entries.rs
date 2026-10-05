@@ -1,6 +1,5 @@
 use std::{
    collections::BTreeMap,
-   env::var,
    fs::{
       File,
       canonicalize,
@@ -28,16 +27,15 @@ use std::{
 };
 
 use mummer::{
+   config::BinaryFormat,
    elf::{
+      PT_INTERP,
       has_segment,
       is_elf,
       segments,
    },
    image::Image,
-   store::{
-      STORE_DIR,
-      normalize,
-   },
+   store::normalize,
    tree::{
       note,
       writable,
@@ -46,12 +44,14 @@ use mummer::{
 use serde::Serialize;
 
 use crate::{
-   attrs::Ctx,
+   attrs::{
+      Ctx,
+      nix_store,
+   },
    exports::{
       exports_of,
       lib_dirs,
    },
-   hardening::BinaryFormat,
 };
 
 #[derive(Clone, Serialize)]
@@ -102,11 +102,11 @@ pub fn write(
    args: &[String],
    vars: &BTreeMap<String, String>,
 ) -> io::Result<()> {
-   let nix_store = var("NIX_STORE").unwrap_or_else(|_| STORE_DIR.to_owned());
+   let store_dir = nix_store();
    let rel = |path: &str| {
       path
          .replace(&ctx.out, "{root}")
-         .replace(&nix_store, "{store}")
+         .replace(&store_dir, "{store}")
    };
    let bin = Path::new(&ctx.out).join("bin");
    create_dir_all(&bin)?;
@@ -152,7 +152,7 @@ pub fn run(
    }
    let out = output.to_string_lossy().into_owned();
    let mut context = Context {
-      store: var("NIX_STORE").unwrap_or_else(|_| STORE_DIR.to_owned()),
+      store: nix_store(),
       bin,
       launch,
       interp,
@@ -280,7 +280,7 @@ fn target<'env>(
    if !is_elf(&image) {
       return Ok(None);
    }
-   if context.ldso && has_segment(&segments(&image)?, 3) {
+   if context.ldso && has_segment(&segments(&image)?, PT_INTERP) {
       let libpath: Vec<String> = lib_dirs(context.interp, context.deps)?
          .iter()
          .map(|dir| context.storerel(dir))

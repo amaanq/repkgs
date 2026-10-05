@@ -3,6 +3,7 @@ use std::{
    fmt,
 };
 
+use mummer::config::BinaryFormat;
 use serde::{
    Deserialize,
    Deserializer,
@@ -39,14 +40,6 @@ pub enum Hardening {
    Relr,
    NoExecStack,
    AsNeeded,
-}
-
-#[derive(Clone, Copy, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum BinaryFormat {
-   Elf,
-   Macho,
-   Coff,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]

@@ -1,11 +1,9 @@
 use std::{
    collections::BTreeSet,
-   env::var,
    fs::{
       copy,
       create_dir_all,
       read,
-      read_to_string,
       remove_dir_all,
       remove_file,
       rename,
@@ -20,7 +18,9 @@ use std::{
 };
 
 use mummer::{
+   attrs::load,
    elf::{
+      PT_DYNAMIC,
       Text,
       has_segment,
       interpreter,
@@ -30,6 +30,7 @@ use mummer::{
       runpath_text,
       segments,
    },
+   files::remove_if_exists,
    image::Image,
    store::normalize,
    tree::{
@@ -73,12 +74,10 @@ struct Tree<'attrs> {
 /// absolute path, launchers give way to their programs. Strings are rewritten
 /// in place and zero filled, so no store hash survives for Nix to find.
 pub fn run() -> io::Result<()> {
-   let attrs: Attrs = serde_json::from_str(&read_to_string(
-      var("NIX_ATTRS_JSON_FILE").map_err(io::Error::other)?,
-   )?)?;
+   let attrs = load::<Attrs>()?;
    let out = Path::new(&attrs.outputs.out);
    copy_tree(Path::new(&attrs.package), out)?;
-   remove_if_present(&out.join("exports.json"))?;
+   remove_if_exists(&out.join("exports.json"))?;
    if out.join("lib/debug").is_dir() {
       remove_dir_all(out.join("lib/debug"))?;
    }
@@ -143,7 +142,7 @@ fn relink(tree: &Tree<'_>, file: &Path) -> io::Result<Vec<PathBuf>> {
       return Ok(Vec::new());
    }
    let segments = segments(&image)?;
-   if !has_segment(&segments, 2) {
+   if !has_segment(&segments, PT_DYNAMIC) {
       return Ok(Vec::new());
    }
    let directory = file.parent().unwrap_or(tree.out);
@@ -251,13 +250,6 @@ fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
    writable(to)
 }
 
-fn remove_if_present(path: &Path) -> io::Result<()> {
-   match remove_file(path) {
-      Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-      result => result,
-   }
-}
-
 /// bin/x -> launch, bin/.x the program, bin/.x.launch the record.
 fn unwrap_launchers(bin: &Path) -> io::Result<()> {
    if !bin.is_dir() {
@@ -271,7 +263,7 @@ fn unwrap_launchers(bin: &Path) -> io::Result<()> {
       .collect();
    for record in records {
       let name = &record.rel[1..record.rel.len() - ".launch".len()];
-      remove_if_present(&bin.join(name))?;
+      remove_if_exists(&bin.join(name))?;
       remove_file(&record.path)?;
       rename(bin.join(format!(".{name}")), bin.join(name))?;
    }
