@@ -33,7 +33,10 @@ use mummer::{
       shebangs,
    },
 };
-use serde::Serialize;
+use serde::{
+   Deserialize as _,
+   Serialize,
+};
 use serde_json::{
    Value,
    json,
@@ -43,10 +46,8 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
+      Platform,
       build_top,
-      flag,
-      text,
-      words,
    },
    env::compute,
    exports::closure,
@@ -116,16 +117,16 @@ pub fn prepare(source: Source<'_>) -> io::Result<Prepared> {
       Source::Existing => {},
    }
    let cwd = normalize(&Path::new(&src).join(spec.root.as_deref().unwrap_or(".")));
-   let cross = flag(&platform, "cross");
-   let transparent = flag(&platform, "transparent");
+   let facts = Platform::deserialize(&platform)?;
    let restored = matches!(source, Source::Archive(_));
-   if !restored && spec.tests.run.unwrap_or(true) && cross && !transparent {
+   if !restored && spec.tests.run.unwrap_or(true) && facts.cross && !facts.transparent {
       note(
          "untested",
-         &format!("{}: no binfmt on this builder", text(&platform, "name")),
+         &format!("{}: no binfmt on this builder", facts.name),
       );
    }
-   let tests_run = restored || (spec.tests.run.unwrap_or(true) && (!cross || transparent));
+   let tests_run =
+      restored || (spec.tests.run.unwrap_or(true) && (!facts.cross || facts.transparent));
    let roots = env
       .get("MUMMER_STORE_ROOTS")
       .and_then(Value::as_str)
@@ -160,19 +161,20 @@ fn resolve_platform(
    env: &mut BTreeMap<String, Value>,
 ) -> io::Result<Value> {
    let mut resolved = platform.clone();
-   let cross = flag(platform, "cross");
+   let facts = Platform::deserialize(platform)?;
+   let cross = facts.cross;
    // qemu-user can map V8's code range above 2^48, where arm64 PAC stores
    // its signature, so signed return addresses stop authenticating.
    // Reserve 16 TiB to leave room for V8 while fitting a 47-bit host.
    // binfmt-registered qemu reads QEMU_RESERVED_VA too.
-   let reserved_va = (cross && text(platform, "cpu") == "aarch64").then_some("0x100000000000");
+   let reserved_va = (cross && facts.cpu == "aarch64").then_some("0x100000000000");
    if let Some(limit) = reserved_va {
       env.insert(
          "QEMU_RESERVED_VA".to_owned(),
          Value::String(limit.to_owned()),
       );
    }
-   if text(platform, "os") == "windows" {
+   if facts.os == "windows" {
       env.extend([
          (
             "WINEPREFIX".to_owned(),
@@ -190,7 +192,7 @@ fn resolve_platform(
    }
 
    let transparent = if cross {
-      match Command::new(text(platform, "probe"))
+      match Command::new(&facts.probe)
          .arg("--version")
          .envs(reserved_va.map(|limit| ("QEMU_RESERVED_VA", limit)))
          .output()
@@ -199,7 +201,7 @@ fn resolve_platform(
             if !output.status.success() {
                return Err(io::Error::other(format!(
                   "{} execution probe failed with {}\n{}",
-                  text(platform, "name"),
+                  facts.name,
                   output.status,
                   String::from_utf8_lossy(&output.stderr)
                )));
@@ -212,27 +214,26 @@ fn resolve_platform(
       false
    };
    if cross {
-      note(
-         "platform",
-         &format!("{} binfmt={transparent}", text(platform, "name")),
-      );
+      note("platform", &format!("{} binfmt={transparent}", facts.name));
    }
    if transparent {
       resolved["emulator"] = json!([]);
    }
    resolved["transparent"] = json!(transparent);
-   for (name, value) in build_machine_tools(&resolved, top, cross)? {
+   for (name, value) in build_machine_tools(&facts.build_rust_triple, top, cross)? {
       env.insert(name, Value::String(value));
    }
-   env.insert(
-      "PKGS_EMULATOR".to_owned(),
-      Value::String(words(&resolved, "emulator").join(" ")),
-   );
+   let emulator = if transparent {
+      String::new()
+   } else {
+      facts.emulator.join(" ")
+   };
+   env.insert("PKGS_EMULATOR".to_owned(), Value::String(emulator));
    Ok(resolved)
 }
 
 fn build_machine_tools(
-   platform: &Value,
+   build_rust_triple: &str,
    top: &str,
    cross: bool,
 ) -> io::Result<Vec<(String, String)>> {
@@ -252,7 +253,7 @@ fn build_machine_tools(
          .as_bytes(),
    )?;
    set_permissions(&script, PermissionsExt::from_mode(0o755))?;
-   let triple = text(platform, "buildRustTriple").replace('-', "_");
+   let triple = build_rust_triple.replace('-', "_");
    Ok(vec![
       ("CC_FOR_BUILD".to_owned(), "cc-build".to_owned()),
       ("CXX_FOR_BUILD".to_owned(), "c++-build".to_owned()),
