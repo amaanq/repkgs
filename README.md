@@ -153,7 +153,7 @@ An out-of-tree package passed through `packages` may still be a `package.nix` ca
 
 ## Keeping it current
 
-`spieler` (pkgs/mu/mummer/src/spieler, also `motley update …`) reads every `act.toml`, asks
+`spieler` (tools/spieler, also `motley update …`) reads every `act.toml`, asks
 upstream for new versions and rewrites its `act.lock`:
 
 ```console
@@ -176,13 +176,15 @@ builder/          the nu that phase modules import
 locks/            hashes for the ecosystems whose lock files lack them
 tests/builder/    a small package per language checking what the builder does (`motley test`)
 docs/             design.md (why), mummer.md, spieler.md, plan.md
+tools/            the Rust tools (bigtop, jape, mummerd, spieler) and repository scripts
+tools/bootstrap/  mummer and tightrope, a workspace of their own since the toolchain builds them
 tools/motley/     the command (its README.md is for changing it)
 ```
 
-The build tools live here too. **mummer** (pkgs/mu/mummer, Rust) is what `cc` and `rustc` resolve to in a
-build: the compiler driver, the cache client and the ELF fixup. **bigtop** (pkgs/mu/mummer/src/bigtop, Rust)
+The build tools live here too. **mummer** (tools/bootstrap/mummer, Rust) is what `cc` and `rustc` resolve
+to in a build: the compiler driver, the cache client and the ELF fixup. **bigtop** (tools/bigtop, Rust)
 runs a build from `prepare` through every build system to `finish`. It is on PATH in package
-builds only, so editing it leaves the toolchain alone. **mummerd** (pkgs/mu/mummerd, Rust) is the daemon
+builds only, so editing it leaves the toolchain alone. **mummerd** (tools/mummerd, Rust) is the daemon
 behind the socket, holding the cache and the build slots. **launch** and **crt-interp** are the few
 hundred bytes of C that let scripts and ELF binaries run from any path. **spieler** (Rust) does
 the updates.
@@ -191,15 +193,16 @@ The Rust tools build with nixpkgs' toolchain, without bootstrapping the set. The
 with Wild through Clang, and both development shells provide those.
 
 ```console
-$ nix develop .#rust --command cargo build --workspace --manifest-path pkgs/mu/mummer/src/Cargo.toml
-$ nix develop .#rust --command cargo test --workspace --manifest-path pkgs/mu/mummer/src/Cargo.toml
+$ nix develop .#rust --command cargo build --workspace --manifest-path tools/Cargo.toml
+$ nix develop .#rust --command cargo build --workspace --manifest-path tools/bootstrap/Cargo.toml
+$ nix develop .#rust --command cargo test --workspace --manifest-path tools/Cargo.toml
 ```
 
 To try a local daemon through the cache commands, build it and pass its executable:
 
 ```console
-$ nix develop .#rust --command cargo build --release -p mummerd --manifest-path pkgs/mu/mummer/src/Cargo.toml
-$ motley cache start --daemon pkgs/mu/mummer/src/target/release/mummerd
+$ nix develop .#rust --command cargo build --release -p mummerd --manifest-path tools/Cargo.toml
+$ motley cache start --daemon tools/target/release/mummerd
 $ motley cache status
 $ motley cache stop
 ```

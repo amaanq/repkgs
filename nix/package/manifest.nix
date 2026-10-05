@@ -7,9 +7,8 @@
 # when } to a list of changes in act.toml's vocabulary. `pkgs` and `tools` are the target and
 # build sets, `source <key>` one of this package's sources, `file <name>` a file beside the act,
 # `fetch.<producer>` a nix/fetch.nix producer, `when <cond> <change>` the change or nothing, and
-# `tree { dir, name, exclude, files }` a local tree beside the act without the `exclude`d names,
-# and with `files` only the files whose name is listed or, for an entry starting with ".", ends
-# in it.
+# `tree { dir, name, exclude, files }` the repository's `dir` without the `exclude`d names, and
+# with `files` only the files whose name is listed or, for an entry starting with ".", ends in it.
 {
   dir,
   name,
@@ -191,7 +190,7 @@ let
         ) spec.files;
     in
     builtins.path {
-      path = dir + "/${spec.dir}";
+      path = ../.. + "/${spec.dir}";
       inherit (spec) name;
       filter =
         path: type:

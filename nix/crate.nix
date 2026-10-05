@@ -1,12 +1,24 @@
 # A workspace crate built by nixpkgs' rust for the development shell, nuff and the mummerd service,
 # so none of them start the package set.
 { pkgs, crate }:
+let
+  workspace =
+    if
+      builtins.elem crate [
+        "mummer"
+        "tightrope"
+      ]
+    then
+      ../tools/bootstrap
+    else
+      ../tools;
+in
 pkgs.rustPlatform.buildRustPackage {
   pname = crate;
   version =
-    (builtins.fromTOML (builtins.readFile ../pkgs/mu/mummer/src/Cargo.toml)).workspace.package.version;
+    (builtins.fromTOML (builtins.readFile (workspace + "/Cargo.toml"))).workspace.package.version;
   src = builtins.path {
-    path = ../pkgs/mu/mummer/src;
+    path = workspace;
     name = "${crate}-rust-src";
     filter =
       path: type:
@@ -17,7 +29,7 @@ pkgs.rustPlatform.buildRustPackage {
         "Cargo.lock"
       ];
   };
-  cargoLock.lockFile = ../pkgs/mu/mummer/src/Cargo.lock;
+  cargoLock.lockFile = workspace + "/Cargo.lock";
   cargoBuildFlags = [
     "-p"
     crate

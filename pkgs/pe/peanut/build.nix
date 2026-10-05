@@ -189,10 +189,10 @@ let
     cargo = rustBootstrap.rust;
   };
 
-  workspace = ../../mu/mummer/src;
+  crates = ../../../tools;
 
   crate =
-    name: skip:
+    name: workspace: skip:
     rustPlatform.buildRustPackage {
       pname = "peanut-${name}";
       version = "3.0.0";
@@ -228,22 +228,18 @@ let
       allowedReferences = [ ];
     };
 
-  mummer =
-    (crate "mummer" (
-      relative:
-      builtins.match "(bigtop|jape|spieler|mummerd)/src/.+" relative != null
-      && baseNameOf relative != "main.rs"
-    )).overrideAttrs
-      {
-        __contentAddressed = true;
-        outputHashMode = "recursive";
-        outputHashAlgo = "sha256";
-      };
+  mummer = (crate "mummer" (crates + "/bootstrap") (_: false)).overrideAttrs {
+    __contentAddressed = true;
+    outputHashMode = "recursive";
+    outputHashAlgo = "sha256";
+  };
 
   bigtop =
-    (crate "bigtop" (
+    (crate "bigtop" crates (
       relative:
-      builtins.match "(mummerd|jape|spieler)/src/.+" relative != null && baseNameOf relative != "main.rs"
+      builtins.match "motley(/.*)?" relative != null
+      ||
+        builtins.match "(mummerd|jape|spieler)/src/.+" relative != null && baseNameOf relative != "main.rs"
     )).overrideAttrs
       {
         __contentAddressed = true;

@@ -1,15 +1,17 @@
 # motley build tools
 
-This workspace contains the Rust tools used to build motley packages.
+These workspaces contain the Rust tools used to build motley packages. `bootstrap/` holds the
+two crates the toolchain itself is built with, under their own lock so the other tools' dependencies
+never move them.
 
 - `mummer` wraps compilers, fetches locked dependencies and relocates outputs.
+- `tightrope` supplies the shared daemon protocol types.
 - `mummerd` serves the compilation cache and limits concurrent compiler jobs.
 - `bigtop` runs package build plans and prepares development trees.
 - `jape` bridges Cabal socket tokens to GHC's POSIX semaphore.
 - `spieler` updates source pins and dependency locks.
-- `tightrope` supplies the shared daemon protocol types.
 
-From this directory, build or lint through the repository's Rust shell.
+From this directory or `bootstrap/`, build or lint through the repository's Rust shell.
 
 ```nu
 nix develop .#rust --command cargo build --release --workspace
