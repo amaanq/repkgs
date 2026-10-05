@@ -1,10 +1,9 @@
-fetch = { from = "llvm21" }
+fetch = { from = "llvm22" }
 with  = [ "cmake" ]
-deps  = [ "llvm21", "zlib", "zstd" ]
+deps  = [ "llvm22", "zlib", "zstd" ]
 tools = [ "cpython" ]
 
 [test]
-bin = [  ]
 run = false
 
 [steps]
