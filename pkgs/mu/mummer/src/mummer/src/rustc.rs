@@ -43,6 +43,7 @@ use mummer::{
    store::{
       Store,
       field,
+      on_path,
    },
 };
 use serde::{
@@ -54,11 +55,17 @@ use tightrope::{
    digest,
 };
 
-use crate::manifest::{
-   Manifest,
-   Miss,
-   lookup,
-   parse_depfile,
+use crate::{
+   driver::{
+      Driver,
+      Language,
+   },
+   manifest::{
+      Manifest,
+      Miss,
+      lookup,
+      parse_depfile,
+   },
 };
 
 struct Invocation {
@@ -313,17 +320,13 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
          None
       },
    };
-   let request = if cache.is_some() {
-      match request_key(&store, compiler, &invocation) {
-         Ok(key) => Some(key),
-         Err(error) => {
+   let request = cache.as_mut().and_then(|client| {
+      request_key(&store, client, compiler, &invocation)
+         .inspect_err(|error| {
             diagnostic(format_args!("mummer cannot identify Rust inputs, {error}"));
-            None
-         },
-      }
-   } else {
-      None
-   };
+         })
+         .ok()
+   });
    let Some((client, key)) = cache.as_mut().zip(request.as_ref()) else {
       let result = run_slotted(
          OsStr::new(compiler),
@@ -392,9 +395,15 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
    Ok(0)
 }
 
-fn request_key(store: &Store, compiler: &str, invocation: &Invocation) -> io::Result<String> {
+fn request_key(
+   store: &Store,
+   cache: &mut Client,
+   compiler: &str,
+   invocation: &Invocation,
+) -> io::Result<String> {
    let mut hasher = Hasher::new();
    field(&mut hasher, store.tool_id(compiler)?);
+   field(&mut hasher, store.tool_identity(cache, compiler)?);
    field(&mut hasher, store.key(&current_dir()?.to_string_lossy()));
    for argument in &invocation.key_args {
       field(&mut hasher, store.key(argument));
@@ -407,7 +416,10 @@ fn request_key(store: &Store, compiler: &str, invocation: &Invocation) -> io::Re
    }
    if invocation.links {
       field(&mut hasher, "linker");
-      field(&mut hasher, store.tool_id(invocation.linker())?);
+      field(
+         &mut hasher,
+         linker_identity(store, cache, invocation.linker())?,
+      );
    }
    // empty while the rust build compiles core and std themselves
    let mut libraries = match read_dir(target_libdir(compiler, invocation)?) {
@@ -437,6 +449,26 @@ fn request_key(store: &Store, compiler: &str, invocation: &Invocation) -> io::Re
       field(&mut hasher, var(name).unwrap_or_default());
    }
    Ok(format!("rs/{}", &hasher.finalize().to_hex()[..32]))
+}
+
+/// A linker that is a mummer wrapper stands for the compiler its toolchain
+/// configures, so mummer's own bytes stay out of the key.
+fn linker_identity(store: &Store, cache: &mut Client, linker: &str) -> io::Result<String> {
+   let path = on_path(linker);
+   let Some(root) = path
+      .parent()
+      .and_then(Path::parent)
+      .filter(|root| root.join("etc/mummer.json").is_file())
+   else {
+      return store.tool_identity(cache, linker);
+   };
+   let driver = Driver::load_at(root)?;
+   let config = read_to_string(root.join("etc/mummer.json"))?;
+   Ok(format!(
+      "{}{}",
+      store.key(&config),
+      store.tool_identity(cache, driver.compiler(Language::Cc))?
+   ))
 }
 
 /// The standard library rustc links for this invocation, as rustc itself

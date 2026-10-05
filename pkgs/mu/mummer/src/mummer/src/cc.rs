@@ -7,9 +7,7 @@ use std::{
    },
    ffi::OsStr,
    fs::{
-      canonicalize,
       read,
-      read_dir,
       read_to_string,
    },
    io::{
@@ -41,7 +39,6 @@ use mummer::{
       Store,
       field,
       mask_random_names,
-      on_path,
    },
 };
 use tempfile::Builder;
@@ -414,61 +411,21 @@ impl Invocation {
       }
    }
 
-   #[expect(
-      clippy::filetype_is_file,
-      reason = "toolchain identities include regular library files only"
-   )]
    fn toolchain_identities(
       &self,
       cache: &mut Client,
-      store: &mut Store,
+      store: &Store,
       compiler: &str,
    ) -> io::Result<String> {
-      let mut tools = vec![on_path(compiler).to_string_lossy().into_owned()];
+      let mut identities = store.tool_identity(cache, compiler)?;
       if self.links() {
-         tools.extend(
-            self
-               .args
-               .iter()
-               .filter_map(|arg| arg.strip_prefix("--ld-path="))
-               .map(|value| on_path(value).to_string_lossy().into_owned()),
-         );
-      }
-      let mut files = Vec::new();
-      for tool in &tools {
-         let real = canonicalize(tool)?;
-         files.push(real.to_string_lossy().into_owned());
-         let library = real
-            .parent()
-            .and_then(Path::parent)
-            .map(|root| root.join("lib"));
-         let Some(directory) = library else {
-            continue;
-         };
-         let entries = match read_dir(directory) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
-            Err(error) => return Err(error),
-         };
-         for directory_entry in entries {
-            let entry = directory_entry?;
-            let name = entry.file_name();
-            let text = name.to_string_lossy();
-            let shared = text.starts_with("libLLVM")
-               || text.starts_with("libclang-cpp")
-               || text.starts_with("liblld");
-            if shared && entry.file_type()?.is_file() {
-               files.push(entry.path().to_string_lossy().into_owned());
-            }
+         for linker in self
+            .args
+            .iter()
+            .filter_map(|arg| arg.strip_prefix("--ld-path="))
+         {
+            identities.push_str(&store.tool_identity(cache, linker)?);
          }
-      }
-      files.sort_unstable();
-      files.dedup();
-      prefetch(cache, store, &files)?;
-      let mut identities = String::new();
-      for file in &files {
-         identities.push_str(&store.input_id(file)?);
-         identities.push(',');
       }
       Ok(identities)
    }

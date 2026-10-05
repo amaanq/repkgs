@@ -144,10 +144,16 @@ impl Driver {
    }
    pub fn load() -> io::Result<Self> {
       let executable = current_exe()?;
-      let root = executable
-         .parent()
-         .and_then(Path::parent)
-         .ok_or_else(|| io::Error::other("mummer has no installation root"))?;
+      Self::load_at(
+         executable
+            .parent()
+            .and_then(Path::parent)
+            .ok_or_else(|| io::Error::other("mummer has no installation root"))?,
+      )
+   }
+
+   /// The driver of the toolchain installed at `root`.
+   pub fn load_at(root: &Path) -> io::Result<Self> {
       let mut driver = Self::default();
 
       match read_to_string(root.join("etc/mummer.json")) {
