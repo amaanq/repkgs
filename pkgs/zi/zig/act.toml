@@ -1,9 +1,9 @@
 track    = "generic:zig?url=https://ziglang.org/download/index.json"
 fetch    = { url = "https://ziglang.org/download/{version}/zig-{version}.tar.xz" }
 with     = [ "cmake" ]
-deps     = [ "llvm21", "clang21", "lld21", "zlib", "zstd" ]
+deps     = [ "llvm22", "clang22", "lld22", "zlib", "zstd" ]
 prebuilt = true
-patches  = [ "upstream-cmake-zig-executable.patch" ]
+patches  = [ "cmake-zig-executable.patch" ]
 
 [test]
 run     = false
