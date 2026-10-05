@@ -10,7 +10,8 @@ patches = [ "async-stream-timeout-margin.patch" ]
 bin = [ "elixir", "elixirc", "mix", "iex" ]
 
 [env]
-ERL_COMPILER_OPTIONS = "deterministic"
+ELIXIR_ASSERT_TIMEOUT = "2000"
+ERL_COMPILER_OPTIONS  = "deterministic"
 
 [make]
 testTarget = [ "test_stdlib" ]
