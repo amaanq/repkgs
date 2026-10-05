@@ -6,6 +6,8 @@ use std::{
    process::Command,
 };
 
+use mummer::files::utf8;
+
 use crate::{
    attrs::{
       Attrs,
@@ -102,11 +104,7 @@ impl Deno {
       let deno = dep_root(ctx, "deno", "deno applications run on it")?;
       let app = format!("{}/lib/{}", ctx.out.display(), ctx.spec()?.name);
       create_dir_all(ctx.out.join("lib"))?;
-      succeed(Command::new("cp").args([
-         "-r",
-         &ctx.project_dir(&options.root).to_string_lossy(),
-         &app,
-      ]))?;
+      succeed(Command::new("cp").args(["-r", utf8(&ctx.project_dir(&options.root))?, &app]))?;
       succeed(Command::new("cp").args(["-r", &options.deps, &format!("{app}/deno-dir")]))?;
       let config = ["deno.json", "deno.jsonc"]
          .iter()

@@ -117,8 +117,8 @@ pub fn glob(pattern: &str) -> io::Result<Vec<PathBuf>> {
                };
                for entry in entries {
                   let name = entry?.file_name();
-                  let text = name.to_string_lossy();
-                  if !text.starts_with('.') && wildcard(segment, &text) {
+                  let bytes = name.as_encoded_bytes();
+                  if bytes.first() != Some(&b'.') && wildcard(segment.as_bytes(), bytes) {
                      next.push(candidate.join(&name));
                   }
                }
@@ -152,19 +152,15 @@ fn expand_braces(pattern: &str) -> Vec<String> {
       .collect()
 }
 
-fn wildcard(pattern: &str, text: &str) -> bool {
-   let Some((head, rest)) = pattern.split_once('*') else {
-      return pattern == text;
+fn wildcard(pattern: &[u8], name: &[u8]) -> bool {
+   let Some(star) = pattern.iter().position(|&byte| byte == b'*') else {
+      return pattern == name;
    };
-   let Some(after) = text.strip_prefix(head) else {
+   let (head, rest) = (&pattern[..star], &pattern[star + 1..]);
+   let Some(after) = name.strip_prefix(head) else {
       return false;
    };
-   if rest.is_empty() {
-      return true;
-   }
-   (0..=after.len())
-      .filter(|&skip| after.is_char_boundary(skip))
-      .any(|skip| wildcard(rest, &after[skip..]))
+   rest.is_empty() || (0..=after.len()).any(|skip| wildcard(rest, &after[skip..]))
 }
 
 fn descendants(directory: &Path) -> io::Result<Vec<PathBuf>> {
@@ -179,7 +175,7 @@ fn descendants(directory: &Path) -> io::Result<Vec<PathBuf>> {
    let mut found = Vec::new();
    for entry in entries {
       let name = entry?.file_name();
-      if name.to_string_lossy().starts_with('.') {
+      if name.as_encoded_bytes().first() == Some(&b'.') {
          continue;
       }
       let child = directory.join(&name);

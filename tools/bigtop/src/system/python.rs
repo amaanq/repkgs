@@ -98,7 +98,7 @@ impl System for Python {
       path.extend(tool_site_packages()?);
       for own in [root.clone(), root.join("src")] {
          if own.exists() {
-            path.push(own.to_string_lossy().into_owned());
+            path.push(utf8(&own)?.to_owned());
          }
       }
       Ok([
@@ -128,10 +128,15 @@ impl Python {
             continue;
          };
          for version in versions {
-            let name = version.file_name().unwrap_or_default().to_string_lossy();
             let site = version.join("site-packages");
-            if name.starts_with("python3") && site.is_dir() {
-               found.push(site.to_string_lossy().into_owned());
+            if version
+               .file_name()
+               .and_then(|name| name.to_str())
+               .is_some_and(|name| name.starts_with("python3"))
+               && site.is_dir()
+               && let Some(text) = site.to_str()
+            {
+               found.push(text.to_owned());
             }
          }
       }
@@ -204,11 +209,10 @@ impl Python {
       let dist = format!("{}/dist", ctx.build.display());
       let mut wheels = sorted_entries(Path::new(&dist))?;
       wheels.retain(|path| path.extension().is_some_and(|extension| extension == "whl"));
-      let wheel = wheels
+      let built = wheels
          .first()
-         .ok_or_else(|| io::Error::other("no wheel in dist"))?
-         .to_string_lossy()
-         .into_owned();
+         .ok_or_else(|| io::Error::other("no wheel in dist"))?;
+      let wheel = utf8(built)?.to_owned();
       let out = utf8(&ctx.out)?;
       let has_installer = Command::new("python3")
          .args(["-c", "import installer"])
@@ -344,11 +348,12 @@ impl Python {
 pub fn tool_site_packages() -> io::Result<Vec<String>> {
    let mut roots = Vec::new();
    for directory in var("PATH").unwrap_or_default().split(':') {
-      let root = Path::new(directory)
-         .parent()
-         .unwrap_or_else(|| Path::new("/"))
-         .to_string_lossy()
-         .into_owned();
+      let root = utf8(
+         Path::new(directory)
+            .parent()
+            .unwrap_or_else(|| Path::new("/")),
+      )?
+      .to_owned();
       if !Python::site_packages(slice::from_ref(&root)).is_empty() {
          roots.push(root);
       }

@@ -23,6 +23,7 @@ use std::{
 };
 
 use mummer::{
+   files::utf8,
    process::{
       Checked as _,
       socket,
@@ -150,7 +151,7 @@ pub fn prepare(source: Source<'_>) -> io::Result<Prepared> {
    ctx.save(&top)?;
    Ok(Prepared {
       env,
-      cwd: cwd.to_string_lossy().into_owned(),
+      cwd: utf8(&cwd)?.to_owned(),
       ctx,
    })
 }
@@ -258,20 +259,14 @@ fn build_machine_tools(
       ("CC_FOR_BUILD".to_owned(), "cc-build".to_owned()),
       ("CXX_FOR_BUILD".to_owned(), "c++-build".to_owned()),
       ("CPP_FOR_BUILD".to_owned(), "cc-build -E".to_owned()),
-      (
-         "PKG_CONFIG_FOR_BUILD".to_owned(),
-         script.to_string_lossy().into_owned(),
-      ),
+      ("PKG_CONFIG_FOR_BUILD".to_owned(), utf8(&script)?.to_owned()),
       ("CFLAGS_FOR_BUILD".to_owned(), String::new()),
       ("CXXFLAGS_FOR_BUILD".to_owned(), String::new()),
       ("CPPFLAGS_FOR_BUILD".to_owned(), String::new()),
       ("LDFLAGS_FOR_BUILD".to_owned(), String::new()),
       (format!("CC_{triple}"), "cc-build".to_owned()),
       (format!("CXX_{triple}"), "c++-build".to_owned()),
-      (
-         format!("PKG_CONFIG_{triple}"),
-         script.to_string_lossy().into_owned(),
-      ),
+      (format!("PKG_CONFIG_{triple}"), utf8(&script)?.to_owned()),
    ])
 }
 
@@ -299,7 +294,7 @@ fn unpack(attrs: &Attrs, src: &str) -> io::Result<()> {
 }
 
 fn restore(tree: &Path, top: &str) -> io::Result<()> {
-   note("restore", &tree.to_string_lossy());
+   note("restore", &tree.display().to_string());
 
    for directory in ["source", "build"] {
       succeed(

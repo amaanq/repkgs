@@ -574,10 +574,7 @@ fn scripts(root: &Path, prefix: &str) -> io::Result<()> {
       write_file(&path, fixed.join("\n").as_bytes(), None)?;
       note(
          "script",
-         &format!(
-            "bin/{}: prefix from $0",
-            child.file_name().to_string_lossy()
-         ),
+         &format!("bin/{}: prefix from $0", child.file_name().display()),
       );
    }
    Ok(())
@@ -599,8 +596,9 @@ fn links(root: &Path, prefix: &str, dest: &str) -> io::Result<()> {
                .parent()
                .unwrap_or_else(|| Path::new("/"));
             normalize(&parent.join(target))
-               .to_string_lossy()
-               .into_owned()
+               .into_os_string()
+               .into_string()
+               .unwrap_or_else(|_raw| target.clone())
          },
          |inside| format!("{dest}/{inside}"),
       );

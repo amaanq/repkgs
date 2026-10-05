@@ -454,15 +454,12 @@ fn project(ctx: &Ctx, file: String, props: &BTreeMap<String, String>) -> io::Res
       .get("TargetExt")
       .filter(|ext| !ext.is_empty())
       .map_or_else(|| kind.extension(), String::as_str);
-   let stem = Path::new(&file)
-      .file_stem()
-      .unwrap_or_default()
-      .to_string_lossy();
+   let stem = utf8(Path::new(Path::new(&file).file_stem().unwrap_or_default()))?;
    let target = evaluated
       .props
       .get("TargetName")
       .filter(|target| !target.is_empty())
-      .map_or_else(|| stem.as_ref(), String::as_str);
+      .map_or(stem, String::as_str);
    let name = format!("{target}{ext}");
    let object_dir = format!("{}/obj/{stem}", ctx.build.display());
    let refs = evaluated
@@ -472,7 +469,11 @@ fn project(ctx: &Ctx, file: String, props: &BTreeMap<String, String>) -> io::Res
       .map(|item| {
          Path::new(&item.path).strip_prefix(&ctx.src).map_or_else(
             |_| item.path.clone(),
-            |relative| relative.to_string_lossy().into_owned(),
+            |relative| {
+               relative
+                  .to_str()
+                  .map_or_else(|| item.path.clone(), str::to_owned)
+            },
          )
       })
       .collect();
@@ -491,10 +492,7 @@ fn project(ctx: &Ctx, file: String, props: &BTreeMap<String, String>) -> io::Res
       Some(format!(
          "{}/{}.lib",
          outdir.trim_end_matches('/'),
-         Path::new(&name)
-            .file_stem()
-            .unwrap_or_default()
-            .to_string_lossy()
+         utf8(Path::new(Path::new(&name).file_stem().unwrap_or_default()))?
       ))
    };
    let link = link_flags(
@@ -551,11 +549,12 @@ impl Project {
       for item in live("ResourceCompile") {
          let output = object_name(&item.path, "res");
          let mut directories = vec![
-            Path::new(&item.path)
-               .parent()
-               .unwrap_or_else(|| Path::new("."))
-               .to_string_lossy()
-               .into_owned(),
+            utf8(
+               Path::new(&item.path)
+                  .parent()
+                  .unwrap_or_else(|| Path::new(".")),
+            )?
+            .to_owned(),
          ];
          for directory in list(value(&item.meta, "AdditionalIncludeDirectories")) {
             directories.push(win_path(directory, dir)?);
@@ -704,11 +703,10 @@ fn projects(ctx: &Ctx, options: &Options) -> io::Result<Vec<Project>> {
       let dir = Path::new(&path).parent().unwrap_or_else(|| Path::new("."));
       let evaluated = evaluate(Path::new(&path), &options.properties, BTreeMap::new())?;
       for expanded in evaluated.sub_projects("Build", dir)? {
-         let relative = Path::new(&expanded)
+         let inside = Path::new(&expanded)
             .strip_prefix(&ctx.src)
-            .map_err(io::Error::other)?
-            .to_string_lossy()
-            .into_owned();
+            .map_err(io::Error::other)?;
+         let relative = utf8(inside)?.to_owned();
          if seen.insert(relative.clone()) {
             files.push(relative);
          }

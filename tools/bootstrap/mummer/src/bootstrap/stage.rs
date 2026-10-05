@@ -282,12 +282,12 @@ pub fn cores() -> usize {
 pub fn execute(command: &mut Command) -> io::Result<()> {
    let words = command
       .get_args()
-      .map(|arg| arg.to_string_lossy())
+      .map(|arg| arg.display().to_string())
       .collect::<Vec<_>>();
    drop(writeln!(
       io::stderr().lock(),
       "+ {} {}",
-      command.get_program().to_string_lossy(),
+      command.get_program().display(),
       words.join(" ")
    ));
    command.checked()

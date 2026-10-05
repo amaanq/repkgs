@@ -424,10 +424,7 @@ where
 {
    match result {
       Err(error) if error.kind() == io::ErrorKind::NotFound => {
-         let message = format!(
-            "mummer could not start {}, {error}",
-            program.to_string_lossy()
-         );
+         let message = format!("mummer could not start {}, {error}", program.display());
          report(&message);
          Ok(RunResult {
             status: 127,

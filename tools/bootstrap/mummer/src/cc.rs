@@ -36,8 +36,8 @@ use blake3::Hasher;
 use mummer::{
    config::BinaryFormat,
    files::{
-      utf8,
       remove_if_exists,
+      utf8,
       write_file,
    },
    process::{
@@ -491,7 +491,7 @@ impl Invocation {
       let target = self
          .target
          .clone()
-         .unwrap_or_else(|| self.output.to_string_lossy().into_owned());
+         .unwrap_or_else(|| self.output.display().to_string());
       match depfile.find(": ") {
          Some(colon) if depfile.find('\n').is_none_or(|newline| newline > colon) => {
             format!("{target}{}", &depfile[colon..])
@@ -838,10 +838,10 @@ impl Wrapper for Compile<'_> {
          };
          store.mask_output(&mut object, false);
          record.artifacts.push(Artifact {
-            name:   invocation.output.file_name().map_or_else(
-               || "output".to_owned(),
-               |name| name.to_string_lossy().into_owned(),
-            ),
+            name:   match invocation.output.file_name() {
+               Some(name) => utf8(Path::new(name))?.to_owned(),
+               None => "output".to_owned(),
+            },
             mode:   invocation.links().then_some(0o755),
             bytes:  object,
             settle: invocation.links(),
@@ -891,7 +891,7 @@ pub fn run_cc(language: Language, raw: &[String], socket: &Path) -> io::Result<i
    let subject = invocation
       .source
       .clone()
-      .unwrap_or_else(|| invocation.output.to_string_lossy().into_owned());
+      .unwrap_or_else(|| invocation.output.display().to_string());
 
    let outcome = if invocation.query {
       Outcome::Query

@@ -1,4 +1,5 @@
 use std::{
+   ffi::OsStr,
    fs::create_dir_all,
    io,
    os::unix::fs::symlink,
@@ -155,8 +156,9 @@ impl CompilerRt {
       let named = |path: &Path| {
          path
             .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
+            .and_then(OsStr::to_str)
             .unwrap_or_default()
+            .to_owned()
       };
       let mut flags = stage.target();
       flags.extend(Self::libc_includes(attrs)?);

@@ -148,14 +148,12 @@ impl System for Cabal {
       let repo = ctx.build.join("repo");
       create_dir_all(&repo)?;
       for source in sorted_entries(Path::new(&*options.deps))? {
-         let Some(name) = source
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-         else {
+         let Some(file_name) = source.file_name() else {
             continue;
          };
-         if name.ends_with(".tar.gz") || Self::is_cabal(&name) {
-            symlink(format!("{}/{name}", options.deps), repo.join(&name))?;
+         let name = utf8(Path::new(file_name))?;
+         if name.ends_with(".tar.gz") || Self::is_cabal(name) {
+            symlink(format!("{}/{name}", options.deps), repo.join(name))?;
          }
       }
       let output = Command::new("ghc").arg("--info").output()?;
@@ -175,8 +173,8 @@ impl System for Cabal {
          .parent()
          .and_then(Path::parent)
          .and_then(|root| root.file_name())
-         .map(|name| name.to_string_lossy().into_owned())
-         .ok_or_else(|| io::Error::other("ghc has no store basename"))?;
+         .ok_or_else(|| io::Error::other("ghc has no store basename"))
+         .and_then(|name| Ok(utf8(Path::new(name))?.to_owned()))?;
       let unit_key = format!("hs/{ghc_store}");
       create_dir_all(&cabal_dir)?;
       create_dir_all(format!("{units}/package.db"))?;
@@ -288,11 +286,11 @@ impl Cabal {
          .into_iter()
          .map(|path| {
             match Path::new(&path).strip_prefix(&project) {
-               Ok(relative) => relative.to_string_lossy().into_owned(),
-               Err(_outside) => path,
+               Ok(relative) => Ok(utf8(relative)?.to_owned()),
+               Err(_outside) => Ok(path),
             }
          })
-         .collect::<Vec<_>>();
+         .collect::<io::Result<Vec<_>>>()?;
       cabals.sort();
       let record = serde_json::to_vec(&(
          cabals,
@@ -315,10 +313,7 @@ impl Cabal {
    fn unit_dirs(units: &str) -> io::Result<Vec<String>> {
       let mut names = Vec::new();
       for path in sorted_entries(Path::new(units))? {
-         let name = path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
+         let name = utf8(Path::new(path.file_name().unwrap_or_default()))?.to_owned();
          if path.symlink_metadata()?.is_dir() && name != "package.db" && name != "incoming" {
             names.push(name);
          }

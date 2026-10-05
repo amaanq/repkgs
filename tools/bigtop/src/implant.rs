@@ -18,6 +18,7 @@ use mummer::{
       runpath,
       segments,
    },
+   files::utf8,
    image::Image,
    process::Checked as _,
    tree::{
@@ -45,7 +46,7 @@ pub fn run(
       "{}/{}{}",
       interp.parent().unwrap_or(interp).display(),
       "./".repeat(INTERP_PADDING),
-      interp.file_name().unwrap_or_default().to_string_lossy()
+      utf8(Path::new(interp.file_name().unwrap_or_default()))?
    );
    let mut files = Vec::new();
    for sub in ["bin", "lib", "libexec"] {
@@ -107,9 +108,9 @@ fn implant(
    );
    writable(Path::new(&entry.path))?;
    let mut args = Vec::<&str>::new();
-   let blob = stub.map(|found| found.to_string_lossy().into_owned());
+   let blob = stub.map(utf8).transpose()?;
    if has_segment(&segments, PT_INTERP) {
-      if let Some(found) = blob.as_deref() {
+      if let Some(found) = blob {
          args.extend(["--set-entry-stub", found]);
       }
       args.extend(["--set-interpreter", interp]);
@@ -122,11 +123,12 @@ fn implant(
    ));
    Command::new("formatelf").args(&args).checked()?;
    Ok(Some(
-      Path::new(&entry.path)
-         .strip_prefix(directory)
-         .map_err(io::Error::other)?
-         .to_string_lossy()
-         .into_owned(),
+      utf8(
+         Path::new(&entry.path)
+            .strip_prefix(directory)
+            .map_err(io::Error::other)?,
+      )?
+      .to_owned(),
    ))
 }
 
