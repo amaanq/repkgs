@@ -204,6 +204,11 @@ in
     all
   );
   bootstrap = boot;
-  inherit buildSystems toolchain tools;
+  inherit
+    buildSystems
+    fetch
+    toolchain
+    tools
+    ;
   bundle = import ./bundle.nix { inherit (tools) bigtop; };
 }

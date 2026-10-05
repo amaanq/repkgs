@@ -1,10 +1,7 @@
-{ tree, ... }:
+{ fetch, ... }:
 [
   {
     go.deps = null;
-    source = tree {
-      dir = "tests/builder/go/src";
-      name = "src";
-    };
+    source = fetch.files "src" (import ./src.nix);
   }
 ]

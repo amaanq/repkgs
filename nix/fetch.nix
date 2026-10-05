@@ -182,6 +182,20 @@ in
         luaVersion = lua.version;
       };
 
+  # a directory of `{ "<relative path>" = "<contents>"; }`, laid out by `mummer assemble`
+  files =
+    name: contents:
+    derivation {
+      inherit name system peanut;
+      builder = "${mummer}/bin/mummer";
+      args = [ "assemble" ];
+      __structuredAttrs = true;
+      layout = map (to: {
+        inherit to;
+        write = contents.${to};
+      }) (builtins.attrNames contents);
+    };
+
   empty = builtins.path {
     path = ./empty;
     name = "empty";
