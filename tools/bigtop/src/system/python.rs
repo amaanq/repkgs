@@ -27,7 +27,6 @@ use mummer::{
       write_file,
    },
    process::Checked as _,
-   store::STORE_DIR,
    tree::writable,
 };
 use serde::Serialize;
@@ -36,6 +35,7 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
+      nix_store,
    },
    exports::closure,
    schema::Field,
@@ -253,7 +253,7 @@ impl Python {
       )?;
       let mut roots = vec![ctx.out.clone()];
       roots.extend(ctx.deps.iter().map(|dep| dep.root.clone()));
-      let store = var("NIX_STORE").unwrap_or_else(|_| STORE_DIR.to_owned());
+      let store = nix_store();
       let rels = Self::site_packages(&roots)
          .iter()
          .map(|site| {
