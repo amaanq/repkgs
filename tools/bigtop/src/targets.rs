@@ -10,6 +10,7 @@
 
 use std::collections::BTreeMap;
 
+use mummer::config::BinaryFormat;
 use serde::{
    Deserialize,
    Serialize,
@@ -17,7 +18,8 @@ use serde::{
 
 use crate::hardening::Hardening;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Cpu {
    X86_64,
    Aarch64,
@@ -26,10 +28,48 @@ pub enum Cpu {
    Powerpc64le,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum Os {
+   Linux,
+   Windows,
+   Macos,
+}
+
+#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 enum Libc {
    Glibc,
    Musl,
+   Msvc,
+   Mingw,
+   Apple,
+}
+
+#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum Abi {
+   Gnu,
+   Musl,
+   Msvc,
+   Apple,
+}
+
+#[derive(Clone, Copy)]
+enum LinuxLibc {
+   Glibc,
+   Musl,
+}
+
+impl Abi {
+   const fn name(self) -> &'static str {
+      match self {
+         Self::Gnu => "gnu",
+         Self::Musl => "musl",
+         Self::Msvc => "msvc",
+         Self::Apple => "apple",
+      }
+   }
 }
 
 #[derive(Deserialize, Eq, PartialEq, Serialize)]
@@ -74,14 +114,14 @@ struct Ext {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Facts {
    name:           String,
-   cpu:            String,
-   os:             String,
-   libc:           String,
-   abi:            String,
+   cpu:            Cpu,
+   os:             Os,
+   libc:           Libc,
+   abi:            Abi,
    posix:          bool,
    bits:           u8,
    endian:         String,
-   binfmt:         String,
+   binfmt:         BinaryFormat,
    ext:            Ext,
    names:          Names,
    os_names:       OsNames,
@@ -225,11 +265,11 @@ impl Cpu {
    }
 }
 
-fn os_names(os: &str) -> OsNames {
+fn os_names(os: Os) -> OsNames {
    let (cmake, meson, meson_kernel, go, gyp, uname) = match os {
-      "windows" => ("Windows", "windows", "nt", "windows", "win", "Windows_NT"),
-      "macos" => ("Darwin", "darwin", "xnu", "darwin", "mac", "Darwin"),
-      _ => ("Linux", "linux", "linux", "linux", "linux", "Linux"),
+      Os::Windows => ("Windows", "windows", "nt", "windows", "win", "Windows_NT"),
+      Os::Macos => ("Darwin", "darwin", "xnu", "darwin", "mac", "Darwin"),
+      Os::Linux => ("Linux", "linux", "linux", "linux", "linux", "Linux"),
    };
 
    OsNames {
@@ -242,39 +282,40 @@ fn os_names(os: &str) -> OsNames {
    }
 }
 
-fn ext(binfmt: &str, libc: &str) -> Ext {
-   let shared = match binfmt {
-      "macho" => ".dylib",
-      "coff" => ".dll",
-      _ => ".so",
+fn ext(binfmt: BinaryFormat, libc: Libc) -> Ext {
+   let (exe, shared) = match binfmt {
+      BinaryFormat::Elf => ("", ".so"),
+      BinaryFormat::MachO => ("", ".dylib"),
+      BinaryFormat::Coff => (".exe", ".dll"),
    };
-   let import = match libc {
-      "msvc" => Some(".lib".to_owned()),
-      "mingw" => Some(".dll.a".to_owned()),
-      _ => None,
+   let (archive, import) = match libc {
+      Libc::Msvc => (".lib", Some(".lib")),
+      Libc::Mingw => (".a", Some(".dll.a")),
+      Libc::Glibc | Libc::Musl | Libc::Apple => (".a", None),
    };
 
    Ext {
-      exe: if binfmt == "coff" { ".exe" } else { "" }.to_owned(),
-      shared: shared.to_owned(),
-      archive: if libc == "msvc" { ".lib" } else { ".a" }.to_owned(),
-      import,
+      exe:     exe.to_owned(),
+      shared:  shared.to_owned(),
+      archive: archive.to_owned(),
+      import:  import.map(str::to_owned),
    }
 }
 
-fn linux(cpu: Cpu, libc: Libc) -> Facts {
+fn linux(cpu: Cpu, flavour: LinuxLibc) -> Facts {
    let name = cpu.name();
    let names = cpu.names();
-   let (libc_name, abi, interp) = match libc {
-      Libc::Glibc => ("glibc", "gnu", cpu.glibc_interp().to_owned()),
-      Libc::Musl => ("musl", "musl", format!("ld-musl-{name}.so.1")),
+   let (libc, abi, interp) = match flavour {
+      LinuxLibc::Glibc => (Libc::Glibc, Abi::Gnu, cpu.glibc_interp().to_owned()),
+      LinuxLibc::Musl => (Libc::Musl, Abi::Musl, format!("ld-musl-{name}.so.1")),
    };
+   let abi_name = abi.name();
    // three spellings of one platform, named by consumer: clang -target,
    // configure --host (config.sub), rustc/cargo. They coincide on linux and
    // diverge on macos (arm64-apple-macos14 vs aarch64-apple-darwin), so
    // there is no plain `triple` to reach for
-   let clang_target = format!("{name}-unknown-linux-{abi}");
-   let rust_triple = format!("{}-unknown-linux-{abi}", names.rust);
+   let clang_target = format!("{name}-unknown-linux-{abi_name}");
+   let rust_triple = format!("{}-unknown-linux-{abi_name}", names.rust);
    let openssl = match cpu {
       Cpu::X86_64 | Cpu::Aarch64 | Cpu::Powerpc64le => names.openssl.clone(),
       // its Configure's own table
@@ -285,17 +326,17 @@ fn linux(cpu: Cpu, libc: Libc) -> Facts {
 
    Facts {
       name: format!("{name}-linux"),
-      cpu: name.to_owned(),
-      os: "linux".to_owned(),
-      libc: libc_name.to_owned(),
-      abi: abi.to_owned(),
+      cpu,
+      os: Os::Linux,
+      libc,
+      abi,
       posix: true,
       bits: 64,
       endian: "little".to_owned(),
-      binfmt: "elf".to_owned(),
-      ext: ext("elf", libc_name),
+      binfmt: BinaryFormat::Elf,
+      ext: ext(BinaryFormat::Elf, libc),
       names,
-      os_names: os_names("linux"),
+      os_names: os_names(Os::Linux),
       march,
       hardening: cpu.hardening(),
       gnu_triple: clang_target.clone(),
@@ -314,10 +355,10 @@ fn linux(cpu: Cpu, libc: Libc) -> Facts {
 /// with our libc++. `abi` tells the two windows apart, `posix` is what packages
 /// needing fork, signals and ttys ask for. `minos` is the deployment target.
 struct Given<'given> {
-   os:      &'given str,
-   libc:    &'given str,
-   abi:     &'given str,
-   binfmt:  &'given str,
+   os:      Os,
+   libc:    Libc,
+   abi:     Abi,
+   binfmt:  BinaryFormat,
    name:    String,
    clang:   String,
    gnu:     String,
@@ -328,14 +369,14 @@ struct Given<'given> {
 fn given(cpu: Cpu, facts: Given<'_>, march: Vec<String>, minos: Option<String>) -> Facts {
    Facts {
       name: facts.name,
-      cpu: cpu.name().to_owned(),
-      os: facts.os.to_owned(),
-      libc: facts.libc.to_owned(),
-      abi: facts.abi.to_owned(),
-      posix: facts.os != "windows",
+      cpu,
+      os: facts.os,
+      libc: facts.libc,
+      abi: facts.abi,
+      posix: facts.os != Os::Windows,
       bits: 64,
       endian: "little".to_owned(),
-      binfmt: facts.binfmt.to_owned(),
+      binfmt: facts.binfmt,
       ext: ext(facts.binfmt, facts.libc),
       names: cpu.names(),
       os_names: os_names(facts.os),
@@ -354,10 +395,10 @@ fn msvc(cpu: Cpu) -> Facts {
    let name = cpu.name();
    let triple = format!("{name}-pc-windows-msvc");
    let facts = Given {
-      os:      "windows",
-      libc:    "msvc",
-      abi:     "msvc",
-      binfmt:  "coff",
+      os:      Os::Windows,
+      libc:    Libc::Msvc,
+      abi:     Abi::Msvc,
+      binfmt:  BinaryFormat::Coff,
       name:    format!("{name}-windows-msvc"),
       clang:   triple.clone(),
       gnu:     triple.clone(),
@@ -375,10 +416,10 @@ fn mingw(cpu: Cpu) -> Facts {
    let name = cpu.name();
    let triple = format!("{name}-w64-mingw32");
    let facts = Given {
-      os:      "windows",
-      libc:    "mingw",
-      abi:     "gnu",
-      binfmt:  "coff",
+      os:      Os::Windows,
+      libc:    Libc::Mingw,
+      abi:     Abi::Gnu,
+      binfmt:  BinaryFormat::Coff,
       name:    format!("{name}-windows-gnu"),
       clang:   triple.clone(),
       gnu:     triple,
@@ -398,10 +439,10 @@ fn macos(cpu: Cpu) -> Facts {
    let clang = cpu.names().clang;
    let openssl = format!("darwin64-{clang}");
    let facts = Given {
-      os:      "macos",
-      libc:    "apple",
-      abi:     "apple",
-      binfmt:  "macho",
+      os:      Os::Macos,
+      libc:    Libc::Apple,
+      abi:     Abi::Apple,
+      binfmt:  BinaryFormat::MachO,
       name:    format!("{name}-macos"),
       clang:   format!("{clang}-apple-macos{minos}"),
       gnu:     format!("{name}-apple-darwin"),
@@ -418,9 +459,9 @@ fn macos(cpu: Cpu) -> Facts {
 
 /// glibc Linux for every cpu, musl Linux for the bootstrap, the rest as listed.
 pub fn targets() -> Vec<Facts> {
-   let linux_targets = [Libc::Glibc, Libc::Musl]
+   let linux_targets = [LinuxLibc::Glibc, LinuxLibc::Musl]
       .into_iter()
-      .flat_map(|libc| Cpu::ALL.map(|cpu| linux(cpu, libc)));
+      .flat_map(|flavour| Cpu::ALL.map(|cpu| linux(cpu, flavour)));
    let others = [
       msvc(Cpu::X86_64),
       msvc(Cpu::Aarch64),
