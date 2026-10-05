@@ -21,20 +21,63 @@ use std::{
    process::Command,
 };
 
-fn run(program: &str, args: &[&str]) -> io::Result<()> {
-   let status = Command::new(program).args(args).status()?;
-   if status.success() {
-      return Ok(());
+use crate::{
+   files::sorted_entries,
+   process::Checked as _,
+};
+
+/// bsdtar, the one archiver every unpacking here goes through.
+pub struct Bsdtar(PathBuf);
+
+impl Bsdtar {
+   #[inline]
+   pub fn new<Program>(program: Program) -> Self
+   where
+      Program: Into<PathBuf>,
+   {
+      Self(program.into())
    }
-   Err(io::Error::other(format!(
-      "{program} {} failed with {}",
-      args.join(" "),
-      status.code().unwrap_or(-1)
-   )))
+
+   /// `archive` extracted into `into`, `options` after.
+   #[inline]
+   pub fn extract(&self, archive: &Path, into: &Path, options: &[&str]) -> io::Result<()> {
+      Command::new(&self.0)
+         .arg("-xf")
+         .arg(archive)
+         .arg("-C")
+         .arg(into)
+         .args(options)
+         .checked()
+   }
+
+   /// The member names of `archive`, one per line.
+   #[inline]
+   pub fn list(&self, archive: &Path) -> io::Result<String> {
+      String::from_utf8(
+         Command::new(&self.0)
+            .arg("-tf")
+            .arg(archive)
+            .checked_output()?,
+      )
+      .map_err(io::Error::other)
+   }
+
+   /// One member of `archive` as text.
+   #[inline]
+   pub fn read(&self, archive: &Path, member: &str) -> io::Result<String> {
+      String::from_utf8(
+         Command::new(&self.0)
+            .arg("-xOf")
+            .arg(archive)
+            .arg(member)
+            .checked_output()?,
+      )
+      .map_err(io::Error::other)
+   }
 }
 
 /// u+w and no setuid, setgid or sticky bits, recursively.
-fn writable(path: &Path) -> io::Result<()> {
+fn writable_tree(path: &Path) -> io::Result<()> {
    let meta = symlink_metadata(path)?;
    if meta.is_symlink() {
       return Ok(());
@@ -43,18 +86,10 @@ fn writable(path: &Path) -> io::Result<()> {
    set_permissions(path, Permissions::from_mode((mode | 0o200) & !0o7000))?;
    if meta.is_dir() {
       for child in read_dir(path)? {
-         writable(&child?.path())?;
+         writable_tree(&child?.path())?;
       }
    }
    Ok(())
-}
-
-fn entries(directory: &Path) -> io::Result<Vec<PathBuf>> {
-   let mut found: Vec<PathBuf> = read_dir(directory)?
-      .map(|entry| entry.map(|found| found.path()))
-      .collect::<io::Result<_>>()?;
-   found.sort();
-   Ok(found)
 }
 
 /// Unpacks `archive` into `dest`.
@@ -65,18 +100,12 @@ fn entries(directory: &Path) -> io::Result<Vec<PathBuf>> {
 /// data.tar member's tree.
 #[inline]
 pub fn unpack(bsdtar: &str, archive: &Path, dest: &Path) -> io::Result<()> {
+   let tar = Bsdtar::new(bsdtar);
    let stage = PathBuf::from(format!("{}.unpack", dest.to_string_lossy()));
    create_dir_all(&stage)?;
-   let stage_text = stage.to_string_lossy().into_owned();
-   let archive_text = archive.to_string_lossy().into_owned();
-   let extract = [
-      "-C",
-      &stage_text,
-      "--no-same-owner",
-      "--no-same-permissions",
-   ];
-   run(bsdtar, &[&["-xf", &archive_text], &extract[..]].concat())?;
-   let top = entries(&stage)?;
+   let options = ["--no-same-owner", "--no-same-permissions"];
+   tar.extract(archive, &stage, &options)?;
+   let top = sorted_entries(&stage)?;
    let data: Vec<&PathBuf> = top
       .iter()
       .filter(|path| {
@@ -96,11 +125,10 @@ pub fn unpack(bsdtar: &str, archive: &Path, dest: &Path) -> io::Result<()> {
    if let &[member] = data.as_slice()
       && stage.join("debian-binary").exists()
    {
-      let member_text = member.to_string_lossy().into_owned();
-      run(bsdtar, &[&["-xf", &member_text], &extract[..]].concat())?;
+      tar.extract(member, &stage, &options)?;
       remove_file(member)?;
       remove_file(stage.join("debian-binary"))?;
-      for path in entries(&stage)? {
+      for path in sorted_entries(&stage)? {
          if path
             .file_name()
             .and_then(|name| name.to_str())
@@ -110,8 +138,8 @@ pub fn unpack(bsdtar: &str, archive: &Path, dest: &Path) -> io::Result<()> {
          }
       }
    }
-   writable(&stage)?;
-   let remaining = entries(&stage)?;
+   writable_tree(&stage)?;
+   let remaining = sorted_entries(&stage)?;
    if let Some(only) = remaining.first()
       && remaining.len() == 1
       && symlink_metadata(only)?.is_dir()

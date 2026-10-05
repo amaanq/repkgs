@@ -1,27 +1,27 @@
 use std::{
    collections::BTreeMap,
-   env::var,
    fs::{
       create_dir_all,
       read,
-      read_to_string,
    },
    io,
    os::unix::fs::symlink,
    path::Path,
+   process::Command,
 };
 
 use mummer::{
+   attrs,
    files::write_file,
+   process::Checked as _,
+   store_path::StorePath,
    tree::parallel_with,
+   unpack::Bsdtar,
 };
 use serde::Deserialize;
 
 use crate::{
-   bootstrap::stage::{
-      cores,
-      run,
-   },
+   bootstrap::stage::cores,
    fetch::drv::{
       Entry,
       Kind,
@@ -31,17 +31,11 @@ use crate::{
 #[derive(Deserialize)]
 pub struct Attrs {
    pub outputs: BTreeMap<String, String>,
-   pub peanut:  String,
+   pub peanut:  StorePath,
    pub layout:  Vec<Entry>,
 }
 
 impl Attrs {
-   pub fn load() -> io::Result<Self> {
-      let path = var("NIX_ATTRS_JSON_FILE")
-         .map_err(|_unset| io::Error::other("NIX_ATTRS_JSON_FILE is not set"))?;
-      Ok(serde_json::from_str(&read_to_string(path)?)?)
-   }
-
    pub fn out(&self) -> io::Result<&str> {
       self
          .outputs
@@ -51,7 +45,7 @@ impl Attrs {
    }
 }
 
-fn place(entry: &Entry, out: &str, bin: &str) -> io::Result<()> {
+fn place(entry: &Entry, out: &str, tar: &Bsdtar) -> io::Result<()> {
    let target = format!("{out}/{}", entry.to);
    let dst = Path::new(&target);
    match entry.kind {
@@ -61,11 +55,7 @@ fn place(entry: &Entry, out: &str, bin: &str) -> io::Result<()> {
       },
       Kind::Unpack { ref unpack } => {
          create_dir_all(dst)?;
-         run(&format!("{bin}/bsdtar"), &[
-            "-xf",
-            unpack,
-            "-C",
-            &target,
+         tar.extract(Path::new(unpack), dst, &[
             "--strip-components",
             "1",
             "--no-same-owner",
@@ -91,9 +81,11 @@ fn place(entry: &Entry, out: &str, bin: &str) -> io::Result<()> {
 /// lay the collecting derivation's `layout` out under $out, then drop the
 /// write bits the daemon rejects.
 pub fn run_mode() -> io::Result<()> {
-   let attrs = Attrs::load()?;
+   let attrs = attrs::load::<Attrs>()?;
    let out = attrs.out()?;
-   let bin = format!("{}/bin", attrs.peanut);
-   parallel_with(&attrs.layout, cores(), |entry| place(entry, out, &bin))?;
-   run(&format!("{bin}/chmod"), &["-R", "u+w,go-w,a-st", out])
+   let tar = Bsdtar::new(attrs.peanut.join("bin/bsdtar"));
+   parallel_with(&attrs.layout, cores(), |entry| place(entry, out, &tar))?;
+   Command::new(attrs.peanut.join("bin/chmod"))
+      .args(["-R", "u+w,go-w,a-st", out])
+      .checked()
 }
