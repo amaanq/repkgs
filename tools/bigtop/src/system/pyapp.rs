@@ -391,7 +391,7 @@ fn build_wheel(
             .iter()
             .map(|(key, value)| format!("-C{key}={value}")),
       );
-      succeed(command.arg(".").envs(&overrides.env), "python3 -m build")
+      succeed(command.arg(".").envs(&overrides.env))
    })();
    set_current_dir(back)?;
    built
@@ -428,23 +428,21 @@ fn install_wheel(ctx: &Ctx, wheel: &str, scripts: bool) -> io::Result<()> {
    if symlink_metadata(&stage).is_ok() {
       remove_dir_all(&stage)?;
    }
-   succeed(
-      Command::new("python3").args([
-         "-m",
-         "installer",
-         "--prefix",
-         &stage,
-         "--no-compile-bytecode",
-         wheel,
-      ]),
+   succeed(Command::new("python3").args([
+      "-m",
       "installer",
-   )?;
+      "--prefix",
+      &stage,
+      "--no-compile-bytecode",
+      wheel,
+   ]))?;
    let site = site_packages(ctx)?;
    for packages in glob(&format!("{stage}/lib/python3*/site-packages"))? {
-      succeed(
-         Command::new("cp").args(["-rlf", &format!("{}/.", packages.to_string_lossy()), &site]),
-         "cp",
-      )?;
+      succeed(Command::new("cp").args([
+         "-rlf",
+         &format!("{}/.", packages.to_string_lossy()),
+         &site,
+      ]))?;
       remove_dir_all(&packages)?;
    }
    let bin = format!("{stage}/bin");

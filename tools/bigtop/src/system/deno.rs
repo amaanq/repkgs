@@ -62,14 +62,8 @@ impl System for Deno {
    fn setup(&self, ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
       let options = ctx.options::<Options>(self.name())?;
       let deno_dir = format!("{}/deno-dir", ctx.build);
-      succeed(
-         Command::new("cp").args(["-r", &options.deps, &deno_dir]),
-         "cp",
-      )?;
-      succeed(
-         Command::new("chmod").args(["-R", "u+w", &deno_dir]),
-         "chmod",
-      )?;
+      succeed(Command::new("cp").args(["-r", &options.deps, &deno_dir]))?;
+      succeed(Command::new("chmod").args(["-R", "u+w", &deno_dir]))?;
       Ok([
          ("DENO_DIR", deno_dir),
          ("DENO_NO_UPDATE_CHECK", "1".to_owned()),
@@ -108,18 +102,12 @@ impl Deno {
       let deno = dep_root(ctx, "deno", "deno applications run on it")?;
       let app = format!("{}/lib/{}", ctx.out, ctx.spec()?.name);
       create_dir_all(format!("{}/lib", ctx.out))?;
-      succeed(
-         Command::new("cp").args([
-            "-r",
-            &ctx.project_dir(&options.root).to_string_lossy(),
-            &app,
-         ]),
-         "cp",
-      )?;
-      succeed(
-         Command::new("cp").args(["-r", &options.deps, &format!("{app}/deno-dir")]),
-         "cp",
-      )?;
+      succeed(Command::new("cp").args([
+         "-r",
+         &ctx.project_dir(&options.root).to_string_lossy(),
+         &app,
+      ]))?;
+      succeed(Command::new("cp").args(["-r", &options.deps, &format!("{app}/deno-dir")]))?;
       let config = ["deno.json", "deno.jsonc"]
          .iter()
          .map(|name| format!("{app}/{name}"))

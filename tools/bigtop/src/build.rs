@@ -12,6 +12,7 @@ use std::{
 
 use mummer::{
    files::write_file,
+   process::Checked as _,
    tree::{
       note,
       set_phase,
@@ -87,20 +88,15 @@ fn nu_phase(attrs: &Attrs, index: usize, name: &str, body: &str, top: &str) -> i
       format!("{}\n{body}\n{HANDOVER}", attrs.plan.prelude).as_bytes(),
       None,
    )?;
-   let status = Command::new("nu")
+   Command::new("nu")
       .args([
          "--no-config-file",
          &format!("--include-path={tree}"),
          "--experimental-options=[cell-path-types]",
          &script,
       ])
-      .status()?;
-   if !status.success() {
-      return Err(io::Error::other(format!(
-         "phase {name} failed with {}",
-         status.code().unwrap_or(-1)
-      )));
-   }
+      .checked()
+      .map_err(|error| io::Error::other(format!("phase {name}, {error}")))?;
    let handed: BTreeMap<String, String> =
       serde_json::from_str(&read_to_string(format!("{top}/phase-env.json"))?)?;
    let current: BTreeMap<String, String> = vars().collect();
