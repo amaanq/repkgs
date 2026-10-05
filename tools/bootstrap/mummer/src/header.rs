@@ -24,7 +24,9 @@ use misstep::{
 };
 use mummer::{
    process::{
+      Outcome,
       Slot,
+      Tool,
       log,
    },
    store::{
@@ -69,7 +71,12 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
    }) || canonicalize(on_path(compiler))? != current_exe()?
       || raw.last().is_none_or(|source| source != "conftest.c")
    {
-      log("header", "unsupported-compiler", compiler, started);
+      log(
+         Tool::Header,
+         Outcome::UnsupportedCompiler,
+         compiler,
+         started,
+      );
       return Ok(1);
    }
    let driver = Driver::load()?;
@@ -92,12 +99,17 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
       .iter()
       .any(|name| var_os(name).is_some_and(|value| !value.is_empty()))
    {
-      log("header", "unsupported-options", "conftest.c", started);
+      log(
+         Tool::Header,
+         Outcome::UnsupportedOptions,
+         "conftest.c",
+         started,
+      );
       return Ok(1);
    }
    let mut cache = Client::connect(socket)?;
    if cached_header(&driver, raw, &mut cache)? {
-      log("header", "compile-hit", "conftest.c", started);
+      log(Tool::Header, Outcome::CompileHit, "conftest.c", started);
       return Ok(0);
    }
    let dependency_file = NamedTempFile::new_in(".")?;
@@ -118,13 +130,18 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
       .output()?;
    drop(slot);
    if !output.status.success() {
-      log("header", "preprocess-failed", "conftest.c", started);
+      log(
+         Tool::Header,
+         Outcome::PreprocessFailed,
+         "conftest.c",
+         started,
+      );
       return Ok(1);
    }
    let source = read_to_string("conftest.c")?;
    let diagnostics = String::from_utf8(output.stderr)?;
    let Some(normalized) = normalize_source(&source, &diagnostics) else {
-      log("header", "diagnostics", "conftest.c", started);
+      log(Tool::Header, Outcome::Diagnostics, "conftest.c", started);
       return Ok(1);
    };
    let mut hasher = Hasher::new();
@@ -169,12 +186,12 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
    let key = Key::hex(Namespace::HeaderProbe, hasher.finalize().as_bytes());
    match cache.get(&key)? {
       Some(bytes) if bytes == b"yes\n" => {
-         log("header", "hit", key.as_str(), started);
+         log(Tool::Header, Outcome::Hit, &key, started);
          Ok(0)
       },
       Some(_) => bail!("invalid cached header result"),
       None => {
-         log("header", "miss", key.as_str(), started);
+         log(Tool::Header, Outcome::Miss, &key, started);
          writeln!(io::stdout().lock(), "{key}")?;
          Ok(3)
       },
