@@ -43,6 +43,7 @@ use crate::{
    system::{
       command::{
          Env,
+         file_names,
          run,
          strs,
          tool,
@@ -303,10 +304,7 @@ impl Cargo {
    ) -> io::Result<String> {
       let dir = format!("{}/vendor", ctx.build);
       create_dir_all(&dir)?;
-      let mut names: Vec<String> = read_dir(deps)?
-         .map(|entry| entry.map(|found| found.file_name().to_string_lossy().into_owned()))
-         .collect::<io::Result<_>>()?;
-      names.sort();
+      let names = file_names(Path::new(deps))?;
       for name in &names {
          symlink(format!("{deps}/{name}"), format!("{dir}/{name}"))?;
       }
