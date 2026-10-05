@@ -67,9 +67,7 @@ use tightrope::{
 use crate::{
    driver::{
       Driver,
-      Language,
-      Settled,
-      settle_runpath,
+      replayed_link,
    },
    manifest::{
       Manifest,
@@ -522,7 +520,7 @@ fn linker_identity(store: &Store, cache: &mut Client, linker: &str) -> io::Resul
    Ok(format!(
       "{}{}",
       store.key(&config),
-      store.tool_identity(cache, driver.compiler(Language::Cc))?
+      store.tool_identity(cache, driver.cc())?
    ))
 }
 
@@ -701,27 +699,20 @@ fn replay(
       return Err(Miss::ObjectGone);
    };
    let link_text = if artifacts.iter().any(|artifact| artifact.settle) {
-      let Some(mut link_bytes) = cache.get(&Key::digest(Namespace::LinkDepfile, key))? else {
+      let Some(link_bytes) = cache.get(&Key::digest(Namespace::LinkDepfile, key))? else {
          return Err(Miss::ObjectGone);
       };
-      store.mask_output(&mut link_bytes, true);
-      Some(store.resolve_all(&String::from_utf8(link_bytes).map_err(io::Error::other)?))
+      Some(store.replayed_text(link_bytes)?)
    } else {
       None
    };
-   for (artifact, mut bytes) in artifacts.iter().zip(values) {
-      if invocation.links {
-         store.mask_output(&mut bytes, true);
-         store.resolve_bytes(&mut bytes);
-      }
-      if let Some(ref text) = link_text
-         && artifact.settle
-      {
-         bytes = match settle_runpath(&bytes, text)? {
-            Settled::Image(settled) => settled,
-            Settled::Room(_) => return Err(Miss::RunpathRoom),
-         };
-      }
+   for (artifact, stored) in artifacts.iter().zip(values) {
+      let bytes = if invocation.links {
+         let settling = link_text.as_deref().filter(|_| artifact.settle);
+         replayed_link(store, stored, settling)?
+      } else {
+         stored
+      };
       write_file(
          &invocation
             .out_dir

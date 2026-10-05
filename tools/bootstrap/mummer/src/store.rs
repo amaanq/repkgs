@@ -284,6 +284,13 @@ impl Store {
       self.unmask_random(&resolved)
    }
 
+   /// Stored text with this build's output and store paths put back.
+   #[inline]
+   pub fn replayed_text(&self, mut bytes: Vec<u8>) -> io::Result<String> {
+      self.mask_output(&mut bytes, true);
+      Ok(self.resolve_all(&String::from_utf8(bytes).map_err(io::Error::other)?))
+   }
+
    /// The scratch names `CMake` made up for this run, so paths a manifest
    /// stored masked lead back into this run's directories.
    #[inline]
