@@ -20,6 +20,7 @@ use std::{
 
 use mummer::{
    files::write_file,
+   process::Checked as _,
    store::on_path,
    syslibs::{
       CargoBuild,
@@ -87,7 +88,7 @@ impl System for Cargo {
    }
 
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      let options: Options = ctx.options("cargo")?;
+      let options: Options = ctx.options(self.name())?;
       let vendor = match options.deps.as_deref() {
          Some(deps) if !options.crate_patches.is_empty() => {
             Some(Self::patched_vendor(ctx, deps, &options.crate_patches)?)
@@ -108,7 +109,7 @@ impl System for Cargo {
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options("cargo")?;
+      let options: Options = ctx.options(self.name())?;
       let extra = Self::arguments(ctx, &options)?;
       match verb {
          "build" => {
@@ -127,7 +128,7 @@ impl System for Cargo {
             run("cargo", &args, &[])
          },
          "install" => Self::install(ctx),
-         _ => Err(unknown("cargo", verb)),
+         _ => Err(unknown(self.name(), verb)),
       }
    }
 }
@@ -181,8 +182,8 @@ impl Cargo {
          ),
          ("RUSTC".to_owned(), rustc.to_string_lossy().into_owned()),
       ]);
-      let version = Command::new(&rustc).arg("-vV").output()?;
-      let host = String::from_utf8_lossy(&version.stdout)
+      let version = Command::new(&rustc).arg("-vV").checked_output()?;
+      let host = String::from_utf8_lossy(&version)
          .lines()
          .find_map(|line| line.strip_prefix("host: "))
          .ok_or_else(|| io::Error::other("rustc -vV names no host"))?

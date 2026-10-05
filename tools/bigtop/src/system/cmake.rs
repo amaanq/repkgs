@@ -95,7 +95,7 @@ impl System for Cmake {
             run("ctest", &args, &[])
          },
          "install" => run("cmake", &["--install", "."], &[]),
-         _ => Err(unknown("cmake", verb)),
+         _ => Err(unknown(self.name(), verb)),
       }
    }
 }

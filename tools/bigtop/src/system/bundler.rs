@@ -88,7 +88,7 @@ impl System for Bundler {
    /// bundler is configured entirely through BUNDLE_* env, so there is no
    /// .bundle/config to clean up afterwards.
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      let options: Options = ctx.options("bundler")?;
+      let options: Options = ctx.options(self.name())?;
       let app = app_dir(ctx)?;
       succeed(
          Command::new("cp").args([
@@ -144,7 +144,7 @@ impl System for Bundler {
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options("bundler")?;
+      let options: Options = ctx.options(self.name())?;
       match verb {
          "build" => build(&options),
          "test" => {
@@ -156,7 +156,7 @@ impl System for Bundler {
             run("bundle", &args, &[])
          },
          "install" => install(ctx, &options),
-         _ => Err(unknown("bundler", verb)),
+         _ => Err(unknown(self.name(), verb)),
       }
    }
 }

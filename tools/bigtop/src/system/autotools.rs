@@ -115,7 +115,7 @@ impl System for Autotools {
    }
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
-      let options: Options = ctx.options("autotools")?;
+      let options: Options = ctx.options(self.name())?;
       Ok(if options.out_of_tree {
          PathBuf::from(&ctx.build)
       } else {
@@ -128,7 +128,7 @@ impl System for Autotools {
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options("autotools")?;
+      let options: Options = ctx.options(self.name())?;
       match verb {
          "configure" => Self::configure(ctx, attrs, &options, socket),
          "build" => make::build(ctx, &options.make_flags, &options.build_target),
@@ -139,12 +139,20 @@ impl System for Autotools {
             make::install(ctx, &flags, &options.install_target)?;
             Self::unrecord_install_tool(ctx)
          },
-         _ => Err(unknown("autotools", verb)),
+         _ => Err(unknown(self.name(), verb)),
       }
    }
 }
 
 impl Autotools {
+   fn build_dir(ctx: &Ctx, options: &Options) -> PathBuf {
+      if options.out_of_tree {
+         PathBuf::from(&ctx.build)
+      } else {
+         ctx.project_dir(&options.root)
+      }
+   }
+
    fn configure(ctx: &Ctx, attrs: &Attrs, options: &Options, socket: &Path) -> io::Result<()> {
       let script = ctx
          .project_dir(&options.root)
@@ -199,11 +207,7 @@ impl Autotools {
          ("CONFIG_SITE", &config_site),
       ];
       let shell = var("CONFIG_SHELL").unwrap_or_default();
-      let workdir = if options.out_of_tree {
-         PathBuf::from(&ctx.build)
-      } else {
-         ctx.project_dir(&options.root)
-      };
+      let workdir = Self::build_dir(ctx, options);
       run(&shell, &args, &env)?;
 
       let status = workdir.join("config.status");

@@ -60,7 +60,7 @@ impl System for Deno {
    /// deno adds gen/ and `*_cache_v2` next to npm/ and remote/, so `DENO_DIR`
    /// is a writable copy of the fetched one.
    fn setup(&self, ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      let options: Options = ctx.options("deno")?;
+      let options: Options = ctx.options(self.name())?;
       let deno_dir = format!("{}/deno-dir", ctx.build);
       succeed(
          Command::new("cp").args(["-r", &options.deps, &deno_dir]),
@@ -79,7 +79,7 @@ impl System for Deno {
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options("deno")?;
+      let options: Options = ctx.options(self.name())?;
       match verb {
          "build" => {
             if !options.check || options.entry.is_empty() {
@@ -96,7 +96,7 @@ impl System for Deno {
             run("deno", &args, &[])
          },
          "install" => Self::install(ctx, &options),
-         _ => Err(unknown("deno", verb)),
+         _ => Err(unknown(self.name(), verb)),
       }
    }
 }
