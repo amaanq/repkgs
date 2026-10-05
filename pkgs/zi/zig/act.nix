@@ -8,7 +8,7 @@
 [
   (when platform.cross {
     cmake.defs = {
-      CMAKE_PROGRAM_PATH = "${pkgs.llvm21}/host";
+      CMAKE_PROGRAM_PATH = "${pkgs.llvm22}/host";
       ZIG_EXECUTABLE = "${tools.zig}/bin/zig";
       ZIG_STATIC_ZLIB = true;
       ZIG_STATIC_ZSTD = true;

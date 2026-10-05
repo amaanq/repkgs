@@ -1,0 +1,42 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -647,6 +647,13 @@
+ set(ZIG2_C_SOURCE "${PROJECT_BINARY_DIR}/zig2.c")
+ set(ZIG_COMPILER_RT_C_SOURCE "${PROJECT_BINARY_DIR}/compiler_rt.c")
+ 
++set(ZIG_EXECUTABLE "" CACHE FILEPATH "A zig to build stage3 with in place of zig2, which a cross build cannot run")
++
++if(ZIG_EXECUTABLE)
++  set(ZIG_STAGE3_BUILDER "${ZIG_EXECUTABLE}")
++else()
++set(ZIG_STAGE3_BUILDER zig2)
++
+ add_executable(zig-wasm2c ${ZIG_WASM2C_SOURCES})
+ set_target_properties(zig-wasm2c PROPERTIES COMPILE_FLAGS "${ZIG_WASM2C_COMPILE_FLAGS}")
+ 
+@@ -731,6 +738,7 @@
+ if(MSVC OR MINGW)
+     target_link_libraries(zig2 LINK_PUBLIC version)
+ endif()
++endif()
+ 
+ 
+ set(ZIG_BUILD_ARGS
+@@ -798,12 +806,15 @@
+ 
+ add_custom_command(
+   OUTPUT "${PROJECT_BINARY_DIR}/stage3/bin/zig"
+-  COMMAND zig2 build ${ZIG_BUILD_ARGS} --prefix "${PROJECT_BINARY_DIR}/stage3"
++  COMMAND ${ZIG_STAGE3_BUILDER} build ${ZIG_BUILD_ARGS} --prefix "${PROJECT_BINARY_DIR}/stage3"
++  DEPENDS zigcpp
+   COMMENT "Building stage3"
+   WORKING_DIRECTORY "${ZIG2_WORKING_DIR}"
+ )
+ 
+-set(ZIG_EXECUTABLE "$<TARGET_FILE:zig2>")
++if(NOT ZIG_EXECUTABLE)
++  set(ZIG_EXECUTABLE "$<TARGET_FILE:zig2>")
++endif()
+ 
+ install(CODE "set(ZIG_EXECUTABLE \"${ZIG_EXECUTABLE}\")")
+ install(CODE "set(ZIG_BUILD_ARGS \"${ZIG_BUILD_ARGS}\")")
