@@ -4,6 +4,10 @@ use std::{
    io,
 };
 
+use mummer::hash::{
+   Algorithm,
+   OutputHash,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -14,7 +18,6 @@ use crate::{
       dispatch::Producer,
       drv::{
          Entry,
-         Hash,
          Row,
          attr,
          collect,
@@ -119,7 +122,7 @@ pub fn vendor_layout(store: &mut Store, text: &str, prefix: &str) -> io::Result<
             "https://static.crates.io/crates/{}/{}-{}.crate",
             package.name, package.name, package.version
          ),
-         hash: Hash::Sha256(checksum.to_owned()),
+         hash: OutputHash::hex(Algorithm::Sha256, checksum)?,
       });
    }
    let fetched = fetchurls(store, &rows)?;

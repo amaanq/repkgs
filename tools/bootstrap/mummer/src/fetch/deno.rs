@@ -4,6 +4,11 @@ use std::{
    io,
 };
 
+use mummer::hash::{
+   Algorithm,
+   Digest,
+   OutputHash,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -12,22 +17,16 @@ use serde_json::{
    Map,
    Value,
 };
-use sha2::{
-   Digest as _,
-   Sha256,
-};
 
 use crate::{
    fetch::{
       dispatch::Producer,
       drv::{
          Entry,
-         Hash,
          Row,
          attr,
          collect,
          fetchurls,
-         hex,
          json_file,
          lock_path,
          say,
@@ -136,7 +135,7 @@ impl Deno {
          rows.push(Row {
             file: format!("{}-{version}.tgz", flat_name(name)),
             url:  tarball_url(name, version, ""),
-            hash: Hash::Sri(entry.integrity.clone()),
+            hash: OutputHash::integrity(&entry.integrity)?,
          });
       }
       let fetched = fetchurls(store, &rows)?;
@@ -166,7 +165,7 @@ impl Deno {
          rows.push(Row {
             file: format!("jsr-{}-{version}_meta.json", flat_name(name)),
             url:  format!("{JSR}/{name}/{version}_meta.json"),
-            hash: Hash::Sha256(entry.integrity.clone()),
+            hash: OutputHash::hex(Algorithm::Sha256, &entry.integrity)?,
          });
       }
       let fetched = fetchurls(store, &rows)?;
@@ -192,13 +191,13 @@ impl Deno {
          .iter()
          .map(|(url, sha256)| {
             let (host, _path) = host_and_path(url);
-            Row {
+            Ok(Row {
                file: format!("{host}{}", url_path(url)),
                url:  url.clone(),
-               hash: Hash::Sha256(sha256.clone()),
-            }
+               hash: OutputHash::hex(Algorithm::Sha256, sha256)?,
+            })
          })
-         .collect();
+         .collect::<io::Result<Vec<_>>>()?;
       let fetched = fetchurls(store, &rows)?;
       Ok(rows
          .iter()
@@ -275,7 +274,7 @@ fn cache_path(url: &str) -> String {
    let (host, port) = authority
       .split_once(':')
       .map_or((authority, ""), |(host, port)| (host, port));
-   let key = hex(&Sha256::digest(path_query.as_bytes()));
+   let key = Digest::sha256(path_query.as_bytes()).hex();
    let port_part = if port.is_empty() {
       String::new()
    } else {
@@ -348,7 +347,7 @@ fn jsr_modules(package: &JsrFetched) -> io::Result<Vec<(String, Row)>> {
       .module_graph2
       .or(meta.module_graph1)
       .unwrap_or_default();
-   Ok(meta
+   meta
       .manifest
       .iter()
       .filter(|module| graph.contains_key(module.0))
@@ -357,17 +356,17 @@ fn jsr_modules(package: &JsrFetched) -> io::Result<Vec<(String, Row)>> {
          let row = Row {
             file: format!("jsr-{}-{}{path}", package.name, package.version),
             url:  url.clone(),
-            hash: Hash::Sha256(
+            hash: OutputHash::hex(
+               Algorithm::Sha256,
                entry
                   .checksum
                   .strip_prefix("sha256-")
-                  .unwrap_or(&entry.checksum)
-                  .to_owned(),
-            ),
+                  .unwrap_or(&entry.checksum),
+            )?,
          };
-         (url, row)
+         Ok((url, row))
       })
-      .collect())
+      .collect::<io::Result<_>>()
 }
 
 #[derive(Serialize)]

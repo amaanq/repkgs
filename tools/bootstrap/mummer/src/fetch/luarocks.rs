@@ -5,6 +5,7 @@ use std::{
    io,
 };
 
+use mummer::hash::OutputHash;
 use serde::Deserialize;
 use serde_json::Map;
 
@@ -13,7 +14,6 @@ use crate::{
       dispatch::Producer,
       drv::{
          Entry,
-         Hash,
          Row,
          attr,
          collect,
@@ -54,13 +54,13 @@ impl Producer for Luarocks {
          .iter()
          .map(|(name, entry)| {
             let file = format!("{name}-{}.src.rock", entry.version);
-            Row {
+            Ok(Row {
                url: format!("{LUAROCKS}/{file}"),
                file,
-               hash: Hash::Sri(entry.sha256.clone()),
-            }
+               hash: OutputHash::integrity(&entry.sha256)?,
+            })
          })
-         .collect();
+         .collect::<io::Result<Vec<_>>>()?;
       let fetched = fetchurls(store, &rows)?;
       let mut manifest = String::from("commands = {}\nmodules = {}\nrepository = {\n");
       for (name, entry) in &locks.luarocks {

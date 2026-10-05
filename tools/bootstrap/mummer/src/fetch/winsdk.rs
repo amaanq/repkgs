@@ -4,6 +4,10 @@ use std::{
    io,
 };
 
+use mummer::hash::{
+   Algorithm,
+   OutputHash,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -18,7 +22,6 @@ use crate::{
    fetch::{
       dispatch::Producer,
       drv::{
-         Hash,
          Row,
          attr,
          collect,
@@ -212,13 +215,13 @@ impl Producer for Winsdk {
       let rows: Vec<Row> = payloads
          .iter()
          .map(|selected| {
-            Row {
+            Ok(Row {
                file: selected.0.file_name.clone(),
                url:  selected.0.url.clone(),
-               hash: Hash::Sha256(selected.0.sha256.clone()),
-            }
+               hash: OutputHash::hex(Algorithm::Sha256, &selected.0.sha256)?,
+            })
          })
-         .collect();
+         .collect::<io::Result<Vec<_>>>()?;
       let fetched = fetchurls(store, &rows)?;
       say(&format!("windowsSdk: CRT {crt}, {sdk_id} for {sdk_arch}"));
       let selected: Vec<Selected> = payloads

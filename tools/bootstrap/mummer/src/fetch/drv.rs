@@ -10,10 +10,7 @@ use std::{
    },
 };
 
-use base64::{
-   Engine as _,
-   engine::general_purpose::STANDARD,
-};
+use mummer::hash::OutputHash;
 use serde::{
    Deserialize,
    Serialize,
@@ -48,45 +45,16 @@ pub fn say(message: &str) {
    drop(writeln!(io::stderr().lock(), "{message}"));
 }
 
-pub enum Hash {
-   Sri(String),
-   Sha256(String),
-}
-
 /// one file to fetch, `file` names it in the store.
 pub struct Row {
    pub file: String,
    pub url:  String,
-   pub hash: Hash,
+   pub hash: OutputHash,
 }
 
 pub struct Fetched {
    pub drv: String,
    pub out: String,
-}
-
-fn parse_sri(text: &str) -> io::Result<(String, String, String)> {
-   let sri = text
-      .split_whitespace()
-      .next()
-      .ok_or_else(|| io::Error::other("empty integrity"))?;
-   let (algo, encoded) = sri
-      .split_once('-')
-      .ok_or_else(|| io::Error::other(format!("integrity {sri} is not an SRI hash")))?;
-   let bytes = STANDARD
-      .decode(encoded)
-      .map_err(|error| io::Error::other(format!("integrity {sri}, {error}")))?;
-   Ok((algo.to_owned(), hex(&bytes), sri.to_owned()))
-}
-
-pub fn hex(bytes: &[u8]) -> String {
-   const HEX: &[u8; 16] = b"0123456789abcdef";
-   let mut text = String::with_capacity(bytes.len() * 2);
-   for byte in bytes {
-      text.push(char::from(HEX[usize::from(byte >> 4_u8)]));
-      text.push(char::from(HEX[usize::from(byte & 0x0F)]));
-   }
-   text
 }
 
 fn store_name(file: &str) -> String {
@@ -107,20 +75,16 @@ fn store_name(file: &str) -> String {
 
 /// one builtin:fetchurl derivation per row, in order.
 pub fn fetchurls(store: &mut Store, rows: &[Row]) -> io::Result<Vec<Fetched>> {
-   let mut files = Vec::with_capacity(rows.len());
-   for row in rows {
-      let (algo, hex, sri) = match row.hash {
-         Hash::Sri(ref text) => parse_sri(text)?,
-         Hash::Sha256(ref text) => ("sha256".to_owned(), text.to_lowercase(), text.clone()),
-      };
-      files.push(FetchFile {
-         name: store_name(&row.file),
-         url: row.url.clone(),
-         algo,
-         hex,
-         sri,
-      });
-   }
+   let files = rows
+      .iter()
+      .map(|row| {
+         FetchFile {
+            name: store_name(&row.file),
+            url:  row.url.clone(),
+            hash: row.hash.clone(),
+         }
+      })
+      .collect::<Vec<_>>();
    Ok(store
       .fetchurls(&files)?
       .into_iter()

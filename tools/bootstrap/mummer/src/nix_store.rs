@@ -14,6 +14,12 @@ use std::{
 };
 
 use mummer::{
+   hash::{
+      Algorithm,
+      Digest,
+      OutputHash,
+      Spelling,
+   },
    process::diagnostic,
    store::STORE_DIR,
 };
@@ -129,14 +135,10 @@ fn quote(text: &str) -> String {
 }
 
 fn store_path(kind: &str, name: &str, contents: &[u8]) -> String {
-   let inner = Sha256::digest(contents);
-   let mut hex = String::with_capacity(64);
-   for byte in inner {
-      const HEX: &[u8; 16] = b"0123456789abcdef";
-      hex.push(char::from(HEX[usize::from(byte >> 4_u8)]));
-      hex.push(char::from(HEX[usize::from(byte & 0x0F)]));
-   }
-   let fingerprint = format!("{kind}:sha256:{hex}:{STORE_DIR}:{name}");
+   let fingerprint = format!(
+      "{kind}:sha256:{}:{STORE_DIR}:{name}",
+      Digest::sha256(contents).hex()
+   );
    let hash = Sha256::digest(fingerprint);
    let mut compressed = [0_u8; 20];
    for (index, byte) in hash.iter().enumerate() {
@@ -156,34 +158,66 @@ fn store_path(kind: &str, name: &str, contents: &[u8]) -> String {
    format!("{STORE_DIR}/{encoded}-{name}")
 }
 
-#[derive(Deserialize)]
 pub struct FetchFile {
    pub name: String,
    pub url:  String,
-   pub algo: String,
-   pub hex:  String,
-   pub sri:  String,
+   pub hash: OutputHash,
+}
+
+/// One file of `nix-store fetchurls`, the hash in `sri` either SRI or hex in
+/// `algo`.
+#[derive(Deserialize)]
+struct FetchRequest {
+   name: String,
+   url:  String,
+   algo: String,
+   hex:  String,
+   sri:  String,
+}
+
+impl TryFrom<FetchRequest> for FetchFile {
+   type Error = io::Error;
+
+   fn try_from(request: FetchRequest) -> io::Result<Self> {
+      let algorithm = request.algo.parse::<Algorithm>()?;
+      let hash = if request.sri.starts_with(&format!("{algorithm}-")) {
+         OutputHash::sri(request.sri.parse()?)
+      } else {
+         OutputHash::hex(algorithm, &request.sri)?
+      };
+      if hash.digest().hex() != request.hex.to_ascii_lowercase() {
+         return Err(io::Error::other(format!(
+            "{}: hex {} is not the digest {hash}",
+            request.name, request.hex
+         )));
+      }
+      Ok(Self {
+         name: request.name,
+         url: request.url,
+         hash,
+      })
+   }
 }
 
 impl FetchFile {
    fn derivation(&self) -> Derivation {
+      let digest = self.hash.digest();
+      let algorithm = digest.algorithm().to_string();
+      let hex = digest.hex();
       let path = store_path(
          "output:out",
          &self.name,
-         format!("fixed:out:{}:{}:", self.algo, self.hex).as_bytes(),
+         format!("fixed:out:{algorithm}:{hex}:").as_bytes(),
       );
+      let output_hash = self.hash.to_string();
       let environment = [
          ("name", self.name.as_str()),
          ("out", path.as_str()),
-         ("outputHash", self.sri.as_str()),
-         (
-            "outputHashAlgo",
-            if self.sri.starts_with(&format!("{}-", self.algo)) {
-               ""
-            } else {
-               self.algo.as_str()
-            },
-         ),
+         ("outputHash", output_hash.as_str()),
+         ("outputHashAlgo", match self.hash.spelling() {
+            Spelling::Sri => "",
+            Spelling::LowerHex | Spelling::UpperHex => algorithm.as_str(),
+         }),
          ("outputHashMode", "flat"),
          ("url", self.url.as_str()),
          ("urls", self.url.as_str()),
@@ -202,8 +236,8 @@ impl FetchFile {
       .collect::<BTreeMap<String, String>>();
       let output = Output {
          path,
-         algorithm: self.algo.clone(),
-         hash: self.hex.clone(),
+         algorithm,
+         hash: hex,
       };
       Derivation {
          outputs: BTreeMap::from([("out".to_owned(), output)]),
@@ -504,7 +538,10 @@ pub fn run(operation: &StoreOperation) -> io::Result<()> {
          ref references,
       } => add_from_stdin(&mut store, name, references, true)?,
       StoreOperation::Fetchurls => {
-         let files = serde_json::from_reader::<_, Vec<FetchFile>>(io::stdin().lock())?;
+         let files = serde_json::from_reader::<_, Vec<FetchRequest>>(io::stdin().lock())?
+            .into_iter()
+            .map(FetchFile::try_from)
+            .collect::<io::Result<Vec<_>>>()?;
          let results = store.fetchurls(&files)?;
          serde_json::to_writer(io::stdout().lock(), &results)?;
          writeln!(io::stdout().lock())?;
