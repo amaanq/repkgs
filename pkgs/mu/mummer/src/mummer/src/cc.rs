@@ -122,13 +122,13 @@ impl Invocation {
          split: Vec::new(),
          jobs,
       };
-      let compiled = invocation
-         .jobs
-         .iter()
-         .filter(|job| {
-            job.get(1)
-               .is_some_and(|mode| matches!(mode.as_str(), "-cc1" | "-cc1as" | "-fc1"))
-         })
+      let (compile_jobs, link_jobs): (Vec<_>, Vec<_>) = invocation.jobs.iter().partition(|job| {
+         job.get(1)
+            .is_some_and(|mode| matches!(mode.as_str(), "-cc1" | "-cc1as" | "-fc1"))
+      });
+      let linked = link_jobs.into_iter().flatten().collect::<Vec<_>>();
+      let compiled = compile_jobs
+         .into_iter()
          .filter_map(|job| {
             Some((
                job.last()?.clone(),
@@ -208,12 +208,7 @@ impl Invocation {
                   sources += 1_i32;
                   positions.push(index);
                   header |= precompiles;
-               } else if !arg.starts_with('-')
-                  && ([".o", ".os", ".lo", ".a", ".so", ".obj"]
-                     .iter()
-                     .any(|suffix| arg.ends_with(suffix))
-                     || arg.contains(".so."))
-               {
+               } else if !arg.starts_with('-') && linked.contains(&&arg) {
                   invocation.inputs.push(arg.clone());
                   objects = true;
                }
