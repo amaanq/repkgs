@@ -1,0 +1,14 @@
+--- a/libwild/src/input_data.rs
++++ b/libwild/src/input_data.rs
+@@ -465,7 +465,10 @@
+     let script = LinkerScript::parse(bytes, &input_file.filename)?;
+ 
+     let script_path = file_system.canonicalize(&input_file.filename)?;
+-    let directory = script_path.parent().expect("expected an absolute path");
++    // GNU ld and lld look beside the script where it was found, not where its symlinks lead, so
++    // a sysroot of symlinks keeps resolving the script's inputs inside the sysroot
++    let found_at = std::path::absolute(&input_file.filename)?;
++    let directory = found_at.parent().expect("expected an absolute path");
+ 
+     let mut extra_inputs = Vec::new();
+ 

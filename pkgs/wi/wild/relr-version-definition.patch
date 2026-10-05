@@ -1,0 +1,48 @@
+Mark GLIBC_ABI_DT_RELR as needed through the version definition when libc has no
+symbol of that name. GNU ld emits one per version, lld does not, so an lld-linked
+glibc refused every RELR binary wild produced.
+
+--- a/libwild/src/elf.rs
++++ b/libwild/src/elf.rs
+@@ -2857,6 +2857,41 @@
+                 .format_specific
+                 .mark_version_as_needed(state.object.versym[symbol_index])?;
+         }
++        return Ok(());
++    }
++
++    // GNU ld gives every version an absolute symbol of the same name, lld does not, so a glibc
++    // linked with lld only has the version definition
++    let endian = LittleEndian;
++    for group in groups.iter_mut() {
++        for file in &mut group.files {
++            let layout::FileLayoutState::Dynamic(state) = file else {
++                continue;
++            };
++            let Some((verdefs, strings_index)) = state.object.verdef.clone() else {
++                continue;
++            };
++            let strings = state
++                .object
++                .sections
++                .strings(endian, state.object.data, strings_index)?;
++            for entry in verdefs {
++                let (verdef, mut names) = entry?;
++                let Some(name) = names.next()? else {
++                    continue;
++                };
++                if name.name(endian, strings)? != b"GLIBC_ABI_DT_RELR" {
++                    continue;
++                }
++                let index = usize::from(verdef.vd_ndx.get(endian));
++                if let Some(needed) = index
++                    .checked_sub(usize::from(object::elf::VER_NDX_GLOBAL))
++                    .and_then(|slot| state.format_specific.symbol_versions_needed.get_mut(slot))
++                {
++                    *needed = true;
++                }
++            }
++        }
+     }
+ 
+     Ok(())
