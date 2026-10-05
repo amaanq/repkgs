@@ -78,11 +78,20 @@ pub fn relative_path(text: &str) -> io::Result<&Path> {
 pub fn glob(pattern: &str) -> io::Result<Vec<PathBuf>> {
    let mut found = Vec::new();
    for expanded in expand_braces(pattern) {
-      let (mut candidates, segments): (Vec<PathBuf>, Vec<&str>) =
-         expanded.strip_prefix('/').map_or_else(
-            || (vec![PathBuf::new()], expanded.split('/').collect()),
-            |rest| (vec![PathBuf::from("/")], rest.split('/').collect()),
-         );
+      let (mut candidates, segments) = expanded.strip_prefix('/').map_or_else(
+         || {
+            (
+               vec![PathBuf::new()],
+               expanded.split('/').collect::<Vec<_>>(),
+            )
+         },
+         |rest| {
+            (
+               vec![PathBuf::from("/")],
+               rest.split('/').collect::<Vec<_>>(),
+            )
+         },
+      );
       for segment in segments.into_iter().filter(|segment| !segment.is_empty()) {
          let mut next = Vec::new();
          for candidate in &candidates {

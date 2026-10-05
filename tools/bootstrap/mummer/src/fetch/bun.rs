@@ -123,7 +123,7 @@ impl Producer for Bun {
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
       let text = read_to_string(lock_path("bun.lock")?)?;
-      let lock: Lock = serde_json::from_str(&strip_trailing_commas(&text))?;
+      let lock = serde_json::from_str::<Lock>(&strip_trailing_commas(&text))?;
       let mut unhashed = Vec::new();
       let mut plan = Plan::new("bun-deps");
       let mut seen = BTreeSet::new();

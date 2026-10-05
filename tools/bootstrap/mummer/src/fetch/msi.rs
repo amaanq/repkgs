@@ -98,8 +98,11 @@ fn string_pool(dir: &Path) -> io::Result<Pool> {
 }
 
 fn rows(raw: &[u8], kinds: &[Kind], pool: &Pool) -> io::Result<Vec<Vec<Cell>>> {
-   let widths: Vec<usize> = kinds.iter().map(|kind| kind.width(pool)).collect();
-   let row_width: usize = widths.iter().sum();
+   let widths = kinds
+      .iter()
+      .map(|kind| kind.width(pool))
+      .collect::<Vec<usize>>();
+   let row_width = widths.iter().sum::<usize>();
    if row_width == 0 {
       return Ok(Vec::new());
    }
@@ -222,7 +225,7 @@ fn dir_path(dirs: &Table, wanted: Option<&str>, parts: &mut Vec<String>) {
 /// File id (the cabinet member name) -> install path.
 pub fn install_paths(dir: &Path) -> io::Result<BTreeMap<String, String>> {
    let dirs = table(dir, "Directory")?;
-   let component_dirs: BTreeMap<String, String> = table(dir, "Component")?
+   let component_dirs = table(dir, "Component")?
       .iter()
       .filter_map(|row| {
          Some((
@@ -230,7 +233,7 @@ pub fn install_paths(dir: &Path) -> io::Result<BTreeMap<String, String>> {
             row.get("Directory_").and_then(Cell::text)?.to_owned(),
          ))
       })
-      .collect();
+      .collect::<BTreeMap<String, String>>();
    let mut paths = BTreeMap::new();
    for row in table(dir, "File")? {
       let (Some(id), Some(component), Some(file_name)) = (

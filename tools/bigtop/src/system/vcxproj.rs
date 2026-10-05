@@ -181,7 +181,7 @@ impl System for Vcxproj {
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options("vcxproj")?;
+      let options = ctx.options::<Options>("vcxproj")?;
       match verb {
          "configure" => configure(ctx, &options),
          "build" => {
@@ -628,10 +628,10 @@ rule custom
 ";
 
 fn ninja_file(projects: &[Project]) -> io::Result<String> {
-   let by_file: BTreeMap<&str, &Project> = projects
+   let by_file = projects
       .iter()
       .map(|project| (project.file.as_str(), project))
-      .collect();
+      .collect::<BTreeMap<&str, &Project>>();
    let mut sections = vec![RULES.to_owned()];
    sections.extend(
       projects
@@ -651,14 +651,14 @@ fn ninja_file(projects: &[Project]) -> io::Result<String> {
          ));
          continue;
       }
-      let dependencies: Vec<String> = project
+      let dependencies = project
          .refs
          .iter()
          .filter_map(|file| by_file.get(file.as_str()))
          .filter(|dependency| dependency.kind != ConfigurationType::Application)
          .filter_map(|dependency| dependency.implib.as_deref())
          .map(ninja_quote)
-         .collect();
+         .collect::<Vec<String>>();
       let also = project
          .implib
          .as_ref()

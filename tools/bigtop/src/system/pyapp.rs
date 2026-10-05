@@ -193,7 +193,7 @@ impl System for Pyapp {
    /// PYTHONPATH is the application's site-packages, filling up during the
    /// build, then the build backends.
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       let site = site_packages(ctx)?;
       create_dir_all(&site)?;
       let mut path = vec![site];
@@ -215,7 +215,7 @@ impl System for Pyapp {
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       match verb {
          "build" => build(ctx, attrs, &options),
          "test" => {
@@ -272,11 +272,11 @@ fn build(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<()> {
       build_wheel(ctx, attrs, options, &dir, &tree.name, &built)?;
    }
 
-   let mut wheels: Vec<String> = plan
+   let mut wheels = plan
       .iter()
       .filter(|entry| matches!(entry.kind, Kind::Wheel))
       .map(|entry| format!("{}/dist/{}", options.deps, entry.file))
-      .collect();
+      .collect::<Vec<String>>();
    wheels.extend(
       glob(&format!("{built}/*.whl"))?
          .iter()

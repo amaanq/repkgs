@@ -266,7 +266,7 @@ pub fn duration(text: &str) -> Option<Duration> {
       .trim()
       .trim_end_matches(|ch: char| ch.is_ascii_alphabetic());
    let unit = text.trim().get(digits.len()..)?;
-   let amount: u64 = digits.trim().parse().ok()?;
+   let amount = digits.trim().parse::<u64>().ok()?;
    let seconds = match unit.trim() {
       "s" | "sec" | "secs" | "second" | "seconds" => 1,
       "min" | "mins" | "minute" | "minutes" => 60,
@@ -281,9 +281,9 @@ pub fn duration(text: &str) -> Option<Duration> {
 /// Seconds since the epoch of a date's day, `YYYY-MM-DD` with anything after.
 fn epoch_seconds(date: &str) -> Option<u64> {
    let mut parts = date.get(..10)?.split('-');
-   let year: i64 = parts.next()?.parse().ok()?;
-   let month: i64 = parts.next()?.parse().ok()?;
-   let day: i64 = parts.next()?.parse().ok()?;
+   let year = parts.next()?.parse::<i64>().ok()?;
+   let month = parts.next()?.parse::<i64>().ok()?;
+   let day = parts.next()?.parse::<i64>().ok()?;
    let shifted = if month <= 2 { year - 1 } else { year };
    let era = shifted.div_euclid(400);
    let year_of_era = shifted - era * 400;
@@ -305,8 +305,8 @@ pub fn expand(template: &str, pin: &Map<String, Value>) -> String {
       .get("version")
       .and_then(Value::as_str)
       .unwrap_or_default();
-   let parts: Vec<&str> = release.split('.').collect();
-   let mut pairs: Vec<(String, String)> = vec![
+   let parts = release.split('.').collect::<Vec<&str>>();
+   let mut pairs = vec![
       ("tag".to_owned(), release.to_owned()),
       ("version_".to_owned(), parts.join("_")),
       (
@@ -355,14 +355,14 @@ struct Sieve<'found> {
 fn sieve(found: &Resolved, prerelease: bool) -> Sieve<'_> {
    let upstream = &found.package.upstream;
    let accept_pre = prerelease || upstream.prerelease.unwrap_or(false);
-   let allowed: Vec<&Candidate> = found
+   let allowed = found
       .candidates
       .iter()
       .filter(|candidate| accept_pre || !datasource::prerelease(candidate))
       .filter(|candidate| {
          version::satisfies(datasource::version_of(candidate), upstream.allow.as_deref())
       })
-      .collect();
+      .collect::<Vec<&Candidate>>();
    let interval = upstream.every.as_deref().and_then(duration);
    let young = |candidate: &Candidate| {
       interval.is_some_and(|window| {
@@ -697,7 +697,7 @@ fn with_hashes(
    known: &Map<String, Value>,
    generated: &[Source],
 ) -> io::Result<()> {
-   let mut sys: Vec<String> = Vec::new();
+   let mut sys = Vec::<String>::new();
    let mut hashes = BTreeMap::new();
    let cargo = CargoBuild {
       home: Some(http::cache_dir().join("cargo-home")),
@@ -938,7 +938,7 @@ pub fn verify(package: &Package) -> io::Result<Outcome> {
       OsStr::new("--no-out-link"),
    ])?;
    if built.status != 0_i32 {
-      let tail: Vec<&str> = built.stderr.lines().collect();
+      let tail = built.stderr.lines().collect::<Vec<&str>>();
       let kept = tail.len().saturating_sub(40);
       return Ok(Outcome {
          name:     package.name.clone(),
@@ -950,7 +950,7 @@ pub fn verify(package: &Package) -> io::Result<Outcome> {
    }
    let out = built.stdout.lines().last().unwrap_or_default().to_owned();
    let info = nix::succeed("nix", ["path-info", "-S", "--json", out.as_str()])?;
-   let parsed: Value = serde_json::from_str(&info)?;
+   let parsed = serde_json::from_str::<Value>(&info)?;
    let first = parsed
       .as_object()
       .and_then(|map| map.values().next().cloned())

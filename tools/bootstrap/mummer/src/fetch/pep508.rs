@@ -119,7 +119,10 @@ fn release(version: &str) -> Vec<u64> {
    version
       .split('.')
       .map(|part| {
-         let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
+         let digits = part
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect::<String>();
          digits.parse().unwrap_or(0)
       })
       .collect()

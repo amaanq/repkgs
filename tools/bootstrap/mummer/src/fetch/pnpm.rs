@@ -138,7 +138,7 @@ fn packages(text: &str) -> io::Result<BTreeMap<String, Resolution>> {
       if line != "packages:" {
          continue;
       }
-      let mut current: Option<String> = None;
+      let mut current = None::<String>;
       while let Some(entry_line) = lines.peek().copied() {
          if !entry_line.is_empty() && indent(entry_line) == 0 {
             break;

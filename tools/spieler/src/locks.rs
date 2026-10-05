@@ -53,7 +53,7 @@ pub fn dir() -> PathBuf {
 }
 
 fn parse(text: &str, eco: &str) -> io::Result<Entries> {
-   let doc: toml::Table = toml::from_str(text).map_err(io::Error::other)?;
+   let doc = toml::from_str::<toml::Table>(text).map_err(io::Error::other)?;
    let Some(table) = doc.get(eco).and_then(toml::Value::as_table) else {
       return Ok(Entries::new());
    };
@@ -157,7 +157,7 @@ pub fn source_of(package: &Package) -> io::Result<PathBuf> {
    }
    let path = PathBuf::from(nix::eval_raw(&root(), &format!("{}.src", package.name))?);
    if !path.exists() {
-      let tail: Vec<&str> = built.stderr.lines().collect();
+      let tail = built.stderr.lines().collect::<Vec<&str>>();
       let kept = tail.len().saturating_sub(3);
       return Err(io::Error::other(format!(
          "{}.src: {}",
@@ -200,7 +200,7 @@ pub fn add(package: &Package) -> io::Result<Vec<Used>> {
          merged.len().saturating_sub(old.len())
       ));
       write_entries(&dir(), eco, &merged)?;
-      let keys: Vec<String> = mine.keys().cloned().collect();
+      let keys = mine.keys().cloned().collect::<Vec<String>>();
       // no lock file in the source for prefetch to read: sys comes from the
       // solved names
       if eco == "hackage" {
@@ -225,11 +225,11 @@ pub fn add(package: &Package) -> io::Result<Vec<Used>> {
 pub fn prune(used: &[Used]) -> io::Result<()> {
    for entry in used {
       let old = read(&dir(), &entry.eco)?;
-      let kept: Entries = old
+      let kept = old
          .iter()
          .filter(|pair| entry.keys.contains(pair.0))
          .map(|(key, fields)| (key.clone(), fields.clone()))
-         .collect();
+         .collect::<Entries>();
       nix::say(&format!(
          "{}: kept {}, dropped {}",
          entry.eco,

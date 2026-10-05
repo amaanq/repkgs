@@ -79,11 +79,11 @@ pub fn active(attrs: &Attrs, ecosystem: Ecosystem, deps: &[Exports]) -> io::Resu
          }
       }
       if !entry.flags.is_empty() {
-         let rendered: Vec<String> = entry
+         let rendered = entry
             .flags
             .iter()
             .map(|flag| flag.replace("{root}", &dep.root))
-            .collect();
+            .collect::<Vec<String>>();
          found.flags.insert(locked.clone(), rendered.join(" "));
       }
    }
@@ -119,11 +119,11 @@ pub fn check_names(wanted: &[String], sys: Option<&[String]>, command: &str) -> 
    let Some(pinned) = sys else {
       return Ok(());
    };
-   let missing: Vec<&str> = wanted
+   let missing = wanted
       .iter()
       .filter(|name| !pinned.contains(name))
       .map(String::as_str)
-      .collect();
+      .collect::<Vec<&str>>();
    if missing.is_empty() {
       return Ok(());
    }

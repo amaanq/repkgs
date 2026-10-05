@@ -86,9 +86,13 @@ impl System for Python {
    /// the source tree comes last so a backend can build itself before any of
    /// the stack exists.
    fn setup(&self, ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       let root = ctx.project_dir(&options.root);
-      let dep_roots: Vec<String> = ctx.deps.iter().map(|dep| dep.root.clone()).collect();
+      let dep_roots = ctx
+         .deps
+         .iter()
+         .map(|dep| dep.root.clone())
+         .collect::<Vec<String>>();
       let mut path = Self::site_packages(&dep_roots);
       path.extend(tool_site_packages()?);
       for own in [root.clone(), root.join("src")] {
@@ -105,7 +109,7 @@ impl System for Python {
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       match verb {
          "build" => Self::build(ctx, &options),
          "install" => Self::install(ctx, attrs),
@@ -250,7 +254,7 @@ impl Python {
       let mut roots = vec![ctx.out.clone()];
       roots.extend(ctx.deps.iter().map(|dep| dep.root.clone()));
       let store = var("NIX_STORE").unwrap_or_else(|_| STORE_DIR.to_owned());
-      let rels: Vec<String> = Self::site_packages(&roots)
+      let rels = Self::site_packages(&roots)
          .iter()
          .map(|site| {
             site.strip_prefix(&ctx.out).map_or_else(
@@ -263,7 +267,7 @@ impl Python {
                |inside| format!("..{inside}"),
             )
          })
-         .collect();
+         .collect::<Vec<String>>();
       let boot = format!(
          "import os, sys; sys.path[0:0] = \
           [os.path.join(os.path.dirname(os.path.realpath(__file__)), p) for p in {}]",
@@ -351,7 +355,10 @@ pub fn tool_site_packages() -> io::Result<Vec<String>> {
          roots.push(root);
       }
    }
-   let closure_roots: Vec<String> = closure(&roots)?.into_iter().map(|dep| dep.root).collect();
+   let closure_roots = closure(&roots)?
+      .into_iter()
+      .map(|dep| dep.root)
+      .collect::<Vec<String>>();
    Ok(Python::site_packages(&closure_roots))
 }
 

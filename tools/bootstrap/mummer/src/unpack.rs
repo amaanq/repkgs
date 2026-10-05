@@ -106,7 +106,7 @@ pub fn unpack(bsdtar: &str, archive: &Path, dest: &Path) -> io::Result<()> {
    let options = ["--no-same-owner", "--no-same-permissions"];
    tar.extract(archive, &stage, &options)?;
    let top = sorted_entries(&stage)?;
-   let data: Vec<&PathBuf> = top
+   let data = top
       .iter()
       .filter(|path| {
          path
@@ -121,7 +121,7 @@ pub fn unpack(bsdtar: &str, archive: &Path, dest: &Path) -> io::Result<()> {
                })
             })
       })
-      .collect();
+      .collect::<Vec<&PathBuf>>();
    if let &[member] = data.as_slice()
       && stage.join("debian-binary").exists()
    {

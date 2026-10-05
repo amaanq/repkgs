@@ -98,16 +98,16 @@ fn mix_lock(text: &str) -> io::Result<Vec<Package>> {
 /// `{<<"name">>,{pkg,<<"name">>,<<"version">>},_}` in the first term,
 /// `{<<"name">>, <<"SHA">>}` under `pkg_hash_ext`.
 fn rebar_lock(text: &str) -> io::Result<Vec<Package>> {
-   let foreign: Vec<&str> = text
+   let foreign = text
       .match_indices("\">>,{")
       .filter_map(|(at, _found)| {
          let after = &text[at + 5..];
          let scm = after.starts_with("git") || after.starts_with("hg") || after.starts_with("path");
          scm.then(|| text[..at].rsplit("<<\"").next().unwrap_or_default())
       })
-      .collect();
+      .collect::<Vec<&str>>();
    reject("hexDeps: rebar.lock has non-hex entries", &foreign)?;
-   let hashes: BTreeMap<&str, &str> = text
+   let hashes = text
       .split_once("{pkg_hash_ext,[")
       .map(|(_head, tail)| tail.split("]}").next().unwrap_or_default())
       .map(|ext| {
@@ -120,7 +120,7 @@ fn rebar_lock(text: &str) -> io::Result<Vec<Package>> {
                   _ => None,
                }
             })
-            .collect()
+            .collect::<BTreeMap<&str, &str>>()
       })
       .unwrap_or_default();
    let mut unhashed = Vec::new();

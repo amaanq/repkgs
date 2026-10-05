@@ -88,7 +88,7 @@ impl System for Cargo {
    }
 
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       let vendor = match options.deps.as_deref() {
          Some(deps) if !options.crate_patches.is_empty() => {
             Some(Self::patched_vendor(ctx, deps, &options.crate_patches)?)
@@ -97,7 +97,7 @@ impl System for Cargo {
          None => None,
       };
       let home = format!("{}/cargo-home", ctx.build);
-      let mut env: Env = Self::configure(ctx, attrs, vendor.as_deref(), &home)?.into();
+      let mut env = Env::from(Self::configure(ctx, attrs, vendor.as_deref(), &home)?);
       syslibs::check(
          attrs,
          &ctx.project_dir(&options.root),
@@ -109,7 +109,7 @@ impl System for Cargo {
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       let extra = Self::arguments(ctx, &options)?;
       match verb {
          "build" => {
@@ -158,7 +158,10 @@ impl Cargo {
    }
 
    fn list(values: &[String]) -> String {
-      let items: Vec<String> = values.iter().map(|value| Self::quoted(value)).collect();
+      let items = values
+         .iter()
+         .map(|value| Self::quoted(value))
+         .collect::<Vec<String>>();
       format!("[{}]", items.join(", "))
    }
 
@@ -194,7 +197,7 @@ impl Cargo {
       let sys = syslibs::active(attrs, Ecosystem::Cargo, &ctx.deps)?.env;
       env.insert("PKG_CONFIG_ALLOW_CROSS".to_owned(), "1".to_owned());
       if !sys.is_empty() {
-         let names: Vec<&str> = sys.keys().map(String::as_str).collect();
+         let names = sys.keys().map(String::as_str).collect::<Vec<&str>>();
          note("sys-libs", &names.join(" "));
       }
       env.extend(sys);
@@ -310,10 +313,10 @@ impl Cargo {
          symlink(format!("{deps}/{name}"), format!("{dir}/{name}"))?;
       }
       for (crate_name, files) in patches {
-         let hits: Vec<&String> = names
+         let hits = names
             .iter()
             .filter(|name| Self::crate_of(name) == Some(crate_name.as_str()))
-            .collect();
+            .collect::<Vec<&String>>();
          if hits.is_empty() {
             return Err(io::Error::other(format!(
                "cargo.cratePatches: no vendored crate {crate_name}"
@@ -370,7 +373,7 @@ impl Cargo {
       );
       let spec = ctx.spec()?;
       let exe = ctx.platform()?.ext.exe;
-      let mut names: Vec<String> = Vec::new();
+      let mut names = Vec::<String>::new();
       for entry in read_dir(&release)? {
          let found = entry?;
          let name = found.file_name().to_string_lossy().into_owned();

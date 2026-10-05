@@ -337,7 +337,7 @@ impl Platform {
       let mut parts = python.split('.');
       let major = parts.next().unwrap_or_default();
       let minor = parts.next().unwrap_or_default();
-      let mut marker_env: BTreeMap<String, String> = [
+      let mut marker_env = [
          ("python_full_version", python.clone()),
          ("python_version", format!("{major}.{minor}")),
          ("sys_platform", "linux".to_owned()),
@@ -353,7 +353,7 @@ impl Platform {
       ]
       .into_iter()
       .map(|(key, value)| (key.to_owned(), value))
-      .collect();
+      .collect::<BTreeMap<String, String>>();
       marker_env.extend(serde_json::from_str::<BTreeMap<String, String>>(&attr(
          "environ",
       )?)?);
@@ -401,13 +401,13 @@ impl Platform {
    /// `<name>-<version>[-<build>]-<python tag>-<abi tag>-<platform tag>.whl`.
    fn wheel_rank(&self, file: &str) -> u8 {
       let stem = file.strip_suffix(".whl").unwrap_or(file);
-      let fields: Vec<&str> = stem.split('-').collect();
+      let fields = stem.split('-').collect::<Vec<&str>>();
       if fields.len() < 5 {
          return NO_MATCH;
       }
       let python_tags = fields[fields.len() - 3].split('.');
       let abi = fields[fields.len() - 2];
-      let platform_tags: Vec<&str> = fields[fields.len() - 1].split('.').collect();
+      let platform_tags = fields[fields.len() - 1].split('.').collect::<Vec<&str>>();
       if !python_tags.clone().any(|tag| self.python_ok(tag, abi)) {
          return NO_MATCH;
       }
@@ -592,9 +592,9 @@ impl<'lock> Closure<'lock> {
       extras: &[String],
       groups: &[String],
    ) -> io::Result<Vec<&'lock Package>> {
-      let mut visited: BTreeMap<&str, Visit<'lock>> = BTreeMap::new();
+      let mut visited = BTreeMap::<&str, Visit<'lock>>::new();
       let mut order = Vec::new();
-      let mut queue: VecDeque<&Edge> = self.edges(project, extras, groups)?.into();
+      let mut queue = VecDeque::from(self.edges(project, extras, groups)?);
       while let Some(edge) = queue.pop_front() {
          let wanted = &edge.extra;
          let target = self.resolve(edge)?;
@@ -715,15 +715,15 @@ impl Producer for Pypi {
    fn run(&self, store: &mut Store) -> io::Result<()> {
       let source = attr("source")?;
       let root = lock_dir()?;
-      let lock: Lock = read_toml(format!("{root}/uv.lock"))?;
+      let lock = read_toml::<Lock, _>(format!("{root}/uv.lock"))?;
       if lock.version < 1 {
          return Err(io::Error::other(
             "pythonDeps: uv.lock has no `version`, too old",
          ));
       }
       let project_file = format!("{root}/pyproject.toml");
-      let pyproject: Pyproject = if Path::new(&project_file).exists() {
-         read_toml(project_file)?
+      let pyproject = if Path::new(&project_file).exists() {
+         read_toml::<Pyproject, _>(project_file)?
       } else {
          Pyproject::default()
       };

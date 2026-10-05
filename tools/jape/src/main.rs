@@ -62,7 +62,7 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<i32> {
-   let args: Vec<OsString> = args_os().skip(1).collect();
+   let args = args_os().skip(1).collect::<Vec<OsString>>();
    let [ref program, ref rest @ ..] = *args.as_slice() else {
       bail!("usage: jape <ghc> [args...]");
    };

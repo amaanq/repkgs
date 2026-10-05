@@ -51,7 +51,7 @@ impl Producer for Hackage {
    }
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
-      let locks: Locks = read_toml(attr("locks")?)?;
+      let locks = read_toml::<Locks, _>(attr("locks")?)?;
       let mut plan = Plan::new("hackage-set");
       for (id, entry) in &locks.hackage {
          plan.fetch(

@@ -230,17 +230,17 @@ impl Producer for Winsdk {
       let cpu = attr("arch")?;
       let arch = WinArch::try_from(cpu.as_str())?;
       let sdk_arch = arch.sdk();
-      let manifest: Manifest = serde_json::from_str(&read_to_string(attr("manifest")?)?)?;
-      let packages: Vec<Package> = manifest
+      let manifest = serde_json::from_str::<Manifest>(&read_to_string(attr("manifest")?)?)?;
+      let packages = manifest
          .packages
          .into_iter()
          .filter(|candidate| candidate.language.is_none())
-         .collect();
+         .collect::<Vec<Package>>();
       let (crt, vsix) = select_crt(&packages, arch.crt())?;
-      let mut payloads: Vec<(Payload, PayloadKind)> = vsix
+      let mut payloads = vsix
          .into_iter()
          .map(|payload| (payload, PayloadKind::Crt))
-         .collect();
+         .collect::<Vec<(Payload, PayloadKind)>>();
       let (sdk_id, sdk) = select_sdk(&packages)?;
       for name in MSIS {
          let wanted = format!("{}-x86_en-us.msi", name.replace("<arch>", sdk_arch));
@@ -256,7 +256,7 @@ impl Producer for Winsdk {
       {
          payloads.push((cab.clone(), PayloadKind::Cab));
       }
-      let rows: Vec<Row> = payloads
+      let rows = payloads
          .iter()
          .map(|selected| {
             Ok(Row {
@@ -265,10 +265,10 @@ impl Producer for Winsdk {
                hash: OutputHash::hex(Algorithm::Sha256, &selected.0.sha256)?,
             })
          })
-         .collect::<io::Result<Vec<_>>>()?;
+         .collect::<io::Result<Vec<Row>>>()?;
       let fetched = fetchurls(store, &rows)?;
       say(&format!("windowsSdk: CRT {crt}, {sdk_id} for {sdk_arch}"));
-      let selected: Vec<Selected> = payloads
+      let selected = payloads
          .iter()
          .zip(&fetched)
          .map(|(selected, made)| {
@@ -278,8 +278,11 @@ impl Producer for Winsdk {
                out:  made.out.clone(),
             }
          })
-         .collect();
-      let mut inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
+         .collect::<Vec<Selected>>();
+      let mut inputs = fetched
+         .into_iter()
+         .map(|made| made.drv)
+         .collect::<Vec<DrvPath>>();
       inputs.push(attr("sevenzip_drv")?.try_into()?);
       collect_with(
          store,

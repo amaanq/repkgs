@@ -63,7 +63,7 @@ impl Producer for Npm {
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
       let text = read_to_string(lock_path("package-lock.json")?)?;
-      let read: Lock = serde_json::from_str(&text)?;
+      let read = serde_json::from_str::<Lock>(&text)?;
       if read.version < 2 {
          return Err(io::Error::other(
             "npmDeps: package-lock.json v1 is not supported (run `npm i --lockfile-version 3`)",
@@ -113,7 +113,7 @@ impl Producer for Npm {
          .zip(&fetched)
          .map(|(row, made)| (row.url.as_str(), &made.out))
          .collect::<BTreeMap<_, _>>();
-      let mut lock: Map<String, Value> = serde_json::from_str(&text)?;
+      let mut lock = serde_json::from_str::<Map<String, Value>>(&text)?;
       lock.remove("dependencies");
       let entries = lock
          .get_mut("packages")

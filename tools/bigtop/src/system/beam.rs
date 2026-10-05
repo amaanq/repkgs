@@ -134,7 +134,7 @@ fn options(tool: Tool, ctx: &Ctx) -> io::Result<(Options, Vec<String>)> {
       return Ok((ctx.options(tool.name())?, Vec::new()));
    }
 
-   let mix: MixOptions = ctx.options("mix")?;
+   let mix = ctx.options::<MixOptions>("mix")?;
    let common = Options {
       _root: mix._root,
       deps:  mix.deps,

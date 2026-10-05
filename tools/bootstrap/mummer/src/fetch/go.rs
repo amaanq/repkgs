@@ -94,7 +94,7 @@ impl Producer for Go {
    }
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
-      let locks: Locks = read_toml(attr("locks")?)?;
+      let locks = read_toml::<Locks, _>(attr("locks")?)?;
       let modules = go_sum(&read_to_string(lock_path("go.sum")?)?)?;
       let mut missing = Vec::new();
       let mut plan = Plan::new("go-modules");

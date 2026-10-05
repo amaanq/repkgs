@@ -61,21 +61,21 @@ pub fn exports(file: &Path) -> io::Result<Vec<String>> {
       file.display()
    );
    let listed = run_nu(&code, &file.to_string_lossy(), "null")?;
-   let names: Vec<String> = listed
+   let names = listed
       .as_array()
       .map(|names| {
          names
             .iter()
             .filter_map(Value::as_str)
             .map(str::to_owned)
-            .collect()
+            .collect::<Vec<String>>()
       })
       .unwrap_or_default();
-   let bad: Vec<&str> = names
+   let bad = names
       .iter()
       .map(String::as_str)
       .filter(|name| !STAGES.contains(name))
-      .collect();
+      .collect::<Vec<&str>>();
    if !bad.is_empty() {
       return Err(io::Error::other(format!(
          "{}: unknown exports {}. Known: {}",

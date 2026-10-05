@@ -42,11 +42,11 @@ impl FromStr for Purl {
       let (path, query) = before_fragment
          .split_once('?')
          .unwrap_or((before_fragment, ""));
-      let segments: Vec<String> = path
+      let segments = path
          .split('/')
          .filter(|segment| !segment.is_empty())
          .map(decoded)
-         .collect();
+         .collect::<Vec<String>>();
       let Some((last, namespace)) = segments.split_last() else {
          return Err(bad());
       };

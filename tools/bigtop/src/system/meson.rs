@@ -100,7 +100,7 @@ impl System for Meson {
    }
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
-      let options: Options = ctx.options(self.name())?;
+      let options = ctx.options::<Options>(self.name())?;
       match verb {
          "configure" => Self::configure(ctx, &options),
          "build" => run("ninja", &[&format!("-j{}", ctx.njobs)], &[]),
@@ -240,10 +240,10 @@ impl Meson {
       } else {
          Vec::new()
       };
-      let rendered: Vec<String> = defs
+      let rendered = defs
          .iter()
          .map(|entry| format!("-D{}={}", entry.0, Self::render(&entry.1)))
-         .collect();
+         .collect::<Vec<String>>();
       let source_text = source.to_string_lossy();
       let mut args = vec!["setup", ".", &source_text];
       args.extend(strs(&machines));

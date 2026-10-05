@@ -41,7 +41,7 @@ struct Sum {
 
 /// go.sum rows keyed `<module>@<version>`, the `/go.mod` suffix dropped.
 fn sums(dir: &Path) -> io::Result<BTreeMap<String, Vec<Sum>>> {
-   let mut grouped: BTreeMap<String, Vec<Sum>> = BTreeMap::new();
+   let mut grouped = BTreeMap::<String, Vec<Sum>>::new();
    for line in read_to_string(dir.join("go.sum"))?.lines() {
       let mut fields = line.split(' ');
       let (Some(module), Some(version)) = (fields.next(), fields.next()) else {
@@ -69,7 +69,7 @@ struct Locked {
 /// have recorded the module mod-only; the zip is added when this go.sum needs
 /// it).
 pub fn lock(dir: &Path, old: &Entries) -> io::Result<Entries> {
-   let groups: Vec<(String, Vec<Sum>)> = sums(dir)?.into_iter().collect();
+   let groups = sums(dir)?.into_iter().collect::<Vec<(String, Vec<Sum>)>>();
    let locked = parallel(&groups, |group| {
       let previous = old.get(&group.0).cloned().unwrap_or_default();
       let first = group
