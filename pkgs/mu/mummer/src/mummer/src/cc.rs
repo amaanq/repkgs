@@ -544,6 +544,7 @@ pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut Client) -> io:
 
 #[expect(
    clippy::too_many_lines,
+   clippy::cognitive_complexity,
    reason = "compile-cache pipeline from lookup to store, stages read linearly"
 )]
 pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
@@ -585,13 +586,18 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    } else {
       invocation.source.clone()
    };
+   let mut unkeyed = None;
    let connected = if invocation.cacheable {
-      match Client::connect(socket).and_then(|mut cache| {
-         invocation
-            .request_key(&mut store, &mut cache, compiler)
-            .map(|key| (key, cache))
-      }) {
-         Ok(connection) => Some(connection),
+      match Client::connect(socket) {
+         Ok(mut cache) => {
+            match invocation.request_key(&mut store, &mut cache, compiler) {
+               Ok(key) => Some((key, cache)),
+               Err(error) => {
+                  unkeyed = Some(error);
+                  None
+               },
+            }
+         },
          Err(error)
             if matches!(
                error.kind(),
@@ -621,10 +627,13 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
          } else {
             "uncacheable"
          }
+      } else if unkeyed.is_some() {
+         "unkeyed"
       } else {
          "no-daemon"
       };
-      log("cc", outcome, &subject, started);
+      let explained = unkeyed.map_or_else(|| subject.clone(), |error| format!("{subject} {error}"));
+      log("cc", outcome, &explained, started);
       log_uncached(outcome, &user);
       return Ok(result.status);
    };
