@@ -7,7 +7,6 @@ use std::{
       self,
       Display,
       Formatter,
-      Write as _,
    },
    fs::{
       copy,
@@ -52,6 +51,7 @@ use crate::{
       msbuild::{
          Item,
          evaluate,
+         split_list,
          win_path,
       },
    },
@@ -85,6 +85,23 @@ impl OptionType for ConfigurationType {
          values: [Self::Application, Self::DynamicLibrary, Self::StaticLibrary]
             .map(|kind| kind.to_string())
             .to_vec(),
+      }
+   }
+}
+
+impl ConfigurationType {
+   const fn extension(self) -> &'static str {
+      match self {
+         Self::Application => ".exe",
+         Self::DynamicLibrary => ".dll",
+         Self::StaticLibrary => ".lib",
+      }
+   }
+
+   const fn install_dir(self) -> &'static str {
+      match self {
+         Self::Application | Self::DynamicLibrary => "bin",
+         Self::StaticLibrary => "lib",
       }
    }
 }
@@ -182,10 +199,8 @@ impl System for Vcxproj {
 
 fn list(value: &str) -> Vec<&str> {
    let mut seen = BTreeSet::new();
-   value
-      .split(';')
-      .map(str::trim)
-      .filter(|part| !part.is_empty() && seen.insert(*part))
+   split_list(value)
+      .filter(|part| seen.insert(*part))
       .collect()
 }
 
@@ -250,50 +265,59 @@ fn cl_flags(meta: &BTreeMap<String, String>, dir: &Path) -> io::Result<Vec<Strin
       "CompileAsC" => flags.extend(["-x".to_owned(), "c".to_owned()]),
       _ => {},
    }
-   for option in list(&value(meta, "AdditionalOptions").replace(' ', ";")) {
-      let normalized = option
-         .strip_prefix('-')
-         .map_or_else(|| option.to_owned(), |rest| format!("/{rest}"));
-      if matches!(
-         normalized.as_str(),
-         "/utf-8" | "/MP" | "/bigobj" | "/FS" | "/EHsc"
-      ) || normalized.starts_with("/flto")
-         || normalized.starts_with("/GL")
-         || normalized.starts_with("/d2")
-      {
-         continue;
-      }
-      if normalized.strip_prefix("/Zm").is_some_and(|suffix| {
-         !suffix.is_empty() && suffix.chars().all(|character| character.is_ascii_digit())
-      }) {
-         continue;
-      }
-      if let Some(warning) = normalized.strip_prefix("/w") {
-         let mut chars = warning.chars();
-         if chars
-            .next()
-            .is_some_and(|character| matches!(character, 'd' | 'e' | '1'..='4'))
-            && !chars.as_str().is_empty()
-            && chars.all(|character| character.is_ascii_digit())
-         {
-            continue;
-         }
-      }
-      if let Some(architecture) = normalized.strip_prefix("/arch:") {
-         flags.push(format!("-m{}", architecture.to_lowercase()));
-      } else if let Some(standard) = normalized.strip_prefix("/std:") {
-         flags.push(format!(
-            "-std={}",
-            standard.replacen("c++latest", "c++2c", 1)
-         ));
-      } else if normalized == "/EHa" {
-         flags.push("-fasync-exceptions".to_owned());
-      } else {
-         flags.push(option.to_owned());
-      }
-   }
+   flags.extend(
+      list(&value(meta, "AdditionalOptions").replace(' ', ";"))
+         .into_iter()
+         .filter_map(cl_option),
+   );
    Ok(flags)
 }
+
+fn cl_option(option: &str) -> Option<String> {
+   let normalized = option
+      .strip_prefix('-')
+      .map_or_else(|| option.to_owned(), |rest| format!("/{rest}"));
+   if matches!(
+      normalized.as_str(),
+      "/utf-8" | "/MP" | "/bigobj" | "/FS" | "/EHsc"
+   ) || normalized.starts_with("/flto")
+      || normalized.starts_with("/GL")
+      || normalized.starts_with("/d2")
+   {
+      return None;
+   }
+   if normalized.strip_prefix("/Zm").is_some_and(|suffix| {
+      !suffix.is_empty() && suffix.chars().all(|character| character.is_ascii_digit())
+   }) {
+      return None;
+   }
+   if let Some(warning) = normalized.strip_prefix("/w") {
+      let mut chars = warning.chars();
+      if chars
+         .next()
+         .is_some_and(|character| matches!(character, 'd' | 'e' | '1'..='4'))
+         && !chars.as_str().is_empty()
+         && chars.all(|character| character.is_ascii_digit())
+      {
+         return None;
+      }
+   }
+   if let Some(architecture) = normalized.strip_prefix("/arch:") {
+      return Some(format!("-m{}", architecture.to_lowercase()));
+   }
+   if let Some(standard) = normalized.strip_prefix("/std:") {
+      return Some(format!(
+         "-std={}",
+         standard.replacen("c++latest", "c++2c", 1)
+      ));
+   }
+   if normalized == "/EHa" {
+      return Some("-fasync-exceptions".to_owned());
+   }
+   Some(option.to_owned())
+}
+
+type LinkSetting = fn(&str, &Path) -> io::Result<Option<String>>;
 
 fn link_flags(
    meta: &BTreeMap<String, String>,
@@ -311,28 +335,34 @@ fn link_flags(
    for directory in list(value(meta, "AdditionalLibraryDirectories")) {
       flags.push(format!("-L{}", win_path(directory, dir)?));
    }
-   for key in [
-      "SubSystem",
-      "StackReserveSize",
-      "ModuleDefinitionFile",
-      "BaseAddress",
-      "EntryPointSymbol",
-      "NoEntryPoint",
-   ] {
+   let settings: [(&str, LinkSetting); 6] = [
+      ("SubSystem", |setting, _| {
+         Ok(Some(format!("/subsystem:{}", setting.to_lowercase())))
+      }),
+      ("StackReserveSize", |setting, _| {
+         Ok(Some(format!("/stack:{setting}")))
+      }),
+      ("ModuleDefinitionFile", |setting, base| {
+         Ok(Some(format!("/def:{}", win_path(setting, base)?)))
+      }),
+      ("BaseAddress", |setting, _| {
+         Ok(Some(format!("/base:{setting}")))
+      }),
+      ("EntryPointSymbol", |setting, _| {
+         Ok(Some(format!("/entry:{setting}")))
+      }),
+      ("NoEntryPoint", |setting, _| {
+         Ok((setting == "true").then(|| "/noentry".to_owned()))
+      }),
+   ];
+   for (key, translate) in settings {
       let setting = value(meta, key);
       if setting.is_empty() {
          continue;
       }
-      let option = match key {
-         "SubSystem" => format!("/subsystem:{}", setting.to_lowercase()),
-         "StackReserveSize" => format!("/stack:{setting}"),
-         "ModuleDefinitionFile" => format!("/def:{}", win_path(setting, dir)?),
-         "BaseAddress" => format!("/base:{setting}"),
-         "EntryPointSymbol" => format!("/entry:{setting}"),
-         "NoEntryPoint" if setting == "true" => "/noentry".to_owned(),
-         _ => continue,
-      };
-      flags.push(format!("-Wl,{option}"));
+      if let Some(option) = translate(setting, dir)? {
+         flags.push(format!("-Wl,{option}"));
+      }
    }
    flags.extend(
       list(value(meta, "DelayLoadDLLs"))
@@ -416,16 +446,11 @@ fn project(ctx: &Ctx, file: String, props: &BTreeMap<String, String>) -> io::Res
       .props
       .get("ConfigurationType")
       .map_or(Ok(ConfigurationType::Application), |kind| kind.parse())?;
-   let extension = match kind {
-      ConfigurationType::Application => ".exe",
-      ConfigurationType::DynamicLibrary => ".dll",
-      ConfigurationType::StaticLibrary => ".lib",
-   };
    let ext = evaluated
       .props
       .get("TargetExt")
       .filter(|ext| !ext.is_empty())
-      .map_or(extension, String::as_str);
+      .map_or_else(|| kind.extension(), String::as_str);
    let stem = Path::new(&file)
       .file_stem()
       .unwrap_or_default()
@@ -705,17 +730,16 @@ fn configure(ctx: &Ctx, options: &Options) -> io::Result<()> {
       if let Some(directory) = Path::new(&project.output).parent() {
          create_dir_all(directory)?;
       }
-      let mut message = String::new();
-      write!(
-         message,
-         "{} {} {}, {} objects",
-         project.file,
-         project.kind,
-         project.name,
-         project.inputs.len()
-      )
-      .map_err(io::Error::other)?;
-      note("project", &message);
+      note(
+         "project",
+         &format!(
+            "{} {} {}, {} objects",
+            project.file,
+            project.kind,
+            project.name,
+            project.inputs.len()
+         ),
+      );
    }
    write_file(
       &Path::new(&ctx.build).join("build.ninja"),
@@ -730,21 +754,15 @@ fn configure(ctx: &Ctx, options: &Options) -> io::Result<()> {
 }
 
 fn install(ctx: &Ctx, options: &Options) -> io::Result<()> {
-   let mut directories = BTreeMap::from([
-      (ConfigurationType::Application, "bin".to_owned()),
-      (ConfigurationType::DynamicLibrary, "bin".to_owned()),
-      (ConfigurationType::StaticLibrary, "lib".to_owned()),
-   ]);
-   directories.extend(
-      options
-         .install
-         .iter()
-         .map(|(kind, directory)| (*kind, directory.clone())),
-   );
    let projects: Vec<Project> =
       serde_json::from_slice(&read(Path::new(&ctx.build).join("projects.json"))?)?;
    for project in projects {
-      let directory = Path::new(&ctx.out).join(&directories[&project.kind]);
+      let directory = Path::new(&ctx.out).join(
+         options
+            .install
+            .get(&project.kind)
+            .map_or_else(|| project.kind.install_dir(), String::as_str),
+      );
       create_dir_all(&directory)?;
       if project.kind != ConfigurationType::StaticLibrary {
          let name = Path::new(&project.output)
