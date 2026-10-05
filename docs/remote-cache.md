@@ -19,37 +19,39 @@ mummerd stores opaque values under string keys (`GET`, `HAS`, `PUT` in tightrope
 already machine independent, store hashes are masked and `$out` is a placeholder, so the same
 compile on two machines with the same toolchain asks for the same key.
 
-The remote speaks Bazel's HTTP cache protocol (`GET`/`PUT` on `/ac/<sha256>` and `/cas/<sha256>`).
-A key is an action cache entry whose digest is the sha256 of the key text. The entry is a real REAPI
-`ActionResult`, so a server that validates entries, as bazel-remote does by default, takes it. A
-value up to 1 MiB rides in the entry's `stdout_raw`, one round trip. A larger one is a CAS blob
-named by its own sha256 that the entry's one output file points at, written before the entry so a
-reader never sees an entry whose blob is missing, and dropped as a miss when its bytes do not hash
-to its name.
+The remote speaks REAPI over gRPC, as NativeLink serves it. A key is an action cache entry whose
+digest is the sha256 of the key text, under the instance named by the URL's path. A value up to
+1 MiB rides in the entry's `stdout_raw`, one round trip. A larger one is a CAS blob written through
+ByteStream before the entry naming it, so a reader never sees an entry whose blob is missing, and
+dropped as a miss when its bytes do not hash to its digest. NativeLink's own limit of 4 MiB per
+gRPC message is why the cut sits there.
 
-The GETs a client pipelines in one `get_many` reach the remote together, up to 16 at a time, so a
-cache hit costs two round trips (the manifest, then the result) however far the server is. Keys
+The GETs a client pipelines in one `get_many` reach the remote together, up to 16 at a time on one
+HTTP/2 connection, so a cache hit costs two round trips (the manifest, then the result) however far the server is. Keys
 under `tightrope::LOCAL_PREFIX` (`i/`, the stat-stamped file identities) name this machine's
 files and never go to the remote.
 
 ## Failure
 
-The remote never fails a build. An unreachable remote, a timeout or a refused write turns into a
+The remote never fails a build. An unreachable remote, a timeout or a refused call turns into a
 local miss and one warning line in mummerd's log, and mummerd stops asking for a while before
-trying again. A blob whose bytes do not hash to its name is dropped and counted as a miss.
+trying again. Reads and writes rest apart, so a machine whose uploads are refused keeps its hits.
 
 ## Configuration
 
-`--remote <url>` (`MUMMERD_REMOTE`) and `--remote-token <file>` (`MUMMERD_REMOTE_TOKEN`), the file
-holding `user:password` for HTTP basic auth. With a token mummerd writes through from a background
-queue that never holds up a build, without one it only reads. The NixOS module takes
-`services.mummerd.remote` and `services.mummerd.remoteTokenFile`, the latter a string handed over
-with `LoadCredential` so the secret stays out of the store.
+`--remote grpcs://host:port/instance` (`MUMMERD_REMOTE`), `grpc://` for plain HTTP/2 on a private
+network. `--remote-ca` (`MUMMERD_REMOTE_CA`) is the CA the server's certificate chains to, else
+the web's roots, and `--remote-identity` (`MUMMERD_REMOTE_IDENTITY`) a PEM file with this
+machine's client certificate and key. Only `--remote-writes` uploads, from a background queue
+that never holds up a build. The NixOS module takes `services.mummerd.remote`, `remoteCa`,
+`remoteIdentityFile`, the last a string handed over with `LoadCredential` so the key stays out of
+the store, and `remoteWrites`.
 
-Serving it is bazel-remote, for example `bazel-remote --dir /var/cache/bazel-remote --max_size 500
---http_address 127.0.0.1:8080 --htpasswd_file htpasswd`, which only the htpasswd users can use.
-Never expose that port directly. Basic auth over plain HTTP hands the write password, and with it
-the power to plant object files in everyone's builds, to anyone on the path. Reach it over a
-private network such as Tailscale, or through an HTTPS reverse proxy, and point `--remote` at the
-`https://` address. bazel-remote has no read-only users, every htpasswd user can write, so on a
-private network add `--allow_unauthenticated_reads` and give the password only to writers.
+## Serving
+
+NativeLink on scarp serves a `motley` instance on two listeners. The tailnet one takes writes from
+your builders. The other has TLS with `client_ca_file`, so only holders of a client certificate
+signed by that CA get in, and its action cache is `read_only`. NativeLink has no read-only CAS, but
+CAS writes are hash-checked and nothing reaches the action cache from there, so a certificate holder
+can at worst fill disk. nunatak forwards a public port to that listener as plain TCP, holding no
+keys. Revoking a teammate means listing their certificate in `client_crl_file`.
