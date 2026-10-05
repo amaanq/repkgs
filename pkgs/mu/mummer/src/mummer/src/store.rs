@@ -240,6 +240,19 @@ impl Store {
       })
    }
 
+   /// A link argument the output embeds as written, its store hashes masked
+   /// only when this build's roots give every one back, as a replay must.
+   #[must_use]
+   #[inline]
+   pub fn key_embedded(&self, arg: &str) -> String {
+      let masked = mask_hashes(arg);
+      if self.content && self.resolve_all(&masked) == arg {
+         masked
+      } else {
+         arg.to_owned()
+      }
+   }
+
    /// Text to store for replay, store hashes and `CMake` scratch names
    /// masked.
    #[must_use]

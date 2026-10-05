@@ -454,7 +454,7 @@ impl Invocation {
             Some(ref root) if self.action == Action::Precompile => {
                masked.replace(root.as_str(), "<toolchain>")
             },
-            _ if embedded => masked.into_owned(),
+            _ if embedded => store.key_embedded(&masked),
             _ => store.key(&masked),
          });
       }
