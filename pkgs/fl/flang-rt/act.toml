@@ -25,4 +25,3 @@ FLANG_RT_INCLUDE_TESTS       = false
 LLVM_ENABLE_RUNTIMES         = "flang-rt"
 LLVM_INCLUDE_TESTS           = false
 LLVM_LINK_LLVM_DYLIB         = true
-LLVM_PARALLEL_LINK_JOBS      = 4

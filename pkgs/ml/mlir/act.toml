@@ -20,7 +20,6 @@ root = "mlir"
 BUILD_SHARED_LIBS              = false
 LLVM_INCLUDE_TESTS             = false
 LLVM_LINK_LLVM_DYLIB           = true
-LLVM_PARALLEL_LINK_JOBS        = 4
 MLIR_ENABLE_BINDINGS_PYTHON    = false
 MLIR_INCLUDE_DOCS              = false
 MLIR_INCLUDE_INTEGRATION_TESTS = false

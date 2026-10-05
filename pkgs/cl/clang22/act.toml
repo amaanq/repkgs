@@ -25,4 +25,3 @@ CLANG_TOOLING_BUILD_AST_INTROSPECTION = false
 LIBCLANG_BUILD_STATIC                 = false
 LLVM_INCLUDE_TESTS                    = false
 LLVM_LINK_LLVM_DYLIB                  = true
-LLVM_PARALLEL_LINK_JOBS               = 4
