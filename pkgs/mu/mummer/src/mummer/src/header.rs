@@ -237,6 +237,7 @@ fn supported_arguments(args: &[String]) -> bool {
             | "-g2"
             | "-g3"
             | "-ggdb"
+            | "-gline-tables-only"
             | "-fPIC"
             | "-fPIE"
             | "-fpic"
