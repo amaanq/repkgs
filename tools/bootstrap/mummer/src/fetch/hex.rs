@@ -5,10 +5,13 @@ use std::{
    path::Path,
 };
 
-use mummer::hash::{
-   Algorithm,
-   Digest,
-   OutputHash,
+use mummer::{
+   hash::{
+      Algorithm,
+      Digest,
+      OutputHash,
+   },
+   store_path::DrvPath,
 };
 use serde_json::Map;
 
@@ -191,9 +194,11 @@ impl Producer for Hex {
       let layout: Vec<Entry> = rows
          .iter()
          .zip(&fetched)
-         .map(|(row, made)| Entry::link(made.out.clone(), format!("packages/hexpm/{}", row.file)))
+         .map(|(row, made)| {
+            Entry::link(made.out.to_string(), format!("packages/hexpm/{}", row.file))
+         })
          .collect();
-      let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
+      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
       collect(store, "hex-deps", &layout, &inputs, None, Map::new(), &[])
    }
 }

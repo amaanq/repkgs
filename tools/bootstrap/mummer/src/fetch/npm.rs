@@ -4,7 +4,10 @@ use std::{
    io,
 };
 
-use mummer::hash::OutputHash;
+use mummer::{
+   hash::OutputHash,
+   store_path::DrvPath,
+};
 use serde_json::{
    Map,
    Value,
@@ -145,7 +148,7 @@ impl Producer for Npm {
       }
       // structured attrs, the lock is far beyond execve's env limit
       let layout = [json_file("package-lock.json", &lock)?];
-      let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
+      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
       collect(store, "npm-deps", &layout, &inputs, None, Map::new(), &[])
    }
 }

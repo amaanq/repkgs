@@ -4,9 +4,12 @@ use std::{
    io,
 };
 
-use mummer::hash::{
-   Algorithm,
-   OutputHash,
+use mummer::{
+   hash::{
+      Algorithm,
+      OutputHash,
+   },
+   store_path::DrvPath,
 };
 use serde::{
    Deserialize,
@@ -75,7 +78,7 @@ impl Producer for Cargo {
 
 pub struct Vendor {
    pub layout: Vec<Entry>,
-   pub drvs:   Vec<String>,
+   pub drvs:   Vec<DrvPath>,
 }
 
 pub fn vendor_layout(store: &mut Store, text: &str, prefix: &str) -> io::Result<Vendor> {
@@ -129,7 +132,7 @@ pub fn vendor_layout(store: &mut Store, text: &str, prefix: &str) -> io::Result<
    let mut layout = Vec::with_capacity(crates.len() * 2);
    for (package, made) in crates.iter().zip(&fetched) {
       let dir = format!("{prefix}{}-{}", package.name, package.version);
-      layout.push(Entry::unpack(made.out.clone(), dir.clone()));
+      layout.push(Entry::unpack(made.out.to_string(), dir.clone()));
       layout.push(json_file(
          &format!("{dir}/.cargo-checksum.json"),
          &Checksum {
@@ -138,6 +141,6 @@ pub fn vendor_layout(store: &mut Store, text: &str, prefix: &str) -> io::Result<
          },
       )?);
    }
-   let drvs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
+   let drvs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
    Ok(Vendor { layout, drvs })
 }

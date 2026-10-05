@@ -4,7 +4,10 @@ use std::{
    io,
 };
 
-use mummer::hash::OutputHash;
+use mummer::{
+   hash::OutputHash,
+   store_path::DrvPath,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -143,7 +146,7 @@ impl Producer for Bun {
       let mut layout: Vec<Entry> = dirs
          .iter()
          .zip(&fetched)
-         .map(|(dir, made)| Entry::unpack(made.out.clone(), dir.clone()))
+         .map(|(dir, made)| Entry::unpack(made.out.to_string(), dir.clone()))
          .collect();
       let index: Vec<Indexed<'_>> = ids
          .iter()
@@ -156,7 +159,7 @@ impl Producer for Bun {
          })
          .collect();
       layout.push(json_file("index.json", &index)?);
-      let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
+      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
       collect(store, "bun-deps", &layout, &inputs, None, Map::new(), &[])
    }
 }

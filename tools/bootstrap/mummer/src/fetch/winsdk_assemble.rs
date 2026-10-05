@@ -20,7 +20,10 @@ use std::{
    },
 };
 
-use mummer::files::write_file;
+use mummer::{
+   files::write_file,
+   store_path::StorePath,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -50,7 +53,7 @@ struct Attrs {
 struct Payload {
    file: String,
    kind: String,
-   out:  String,
+   out:  StorePath,
 }
 
 #[derive(Serialize)]
@@ -254,7 +257,7 @@ pub fn run_mode() -> io::Result<()> {
    {
       run(&format!("{bin}/bsdtar"), &[
          "-xf",
-         &payload.out,
+         payload.out.as_str(),
          "-C",
          &work_text,
          "Contents/VC",

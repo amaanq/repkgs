@@ -8,6 +8,10 @@ use std::{
    },
 };
 
+use mummer::store_path::{
+   DrvPath,
+   StorePath,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -31,7 +35,7 @@ use crate::{
 #[derive(Deserialize, Serialize)]
 pub struct Sdist {
    pub name: String,
-   pub out:  String,
+   pub out:  StorePath,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -43,8 +47,8 @@ pub struct Tree {
 #[derive(Deserialize, Serialize)]
 pub struct Stage {
    pub layout: Vec<Entry>,
-   pub drvs:   Vec<String>,
-   pub srcs:   Vec<String>,
+   pub drvs:   Vec<DrvPath>,
+   pub srcs:   Vec<StorePath>,
    pub sdists: Vec<Sdist>,
    pub trees:  Vec<Tree>,
 }
@@ -77,14 +81,17 @@ impl Producer for PypiVendor {
       let mut locks = Vec::new();
 
       for sdist in &stage.sdists {
-         let entries = archive(&["-tf", &sdist.out])?;
+         let entries = archive(&["-tf", sdist.out.as_str()])?;
 
          if let Some(lock) = entries.lines().find(|entry| {
             let path = Path::new(entry);
             path.components().count() == 2
                && path.file_name().is_some_and(|name| name == "Cargo.lock")
          }) {
-            locks.push((sdist.name.as_str(), archive(&["-xOf", &sdist.out, lock])?));
+            locks.push((
+               sdist.name.as_str(),
+               archive(&["-xOf", sdist.out.as_str(), lock])?,
+            ));
          }
       }
 

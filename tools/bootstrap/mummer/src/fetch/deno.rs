@@ -4,10 +4,16 @@ use std::{
    io,
 };
 
-use mummer::hash::{
-   Algorithm,
-   Digest,
-   OutputHash,
+use mummer::{
+   hash::{
+      Algorithm,
+      Digest,
+      OutputHash,
+   },
+   store_path::{
+      DrvPath,
+      StorePath,
+   },
 };
 use serde::{
    Deserialize,
@@ -80,8 +86,8 @@ struct NpmFetched {
    version:   String,
    url:       String,
    integrity: String,
-   tarball:   String,
-   drv:       String,
+   tarball:   StorePath,
+   drv:       DrvPath,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -89,15 +95,15 @@ struct JsrFetched {
    name:    String,
    version: String,
    url:     String,
-   meta:    String,
-   drv:     String,
+   meta:    StorePath,
+   drv:     DrvPath,
 }
 
 #[derive(Deserialize, Serialize)]
 struct HttpsFetched {
    url: String,
-   src: String,
-   drv: String,
+   src: StorePath,
+   drv: DrvPath,
 }
 
 /// deno.lock (version 4 or 5) pins npm tarballs by sha512, jsr packages by
@@ -242,7 +248,7 @@ impl Producer for Deno {
          jsr.len(),
          https.len()
       ));
-      let inputs: Vec<String> = npm
+      let inputs: Vec<DrvPath> = npm
          .iter()
          .map(|entry| entry.drv.clone())
          .chain(jsr.iter().map(|entry| entry.drv.clone()))
@@ -423,21 +429,21 @@ impl Producer for DenoFiles {
       let mut layout = Vec::new();
       for (url, made) in module_urls.iter().zip(&modules) {
          layout.push(Entry::copy(
-            made.out.clone(),
+            made.out.to_string(),
             trailer(url, content_type(url))?,
             cache_path(url),
          ));
       }
       for module in &fetched.https {
          layout.push(Entry::copy(
-            module.src.clone(),
+            module.src.to_string(),
             trailer(&module.url, content_type(&module.url))?,
             cache_path(&module.url),
          ));
       }
       for package in &fetched.jsr {
          layout.push(Entry::copy(
-            package.meta.clone(),
+            package.meta.to_string(),
             trailer(&package.url, "application/json")?,
             cache_path(&package.url),
          ));
@@ -469,7 +475,7 @@ impl Producer for DenoFiles {
       let mut npm_by_name: BTreeMap<&str, Vec<&NpmFetched>> = BTreeMap::new();
       for package in &fetched.npm {
          layout.push(Entry::unpack(
-            package.tarball.clone(),
+            package.tarball.to_string(),
             format!(
                "npm/registry.npmjs.org/{}/{}",
                package.name, package.version
@@ -503,7 +509,7 @@ impl Producer for DenoFiles {
       }
       // the first stage's files are laid out too, so they are inputs of the
       // collecting derivation as well
-      let inputs: Vec<String> = modules
+      let inputs: Vec<DrvPath> = modules
          .into_iter()
          .map(|made| made.drv)
          .chain(fetched.npm.iter().map(|package| package.drv.clone()))

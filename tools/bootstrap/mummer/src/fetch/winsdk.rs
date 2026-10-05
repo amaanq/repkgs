@@ -4,9 +4,15 @@ use std::{
    io,
 };
 
-use mummer::hash::{
-   Algorithm,
-   OutputHash,
+use mummer::{
+   hash::{
+      Algorithm,
+      OutputHash,
+   },
+   store_path::{
+      DrvPath,
+      StorePath,
+   },
 };
 use serde::{
    Deserialize,
@@ -27,6 +33,7 @@ use crate::{
          collect,
          fetchurls,
          say,
+         store_attr,
       },
    },
    nix_store::Store,
@@ -71,7 +78,7 @@ struct Payload {
 pub struct Selected {
    pub file: String,
    pub kind: &'static str,
-   pub out:  String,
+   pub out:  StorePath,
 }
 
 fn newest<'version, Versions>(versions: Versions) -> Option<&'version str>
@@ -235,10 +242,13 @@ impl Producer for Winsdk {
             }
          })
          .collect();
-      let mut inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
-      inputs.push(attr("sevenzip_drv")?);
+      let mut inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
+      inputs.push(attr("sevenzip_drv")?.try_into()?);
       let mut attrs = Map::new();
-      attrs.insert("sevenzip".to_owned(), Value::String(attr("sevenzip")?));
+      attrs.insert(
+         "sevenzip".to_owned(),
+         Value::String(store_attr("sevenzip")?.to_string()),
+      );
       attrs.insert("payloads".to_owned(), to_value(&selected)?);
       collect(
          store,

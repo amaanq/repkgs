@@ -7,7 +7,10 @@ use std::{
    io,
 };
 
-use mummer::hash::OutputHash;
+use mummer::{
+   hash::OutputHash,
+   store_path::DrvPath,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -133,7 +136,7 @@ impl Producer for Go {
       let mut layout: Vec<Entry> = targets
          .iter()
          .zip(&fetched)
-         .map(|(to, made)| Entry::link(made.out.clone(), to.clone()))
+         .map(|(to, made)| Entry::link(made.out.to_string(), to.clone()))
          .collect();
       for module in &modules {
          let (path, version) = (&module.path, &module.version);
@@ -142,7 +145,7 @@ impl Producer for Go {
             &Info { version },
          )?);
       }
-      let inputs: Vec<String> = fetched.into_iter().map(|made| made.drv).collect();
+      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
       collect(store, "go-modules", &layout, &inputs, None, Map::new(), &[])
    }
 }
