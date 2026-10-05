@@ -22,13 +22,7 @@ pub enum Mode {
       alias = "clang",
       alias = "cc-build",
       alias = "gcc-build",
-      alias = "clang-build",
-      alias = "fortran",
-      alias = "gfortran",
-      alias = "flang",
-      alias = "fortran-build",
-      alias = "gfortran-build",
-      alias = "flang-build"
+      alias = "clang-build"
    )]
    Cc,
    /// the C++ compiler.
@@ -41,6 +35,15 @@ pub enum Mode {
       alias = "clang++-build"
    )]
    Cxx,
+   /// the Fortran compiler, what etc/mummer.json names as fc.
+   #[pound(
+      alias = "gfortran",
+      alias = "flang",
+      alias = "fortran-build",
+      alias = "gfortran-build",
+      alias = "flang-build"
+   )]
+   Fortran,
    /// rustc with the crate cache in front, `mummer rustcwrap <rustc>
    /// <args...>`.
    Rustcwrap,
@@ -97,7 +100,7 @@ impl Mode {
       match name {
          "cc" | "gcc" | "clang" | "cc-build" | "gcc-build" | "clang-build" => return Ok(Self::Cc),
          fortran if fortran.contains("fortran") || fortran.contains("flang") => {
-            return Ok(Self::Cc);
+            return Ok(Self::Fortran);
          },
          "c++" | "g++" | "clang++" | "c++-build" | "g++-build" | "clang++-build" => {
             return Ok(Self::Cxx);

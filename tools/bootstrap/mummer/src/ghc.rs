@@ -22,6 +22,7 @@ use std::{
       self,
       Write as _,
    },
+   mem::take,
    os::unix::fs::PermissionsExt as _,
    path::{
       Path,
@@ -42,11 +43,10 @@ use mummer::{
    },
    process::{
       Outcome,
+      RunResult,
       Slot,
       Tool,
       diagnostic,
-      log,
-      log_uncached,
       run,
       run_slotted,
    },
@@ -69,30 +69,36 @@ use tightrope::{
    },
 };
 
-use crate::manifest::{
-   Manifest,
-   Miss,
-   lookup,
+use crate::{
+   manifest::{
+      Manifest,
+      Miss,
+   },
+   wrapper::{
+      Wrapper,
+      serve,
+      uncached,
+   },
 };
 
 const SOURCES: [&str; 4] = [".hs", ".lhs", ".hs-boot", ".lhs-boot"];
 
 struct Invocation {
-   source:    String,
-   output:    String,
-   outputs:   Vec<String>,
-   required:  usize,
-   files:     Vec<String>,
-   suffixes:  (String, String),
-   cacheable: bool,
+   source:   String,
+   output:   String,
+   outputs:  Vec<String>,
+   required: usize,
+   files:    Vec<String>,
+   suffixes: (String, String),
 }
 
 impl Invocation {
+   /// The compile of one module, else the label to log the call under.
    #[expect(
       clippy::too_many_lines,
       reason = "single-pass ghc flag scan, splitting would scatter invocation state"
    )]
-   fn parse(args: &[String]) -> Self {
+   fn parse(args: &[String]) -> Result<Self, String> {
       let mut sources = Vec::new();
       let mut named_output = None;
       let mut interface = None;
@@ -103,6 +109,7 @@ impl Invocation {
       let mut compile = false;
       let mut dynamic_too = false;
       let mut cacheable = true;
+      let mut complete = true;
       let mut directories = Vec::new();
       let mut files = Vec::new();
       let mut index = 0;
@@ -111,7 +118,9 @@ impl Invocation {
          let argument = args[index].as_str();
          let mut value = || {
             index += 1;
-            args.get(index).cloned()
+            let found = args.get(index).cloned();
+            complete &= found.is_some();
+            found
          };
 
          match argument {
@@ -148,59 +157,60 @@ impl Invocation {
          index += 1;
       }
 
-      let source = if sources.len() == 1 {
-         sources.swap_remove(0)
-      } else {
-         String::new()
-      };
-      let output = named_output.unwrap_or_default();
+      if sources.len() != 1 {
+         return Err(String::new());
+      }
+      let source = sources.swap_remove(0);
       let boot = if source.ends_with("-boot") {
          "-boot"
       } else {
          ""
       };
-      let base = output
-         .strip_suffix(&format!(".{object_suffix}{boot}"))
-         .map(str::to_owned);
-      cacheable &= compile
-         && !source.is_empty()
-         && base.is_some()
+      let Some((output, stem)) = named_output.and_then(|output| {
+         let stem = output
+            .strip_suffix(&format!(".{object_suffix}{boot}"))?
+            .to_owned();
+         Some((output, stem))
+      }) else {
+         return Err(source);
+      };
+      if !(cacheable
+         && complete
+         && compile
          && relative_path(&output).is_ok()
          && directories
             .iter()
             .all(|directory| Path::new(&output).starts_with(directory))
          && interface
             .as_deref()
-            .is_none_or(|path| relative_path(path).is_ok());
+            .is_none_or(|path| relative_path(path).is_ok()))
+      {
+         return Err(source);
+      }
 
-      let mut outputs = vec![output.clone()];
-      let mut dynamic = Vec::new();
-      if let Some(stem) = base.as_deref() {
-         outputs.push(interface.unwrap_or_else(|| format!("{stem}.{interface_suffix}{boot}")));
-         if dynamic_too {
-            dynamic = vec![
-               format!("{stem}.{dynamic_object}{boot}"),
-               format!("{stem}.{dynamic_interface}{boot}"),
-            ];
-         }
-      }
+      let mut outputs = vec![
+         output.clone(),
+         interface.unwrap_or_else(|| format!("{stem}.{interface_suffix}{boot}")),
+      ];
       // ghc writes no dynamic object for a boot interface
-      let required = outputs.len() + if boot.is_empty() { dynamic.len() } else { 0 };
-      outputs.append(&mut dynamic);
-      if let Some(stem) = base {
-         outputs.push(format!("{stem}_stub.h"));
+      let required = if dynamic_too && boot.is_empty() { 4 } else { 2 };
+      if dynamic_too {
+         outputs.extend([
+            format!("{stem}.{dynamic_object}{boot}"),
+            format!("{stem}.{dynamic_interface}{boot}"),
+         ]);
       }
+      outputs.push(format!("{stem}_stub.h"));
       files.retain(|file| *file != source && !outputs.contains(file));
 
-      Self {
+      Ok(Self {
          source,
          output,
          outputs,
          required,
          files,
          suffixes: (object_suffix, interface_suffix),
-         cacheable,
-      }
+      })
    }
 
    /// Everything the object depends on in the nearest `.dependencies` above
@@ -271,87 +281,120 @@ struct Artifact {
    hash: Digest,
 }
 
+/// One module compile in front of the cache, and what serving it needs.
+struct Module<'args> {
+   compiler:     &'args str,
+   arguments:    &'args [String],
+   invocation:   Invocation,
+   store:        Store,
+   dependencies: Vec<String>,
+}
+
+impl Wrapper for Module<'_> {
+   const TOOL: Tool = Tool::Ghc;
+   type Compiled = Vec<Option<SystemTime>>;
+
+   fn manifests(&mut self) -> &mut Store {
+      &mut self.store
+   }
+
+   fn replay(&mut self, cache: &mut Client, result: &Digest) -> Result<i32, Miss> {
+      replay(cache, &self.store, result).map(|()| 0_i32)
+   }
+
+   fn compile(&mut self, cache: &mut Client) -> io::Result<(RunResult, Self::Compiled)> {
+      let before = modified(&self.invocation.outputs);
+      let result = run(
+         OsStr::new(self.compiler),
+         self.arguments,
+         Slot::acquire(cache).ok().flatten(),
+         true,
+         &[],
+      )?;
+      Ok((result, before))
+   }
+
+   fn store(
+      &mut self,
+      cache: &mut Client,
+      request: &Key,
+      result: &RunResult,
+      compiled: Self::Compiled,
+   ) -> io::Result<bool> {
+      if result.status != 0_i32 {
+         return Ok(false);
+      }
+      let before = compiled;
+      let invocation = &self.invocation;
+      let mut inputs = take(&mut self.dependencies);
+      inputs.push(invocation.source.clone());
+      inputs.extend_from_slice(&invocation.files);
+      inputs.sort_unstable();
+      inputs.dedup();
+      let after = modified(&invocation.outputs);
+      let manifest = Manifest::build(cache, &mut self.store, &inputs, &[], &[])?;
+      let key = manifest.result_key(request)?;
+      let mut artifacts = Vec::new();
+
+      for (position, path) in invocation.outputs.iter().enumerate() {
+         if after[position].is_none() || after[position] == before[position] {
+            if position < invocation.required {
+               return Err(io::Error::other(format!(
+                  "{path} was not written by this compile"
+               )));
+            }
+            continue;
+         }
+         let mut bytes =
+            read(path).map_err(|error| io::Error::other(format!("{path}: {error}")))?;
+         self.store.mask_output(&mut bytes, false);
+         let hash = Digest::of(&bytes);
+         cache.put(&Key::digest(Namespace::Blob, &hash), &bytes)?;
+         artifacts.push(Artifact {
+            path: path.clone(),
+            mode: metadata(path)?.permissions().mode() & 0o777,
+            hash,
+         });
+      }
+
+      cache.put(
+         &Key::digest(Namespace::Object, &key),
+         &serde_json::to_vec(&artifacts)?,
+      )?;
+      cache.put(&Key::digest(Namespace::Diagnostics, &key), &result.stderr)?;
+      manifest.publish(cache, request)?;
+      Ok(true)
+   }
+}
+
 pub fn run_ghc(args: &[String], socket: &Path) -> io::Result<i32> {
    let Some((compiler, arguments)) = args.split_first() else {
       return Err(io::Error::other("ghcwrap requires a compiler"));
    };
    let started = Instant::now();
-   let invocation = Invocation::parse(arguments);
-   let label = invocation.source.clone();
-   let mut store = Store::new();
-   let prepared = invocation
-      .cacheable
-      .then(|| prepare(&store, compiler, arguments, &invocation, socket))
-      .flatten();
-   let Some((mut client, key, dependencies)) = prepared else {
-      let result = run_slotted(OsStr::new(compiler), arguments, Some(socket), false)?;
-      let outcome = if invocation.cacheable {
-         Outcome::NoDaemon
-      } else {
-         Outcome::Uncacheable
-      };
-      log(Tool::Ghc, outcome, &label, started);
-      if outcome == Outcome::Uncacheable {
-         log_uncached(outcome, arguments);
-      }
-      return Ok(result.status);
-   };
-
-   let miss = match lookup(&mut client, &mut store, &key)
-      .and_then(|result| replay(&mut client, &store, &result))
-   {
-      Ok(()) => {
-         log(Tool::Ghc, Outcome::Cached, &label, started);
-         return Ok(0);
+   let store = Store::new();
+   let (outcome, label) = match Invocation::parse(arguments) {
+      Ok(invocation) => {
+         match prepare(&store, compiler, arguments, &invocation, socket) {
+            Some((mut client, request, dependencies)) => {
+               let label = invocation.source.clone();
+               let mut module = Module {
+                  compiler,
+                  arguments,
+                  invocation,
+                  store,
+                  dependencies,
+               };
+               return serve(&mut module, &mut client, &request, &label, started);
+            },
+            None => (Outcome::NoDaemon, invocation.source),
+         }
       },
-      Err(Miss::Failed(error)) => {
-         diagnostic(format_args!(
-            "mummer Haskell cache replay failed, compiling again, {error}"
-         ));
-         Miss::Failed(error)
-      },
-      Err(miss) => miss,
+      Err(label) => (Outcome::Uncacheable, label),
    };
-   let explained = format!("{label} {miss}");
-   let before = modified(&invocation.outputs);
-   let result = run(
-      OsStr::new(compiler),
-      arguments,
-      Slot::acquire(&mut client).ok().flatten(),
-      true,
-      &[],
-   )?;
-   io::stderr().lock().write_all(&result.stderr)?;
-   if result.status != 0_i32 {
-      log(Tool::Ghc, Outcome::Failed, &explained, started);
-      return Ok(result.status);
-   }
-
-   let mut paths = dependencies;
-   paths.push(invocation.source.clone());
-   paths.extend_from_slice(&invocation.files);
-   paths.sort_unstable();
-   paths.dedup();
-   let stored = store_result(
-      &mut client,
-      &mut store,
-      &key,
-      &invocation,
-      &paths,
-      &before,
-      &result.stderr,
-   );
-   let outcome = match stored {
-      Ok(()) => Outcome::Compiled,
-      Err(error) => {
-         diagnostic(format_args!(
-            "mummer could not store Haskell result, {error}"
-         ));
-         Outcome::CompiledUnstored
-      },
-   };
-   log(Tool::Ghc, outcome, &explained, started);
-   Ok(0)
+   let result = run_slotted(OsStr::new(compiler), arguments, Some(socket), false)?;
+   uncached(Tool::Ghc, outcome, label, arguments, started);
+   Ok(result.status)
 }
 
 /// The daemon, request key and dependency list, or None after saying why
@@ -422,48 +465,6 @@ fn request_key(
       Namespace::Haskell,
       &Digest::from(hasher.finalize()),
    ))
-}
-
-fn store_result(
-   cache: &mut Client,
-   store: &mut Store,
-   request: &Key,
-   invocation: &Invocation,
-   inputs: &[String],
-   before: &[Option<SystemTime>],
-   diagnostics: &[u8],
-) -> io::Result<()> {
-   let after = modified(&invocation.outputs);
-   let manifest = Manifest::build(cache, store, inputs, &[], &[])?;
-   let key = manifest.result_key(request)?;
-   let mut artifacts = Vec::new();
-
-   for (position, path) in invocation.outputs.iter().enumerate() {
-      if after[position].is_none() || after[position] == before[position] {
-         if position < invocation.required {
-            return Err(io::Error::other(format!(
-               "{path} was not written by this compile"
-            )));
-         }
-         continue;
-      }
-      let mut bytes = read(path).map_err(|error| io::Error::other(format!("{path}: {error}")))?;
-      store.mask_output(&mut bytes, false);
-      let hash = Digest::of(&bytes);
-      cache.put(&Key::digest(Namespace::Blob, &hash), &bytes)?;
-      artifacts.push(Artifact {
-         path: path.clone(),
-         mode: metadata(path)?.permissions().mode() & 0o777,
-         hash,
-      });
-   }
-
-   cache.put(
-      &Key::digest(Namespace::Object, &key),
-      &serde_json::to_vec(&artifacts)?,
-   )?;
-   cache.put(&Key::digest(Namespace::Diagnostics, &key), diagnostics)?;
-   manifest.publish(cache, request)
 }
 
 /// Modification times, so only what the compile wrote is stored, whatever

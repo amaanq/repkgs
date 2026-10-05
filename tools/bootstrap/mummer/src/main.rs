@@ -9,6 +9,7 @@ mod header;
 mod manifest;
 mod nix_store;
 mod rustc;
+mod wrapper;
 
 use std::{
    env::args_os,
@@ -43,9 +44,12 @@ use tightrope::{
    key::Key,
 };
 
-use crate::cli::{
-   CacheOperation,
-   Mode,
+use crate::{
+   cli::{
+      CacheOperation,
+      Mode,
+   },
+   driver::Language,
 };
 
 fn dispatch() -> Result<i32> {
@@ -70,7 +74,6 @@ fn dispatch() -> Result<i32> {
       .ok_or_else(|| report!("mode {name:?} is not UTF-8"))?;
    run(
       Mode::from_arguments(name_text, args)?,
-      name_text,
       args,
       &socket,
    )
@@ -83,9 +86,11 @@ fn slot_mode(args: &[OsString], socket: &Path) -> Result<i32> {
    Ok(process::run_slotted(program, rest, Some(socket), false)?.status)
 }
 
-fn run(mode: Mode, name: &str, args: &[OsString], socket: &Path) -> Result<i32> {
+fn run(mode: Mode, args: &[OsString], socket: &Path) -> Result<i32> {
    match mode {
-      Mode::Cc | Mode::Cxx => return Ok(cc::run_cc(name, &text_arguments(args)?, socket)?),
+      Mode::Cc => return Ok(cc::run_cc(Language::Cc, &text_arguments(args)?, socket)?),
+      Mode::Cxx => return Ok(cc::run_cc(Language::Cxx, &text_arguments(args)?, socket)?),
+      Mode::Fortran => return Ok(cc::run_cc(Language::Fortran, &text_arguments(args)?, socket)?),
       Mode::Rustcwrap => return Ok(rustc::run_rustc(&text_arguments(args)?, socket)?),
       Mode::Ghcwrap => return Ok(ghc::run_ghc(&text_arguments(args)?, socket)?),
       Mode::Cache {
