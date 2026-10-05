@@ -117,6 +117,12 @@ impl Value {
       self.length
    }
 
+   pub fn read(&self) -> io::Result<Vec<u8>> {
+      let mut bytes = vec![0; usize::try_from(self.length).map_err(io::Error::other)?];
+      self.file.read_exact_at(&mut bytes, self.offset)?;
+      Ok(bytes)
+   }
+
    pub fn write_to(&self, stream: &UnixStream) -> io::Result<()> {
       let mut offset = self.offset;
       let mut remaining = usize::try_from(self.length).map_err(io::Error::other)?;

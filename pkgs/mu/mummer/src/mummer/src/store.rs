@@ -31,7 +31,10 @@ use std::{
 };
 
 use blake3::Hasher;
-use tightrope::identity::Identity;
+use tightrope::{
+   LOCAL_PREFIX,
+   identity::Identity,
+};
 
 pub const STORE_DIR: &str = match option_env!("MUMMER_STORE_DIR") {
    Some(directory) => directory,
@@ -315,7 +318,10 @@ impl Store {
       ] {
          field(&mut hasher, part);
       }
-      Some(format!("i/{}", &hasher.finalize().to_hex()[..32]))
+      Some(format!(
+         "{LOCAL_PREFIX}{}",
+         &hasher.finalize().to_hex()[..32]
+      ))
    }
 
    #[inline]
