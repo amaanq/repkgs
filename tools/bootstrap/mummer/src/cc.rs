@@ -40,8 +40,6 @@ use mummer::{
       Tool,
       diagnostic,
       expand_response_files,
-      log,
-      log_uncached,
       run,
       run_slotted,
       status_code,
@@ -53,7 +51,10 @@ use mummer::{
       on_path,
    },
 };
-use tempfile::Builder;
+use tempfile::{
+   Builder,
+   NamedTempFile,
+};
 use tightrope::{
    client::Client,
    digest::Digest,
@@ -79,6 +80,11 @@ use crate::{
       parse_depfile,
       prefetch,
    },
+   wrapper::{
+      Wrapper,
+      serve,
+      uncached,
+   },
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -95,8 +101,8 @@ enum Action {
 struct Invocation {
    args:         Vec<String>,
    key_args:     Vec<String>,
-   source:       String,
-   target:       String,
+   source:       Option<String>,
+   target:       Option<String>,
    inputs:       Vec<String>,
    output:       PathBuf,
    depfile:      Option<PathBuf>,
@@ -120,8 +126,8 @@ impl Invocation {
       let mut invocation = Self {
          args,
          key_args: Vec::new(),
-         source: String::new(),
-         target: String::new(),
+         source: None,
+         target: None,
          inputs: Vec::new(),
          output: PathBuf::new(),
          depfile: None,
@@ -182,7 +188,7 @@ impl Invocation {
             "-MT" | "-MQ" => {
                keyed = false;
                if let Some(ref value) = next {
-                  value.clone_into(&mut invocation.target);
+                  invocation.target = Some(value.clone());
                   wants_deps = true;
                   consumed = true;
                }
@@ -216,7 +222,7 @@ impl Invocation {
                } else if let Some(&(_, precompiles)) = compiled.iter().find(|entry| entry.0 == arg)
                {
                   keyed = false;
-                  invocation.source.clone_from(&arg);
+                  invocation.source = Some(arg.clone());
                   sources += 1_i32;
                   positions.push(index);
                   header |= precompiles;
@@ -264,9 +270,12 @@ impl Invocation {
          {
             invocation.stdout = true;
          } else if invocation.output.as_os_str().is_empty() && header {
-            invocation.output = PathBuf::from(format!("{}.gch", invocation.source));
+            invocation.output = PathBuf::from(format!(
+               "{}.gch",
+               invocation.source.as_deref().unwrap_or_default()
+            ));
          } else if invocation.output.as_os_str().is_empty() {
-            invocation.output = Path::new(&invocation.source)
+            invocation.output = Path::new(invocation.source.as_deref().unwrap_or_default())
                .file_stem()
                .map_or_else(|| PathBuf::from("output"), PathBuf::from);
             invocation
@@ -413,11 +422,10 @@ impl Invocation {
    }
 
    fn retarget(&self, depfile: &str) -> String {
-      let target = if self.target.is_empty() {
-         self.output.to_string_lossy().into_owned()
-      } else {
-         self.target.clone()
-      };
+      let target = self
+         .target
+         .clone()
+         .unwrap_or_else(|| self.output.to_string_lossy().into_owned());
       match depfile.find(": ") {
          Some(colon) if depfile.find('\n').is_none_or(|newline| newline > colon) => {
             format!("{target}{}", &depfile[colon..])
@@ -510,10 +518,10 @@ impl Invocation {
          store.mask_output(&mut bytes, false);
          field(&mut hasher, bytes);
       }
-      if self.action != Action::Link {
+      if let Some(ref source) = self.source {
          field(&mut hasher, "source");
-         field(&mut hasher, mask_random_names(&self.source));
-         let mut bytes = read(&self.source)?;
+         field(&mut hasher, mask_random_names(source));
+         let mut bytes = read(source)?;
          store.mask_output(&mut bytes, false);
          field(&mut hasher, bytes);
       }
@@ -553,28 +561,264 @@ pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut Client) -> io:
    )
 }
 
-#[expect(
-   clippy::too_many_lines,
-   clippy::cognitive_complexity,
-   reason = "compile-cache pipeline from lookup to store, stages read linearly"
-)]
-pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
+/// One compile or link in front of the cache.
+struct Compile<'driver> {
+   invocation: Invocation,
+   compiler:   &'driver str,
+   format:     BinaryFormat,
+   /// Masks what is stored and replayed.
+   store:      Store,
+   manifests:  Store,
+}
+
+/// The files a compile wrote beside its output for storing it.
+struct Scratch {
+   dependency:      NamedTempFile,
+   link_dependency: NamedTempFile,
+   absent_log:      NamedTempFile,
+   output_capture:  Option<NamedTempFile>,
+   link_file:       PathBuf,
+   linked:          Option<Vec<u8>>,
+   own_depfile:     bool,
+   self_contained:  bool,
+}
+
+impl Scratch {
+   fn dependency_path<'path>(&'path self, invocation: &'path Invocation) -> &'path Path {
+      invocation
+         .depfile
+         .as_deref()
+         .unwrap_or_else(|| self.dependency.path())
+   }
+
+   fn output_path<'path>(&'path self, invocation: &'path Invocation) -> &'path Path {
+      self
+         .output_capture
+         .as_ref()
+         .map_or(invocation.output.as_path(), NamedTempFile::path)
+   }
+}
+
+impl Wrapper for Compile<'_> {
+   const TOOL: Tool = Tool::Cc;
+   type Compiled = Scratch;
+
+   fn manifests(&mut self) -> &mut Store {
+      &mut self.manifests
+   }
+
+   fn replay(&mut self, cache: &mut Client, result: &Digest) -> Result<i32, Miss> {
+      cached(cache, &self.store, &self.invocation, result)
+   }
+
+   fn compile(&mut self, cache: &mut Client) -> io::Result<(RunResult, Scratch)> {
+      let invocation = &self.invocation;
+      let scratch = temp_dir();
+      let parent = if invocation.stdout {
+         scratch.as_path()
+      } else {
+         invocation
+            .output
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."))
+      };
+      let temporary = |suffix: &str| {
+         Builder::new()
+            .prefix(".mummer-")
+            .suffix(suffix)
+            .tempfile_in(parent)
+      };
+      let dependency = temporary(".d")?;
+      let link_dependency = temporary(".link.d")?;
+      let absent_log = temporary(".absent")?;
+      let output_capture = invocation
+         .stdout
+         .then(|| Builder::new().prefix(".mummer-").suffix(".i").tempfile())
+         .transpose()?;
+      let source = invocation.source.as_deref().unwrap_or_default();
+      let own_depfile = invocation.depfile.is_none() && invocation.action != Action::Link;
+      let plain_assembly = Path::new(source)
+         .extension()
+         .is_some_and(|extension| extension == "s");
+      let mut written = Scratch {
+         link_file: link_dependency.path().to_path_buf(),
+         dependency,
+         link_dependency,
+         absent_log,
+         output_capture,
+         linked: None,
+         own_depfile,
+         self_contained: plain_assembly || invocation.preprocessed.is_some(),
+      };
+
+      let mut arguments = invocation.args.clone();
+      if own_depfile && !written.self_contained {
+         arguments.extend([
+            "-MD".to_owned(),
+            "-MF".to_owned(),
+            written
+               .dependency_path(invocation)
+               .to_string_lossy()
+               .into_owned(),
+         ]);
+      } else if !own_depfile
+         && invocation.action != Action::Link
+         && ![".S", ".s", ".sx"]
+            .iter()
+            .any(|suffix| source.ends_with(suffix))
+      {
+         arguments.extend(["-Xclang".to_owned(), "-sys-header-deps".to_owned()]);
+      }
+      if invocation.stdout {
+         arguments.extend([
+            "-o".to_owned(),
+            written
+               .output_path(invocation)
+               .to_string_lossy()
+               .into_owned(),
+         ]);
+      }
+      if invocation.links() {
+         written.link_file = link_depfile(&mut arguments, written.link_dependency.path());
+      }
+      let mut link = |args: &[String]| {
+         run(
+            OsStr::new(self.compiler),
+            args,
+            Slot::acquire(cache).ok().flatten(),
+            true,
+            &[("MUMMER_ABSENT_LOG", written.absent_log.path().as_os_str())],
+         )
+      };
+      let result = if invocation.links() && self.format == BinaryFormat::Elf {
+         let (result, linked) = settled_link(
+            &invocation.output,
+            &mut arguments,
+            &written.link_file,
+            &mut link,
+         )?;
+         written.linked = linked;
+         result
+      } else {
+         link(&arguments)?
+      };
+      if invocation.stdout {
+         io::stdout()
+            .lock()
+            .write_all(&read(written.output_path(invocation))?)?;
+      }
+      Ok((result, written))
+   }
+
+   fn store(
+      &mut self,
+      cache: &mut Client,
+      request: &Key,
+      result: &RunResult,
+      compiled: Scratch,
+   ) -> io::Result<bool> {
+      let invocation = &self.invocation;
+      let store = &self.store;
+      let dependencies = if invocation.action == Action::Link {
+         String::new()
+      } else if compiled.own_depfile && compiled.self_contained {
+         format!("o: {}", invocation.source.as_deref().unwrap_or_default())
+      } else {
+         match read_to_string(compiled.dependency_path(invocation)) {
+            Ok(text) => text,
+            // clang deletes the dependency file when a header is missing
+            Err(error) if error.kind() == io::ErrorKind::NotFound && result.status != 0_i32 => {
+               return Ok(false);
+            },
+            Err(error) => return Err(error),
+         }
+      };
+      let mut inputs = parse_depfile(&dependencies);
+      let link_text = if invocation.links() {
+         let text = read_to_string(&compiled.link_file)?;
+         if text.is_empty() {
+            return Ok(false);
+         }
+         let temporary = var("TMPDIR").unwrap_or_else(|_| "/tmp".to_owned());
+         let prefix = format!("{}/", temporary.trim_end_matches('/'));
+         inputs.extend(
+            parse_depfile(&text)
+               .into_iter()
+               .filter(|path| !path.starts_with(&prefix) || path[prefix.len()..].contains('/')),
+         );
+         Some(text)
+      } else {
+         None
+      };
+      if result.status != 0_i32
+         && (invocation.links()
+            || inputs.is_empty()
+            || String::from_utf8_lossy(&result.stderr).contains("file not found")
+            || !result.reported_error())
+      {
+         return Ok(false);
+      }
+      inputs.extend(invocation.source.iter().cloned());
+      inputs.extend_from_slice(&invocation.inputs);
+      inputs.sort_unstable();
+      inputs.dedup();
+      let absent = read_to_string(compiled.absent_log.path())?
+         .lines()
+         .map(str::to_owned)
+         .collect::<Vec<_>>();
+      let manifest = Manifest::build(cache, &mut self.manifests, &inputs, &[], &absent)?;
+      let key = manifest.result_key(request)?;
+      let masked = |mut bytes: Vec<u8>| {
+         store.mask_output(&mut bytes, false);
+         bytes
+      };
+      if result.status == 0_i32 {
+         let object = match compiled.linked {
+            Some(bytes) => bytes,
+            None => read(compiled.output_path(invocation))?,
+         };
+         cache.put(&Key::digest(Namespace::Object, &key), &masked(object))?;
+         if invocation.depfile.is_some() {
+            cache.put(
+               &Key::digest(Namespace::Depfile, &key),
+               &masked(store.mask_text(&dependencies).into_bytes()),
+            )?;
+         }
+         if let Some(text) = link_text {
+            let target = format!("{}:", invocation.output.display());
+            let body = text
+               .strip_prefix(&target)
+               .map_or_else(|| text.clone(), |rest| format!("<output>:{rest}"));
+            cache.put(
+               &Key::digest(Namespace::LinkDepfile, &key),
+               &masked(store.mask_text(&body).into_bytes()),
+            )?;
+         }
+      }
+      cache.put(
+         &Key::digest(Namespace::Diagnostics, &key),
+         &masked(result.stderr.clone()),
+      )?;
+      cache.put(
+         &Key::digest(Namespace::Status, &key),
+         result.status.to_string().as_bytes(),
+      )?;
+      manifest.publish(cache, request)?;
+      Ok(true)
+   }
+}
+
+pub fn run_cc(language: Language, raw: &[String], socket: &Path) -> io::Result<i32> {
    let started = Instant::now();
    let user = expand_response_files(raw)?;
    let driver = Driver::load()?;
-   let language = if mode.contains("++") {
-      Language::Cxx
-   } else if mode.contains("fortran") || mode.contains("flang") {
-      Language::Fortran
-   } else {
-      Language::Cc
-   };
    let compiler = driver.compiler(language);
 
    if compiler.is_empty() {
-      return Err(io::Error::other(format!(
-         "{mode} called but etc/mummer.json names no fc"
-      )));
+      return Err(io::Error::other(
+         "a Fortran compile, but etc/mummer.json names no fc",
+      ));
    }
 
    let expanded = driver.arguments(language, &user);
@@ -588,24 +832,45 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    invocation.args = expanded;
    invocation.prescan(language, compiler)?;
    let mut store = Store::new();
-   let mut manifest_store = invocation.manifest_store();
+   let mut manifests = invocation.manifest_store();
    store.learn_random(&invocation.args);
-   manifest_store.learn_random(&invocation.args);
+   manifests.learn_random(&invocation.args);
    invocation.key_injected(&user);
-   let subject = if invocation.source.is_empty() {
-      invocation.output.to_string_lossy().into_owned()
+   let subject = invocation
+      .source
+      .clone()
+      .unwrap_or_else(|| invocation.output.to_string_lossy().into_owned());
+
+   let outcome = if invocation.query {
+      Outcome::Query
+   } else if !invocation.cacheable && (invocation.links() || invocation.action == Action::Other) {
+      Outcome::Linked
+   } else if !invocation.cacheable {
+      Outcome::Uncacheable
    } else {
-      invocation.source.clone()
-   };
-   let mut unkeyed = None;
-   let connected = if invocation.cacheable {
       match Client::connect(socket) {
          Ok(mut cache) => {
             match invocation.request_key(&mut store, &mut cache, compiler) {
-               Ok(key) => Some((key, cache)),
+               Ok(request) => {
+                  let mut job = Compile {
+                     invocation,
+                     compiler,
+                     format: driver.format(),
+                     store,
+                     manifests,
+                  };
+                  return serve(&mut job, &mut cache, &request, &subject, started);
+               },
                Err(error) => {
-                  unkeyed = Some(error);
-                  None
+                  let result = run_uncached(&invocation, driver.format(), compiler, Some(socket))?;
+                  uncached(
+                     Tool::Cc,
+                     Outcome::Unkeyed,
+                     format_args!("{subject} {error}"),
+                     &user,
+                     started,
+                  );
+                  return Ok(result.status);
                },
             }
          },
@@ -615,258 +880,19 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
                io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
             ) =>
          {
-            None
+            Outcome::NoDaemon
          },
          Err(error) => {
             diagnostic(format_args!(
                "mummer compilation cache unavailable, {error}"
             ));
-            None
+            Outcome::NoDaemon
          },
       }
-   } else {
-      None
    };
-   let Some((request, mut cache)) = connected else {
-      let slot_socket = (!invocation.query).then_some(socket);
-      let result = run_uncached(&invocation, driver.format(), compiler, slot_socket)?;
-      let outcome = if invocation.query {
-         Outcome::Query
-      } else if !invocation.cacheable {
-         if invocation.links() || invocation.action == Action::Other {
-            Outcome::Linked
-         } else {
-            Outcome::Uncacheable
-         }
-      } else if unkeyed.is_some() {
-         Outcome::Unkeyed
-      } else {
-         Outcome::NoDaemon
-      };
-      let explained = unkeyed.map_or_else(|| subject.clone(), |error| format!("{subject} {error}"));
-      log(Tool::Cc, outcome, &explained, started);
-      log_uncached(outcome, &user);
-      return Ok(result.status);
-   };
-   let hit = lookup(&mut cache, &mut manifest_store, &request)
-      .and_then(|key| cached(&mut cache, &store, &invocation, &key));
-   let miss = match hit {
-      Ok(status) => {
-         log(
-            Tool::Cc,
-            if status == 0_i32 {
-               Outcome::Cached
-            } else {
-               Outcome::CachedError
-            },
-            &subject,
-            started,
-         );
-         return Ok(status);
-      },
-      Err(Miss::Failed(error)) => {
-         diagnostic(format_args!(
-            "mummer cache replay failed, compiling again, {error}"
-         ));
-         Miss::Failed(error)
-      },
-      Err(miss) => miss,
-   };
-   let explained = format!("{subject} {miss}");
-
-   let scratch = temp_dir();
-   let parent = if invocation.stdout {
-      scratch.as_path()
-   } else {
-      invocation
-         .output
-         .parent()
-         .filter(|path| !path.as_os_str().is_empty())
-         .unwrap_or_else(|| Path::new("."))
-   };
-   let dependency = Builder::new()
-      .prefix(".mummer-")
-      .suffix(".d")
-      .tempfile_in(parent)?;
-   let link_dependency = Builder::new()
-      .prefix(".mummer-")
-      .suffix(".link.d")
-      .tempfile_in(parent)?;
-   let absent_log = Builder::new()
-      .prefix(".mummer-")
-      .suffix(".absent")
-      .tempfile_in(parent)?;
-   let output_capture = if invocation.stdout {
-      Some(Builder::new().prefix(".mummer-").suffix(".i").tempfile()?)
-   } else {
-      None
-   };
-   let output_path = if let Some(ref file) = output_capture {
-      file.path()
-   } else {
-      invocation.output.as_path()
-   };
-   let dependency_path = invocation
-      .depfile
-      .as_deref()
-      .unwrap_or_else(|| dependency.path());
-   let mut arguments = invocation.args.clone();
-   let own_depfile = invocation.depfile.is_none() && invocation.action != Action::Link;
-   let plain_assembly = Path::new(&invocation.source)
-      .extension()
-      .is_some_and(|extension| extension == "s");
-   let self_contained = plain_assembly || invocation.preprocessed.is_some();
-
-   if own_depfile && !self_contained {
-      arguments.extend([
-         "-MD".to_owned(),
-         "-MF".to_owned(),
-         dependency_path.to_string_lossy().into_owned(),
-      ]);
-   } else if !own_depfile
-      && invocation.action != Action::Link
-      && ![".S", ".s", ".sx"]
-         .iter()
-         .any(|suffix| invocation.source.ends_with(suffix))
-   {
-      arguments.extend(["-Xclang".to_owned(), "-sys-header-deps".to_owned()]);
-   }
-   if invocation.stdout {
-      arguments.extend(["-o".to_owned(), output_path.to_string_lossy().into_owned()]);
-   }
-   let link_file = if invocation.links() {
-      link_depfile(&mut arguments, link_dependency.path())
-   } else {
-      link_dependency.path().to_path_buf()
-   };
-   let (result, linked) = {
-      let mut link = |args: &[String]| {
-         run(
-            OsStr::new(compiler),
-            args,
-            Slot::acquire(&mut cache).ok().flatten(),
-            true,
-            &[("MUMMER_ABSENT_LOG", absent_log.path().as_os_str())],
-         )
-      };
-      if invocation.links() && driver.format() == BinaryFormat::Elf {
-         settled_link(&invocation.output, &mut arguments, &link_file, &mut link)?
-      } else {
-         (link(&arguments)?, None)
-      }
-   };
-   io::stderr().lock().write_all(&result.stderr)?;
-   if invocation.stdout {
-      io::stdout().lock().write_all(&read(output_path)?)?;
-   }
-   let stored = (|| -> io::Result<bool> {
-      let dependencies = if invocation.action == Action::Link {
-         String::new()
-      } else if own_depfile && self_contained {
-         format!("o: {}", invocation.source)
-      } else {
-         match read_to_string(dependency_path) {
-            Ok(text) => text,
-            // clang deletes the dependency file when a header is missing
-            Err(error) if error.kind() == io::ErrorKind::NotFound && result.status != 0_i32 => {
-               return Ok(false);
-            },
-            Err(error) => return Err(error),
-         }
-      };
-      let mut inputs = parse_depfile(&dependencies);
-      if invocation.links() {
-         let link_text = read_to_string(&link_file)?;
-         if link_text.is_empty() {
-            return Ok(false);
-         }
-         let temporary = var("TMPDIR").unwrap_or_else(|_| "/tmp".to_owned());
-         let prefix = format!("{}/", temporary.trim_end_matches('/'));
-         inputs.extend(parse_depfile(&link_text).into_iter().filter(|path| {
-            if !path.starts_with(&prefix) {
-               return true;
-            }
-            path[prefix.len()..].contains('/')
-         }));
-      }
-      if result.status != 0_i32
-         && (invocation.links()
-            || inputs.is_empty()
-            || String::from_utf8_lossy(&result.stderr).contains("file not found")
-            || !result.reported_error())
-      {
-         return Ok(false);
-      }
-      if !invocation.source.is_empty() {
-         inputs.push(invocation.source.clone());
-      }
-      inputs.extend_from_slice(&invocation.inputs);
-      inputs.sort_unstable();
-      inputs.dedup();
-      let absent_text = read_to_string(absent_log.path())?;
-      let absent = absent_text.lines().map(str::to_owned).collect::<Vec<_>>();
-      let manifest = Manifest::build(&mut cache, &mut manifest_store, &inputs, &[], &absent)?;
-      let key = manifest.result_key(&request)?;
-      if result.status == 0_i32 {
-         let mut object = match linked {
-            Some(bytes) => bytes,
-            None => read(output_path)?,
-         };
-         store.mask_output(&mut object, false);
-         cache.put(&Key::digest(Namespace::Object, &key), &object)?;
-         if invocation.depfile.is_some() {
-            let mut dep_bytes = store.mask_text(&dependencies).into_bytes();
-            store.mask_output(&mut dep_bytes, false);
-            cache.put(&Key::digest(Namespace::Depfile, &key), &dep_bytes)?;
-         }
-         if invocation.links() {
-            let text = read_to_string(&link_file)?;
-            let target = format!("{}:", invocation.output.display());
-            let body = text
-               .strip_prefix(&target)
-               .map_or_else(|| text.clone(), |rest| format!("<output>:{rest}"));
-            let mut link_bytes = store.mask_text(&body).into_bytes();
-            store.mask_output(&mut link_bytes, false);
-            cache.put(&Key::digest(Namespace::LinkDepfile, &key), &link_bytes)?;
-         }
-      }
-      let mut diagnostics = result.stderr.clone();
-      store.mask_output(&mut diagnostics, false);
-      cache.put(&Key::digest(Namespace::Diagnostics, &key), &diagnostics)?;
-      cache.put(
-         &Key::digest(Namespace::Status, &key),
-         result.status.to_string().as_bytes(),
-      )?;
-      manifest.publish(&mut cache, &request)?;
-      Ok(true)
-   })();
-   let outcome = match stored {
-      Ok(true) => {
-         if result.status == 0_i32 {
-            Outcome::Compiled
-         } else {
-            Outcome::CompiledError
-         }
-      },
-      Ok(false) => {
-         if result.status == 0_i32 {
-            Outcome::CompiledUnstored
-         } else {
-            Outcome::Failed
-         }
-      },
-      Err(error) => {
-         diagnostic(format_args!(
-            "mummer could not store compiler result, {error}"
-         ));
-         if result.status == 0_i32 {
-            Outcome::CompiledUnstored
-         } else {
-            Outcome::Failed
-         }
-      },
-   };
-   log(Tool::Cc, outcome, &explained, started);
+   let slot = (outcome != Outcome::Query).then_some(socket);
+   let result = run_uncached(&invocation, driver.format(), compiler, slot)?;
+   uncached(Tool::Cc, outcome, &subject, &user, started);
    Ok(result.status)
 }
 

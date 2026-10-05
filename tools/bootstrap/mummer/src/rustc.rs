@@ -34,11 +34,10 @@ use mummer::{
    },
    process::{
       Outcome,
+      RunResult,
       Slot,
       Tool,
       diagnostic,
-      log,
-      log_uncached,
       run,
       run_slotted,
    },
@@ -75,24 +74,32 @@ use crate::{
    manifest::{
       Manifest,
       Miss,
-      lookup,
       parse_depfile,
+   },
+   wrapper::{
+      Wrapper,
+      serve,
+      uncached,
    },
 };
 
 struct Invocation {
-   key_args:  Vec<String>,
-   source:    String,
-   out_dir:   PathBuf,
-   name:      String,
-   suffix:    String,
-   externs:   Vec<String>,
-   search:    Vec<PathBuf>,
-   statics:   Vec<String>,
-   sysroot:   Option<PathBuf>,
-   links:     bool,
-   cacheable: bool,
-   query:     bool,
+   key_args: Vec<String>,
+   source:   String,
+   out_dir:  PathBuf,
+   name:     String,
+   suffix:   String,
+   externs:  Vec<String>,
+   search:   Vec<PathBuf>,
+   statics:  Vec<String>,
+   sysroot:  Option<PathBuf>,
+   links:    bool,
+}
+
+/// A rustc call the cache cannot serve, and the crate to log it under.
+struct Refused {
+   label: String,
+   query: bool,
 }
 
 impl Invocation {
@@ -100,21 +107,21 @@ impl Invocation {
       clippy::too_many_lines,
       reason = "single-pass rustc flag scan, splitting would scatter one match"
    )]
-   fn parse(args: &[String]) -> Self {
+   fn parse(args: &[String]) -> Result<Self, Refused> {
       let mut invocation = Self {
-         key_args:  Vec::new(),
-         source:    String::new(),
-         out_dir:   PathBuf::new(),
-         name:      String::new(),
-         suffix:    String::new(),
-         externs:   Vec::new(),
-         search:    Vec::new(),
-         statics:   Vec::new(),
-         sysroot:   None,
-         links:     false,
-         cacheable: true,
-         query:     false,
+         key_args: Vec::new(),
+         source:   String::new(),
+         out_dir:  PathBuf::new(),
+         name:     String::new(),
+         suffix:   String::new(),
+         externs:  Vec::new(),
+         search:   Vec::new(),
+         statics:  Vec::new(),
+         sysroot:  None,
+         links:    false,
       };
+      let mut cacheable = true;
+      let mut query = false;
       let mut sources = 0_i32;
       let mut dep_info = false;
       let mut library = false;
@@ -185,12 +192,12 @@ impl Invocation {
                      if let Some(suffix) = setting.strip_prefix("extra-filename=") {
                         suffix.clone_into(&mut invocation.suffix);
                      }
-                     invocation.cacheable &= !setting.starts_with("incremental=");
+                     cacheable &= !setting.starts_with("incremental=");
                   },
                   _ => {},
                }
             } else {
-               invocation.cacheable = false;
+               cacheable = false;
             }
          } else if let Some(setting) = argument.strip_prefix("-C") {
             if let Some(suffix) = setting.strip_prefix("extra-filename=") {
@@ -198,7 +205,7 @@ impl Invocation {
             } else {
                invocation.key_args.push(format!("-C={setting}"));
             }
-            invocation.cacheable &= !setting.starts_with("incremental=");
+            cacheable &= !setting.starts_with("incremental=");
          } else if let Some(setting) = argument
             .strip_prefix("-L")
             .or_else(|| argument.strip_prefix("-l"))
@@ -213,21 +220,32 @@ impl Invocation {
             argument.clone_into(&mut invocation.source);
             sources += 1_i32;
          } else {
-            invocation.query |= argument == "--print"
+            query |= argument == "--print"
                || argument.starts_with("--print=")
                || matches!(argument.as_str(), "-" | "-vV" | "--version");
-            invocation.cacheable &= !argument.starts_with("-o") && !argument.starts_with('@');
+            cacheable &= !argument.starts_with("-o") && !argument.starts_with('@');
             invocation.key_args.push(argument.clone());
          }
          index += 1;
       }
       invocation.links = !library;
-      invocation.cacheable &= !invocation.query
-         && sources == 1_i32
-         && dep_info
-         && !invocation.out_dir.as_os_str().is_empty()
-         && !invocation.name.is_empty();
-      invocation
+      if query
+         || !cacheable
+         || sources != 1_i32
+         || !dep_info
+         || invocation.out_dir.as_os_str().is_empty()
+         || invocation.name.is_empty()
+      {
+         return Err(Refused {
+            label: invocation.label(),
+            query,
+         });
+      }
+      Ok(invocation)
+   }
+
+   fn label(&self) -> String {
+      format!("{}{}", self.name, self.suffix)
    }
 
    /// Native search directories and static libraries, which an rlib bundles
@@ -315,112 +333,115 @@ struct Artifact {
    settle: bool,
 }
 
-#[expect(
-   clippy::too_many_lines,
-   reason = "the lookup, the miss and the store are one linear path"
-)]
+/// One crate compile in front of the cache.
+struct Crate<'args> {
+   compiler:   &'args str,
+   arguments:  &'args [String],
+   invocation: Invocation,
+   store:      Store,
+}
+
+/// What a compile leaves behind for storing.
+struct Compiled {
+   link_records: Vec<PathBuf>,
+   unsettled:    Option<TempDir>,
+}
+
+impl Wrapper for Crate<'_> {
+   const TOOL: Tool = Tool::Rustc;
+   type Compiled = Compiled;
+
+   fn manifests(&mut self) -> &mut Store {
+      &mut self.store
+   }
+
+   fn replay(&mut self, cache: &mut Client, result: &Digest) -> Result<i32, Miss> {
+      replay(cache, &self.store, &self.invocation, result).map(|()| 0_i32)
+   }
+
+   fn compile(&mut self, cache: &mut Client) -> io::Result<(RunResult, Compiled)> {
+      let (command, link_records) = self.invocation.recorded(self.arguments)?;
+      let unsettled = self.invocation.links.then(tempdir).transpose()?;
+      let result = run(
+         OsStr::new(self.compiler),
+         &command,
+         Slot::acquire(cache).ok().flatten(),
+         true,
+         unsettled
+            .as_ref()
+            .map(|directory| ("MUMMER_UNSETTLED_DIR", directory.path().as_os_str()))
+            .as_slice(),
+      )?;
+      Ok((result, Compiled {
+         link_records,
+         unsettled,
+      }))
+   }
+
+   fn store(
+      &mut self,
+      cache: &mut Client,
+      request: &Key,
+      result: &RunResult,
+      compiled: Compiled,
+   ) -> io::Result<bool> {
+      let stored = if result.status == 0_i32 {
+         store_result(
+            cache,
+            &mut self.store,
+            request,
+            &self.invocation,
+            compiled.unsettled.as_ref(),
+            &result.stderr,
+         )
+         .map(|()| true)
+      } else {
+         Ok(false)
+      };
+      for record in &compiled.link_records {
+         remove_if_exists(record)?;
+      }
+      stored
+   }
+}
+
 pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
    let Some((compiler, arguments)) = args.split_first() else {
       return Err(io::Error::other("rustcwrap requires a compiler"));
    };
    let started = Instant::now();
-   let invocation = Invocation::parse(arguments);
-   let label = format!("{}{}", invocation.name, invocation.suffix);
-   let mut store = Store::new();
-   let connection = if invocation.cacheable {
-      Client::connect(socket).map(Some)
-   } else {
-      Ok(None)
-   };
-   let mut cache = match connection {
-      Ok(client) => client,
-      Err(error) => {
-         diagnostic(format_args!("mummer Rust cache unavailable, {error}"));
-         None
+   let store = Store::new();
+   let (outcome, label) = match Invocation::parse(arguments) {
+      Ok(invocation) => {
+         let label = invocation.label();
+         match Client::connect(socket) {
+            Ok(mut client) => {
+               match request_key(&store, &mut client, compiler, &invocation) {
+                  Ok(request) => {
+                     let mut job = Crate {
+                        compiler,
+                        arguments,
+                        invocation,
+                        store,
+                     };
+                     return serve(&mut job, &mut client, &request, &label, started);
+                  },
+                  Err(error) => (Outcome::Unkeyed, format!("{label} {error}")),
+               }
+            },
+            Err(error) => {
+               diagnostic(format_args!("mummer Rust cache unavailable, {error}"));
+               (Outcome::NoDaemon, label)
+            },
+         }
       },
+      Err(refused) if refused.query => (Outcome::Query, refused.label),
+      Err(refused) => (Outcome::Uncacheable, refused.label),
    };
-   let request = cache.as_mut().and_then(|client| {
-      request_key(&store, client, compiler, &invocation)
-         .inspect_err(|error| {
-            diagnostic(format_args!("mummer cannot identify Rust inputs, {error}"));
-         })
-         .ok()
-   });
-   let Some((client, key)) = cache.as_mut().zip(request.as_ref()) else {
-      let result = run_slotted(
-         OsStr::new(compiler),
-         arguments,
-         (!invocation.query).then_some(socket),
-         false,
-      )?;
-      let outcome = if invocation.query {
-         Outcome::Query
-      } else if invocation.cacheable {
-         Outcome::NoDaemon
-      } else {
-         Outcome::Uncacheable
-      };
-      log(Tool::Rustc, outcome, &label, started);
-      if outcome == Outcome::Uncacheable {
-         log_uncached(outcome, arguments);
-      }
-      return Ok(result.status);
-   };
-   let hit = lookup(client, &mut store, key)
-      .and_then(|result| replay(client, &store, &invocation, &result));
-   let miss = match hit {
-      Ok(()) => {
-         log(Tool::Rustc, Outcome::Cached, &label, started);
-         return Ok(0);
-      },
-      Err(Miss::Failed(error)) => {
-         diagnostic(format_args!(
-            "mummer Rust cache replay failed, compiling again, {error}"
-         ));
-         Miss::Failed(error)
-      },
-      Err(miss) => miss,
-   };
-   let explained = format!("{label} {miss}");
-   let (command, link_records) = invocation.recorded(arguments)?;
-   let unsettled = invocation.links.then(tempdir).transpose()?;
-   let result = run(
-      OsStr::new(compiler),
-      &command,
-      Slot::acquire(client).ok().flatten(),
-      true,
-      unsettled
-         .as_ref()
-         .map(|directory| ("MUMMER_UNSETTLED_DIR", directory.path().as_os_str()))
-         .as_slice(),
-   )?;
-   io::stderr().lock().write_all(&result.stderr)?;
-   let storing = (result.status == 0_i32).then(|| {
-      store_result(
-         client,
-         &mut store,
-         key,
-         &invocation,
-         unsettled.as_ref(),
-         &result.stderr,
-      )
-   });
-   for record in link_records {
-      remove_if_exists(&record)?;
-   }
-   let Some(stored) = storing else {
-      log(Tool::Rustc, Outcome::Failed, &explained, started);
-      return Ok(result.status);
-   };
-   let outcome = match stored {
-      Ok(()) => Outcome::Compiled,
-      Err(error) => {
-         diagnostic(format_args!("mummer could not store Rust result, {error}"));
-         Outcome::CompiledUnstored
-      },
-   };
-   log(Tool::Rustc, outcome, &explained, started);
-   Ok(0)
+   let slot = (outcome != Outcome::Query).then_some(socket);
+   let result = run_slotted(OsStr::new(compiler), arguments, slot, false)?;
+   uncached(Tool::Rustc, outcome, label, arguments, started);
+   Ok(result.status)
 }
 
 fn request_key(
