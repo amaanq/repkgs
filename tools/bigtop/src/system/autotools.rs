@@ -25,6 +25,7 @@ use mummer::{
       write_file,
    },
    tree::{
+      EntryKind,
       find,
       note,
       replace_all,
@@ -339,7 +340,7 @@ impl Autotools {
          return Ok(());
       }
       for entry in walk(out)? {
-         if entry.kind != 'f' {
+         if entry.kind != EntryKind::File {
             continue;
          }
          let path = Path::new(&entry.path);

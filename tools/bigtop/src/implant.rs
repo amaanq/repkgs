@@ -19,6 +19,7 @@ use mummer::{
    image::Image,
    tree::{
       Entry,
+      EntryKind,
       note,
       parallel,
       walk,
@@ -47,7 +48,11 @@ pub fn run(
    for sub in ["bin", "lib", "libexec"] {
       let root = directory.join(sub);
       if root.is_dir() {
-         files.extend(walk(&root)?.into_iter().filter(|entry| entry.kind == 'f'));
+         files.extend(
+            walk(&root)?
+               .into_iter()
+               .filter(|entry| entry.kind == EntryKind::File),
+         );
       }
    }
    let mut done: Vec<String> = parallel(&files, |entry| {

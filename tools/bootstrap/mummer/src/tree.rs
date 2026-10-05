@@ -1,5 +1,11 @@
 use std::{
    env::var,
+   fmt::{
+      Display,
+      Formatter,
+      Result as FormatResult,
+      Write as _,
+   },
    fs::{
       DirEntry,
       File,
@@ -32,12 +38,16 @@ use std::{
    },
 };
 
-use serde::Serialize;
+use serde::{
+   Serialize,
+   Serializer,
+};
 
 use crate::{
    elf::relative_from,
    files::write_file,
    hash::Digest,
+   process::Checked as _,
    store::{
       STORE_DIR,
       normalize,
@@ -49,36 +59,80 @@ const SMALL_FILE: u64 = 1024 * 1024;
 const DOCS: [&str; 3] = ["share/doc", "share/info", "share/gtk-doc"];
 const FROM_ZERO: &str = r#"prefix=$(cd "$(dirname "$0")/.." && pwd -P)"#;
 
+/// What a walked path is, written as `f`, `d` or `l`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum EntryKind {
+   File,
+   Dir,
+   Link,
+}
+
+impl EntryKind {
+   const fn letter(self) -> char {
+      match self {
+         Self::File => 'f',
+         Self::Dir => 'd',
+         Self::Link => 'l',
+      }
+   }
+}
+
+impl Display for EntryKind {
+   #[inline]
+   #[expect(
+      clippy::renamed_function_params,
+      reason = "formatter describes the argument"
+   )]
+   fn fmt(&self, formatter: &mut Formatter<'_>) -> FormatResult {
+      formatter.write_char(self.letter())
+   }
+}
+
+impl Serialize for EntryKind {
+   #[inline]
+   fn serialize<Out>(&self, serializer: Out) -> Result<Out::Ok, Out::Error>
+   where
+      Out: Serializer,
+   {
+      serializer.serialize_char(self.letter())
+   }
+}
+
 #[derive(Serialize)]
 pub struct Entry {
    #[serde(rename = "type")]
-   pub kind:   char,
+   pub kind:   EntryKind,
    pub size:   u64,
    pub path:   String,
    pub target: String,
    pub rel:    String,
 }
 
+/// A structured log line Nix reads from a builder's stderr.
+#[derive(Serialize)]
+#[serde(tag = "action", rename_all = "camelCase")]
+enum Event<'message> {
+   SetPhase { phase: &'message str },
+   Msg { level: u8, msg: String },
+}
+
+#[inline]
+pub fn set_phase(name: &str) {
+   event(&Event::SetPhase { phase: name });
+}
+
 #[inline]
 pub fn note(kind: &str, message: &str) {
-   #[derive(Serialize)]
-   #[serde(tag = "action", rename_all = "camelCase")]
-   enum Event<'message> {
-      SetPhase { phase: &'message str },
-      Msg { level: u8, msg: String },
-   }
+   event(&Event::Msg {
+      level: 3,
+      msg:   format!("{kind}: {message}"),
+   });
+}
 
-   let event = if kind == "phase" {
-      Event::SetPhase { phase: message }
-   } else {
-      Event::Msg {
-         level: 3,
-         msg:   format!("{kind}: {message}"),
-      }
-   };
+fn event(event: &Event<'_>) {
    let mut stderr = io::stderr().lock();
    drop(write!(stderr, "@nix ").and_then(|()| {
-      serde_json::to_writer(&mut stderr, &event)?;
+      serde_json::to_writer(&mut stderr, event)?;
       writeln!(stderr)
    }));
 }
@@ -98,12 +152,12 @@ pub fn walk(root: &Path) -> io::Result<Vec<Entry>> {
          let path = child.path();
          let meta = symlink_metadata(&path)?;
          let kind = if meta.is_symlink() {
-            'l'
+            EntryKind::Link
          } else if meta.is_dir() {
             pending.push(path.clone());
-            'd'
+            EntryKind::Dir
          } else {
-            'f'
+            EntryKind::File
          };
          let rel = path
             .strip_prefix(root)
@@ -114,7 +168,7 @@ pub fn walk(root: &Path) -> io::Result<Vec<Entry>> {
             kind,
             size: meta.len(),
             path: path.to_string_lossy().into_owned(),
-            target: if kind == 'l' {
+            target: if kind == EntryKind::Link {
                read_link(&path)?.to_string_lossy().into_owned()
             } else {
                String::new()
@@ -159,7 +213,7 @@ pub fn shebangs(directory: &Path, undo: bool) -> io::Result<()> {
 
    let candidates: Vec<PathBuf> = walk(directory)?
       .into_iter()
-      .filter(|entry| entry.kind == 'f' && entry.size < SMALL_FILE)
+      .filter(|entry| entry.kind == EntryKind::File && entry.size < SMALL_FILE)
       .map(|entry| PathBuf::from(entry.path))
       .filter(|path| {
          undo || metadata(path).is_ok_and(|meta| meta.permissions().mode() & 0o100 != 0)
@@ -336,25 +390,24 @@ pub fn find(text: &[u8], needle: &[u8]) -> Option<usize> {
       .position(|window| window == needle)
 }
 
+fn remove_tree_if_exists(path: &Path) -> io::Result<()> {
+   match remove_dir_all(path) {
+      Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+      Ok(()) | Err(_) => Ok(()),
+   }
+}
+
 #[inline]
 pub fn prune(root: &Path) -> io::Result<Vec<Entry>> {
    for docs in DOCS {
-      match remove_dir_all(root.join(docs)) {
-         Ok(()) => {},
-         Err(error) if error.kind() == io::ErrorKind::NotFound => {},
-         Err(error) => return Err(error),
-      }
+      remove_tree_if_exists(&root.join(docs))?;
    }
    let (bundles, mut inventory): (Vec<Entry>, Vec<Entry>) = walk(root)?
       .into_iter()
-      .partition(|entry| entry.kind == 'd' && extension_is(&entry.rel, "dSYM"));
+      .partition(|entry| entry.kind == EntryKind::Dir && extension_is(&entry.rel, "dSYM"));
 
    for bundle in &bundles {
-      match remove_dir_all(&bundle.path) {
-         Ok(()) => {},
-         Err(error) if error.kind() == io::ErrorKind::NotFound => {},
-         Err(error) => return Err(error),
-      }
+      remove_tree_if_exists(Path::new(&bundle.path))?;
    }
 
    inventory.retain(|entry| {
@@ -364,7 +417,10 @@ pub fn prune(root: &Path) -> io::Result<Vec<Entry>> {
    });
    let mut junk = Vec::new();
    let mut compressed = Vec::new();
-   for entry in inventory.iter().filter(|entry| entry.kind == 'f') {
+   for entry in inventory
+      .iter()
+      .filter(|entry| entry.kind == EntryKind::File)
+   {
       let rel = entry.rel.as_str();
       if extension_is(rel, "la")
          || rel.ends_with("/perllocal.pod")
@@ -396,16 +452,15 @@ pub fn prune(root: &Path) -> io::Result<Vec<Entry>> {
          "+ gzip -d {}",
          compressed.join(" ")
       ));
-      let status = Command::new("gzip").arg("-d").args(&compressed).status()?;
-      if !status.success() {
-         return Err(io::Error::other("gzip -d failed"));
-      }
+      Command::new("gzip").arg("-d").args(&compressed).checked()?;
    }
    inventory.retain(|entry| !junk.contains(&entry.rel));
    for entry in &mut inventory {
-      if compressed.contains(&entry.path) {
-         entry.rel.truncate(entry.rel.len() - 3);
-         entry.path = format!("{}/{}", root.display(), entry.rel);
+      if compressed.contains(&entry.path)
+         && let Some(rel) = entry.rel.strip_suffix(".gz")
+      {
+         entry.path = format!("{}/{rel}", root.display());
+         entry.rel = rel.to_owned();
       }
    }
    Ok(inventory)
@@ -426,7 +481,10 @@ pub fn relativize(prefix: &str, dest: &str) -> io::Result<()> {
    let inventory = walk(root)?;
    let mut man_pages = 0_usize;
 
-   for entry in inventory.iter().filter(|entry| entry.kind == 'f') {
+   for entry in inventory
+      .iter()
+      .filter(|entry| entry.kind == EntryKind::File)
+   {
       let variable = if extension_is(&entry.rel, "pc") {
          Some("pcfiledir")
       } else if extension_is(&entry.rel, "cmake") {
@@ -527,13 +585,13 @@ fn scripts(root: &Path, prefix: &str) -> io::Result<()> {
 }
 
 fn links(root: &Path, prefix: &str, dest: &str) -> io::Result<()> {
-   let store = format!(
-      "{}/",
-      var("NIX_STORE").unwrap_or_else(|_| STORE_DIR.to_owned())
-   );
+   let store = format!("{STORE_DIR}/");
    let under_prefix = format!("{prefix}/");
    let under_dest = format!("{dest}/");
-   for entry in walk(root)?.iter().filter(|entry| entry.kind == 'l') {
+   for entry in walk(root)?
+      .iter()
+      .filter(|entry| entry.kind == EntryKind::Link)
+   {
       let placed = format!("{dest}/{}", entry.rel);
       let target = &entry.target;
       let final_target = target.strip_prefix(&under_prefix).map_or_else(
@@ -578,7 +636,10 @@ fn links(root: &Path, prefix: &str, dest: &str) -> io::Result<()> {
 fn leaks(inventory: &[Entry], prefix: &str) -> io::Result<()> {
    let needle = prefix.as_bytes();
    let mut hits = Vec::new();
-   for entry in inventory.iter().filter(|entry| entry.kind == 'f') {
+   for entry in inventory
+      .iter()
+      .filter(|entry| entry.kind == EntryKind::File)
+   {
       let bytes = read(&entry.path)?;
       if find(&bytes, needle).is_some() {
          hits.push((entry.rel.clone(), bytes));

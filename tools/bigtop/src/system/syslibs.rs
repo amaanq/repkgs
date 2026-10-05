@@ -22,6 +22,7 @@ use mummer::{
       load,
    },
    tree::{
+      EntryKind,
       note,
       walk,
    },
@@ -152,7 +153,10 @@ pub fn linked(
       Ok(Some(defined_symbols(&image, &sections(&image)?, kind)?))
    };
    let mut outputs = Vec::new();
-   for entry in walk(out)?.into_iter().filter(|entry| entry.kind == 'f') {
+   for entry in walk(out)?
+      .into_iter()
+      .filter(|entry| entry.kind == EntryKind::File)
+   {
       if let Some(defined) = symbols(Path::new(&entry.path), 2)? {
          outputs.push((entry.rel, defined));
       }
@@ -166,7 +170,7 @@ pub fn linked(
       for directory in &dep.lib_dirs {
          for entry in walk(&Path::new(&dep.root).join(directory))?
             .into_iter()
-            .filter(|entry| entry.kind == 'f')
+            .filter(|entry| entry.kind == EntryKind::File)
          {
             exported.extend(symbols(Path::new(&entry.path), 11)?.unwrap_or_default());
          }
@@ -209,7 +213,7 @@ fn searched_by_build_script(build: &Path, root: &str) -> io::Result<bool> {
    }
    for entry in walk(build)? {
       let path = Path::new(&entry.path);
-      let script_output = entry.kind == 'f'
+      let script_output = entry.kind == EntryKind::File
          && path.file_name().is_some_and(|name| name == "output")
          && path
             .parent()
