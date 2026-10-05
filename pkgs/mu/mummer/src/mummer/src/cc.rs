@@ -955,7 +955,8 @@ fn prescanned(compiler: &str, args: &[String]) -> io::Result<Option<String>> {
       return Ok(None);
    }
    let text = String::from_utf8_lossy(&output.stdout).into_owned();
-   // fixed form ignores blanks, so "U S E M" is a USE statement too
+   // fixed form ignores blanks, so "U S E M" is a USE statement and only an =
+   // tells USEEI = .TRUE. apart from one
    let modular = text
       .lines()
       .filter(|line| !line.starts_with('#'))
@@ -969,9 +970,13 @@ fn prescanned(compiler: &str, args: &[String]) -> io::Result<Option<String>> {
       })
       .any(|statement| {
          let body = statement.trim_start_matches(|character: char| character.is_ascii_digit());
-         ["use", "module", "submodule"]
-            .iter()
-            .any(|keyword| body.starts_with(keyword))
+         let assigns = body
+            .match_indices('=')
+            .any(|(at, _)| body.as_bytes().get(at + 1) != Some(&b'>'));
+         !assigns
+            && ["use", "module", "submodule"]
+               .iter()
+               .any(|keyword| body.starts_with(keyword))
       });
    Ok((!modular).then_some(text))
 }
