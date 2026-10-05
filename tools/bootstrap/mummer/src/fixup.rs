@@ -10,7 +10,9 @@ use std::{
       self,
       Write as _,
    },
+   os::unix::fs::PermissionsExt as _,
    path::{
+      Display,
       Path,
       PathBuf,
    },
@@ -18,12 +20,26 @@ use std::{
 
 use crate::{
    elf::{
+      DT_NEEDED,
+      DT_RPATH,
+      DT_RUNPATH,
+      ET_DYN,
+      ET_EXEC,
+      PT_INTERP,
+      SHT_DYNAMIC,
+      SHT_DYNSYM,
+      SHT_GNU_VERNEED,
       Section,
+      Segment,
+      dynamic_tags,
+      file_offset,
       is_elf,
+      prefixed_relative,
       relative_from,
       sections,
       segments,
       shared_library,
+      symbols,
    },
    files::write_file,
    image::Image,
@@ -68,12 +84,8 @@ impl Context {
 
    #[must_use]
    #[inline]
-   pub fn shown(&self, path: &Path) -> String {
-      path
-         .strip_prefix(&self.prefix)
-         .unwrap_or(path)
-         .display()
-         .to_string()
+   pub fn shown<'path>(&self, path: &'path Path) -> Display<'path> {
+      path.strip_prefix(&self.prefix).unwrap_or(path).display()
    }
 }
 
@@ -82,20 +94,19 @@ struct Needed {
    value_offset:    usize,
    version_offsets: Vec<usize>,
 }
+
+struct DynamicStrings {
+   strings: usize,
+   runpath: usize,
+   needed:  Vec<Needed>,
+}
+
 struct SearchDirectory {
    text: String,
    path: PathBuf,
    keep: bool,
 }
 
-#[expect(
-   clippy::filetype_is_file,
-   reason = "Only regular files can contain binary images"
-)]
-#[expect(
-   clippy::too_many_lines,
-   reason = "single-pass directory walk and file handling, splitting would duplicate policy"
-)]
 #[inline]
 pub fn run(
    prefix: &Path,
@@ -117,69 +128,16 @@ pub fn run(
       dest:        normalize(dest.unwrap_or(prefix)),
       sdk:         sdk.map(normalize),
       directories: BTreeSet::new(),
-      loader:      loader
-         .map(|path| {
-            let name = path
-               .file_name()
-               .ok_or_else(|| io::Error::other("the loader has no file name"))?
-               .to_string_lossy()
-               .into_owned();
-            let directory = canonicalize(
-               path
-                  .parent()
-                  .ok_or_else(|| io::Error::other("the loader has no directory"))?,
-            )?;
-            io::Result::Ok((name, directory))
-         })
-         .transpose()?,
+      loader:      loader.map(loader_location).transpose()?,
    };
-   let mut denied = Vec::new();
-   for path in denied_paths {
-      if !is_store_path(path) {
-         return Err(io::Error::other(format!(
-            "invalid --deny store path {path}"
-         )));
-      }
-      let name = Path::new(path)
-         .file_name()
-         .and_then(|name| name.to_str())
-         .ok_or_else(|| io::Error::other("invalid denied store path"))?;
-      denied.push(
-         name
-            .get(..32)
-            .ok_or_else(|| io::Error::other("denied store path has no hash"))?
-            .as_bytes()
-            .to_vec(),
-      );
-   }
+   let denied = denied_hashes(denied_paths)?;
    if !is_store_path(&context.dest.to_string_lossy()) {
       return Err(io::Error::other(
          "reloc-fixup output must end up under the Nix store",
       ));
    }
-   let mut pending = vec![context.prefix.clone()];
-   let mut files = Vec::new();
-   while let Some(directory) = pending.pop() {
-      for child in read_dir(directory)? {
-         let entry = child?;
-         let kind = entry.file_type()?;
-         let path = entry.path();
-         if kind.is_dir() {
-            pending.push(path);
-         } else if kind.is_file() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.contains(".so") || shared_library(&name) {
-               let parent = path
-                  .parent()
-                  .ok_or_else(|| io::Error::other("shared library has no parent"))?;
-               if !parent.to_string_lossy().contains("/debug") {
-                  context.directories.insert(parent.to_path_buf());
-               }
-            }
-            files.push(path);
-         }
-      }
-   }
+   let (files, directories) = walk(&context.prefix)?;
+   context.directories = directories;
    let mut failures = 0_usize;
    for path in files {
       if path
@@ -188,38 +146,7 @@ pub fn run(
       {
          continue;
       }
-      let result = (|| -> io::Result<()> {
-         let bytes = read(&path)?;
-         let driver_config = path.strip_prefix(&context.prefix).is_ok_and(|relative| {
-            matches!(relative.to_str(), Some("etc/mummer.json" | "etc/roots"))
-         });
-
-         if !driver_config {
-            for hash in &denied {
-               let Some(position) = bytes.windows(hash.len()).position(|window| window == hash)
-               else {
-                  continue;
-               };
-               let shown = &bytes[position..(position + 100).min(bytes.len())];
-               let end = shown
-                  .iter()
-                  .position(|byte| *byte < 0x20 || *byte == 0x7F)
-                  .unwrap_or(shown.len());
-               return Err(io::Error::other(format!(
-                  "refers to build platform {}",
-                  String::from_utf8_lossy(&shown[..end])
-               )));
-            }
-         }
-
-         let mut image = Image { bytes };
-         if is_elf(&image) {
-            fix_elf(&context, &path, &mut image)
-         } else {
-            macho::fix(&context, &path, &mut image)
-         }
-      })();
-      if let Err(error) = result {
+      if let Err(error) = fix_file(&context, &denied, &path) {
          diagnostic(format_args!(
             "reloc-fixup failed for {}, {error}",
             path.display()
@@ -235,9 +162,110 @@ pub fn run(
    Ok(())
 }
 
+fn loader_location(path: &Path) -> io::Result<(String, PathBuf)> {
+   let name = path
+      .file_name()
+      .ok_or_else(|| io::Error::other("the loader has no file name"))?
+      .to_string_lossy()
+      .into_owned();
+   let directory = canonicalize(
+      path
+         .parent()
+         .ok_or_else(|| io::Error::other("the loader has no directory"))?,
+   )?;
+   Ok((name, directory))
+}
+
+fn denied_hashes(denied_paths: &[String]) -> io::Result<Vec<Vec<u8>>> {
+   denied_paths
+      .iter()
+      .map(|path| {
+         if !is_store_path(path) {
+            return Err(io::Error::other(format!(
+               "invalid --deny store path {path}"
+            )));
+         }
+         let name = Path::new(path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| io::Error::other("invalid denied store path"))?;
+         Ok(name
+            .get(..32)
+            .ok_or_else(|| io::Error::other("denied store path has no hash"))?
+            .as_bytes()
+            .to_vec())
+      })
+      .collect()
+}
+
+#[expect(
+   clippy::filetype_is_file,
+   reason = "Only regular files can contain binary images"
+)]
+fn walk(prefix: &Path) -> io::Result<(Vec<PathBuf>, BTreeSet<PathBuf>)> {
+   let mut pending = vec![prefix.to_path_buf()];
+   let mut files = Vec::new();
+   let mut directories = BTreeSet::new();
+   while let Some(directory) = pending.pop() {
+      for child in read_dir(directory)? {
+         let entry = child?;
+         let kind = entry.file_type()?;
+         let path = entry.path();
+         if kind.is_dir() {
+            pending.push(path);
+         } else if kind.is_file() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.contains(".so") || shared_library(&name) {
+               let parent = path
+                  .parent()
+                  .ok_or_else(|| io::Error::other("shared library has no parent"))?;
+               if !parent.to_string_lossy().contains("/debug") {
+                  directories.insert(parent.to_path_buf());
+               }
+            }
+            files.push(path);
+         }
+      }
+   }
+   Ok((files, directories))
+}
+
+fn fix_file(context: &Context, denied: &[Vec<u8>], path: &Path) -> io::Result<()> {
+   let bytes = read(path)?;
+   let driver_config = path
+      .strip_prefix(&context.prefix)
+      .is_ok_and(|relative| matches!(relative.to_str(), Some("etc/mummer.json" | "etc/roots")));
+   if !driver_config {
+      refuse_denied(&bytes, denied)?;
+   }
+   let mut image = Image { bytes };
+   if is_elf(&image) {
+      fix_elf(context, path, &mut image)
+   } else {
+      macho::fix(context, path, &mut image)
+   }
+}
+
+fn refuse_denied(bytes: &[u8], denied: &[Vec<u8>]) -> io::Result<()> {
+   for hash in denied {
+      let Some(position) = bytes.windows(hash.len()).position(|window| window == hash) else {
+         continue;
+      };
+      let shown = &bytes[position..(position + 100).min(bytes.len())];
+      let end = shown
+         .iter()
+         .position(|byte| *byte < 0x20 || *byte == 0x7F)
+         .unwrap_or(shown.len());
+      return Err(io::Error::other(format!(
+         "refers to build platform {}",
+         String::from_utf8_lossy(&shown[..end])
+      )));
+   }
+   Ok(())
+}
+
 #[inline]
 pub fn write_back(path: &Path, image: &Image) -> io::Result<()> {
-   use std::os::unix::fs::PermissionsExt as _;
    write_file(
       path,
       &image.bytes,
@@ -246,70 +274,14 @@ pub fn write_back(path: &Path, image: &Image) -> io::Result<()> {
 }
 
 fn fix_elf(context: &Context, path: &Path, image: &mut Image) -> io::Result<()> {
-   if !matches!(image.word(16)?, 2 | 3) {
+   if !matches!(image.word(16)?, ET_EXEC | ET_DYN) {
       return Ok(());
    }
    let sections = sections(image)?;
    let segments = segments(image)?;
    let mut changed = fix_runpath(context, image, &sections, path)?;
-   let entry_address = image.quad(24)?;
-   let mut stub = None;
-   if let Some(address) = entry_address.checked_sub(16) {
-      for segment in &segments {
-         let segment_size = u64::try_from(segment.size).map_err(io::Error::other)?;
-         if segment.kind == 1
-            && address >= segment.address
-            && address - segment.address < segment_size
-         {
-            let offset = segment.offset
-               + usize::try_from(address - segment.address).map_err(io::Error::other)?;
-            if image.array::<8>(offset)? == *b"RELOCSTB" {
-               stub = Some(entry_address);
-            }
-         }
-      }
-   }
-   if stub.is_none()
-      && let Some(symbols) = sections.iter().find(|section| section.kind == 11)
-   {
-      let strings = sections
-         .get(symbols.link)
-         .ok_or_else(|| io::Error::other("ELF symbols have no string table"))?;
-      if symbols.stride < 24 {
-         return Err(io::Error::other("ELF symbol stride is too short"));
-      }
-      for offset in (symbols.offset..symbols.offset + symbols.size).step_by(symbols.stride) {
-         let name_offset = strings
-            .offset
-            .checked_add(usize::try_from(image.long(offset)?).map_err(io::Error::other)?)
-            .ok_or_else(|| io::Error::other("ELF symbol offset overflows"))?;
-         if image.string(name_offset)? == "__reloc_start" {
-            stub = Some(image.quad(offset + 8)?);
-            break;
-         }
-      }
-   }
-   if let Some(address) = stub {
-      for segment in &segments {
-         if segment.kind != 3 {
-            continue;
-         }
-         let interpreter = image.string(segment.offset)?;
-         if is_store_path(&interpreter) {
-            let parent = path
-               .parent()
-               .ok_or_else(|| io::Error::other("ELF has no parent directory"))?;
-            let replacement = relative_from(&context.final_path(parent), Path::new(&interpreter));
-            image.padded(
-               segment.offset,
-               segment.size,
-               replacement.as_os_str().as_encoded_bytes(),
-            )?;
-         }
-         image.write(segment.header, &0_u32.to_le_bytes())?;
-         image.write(24, &address.to_le_bytes())?;
-         changed = true;
-      }
+   if let Some(address) = entry_stub(image, &sections, &segments)? {
+      changed |= detach_interpreter(context, path, image, &segments, address)?;
    }
    if changed {
       write_back(path, image)?;
@@ -329,87 +301,138 @@ fn fix_elf(context: &Context, path: &Path, image: &mut Image) -> io::Result<()> 
    Ok(())
 }
 
-fn origin_relative(from: &Path, to: &Path) -> String {
-   let relative = relative_from(from, to);
-   if relative == Path::new(".") {
-      "$ORIGIN".to_owned()
-   } else {
-      format!("$ORIGIN/{}", relative.display())
+/// The entry point when `RELOCSTB` marks it as the stub already, else
+/// `__reloc_start`.
+fn entry_stub(
+   image: &Image,
+   sections: &[Section],
+   segments: &[Segment],
+) -> io::Result<Option<u64>> {
+   let entry = image.quad(24)?;
+   if let Some(offset) = entry
+      .checked_sub(16)
+      .and_then(|address| file_offset(segments, address))
+      && image.array::<8>(offset)? == *b"RELOCSTB"
+   {
+      return Ok(Some(entry));
    }
+   let Some(table) = sections.iter().find(|section| section.kind == SHT_DYNSYM) else {
+      return Ok(None);
+   };
+   for symbol in symbols(sections, table)? {
+      if symbol.name(image)? == "__reloc_start" {
+         return Ok(Some(image.quad(symbol.entry + 8)?));
+      }
+   }
+   Ok(None)
 }
 
-#[expect(
-   clippy::too_many_lines,
-   reason = "runpath rewrite keeps symbol and version handling in one scan"
-)]
-fn fix_runpath(
+fn detach_interpreter(
    context: &Context,
-   image: &mut Image,
-   sections: &[Section],
    path: &Path,
+   image: &mut Image,
+   segments: &[Segment],
+   address: u64,
 ) -> io::Result<bool> {
-   let Some(dynamic) = sections.iter().find(|section| section.kind == 6) else {
-      return Ok(false);
+   let mut changed = false;
+   for segment in segments.iter().filter(|segment| segment.kind == PT_INTERP) {
+      let interpreter = image.string(segment.offset)?;
+      if is_store_path(&interpreter) {
+         let parent = path
+            .parent()
+            .ok_or_else(|| io::Error::other("ELF has no parent directory"))?;
+         let replacement = relative_from(&context.final_path(parent), Path::new(&interpreter));
+         image.padded(
+            segment.offset,
+            segment.size,
+            replacement.as_os_str().as_encoded_bytes(),
+         )?;
+      }
+      image.write(segment.header, &0_u32.to_le_bytes())?;
+      image.write(24, &address.to_le_bytes())?;
+      changed = true;
+   }
+   Ok(changed)
+}
+
+fn origin_relative(from: &Path, to: &Path) -> String {
+   prefixed_relative("$ORIGIN", from, to)
+}
+
+/// Of `DT_RPATH` and `DT_RUNPATH` the last one counts.
+fn dynamic_strings(image: &Image, sections: &[Section]) -> io::Result<Option<DynamicStrings>> {
+   let Some(dynamic) = sections.iter().find(|section| section.kind == SHT_DYNAMIC) else {
+      return Ok(None);
    };
    let strings = sections
       .get(dynamic.link)
-      .ok_or_else(|| io::Error::other("ELF dynamic section has no string table"))?;
-   let mut runpath_offset = None;
+      .ok_or_else(|| io::Error::other("ELF dynamic section has no string table"))?
+      .offset;
+   let mut runpath = None;
    let mut needed = Vec::new();
-   for offset in (dynamic.offset..dynamic.offset + dynamic.size).step_by(16) {
-      let tag = image.quad(offset)?;
-      if tag == 0 {
+   for tag in dynamic_tags(image, dynamic.offset, dynamic.size) {
+      let (entry, kind) = tag?;
+      if !matches!(kind, DT_NEEDED | DT_RPATH | DT_RUNPATH) {
+         continue;
+      }
+      let string_offset = strings
+         .checked_add(image.size(entry + 8)?)
+         .ok_or_else(|| io::Error::other("ELF dynamic string offset overflows"))?;
+      if kind == DT_NEEDED {
+         needed.push(Needed {
+            name:            image.string(string_offset)?,
+            value_offset:    entry + 8,
+            version_offsets: Vec::new(),
+         });
+      } else {
+         runpath = Some(string_offset);
+      }
+   }
+   Ok(runpath.map(|start| {
+      DynamicStrings {
+         strings,
+         runpath: start,
+         needed,
+      }
+   }))
+}
+
+fn version_offsets(
+   image: &Image,
+   sections: &[Section],
+   strings: usize,
+   needed: &mut [Needed],
+) -> io::Result<()> {
+   let Some(versions) = sections
+      .iter()
+      .find(|section| section.kind == SHT_GNU_VERNEED)
+   else {
+      return Ok(());
+   };
+   let mut offset = versions.offset;
+   let end = versions.offset + versions.size;
+   while offset < end {
+      image.array::<16>(offset)?;
+      let string_offset = strings
+         .checked_add(image.long_usize(offset + 4)?)
+         .ok_or_else(|| io::Error::other("ELF version name offset overflows"))?;
+      let name = image.string(string_offset)?;
+      for library in needed.iter_mut().filter(|library| library.name == name) {
+         library.version_offsets.push(offset + 4);
+      }
+      let next = image.long_usize(offset + 12)?;
+      if next == 0 {
          break;
       }
-      if matches!(tag, 1 | 15 | 29) {
-         let string_offset = strings
-            .offset
-            .checked_add(image.size(offset + 8)?)
-            .ok_or_else(|| io::Error::other("ELF dynamic string offset overflows"))?;
-         if tag == 1 {
-            needed.push(Needed {
-               name:            image.string(string_offset)?,
-               value_offset:    offset + 8,
-               version_offsets: Vec::new(),
-            });
-         } else {
-            runpath_offset = Some(string_offset);
-         }
+      if next < 16 || next > end - offset {
+         return Err(io::Error::other("invalid ELF version entry offset"));
       }
+      offset += next;
    }
-   let Some(start) = runpath_offset else {
-      return Ok(false);
-   };
-   if let Some(versions) = sections.iter().find(|section| section.kind == 0x6FFF_FFFE) {
-      let mut offset = versions.offset;
-      let end = versions.offset + versions.size;
-      while offset < end {
-         image.array::<16>(offset)?;
-         let string_offset = strings
-            .offset
-            .checked_add(usize::try_from(image.long(offset + 4)?).map_err(io::Error::other)?)
-            .ok_or_else(|| io::Error::other("ELF version name offset overflows"))?;
-         let name = image.string(string_offset)?;
-         for library in &mut needed {
-            if library.name == name {
-               library.version_offsets.push(offset + 4);
-            }
-         }
-         let next = usize::try_from(image.long(offset + 12)?).map_err(io::Error::other)?;
-         if next == 0 {
-            break;
-         }
-         if next < 16 || next > end - offset {
-            return Err(io::Error::other("invalid ELF version entry offset"));
-         }
-         offset += next;
-      }
-   }
-   let old = image.string(start)?;
-   let parent = path
-      .parent()
-      .ok_or_else(|| io::Error::other("ELF has no parent directory"))?;
-   let final_here = context.final_path(parent);
+   Ok(())
+}
+
+fn search_directories(context: &Context, final_here: &Path, old: &str) -> Vec<SearchDirectory> {
    let mut search = Vec::new();
    for entry in old.split(':').filter(|entry| !entry.is_empty()) {
       let final_directory = if entry == "$ORIGIN" || entry.starts_with("$ORIGIN/") {
@@ -419,7 +442,7 @@ fn fix_runpath(
       };
       if is_store_path(&final_directory.to_string_lossy()) {
          search.push(SearchDirectory {
-            text: origin_relative(&final_here, &final_directory),
+            text: origin_relative(final_here, &final_directory),
             path: context.on_disk(&final_directory),
             keep: true,
          });
@@ -427,11 +450,20 @@ fn fix_runpath(
    }
    for directory in &context.directories {
       search.push(SearchDirectory {
-         text: origin_relative(&final_here, &context.final_path(directory)),
+         text: origin_relative(final_here, &context.final_path(directory)),
          path: directory.clone(),
          keep: false,
       });
    }
+   search
+}
+
+/// The libc's libraries stay found by name beside the loader.
+fn direct_libraries(
+   context: &Context,
+   needed: &[Needed],
+   search: &mut [SearchDirectory],
+) -> io::Result<Vec<(usize, usize)>> {
    let mut direct = Vec::new();
    for (index, library) in needed.iter().enumerate() {
       let loads = context.loader.as_ref();
@@ -455,15 +487,59 @@ fn fix_runpath(
          direct.push((index, found));
       }
    }
-   let render = |directories: &[SearchDirectory]| {
-      let mut entries = Vec::new();
-      for directory in directories {
-         if directory.keep && !entries.contains(&directory.text.as_str()) {
-            entries.push(directory.text.as_str());
-         }
+   Ok(direct)
+}
+
+fn render(directories: &[SearchDirectory]) -> String {
+   let mut entries = Vec::new();
+   for directory in directories {
+      if directory.keep && !entries.contains(&directory.text.as_str()) {
+         entries.push(directory.text.as_str());
       }
-      entries.join(":")
+   }
+   entries.join(":")
+}
+
+fn refuse_shared_runpath(
+   image: &Image,
+   sections: &[Section],
+   start: usize,
+   length: usize,
+) -> io::Result<()> {
+   let Some(table) = sections.iter().find(|section| section.kind == SHT_DYNSYM) else {
+      return Ok(());
    };
+   for symbol in symbols(sections, table)? {
+      let name_offset = symbol.name_offset(image)?;
+      if name_offset > start && name_offset < start + length {
+         return Err(io::Error::other("ELF symbol shares bytes with RUNPATH"));
+      }
+   }
+   Ok(())
+}
+
+fn fix_runpath(
+   context: &Context,
+   image: &mut Image,
+   sections: &[Section],
+   path: &Path,
+) -> io::Result<bool> {
+   let Some(DynamicStrings {
+      strings,
+      runpath: start,
+      mut needed,
+   }) = dynamic_strings(image, sections)?
+   else {
+      return Ok(false);
+   };
+   version_offsets(image, sections, strings, &mut needed)?;
+   let old = image.string(start)?;
+   let parent = path
+      .parent()
+      .ok_or_else(|| io::Error::other("ELF has no parent directory"))?;
+   let final_here = context.final_path(parent);
+   let mut search = search_directories(context, &final_here, &old);
+   let mut direct = direct_libraries(context, &needed, &mut search)?;
    let mut runpath = render(&search);
    let mut blob = runpath.as_bytes().to_vec();
    for &(library, directory) in &direct {
@@ -481,26 +557,10 @@ fn fix_runpath(
    if blob == old.as_bytes() {
       return Ok(false);
    }
-   if let Some(symbols) = sections.iter().find(|section| section.kind == 11) {
-      let table = sections
-         .get(symbols.link)
-         .ok_or_else(|| io::Error::other("ELF symbols have no string table"))?;
-      if symbols.stride < 24 {
-         return Err(io::Error::other("ELF symbol stride is too short"));
-      }
-      for offset in (symbols.offset..symbols.offset + symbols.size).step_by(symbols.stride) {
-         let name_offset = table
-            .offset
-            .checked_add(usize::try_from(image.long(offset)?).map_err(io::Error::other)?)
-            .ok_or_else(|| io::Error::other("ELF symbol offset overflows"))?;
-         if name_offset > start && name_offset < start + old.len() {
-            return Err(io::Error::other("ELF symbol shares bytes with RUNPATH"));
-         }
-      }
-   }
+   refuse_shared_runpath(image, sections, start, old.len())?;
    image.padded(start, old.len() + 1, &blob)?;
    let mut string_offset = start
-      .checked_sub(strings.offset)
+      .checked_sub(strings)
       .ok_or_else(|| io::Error::other("RUNPATH precedes its string table"))?
       + runpath.len()
       + 1;

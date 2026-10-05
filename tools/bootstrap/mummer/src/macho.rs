@@ -1,4 +1,5 @@
 use std::{
+   ffi::CStr,
    io::{
       self,
       Write as _,
@@ -15,7 +16,7 @@ use sha2::{
 };
 
 use crate::{
-   elf::relative_from,
+   elf::prefixed_relative,
    fixup::{
       Context,
       write_back,
@@ -48,11 +49,8 @@ struct Command {
 impl Command {
    fn path(&self) -> io::Result<String> {
       let tail = &self.bytes[self.path_offset..];
-      let end = tail
-         .iter()
-         .position(|byte| *byte == 0)
-         .unwrap_or(tail.len());
-      String::from_utf8(tail[..end].to_vec()).map_err(io::Error::other)
+      let path = CStr::from_bytes_until_nul(tail).map_or(tail, CStr::to_bytes);
+      String::from_utf8(path.to_vec()).map_err(io::Error::other)
    }
 
    fn set_path(&mut self, path: &str) -> io::Result<()> {
@@ -65,74 +63,95 @@ impl Command {
    }
 }
 
-fn read_commands(image: &Image) -> io::Result<(Vec<Command>, usize)> {
-   let count = image.long(16)?;
-   let mut room = image.bytes.len() - HEADER_SIZE;
-   let mut commands = Vec::new();
+/// A load command, its kind and the file range it spans.
+struct Load {
+   kind:   u32,
+   offset: usize,
+   size:   usize,
+}
+
+fn advance(base: usize, by: usize) -> io::Result<usize> {
+   base
+      .checked_add(by)
+      .ok_or_else(|| io::Error::other("Mach-O offset overflows"))
+}
+
+fn load_commands(image: &Image) -> io::Result<Vec<Load>> {
+   let count = image.long_usize(16)?;
+   let mut loads = Vec::with_capacity(count);
    let mut offset = HEADER_SIZE;
    for _ in 0..count {
-      let Ok(kind) = image.long(offset) else {
-         break;
-      };
-      let size = usize::try_from(image.long(offset + 4)?).map_err(io::Error::other)?;
-      if size < 8 || offset + size > image.bytes.len() {
-         break;
+      let kind = image.long(offset)?;
+      let size = image.long_usize(offset + 4)?;
+      let end = advance(offset, size)?;
+      if size < 8 || end > image.bytes.len() {
+         return Err(io::Error::other("Mach-O load command is malformed"));
       }
-      let mut command = Command {
-         kind,
-         bytes: image.bytes[offset..offset + size].to_vec(),
-         path_offset: 0,
-      };
-      if matches!(
-         kind,
-         LOAD_DYLIB | LOAD_WEAK_DYLIB | REEXPORT_DYLIB | LOAD_UPWARD_DYLIB | ID_DYLIB | RPATH
-      ) {
-         let path_offset =
-            usize::try_from(image.long(offset + 8).unwrap_or(0)).map_err(io::Error::other)?;
-         if path_offset < size {
-            command.path_offset = path_offset;
-         }
-      }
-      if kind == SEGMENT_64 {
-         let file_offset = image.size(offset + 40).unwrap_or(0);
-         let file_size = image.size(offset + 48).unwrap_or(0);
-         if file_size != 0 && file_offset == 0 {
-            let section_count =
-               usize::try_from(image.long(offset + 64).unwrap_or(0)).map_err(io::Error::other)?;
-            for section in 0..section_count {
-               let section_offset =
-                  usize::try_from(image.long(offset + 72 + section * 80 + 48).unwrap_or(0))
-                     .map_err(io::Error::other)?;
-               if section_offset != 0 {
-                  room = room.min(section_offset.saturating_sub(HEADER_SIZE));
-               }
-            }
-         } else if file_size != 0 {
-            room = room.min(file_offset.saturating_sub(HEADER_SIZE));
-         }
-      }
-      commands.push(command);
-      offset += size;
+      loads.push(Load { kind, offset, size });
+      offset = end;
    }
-   Ok((commands, room))
+   Ok(loads)
+}
+
+/// The space before the first section's contents, what the load commands
+/// may grow into.
+fn header_room(image: &Image, loads: &[Load]) -> io::Result<usize> {
+   let mut room = image.bytes.len() - HEADER_SIZE;
+   for load in loads.iter().filter(|load| load.kind == SEGMENT_64) {
+      let file_offset = image.size(load.offset + 40)?;
+      let file_size = image.size(load.offset + 48)?;
+      if file_size == 0 {
+         continue;
+      }
+      if file_offset != 0 {
+         room = room.min(file_offset.saturating_sub(HEADER_SIZE));
+         continue;
+      }
+      for section in 0..image.long_usize(load.offset + 64)? {
+         let header = advance(
+            load.offset + 72,
+            section
+               .checked_mul(80)
+               .ok_or_else(|| io::Error::other("Mach-O section offset overflows"))?,
+         )?;
+         let section_offset = image.long_usize(header + 48)?;
+         if section_offset != 0 {
+            room = room.min(section_offset.saturating_sub(HEADER_SIZE));
+         }
+      }
+   }
+   Ok(room)
+}
+
+fn read_commands(image: &Image, loads: &[Load]) -> io::Result<Vec<Command>> {
+   loads
+      .iter()
+      .map(|load| {
+         let mut command = Command {
+            kind:        load.kind,
+            bytes:       image.bytes[load.offset..load.offset + load.size].to_vec(),
+            path_offset: 0,
+         };
+         if matches!(
+            load.kind,
+            LOAD_DYLIB | LOAD_WEAK_DYLIB | REEXPORT_DYLIB | LOAD_UPWARD_DYLIB | ID_DYLIB | RPATH
+         ) {
+            let path_offset = image.long_usize(load.offset + 8)?;
+            if path_offset < load.size {
+               command.path_offset = path_offset;
+            }
+         }
+         Ok(command)
+      })
+      .collect()
 }
 
 fn resign(image: &mut Image) -> io::Result<()> {
-   let count = image.long(16)?;
-   let mut offset = HEADER_SIZE;
    let mut signature = None;
-   for _ in 0..count {
-      let Ok(kind) = image.long(offset) else {
-         break;
-      };
-      let size = usize::try_from(image.long(offset + 4)?).map_err(io::Error::other)?;
-      if size < 8 {
-         break;
+   for load in load_commands(image)? {
+      if load.kind == CODE_SIGNATURE {
+         signature = Some(image.long_usize(load.offset + 8)?);
       }
-      if kind == CODE_SIGNATURE {
-         signature = Some(usize::try_from(image.long(offset + 8)?).map_err(io::Error::other)?);
-      }
-      offset += size;
    }
    let Some(signature_offset) = signature else {
       return Ok(());
@@ -142,47 +161,53 @@ fn resign(image: &mut Image) -> io::Result<()> {
          "LC_CODE_SIGNATURE is no embedded signature blob",
       ));
    }
-   let blobs = image.big_long(signature_offset + 8)?;
+   let blobs = image.big_long(advance(signature_offset, 8)?)?;
    for blob in 0..usize::try_from(blobs).map_err(io::Error::other)? {
-      let directory = signature_offset
-         + usize::try_from(image.big_long(signature_offset + 12 + blob * 8 + 4)?)
-            .map_err(io::Error::other)?;
+      let index = advance(signature_offset + 12, blob.saturating_mul(8))?;
+      let directory = advance(
+         signature_offset,
+         usize::try_from(image.big_long(advance(index, 4)?)?).map_err(io::Error::other)?,
+      )?;
       if image.big_long(directory)? != 0xFADE_0C02 {
          continue;
       }
-      let hash_offset =
-         usize::try_from(image.big_long(directory + 16)?).map_err(io::Error::other)?;
-      let slots = usize::try_from(image.big_long(directory + 28)?).map_err(io::Error::other)?;
-      let limit = usize::try_from(image.big_long(directory + 32)?).map_err(io::Error::other)?;
-      let hash_size = usize::from(image.byte(directory + 36)?);
-      let hash_type = image.byte(directory + 37)?;
-      let page = 1_usize << image.byte(directory + 39)?;
+      let field = |at: usize| -> io::Result<usize> {
+         usize::try_from(image.big_long(advance(directory, at)?)?).map_err(io::Error::other)
+      };
+      let hash_offset = field(16)?;
+      let slots = field(28)?;
+      let limit = field(32)?;
+      let hash_size = usize::from(image.byte(advance(directory, 36)?)?);
+      let hash_type = image.byte(advance(directory, 37)?)?;
+      let page = 1_usize
+         .checked_shl(u32::from(image.byte(advance(directory, 39)?)?))
+         .ok_or_else(|| io::Error::other("code signature page size overflows"))?;
       if hash_type != 2 || hash_size != 32 {
          return Err(io::Error::other(format!(
             "code signature hash type {hash_type} is not SHA-256"
          )));
       }
+      let hashes = advance(directory, hash_offset)?;
       for slot in 0..slots {
-         let begin = slot * page;
-         let end = (begin + page).min(limit);
+         let overflow = || io::Error::other("code signature slot overflows");
+         let begin = slot.checked_mul(page).ok_or_else(overflow)?;
+         let end = begin.saturating_add(page).min(limit);
          let region = image
             .bytes
             .get(begin..end)
             .ok_or_else(|| io::Error::other("code signature page lies outside the file"))?;
          let digest = Sha256::digest(region);
-         image.write(directory + hash_offset + slot * hash_size, &digest)?;
+         image.write(
+            advance(hashes, slot.checked_mul(hash_size).ok_or_else(overflow)?)?,
+            &digest,
+         )?;
       }
    }
    Ok(())
 }
 
 fn loader_relative(from: &Path, target: &Path) -> String {
-   let relative = relative_from(from, target);
-   if relative == Path::new(".") {
-      "@loader_path".to_owned()
-   } else {
-      format!("@loader_path/{}", relative.display())
-   }
+   prefixed_relative("@loader_path", from, target)
 }
 
 fn system_path(path: &str) -> bool {
@@ -266,7 +291,9 @@ pub fn fix(context: &Context, path: &Path, image: &mut Image) -> io::Result<()> 
       return Ok(());
    }
    let file = context.final_path(path);
-   let (mut commands, room) = read_commands(image)?;
+   let loads = load_commands(image)?;
+   let room = header_room(image, &loads)?;
+   let mut commands = read_commands(image, &loads)?;
    let mut changed = Vec::new();
    for command in &mut commands {
       if command.path_offset == 0 {

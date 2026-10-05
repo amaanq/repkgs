@@ -1,4 +1,7 @@
-use std::io;
+use std::{
+   ffi::CStr,
+   io,
+};
 
 pub struct Image {
    pub bytes: Vec<u8>,
@@ -26,6 +29,10 @@ impl Image {
    #[inline]
    pub fn long(&self, offset: usize) -> io::Result<u32> {
       self.array(offset).map(u32::from_le_bytes)
+   }
+   #[inline]
+   pub fn long_usize(&self, offset: usize) -> io::Result<usize> {
+      usize::try_from(self.long(offset)?).map_err(io::Error::other)
    }
    #[inline]
    pub fn big_long(&self, offset: usize) -> io::Result<u32> {
@@ -57,11 +64,9 @@ impl Image {
          .bytes
          .get(offset..)
          .ok_or_else(|| io::Error::other("binary string is outside the file"))?;
-      let end = tail
-         .iter()
-         .position(|byte| *byte == 0)
-         .ok_or_else(|| io::Error::other("binary string is unterminated"))?;
-      String::from_utf8(tail[..end].to_vec()).map_err(io::Error::other)
+      let text = CStr::from_bytes_until_nul(tail)
+         .map_err(|_unterminated| io::Error::other("binary string is unterminated"))?;
+      String::from_utf8(text.to_bytes().to_vec()).map_err(io::Error::other)
    }
 
    #[inline]
