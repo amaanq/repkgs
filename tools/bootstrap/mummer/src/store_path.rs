@@ -19,7 +19,7 @@ use serde::{
 
 use crate::store::STORE_DIR;
 
-const HASH_ALPHABET: &[u8] = b"0123456789abcdfghijklmnpqrsvwxyz";
+pub const HASH_ALPHABET: &[u8] = b"0123456789abcdfghijklmnpqrsvwxyz";
 
 /// A store object's path, `<store>/<hash>-<name>`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
@@ -31,6 +31,22 @@ impl StorePath {
    #[inline]
    pub fn as_str(&self) -> &str {
       &self.0
+   }
+
+   /// The store object `path` lies in, if it lies in one.
+   #[must_use]
+   #[inline]
+   pub fn containing(path: &str) -> Option<Self> {
+      let object = path.strip_prefix(STORE_DIR)?.strip_prefix('/')?;
+      let length = STORE_DIR.len() + 1 + object.find('/').unwrap_or(object.len());
+      Self::try_from(path[..length].to_owned()).ok()
+   }
+
+   /// The 32 characters of its hash.
+   #[must_use]
+   #[inline]
+   pub fn hash_part(&self) -> &str {
+      &self.0[STORE_DIR.len() + 1..STORE_DIR.len() + 33]
    }
 
    /// The name after the hash.
