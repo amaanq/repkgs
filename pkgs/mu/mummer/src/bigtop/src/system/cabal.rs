@@ -7,13 +7,20 @@ use std::{
       read,
       read_dir,
       read_to_string,
+      remove_dir_all,
       remove_file,
    },
-   io,
+   io::{
+      self,
+      Read as _,
+   },
    os::unix::fs::symlink,
    path::Path,
    process::Command,
-   time::SystemTime,
+   time::{
+      Duration,
+      SystemTime,
+   },
 };
 
 use mummer::{
@@ -250,13 +257,31 @@ impl Cabal {
    }
 
    /// The package's own build tree, which ghc's recompilation check reuses
-   /// module by module, where the units cache only covers dependencies.
+   /// module by module, where the units cache only covers dependencies. It
+   /// is keyed on the package's identity alone, not its sources or inputs,
+   /// since ghc hashes every module against the tree it finds.
    fn dist_key(ctx: &Ctx, options: &Options) -> io::Result<String> {
-      probe::key(
-         "cabal-dist",
-         &Self::cabal_files(ctx, options)?,
-         Some(&(Self::targets(options), &options.project)),
-      )
+      let project = ctx.project_dir(&options.root);
+      let mut cabals = Self::cabal_files(ctx, options)?
+         .into_iter()
+         .map(|path| {
+            match Path::new(&path).strip_prefix(&project) {
+               Ok(relative) => relative.to_string_lossy().into_owned(),
+               Err(_outside) => path,
+            }
+         })
+         .collect::<Vec<_>>();
+      cabals.sort();
+      let record = serde_json::to_vec(&(
+         cabals,
+         Self::targets(options),
+         &options.project,
+         &ctx.platform,
+      ))?;
+      Ok(format!(
+         "probe/cabal-dist/{}",
+         blake3::hash(&record).to_hex()
+      ))
    }
 
    fn plan() -> io::Result<Vec<Unit>> {
@@ -339,6 +364,61 @@ impl Cabal {
       Ok(())
    }
 
+   /// Gives a restored tree one mtime, since ghc counts an object older than
+   /// its interface as missing, and the sources a later one, since Cabal
+   /// redoes C sources and alex or happy output only by mtime. The plan is
+   /// dropped so Cabal configures against this build's inputs, and linked
+   /// outputs so ghc links again, since it checks dependency libraries by
+   /// mtime alone.
+   fn settle_restored(project: &Path) -> io::Result<()> {
+      let now = SystemTime::now();
+      let restored = now
+         .checked_sub(Duration::from_secs(1))
+         .ok_or_else(|| io::Error::other("system clock before the epoch"))?;
+      for entry in walk(project)? {
+         if entry.kind != 'f' {
+            continue;
+         }
+         let built = entry.rel.starts_with("dist-newstyle/");
+         if built && Self::linked(Path::new(&entry.path))? {
+            remove_file(&entry.path)?;
+            continue;
+         }
+         File::open(&entry.path)?.set_modified(if built { restored } else { now })?;
+      }
+      match remove_dir_all(project.join("dist-newstyle/cache")) {
+         Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+         Ok(()) | Err(_) => Ok(()),
+      }
+   }
+
+   /// A file a linker or archiver wrote, an executable, shared library or
+   /// static archive, as opposed to an object ghc reuses.
+   fn linked(path: &Path) -> io::Result<bool> {
+      let mut header = [0_u8; 20];
+      match File::open(path)?.read_exact(&mut header) {
+         Ok(()) => {},
+         Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
+         Err(error) => return Err(error),
+      }
+      let (&[magic, ident, _, macho_kind, elf_type], _) = header.as_chunks::<4>() else {
+         return Ok(false);
+      };
+      let [_, order, _, _] = ident;
+      let [first, second, _, _] = elf_type;
+      let elf_kind = if order == 2 {
+         u16::from_be_bytes([first, second])
+      } else {
+         u16::from_le_bytes([first, second])
+      };
+      Ok(match magic {
+         [b'!', b'<', b'a', b'r'] | [b'M', b'Z', _, _] => true,
+         [0x7F, b'E', b'L', b'F'] => matches!(elf_kind, 2 | 3),
+         [0xCE | 0xCF, 0xFA, 0xED, 0xFE] => matches!(u32::from_le_bytes(macho_kind), 2 | 6),
+         _ => false,
+      })
+   }
+
    fn build(ctx: &Ctx, attrs: &Attrs, options: &Options, socket: &Path) -> io::Result<()> {
       let targets = Self::targets(options);
       let dist = if ctx.cache {
@@ -346,13 +426,7 @@ impl Cabal {
          let restored = probe::restore_dir(&key, Path::new("dist-newstyle"), socket)?;
          note("cabal-dist", if restored { "restored" } else { "cold" });
          if restored {
-            // ghc counts an object older than its interface as missing
-            let now = SystemTime::now();
-            for entry in walk(Path::new("dist-newstyle"))? {
-               if entry.kind == 'f' {
-                  File::open(&entry.path)?.set_modified(now)?;
-               }
-            }
+            Self::settle_restored(&ctx.project_dir(&options.root))?;
          }
          Some(key)
       } else {
