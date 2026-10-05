@@ -28,6 +28,7 @@ use std::{
 use blake3::Hasher;
 use mummer::{
    files::{
+      utf8,
       relative_path,
       remove_if_exists,
       write_file,
@@ -305,7 +306,7 @@ impl Invocation {
       Ok((command, vec![depfile, linked]))
    }
 
-   fn static_archives(&self) -> Vec<String> {
+   fn static_archives(&self) -> io::Result<Vec<String>> {
       self
          .statics
          .iter()
@@ -316,7 +317,7 @@ impl Invocation {
                .map(|directory| directory.join(file))
                .find(|path| path.is_file())
          })
-         .map(|path| path.to_string_lossy().into_owned())
+         .map(|path| utf8(&path).map(str::to_owned))
          .collect()
    }
 }
@@ -440,7 +441,7 @@ fn request_key(
    let mut hasher = Hasher::new();
    field(&mut hasher, store.tool_id(compiler)?);
    field(&mut hasher, store.tool_identity(cache, compiler)?);
-   field(&mut hasher, store.key(&current_dir()?.to_string_lossy()));
+   field(&mut hasher, store.key(utf8(&current_dir()?)?));
    for argument in &invocation.key_args {
       field(&mut hasher, store.key(argument));
    }
@@ -472,7 +473,7 @@ fn request_key(
    for library in libraries {
       field(
          &mut hasher,
-         store.input_id(&library.to_string_lossy())?.to_string(),
+         store.input_id(utf8(&library)?)?.to_string(),
       );
    }
    for name in [
@@ -554,7 +555,7 @@ fn store_result(
    let text = read_to_string(&dep_path)?;
    let mut inputs = parse_depfile(&text);
    inputs.extend_from_slice(&invocation.externs);
-   inputs.extend(invocation.static_archives());
+   inputs.extend(invocation.static_archives()?);
    inputs.push(invocation.source.clone());
    let link_text = if invocation.links {
       let (depfile, linked) = invocation.link_records()?;

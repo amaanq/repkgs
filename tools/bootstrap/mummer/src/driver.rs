@@ -16,6 +16,7 @@ use std::{
 };
 
 use mummer::{
+   files::utf8,
    config::{
       BinaryFormat,
       Config,
@@ -147,7 +148,7 @@ impl Driver {
                || (position == 2 && flag.starts_with('-'))
                || flag.as_bytes().get(position - 1) == Some(&b'='))
          {
-            flag.replace_range(position..=position, &root.to_string_lossy());
+            flag.replace_range(position..=position, utf8(root)?);
          }
       }
       let name = root
@@ -413,7 +414,7 @@ pub fn settle_runpath(bytes: &[u8], dependencies: &str) -> io::Result<Settled> {
       let Some(parent) = Path::new(&input).parent().map(canonicalize).transpose()? else {
          continue;
       };
-      let directory = parent.to_string_lossy().into_owned();
+      let directory = utf8(&parent)?.to_owned();
       if !host_directory(&directory) && !directories.contains(&directory) {
          directories.push(directory);
       }

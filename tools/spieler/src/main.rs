@@ -26,7 +26,10 @@ use std::{
       self,
       Write as _,
    },
-   path::PathBuf,
+   path::{
+      Path,
+      PathBuf,
+   },
    process::{
       Command,
       ExitCode,
@@ -43,6 +46,7 @@ use mummer::process::{
 use pound::Parse;
 use serde_json::Value;
 
+use mummer::files::utf8;
 use crate::{
    locks::Used,
    pipeline::{
@@ -541,10 +545,7 @@ fn init(dir: &PathBuf, purl: &str, url: &str, allow: Option<&str>) -> io::Result
       |range| format!("{fetch}\n[track]\nfrom  = \"{track}\"\nallow = \"{range}\"\n"),
    );
    write(&file, text)?;
-   let name = dir
-      .file_name()
-      .map(|name| name.to_string_lossy().into_owned())
-      .unwrap_or_default();
+   let name = utf8(Path::new(dir.file_name().unwrap_or_default()))?.to_owned();
    let plan = planned(&[name], false)?;
    let Some(entry) = plan.first() else {
       remove_file(&file)?;

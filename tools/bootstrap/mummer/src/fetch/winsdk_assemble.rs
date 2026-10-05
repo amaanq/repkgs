@@ -22,6 +22,7 @@ use std::{
 use mummer::{
    attrs,
    files::{
+      utf8,
       sorted_entries,
       write_file,
    },
@@ -121,7 +122,7 @@ fn vfs_overlay(out: &str, header_dirs: &[String]) -> io::Result<String> {
          for entry in read_dir(&dir)? {
             let found = entry?;
             if !found.file_type()?.is_dir() {
-               names.push(found.file_name().to_string_lossy().into_owned());
+               names.push(utf8(Path::new(&found.file_name()))?.to_owned());
             }
          }
          if names.is_empty() {
@@ -288,12 +289,10 @@ fn install_sdk(attrs: &Attrs, work: &Path, out: &str) -> io::Result<String> {
 
 fn lowercase_links(out: &str) -> io::Result<()> {
    for file in files(&format!("{out}/{{crt,sdk}}/lib/**/*"))? {
-      let Some(name) = file
-         .file_name()
-         .map(|name| name.to_string_lossy().into_owned())
-      else {
+      let Some(file_name) = file.file_name() else {
          continue;
       };
+      let name = utf8(Path::new(file_name))?.to_owned();
       let lower = name.to_lowercase();
       let Some(dir) = file.parent() else {
          continue;

@@ -295,7 +295,7 @@ pub fn execute(command: &mut Command) -> io::Result<()> {
 
 /// What `command` prints, run without echoing.
 pub fn capture(command: &mut Command) -> io::Result<String> {
-   Ok(String::from_utf8_lossy(&command.checked_output()?).into_owned())
+   String::from_utf8(command.checked_output()?).map_err(io::Error::other)
 }
 
 /// `sh <script> --prefix=<prefix>` in `build`.
@@ -349,7 +349,7 @@ fn matching(pattern: &str, keeps: fn(&Metadata) -> bool) -> io::Result<Vec<PathB
       .into_iter()
       .filter(|path| metadata(path).is_ok_and(|meta| keeps(&meta)))
       .collect::<Vec<_>>();
-   found.sort_by_key(|path| path.to_string_lossy().into_owned());
+   found.sort_by(|left, right| left.as_os_str().cmp(right.as_os_str()));
    Ok(found)
 }
 
@@ -460,13 +460,12 @@ pub fn compile(compiler: &str, common: &[String], items: &[Item]) -> io::Result<
 
 /// One path per line, for a linker or archiver `@file`.
 pub fn write_rsp(path: &Path, objs: &[PathBuf]) -> io::Result<()> {
-   let mut text = objs
-      .iter()
-      .map(|obj| obj.to_string_lossy())
-      .collect::<Vec<_>>()
-      .join("\n");
-   text.push('\n');
-   write_file(path, text.as_bytes(), None)
+   let mut text = Vec::new();
+   for obj in objs {
+      text.extend_from_slice(obj.as_os_str().as_encoded_bytes());
+      text.push(b'\n');
+   }
+   write_file(path, &text, None)
 }
 
 /// a static archive through a response file, libc.a exceeds argv limits.

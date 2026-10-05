@@ -101,7 +101,9 @@ fn writable_tree(path: &Path) -> io::Result<()> {
 #[inline]
 pub fn unpack(bsdtar: &str, archive: &Path, dest: &Path) -> io::Result<()> {
    let tar = Bsdtar::new(bsdtar);
-   let stage = PathBuf::from(format!("{}.unpack", dest.to_string_lossy()));
+   let mut staged = dest.as_os_str().to_owned();
+   staged.push(".unpack");
+   let stage = PathBuf::from(staged);
    create_dir_all(&stage)?;
    let options = ["--no-same-owner", "--no-same-permissions"];
    tar.extract(archive, &stage, &options)?;

@@ -25,6 +25,7 @@ use std::{
 
 use serde::Serialize;
 use serde_json::Value;
+use mummer::files::utf8;
 
 const STAGES: [&str; 4] = ["resolve", "sources", "files", "verify"];
 
@@ -60,7 +61,7 @@ pub fn exports(file: &Path) -> io::Result<Vec<String>> {
       "use {}; scope modules | where name == 'update' | first | get commands.name | to json",
       file.display()
    );
-   let listed = run_nu(&code, &file.to_string_lossy(), "null")?;
+   let listed = run_nu(&code, utf8(file)?, "null")?;
    let names = listed
       .as_array()
       .map(|names| {

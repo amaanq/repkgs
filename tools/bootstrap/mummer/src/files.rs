@@ -42,6 +42,14 @@ pub fn write_file(path: &Path, bytes: &[u8], mode: Option<u32>) -> io::Result<()
    Ok(())
 }
 
+/// A path as text, an error naming it when it is not UTF-8.
+#[inline]
+pub fn utf8(path: &Path) -> io::Result<&str> {
+   path
+      .to_str()
+      .ok_or_else(|| io::Error::other(format!("{} is not UTF-8", path.display())))
+}
+
 /// A directory's entries in name order.
 #[inline]
 pub fn sorted_entries(directory: &Path) -> io::Result<Vec<PathBuf>> {

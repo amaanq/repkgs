@@ -35,6 +35,7 @@ use std::{
 use blake3::Hasher;
 use mummer::{
    files::{
+      utf8,
       relative_path,
       write_file,
    },
@@ -427,13 +428,13 @@ fn request_key(
    let mut hasher = Hasher::new();
    field(
       &mut hasher,
-      store.input_id(&real.to_string_lossy())?.to_string(),
+      store.input_id(utf8(&real)?)?.to_string(),
    );
    field(
       &mut hasher,
-      store.key(&String::from_utf8_lossy(&info.stdout)),
+      store.key(&String::from_utf8(info.stdout).map_err(io::Error::other)?),
    );
-   field(&mut hasher, store.key(&current_dir()?.to_string_lossy()));
+   field(&mut hasher, store.key(utf8(&current_dir()?)?));
    for argument in arguments {
       field(&mut hasher, store.key(argument));
    }
