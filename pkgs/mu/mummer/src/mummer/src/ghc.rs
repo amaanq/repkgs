@@ -82,6 +82,10 @@ struct Invocation {
 }
 
 impl Invocation {
+   #[expect(
+      clippy::too_many_lines,
+      reason = "single-pass ghc flag scan, splitting would scatter invocation state"
+   )]
    fn parse(args: &[String]) -> Self {
       let mut sources = Vec::new();
       let mut named_output = None;
@@ -164,14 +168,19 @@ impl Invocation {
             .is_none_or(|path| relative_path(path).is_ok());
 
       let mut outputs = vec![output.clone()];
+      let mut dynamic = Vec::new();
       if let Some(stem) = base.as_deref() {
          outputs.push(interface.unwrap_or_else(|| format!("{stem}.{interface_suffix}{boot}")));
          if dynamic_too {
-            outputs.push(format!("{stem}.{dynamic_object}{boot}"));
-            outputs.push(format!("{stem}.{dynamic_interface}{boot}"));
+            dynamic = vec![
+               format!("{stem}.{dynamic_object}{boot}"),
+               format!("{stem}.{dynamic_interface}{boot}"),
+            ];
          }
       }
-      let required = outputs.len();
+      // ghc writes no dynamic object for a boot interface
+      let required = outputs.len() + if boot.is_empty() { dynamic.len() } else { 0 };
+      outputs.append(&mut dynamic);
       if let Some(stem) = base {
          outputs.push(format!("{stem}_stub.h"));
       }
