@@ -16,6 +16,7 @@ use std::{
       self,
       Write as _,
    },
+   mem::take,
    path::{
       Path,
       PathBuf,
@@ -94,6 +95,7 @@ struct Invocation {
    stdout:       bool,
    preprocessed: Option<String>,
    split:        Vec<usize>,
+   jobs:         Vec<Vec<String>>,
 }
 
 impl Invocation {
@@ -102,7 +104,7 @@ impl Invocation {
       clippy::cognitive_complexity,
       reason = "single-pass option scanner, splitting would scatter invocation state"
    )]
-   fn parse(args: Vec<String>) -> Self {
+   fn parse(args: Vec<String>, jobs: Vec<Vec<String>>) -> Self {
       let mut invocation = Self {
          args,
          key_args: Vec::new(),
@@ -118,10 +120,24 @@ impl Invocation {
          stdout: false,
          preprocessed: None,
          split: Vec::new(),
+         jobs,
       };
+      let compiled = invocation
+         .jobs
+         .iter()
+         .filter(|job| {
+            job.get(1)
+               .is_some_and(|mode| matches!(mode.as_str(), "-cc1" | "-cc1as" | "-fc1"))
+         })
+         .filter_map(|job| {
+            Some((
+               job.last()?.clone(),
+               job.iter().any(|token| token == "-emit-pch"),
+            ))
+         })
+         .collect::<Vec<_>>();
       let mut sources = 0_i32;
       let mut header = false;
-      let mut language: Option<String> = None;
       let mut languages = false;
       let mut positions = Vec::new();
       let mut wants_deps = false;
@@ -170,11 +186,8 @@ impl Invocation {
             "-I" | "-isystem" | "-iquote" | "-idirafter" | "-include" | "-imacros"
             | "-isysroot" | "--sysroot" | "-L" | "-l" | "-x" | "-D" | "-U" | "-target"
             | "--target" | "-Xclang" | "-Xlinker" | "-Xassembler" | "-Xpreprocessor" | "-mllvm" => {
-               if let Some(ref value) = next {
-                  if arg == "-x" {
-                     language = (value != "none").then(|| value.clone());
-                     languages = true;
-                  }
+               if next.is_some() {
+                  languages |= arg == "-x";
                   consumed = true;
                }
             },
@@ -182,37 +195,19 @@ impl Invocation {
                if arg.starts_with("-o") && arg.len() > 2 {
                   keyed = false;
                   invocation.output = PathBuf::from(&arg[2..]);
-               } else if let Some(given) = arg.strip_prefix("-x")
-                  && !given.is_empty()
-               {
-                  language = (given != "none").then(|| given.to_owned());
+               } else if arg.starts_with("-x") && arg.len() > 2 {
                   languages = true;
                } else if arg.starts_with("-Wp,-MD,") || arg.starts_with("-Wp,-MMD,") {
                   keyed = false;
                   invocation.depfile = arg.splitn(3, ',').nth(2).map(PathBuf::from);
                   wants_deps = true;
-               } else if !arg.starts_with('-')
-                  && ((language.is_some() && Path::new(&arg).is_file())
-                     || [
-                        ".c", ".cc", ".cpp", ".cxx", ".c++", ".C", ".S", ".s", ".sx", ".m", ".f",
-                        ".F", ".f77", ".for", ".FOR", ".f90", ".F90", ".f95", ".F95", ".f03",
-                        ".F03", ".f08", ".F08", ".h", ".hh", ".hpp", ".hxx",
-                     ]
-                     .iter()
-                     .any(|suffix| arg.ends_with(suffix)))
+               } else if let Some(&(_, precompiles)) = compiled.iter().find(|entry| entry.0 == arg)
                {
                   keyed = false;
                   invocation.source.clone_from(&arg);
                   sources += 1_i32;
                   positions.push(index);
-                  header |= language.as_deref().map_or_else(
-                     || {
-                        [".h", ".hh", ".hpp", ".hxx"]
-                           .iter()
-                           .any(|suffix| arg.ends_with(suffix))
-                     },
-                     |given| given.ends_with("-header"),
-                  );
+                  header |= precompiles;
                } else if !arg.starts_with('-')
                   && ([".o", ".os", ".lo", ".a", ".so", ".obj"]
                      .iter()
@@ -292,7 +287,6 @@ impl Invocation {
          && invocation.output != Path::new("/dev/null")
          && invocation.action != Action::Other
          && (invocation.linkfile.is_none() || invocation.links())
-         && (!header || precompile)
          && (precompile || !extension.is_some_and(|found| found == "pch" || found == "gch"));
       invocation.read_precompiled();
       if wants_deps && invocation.depfile.is_none() {
@@ -301,54 +295,21 @@ impl Invocation {
       invocation
    }
 
-   /// Every `-include-pch` file is an input. The depfile lists the headers
-   /// inside it but not the .pch itself.
+   /// Every precompiled header a compile job loads is an input, whether
+   /// named by `-include-pch` or found beside an `-include`d header. The
+   /// depfile lists the headers inside it but not the file itself.
    fn read_precompiled(&mut self) {
-      for (position, arg) in self.args.iter().enumerate() {
-         if arg != "-include-pch" {
-            continue;
-         }
-         let after = if self
-            .args
-            .get(position + 1)
-            .is_some_and(|next| next == "-Xclang")
-         {
-            position + 2
-         } else {
-            position + 1
-         };
-         match self.args.get(after) {
-            Some(pch) => self.inputs.push(pch.clone()),
-            None => self.cacheable = false,
+      for job in &self.jobs {
+         let mut tokens = job.iter();
+         while let Some(token) = tokens.next() {
+            if token == "-include-pch"
+               && let Some(path) = tokens.next()
+               && !self.inputs.contains(path)
+            {
+               self.inputs.push(path.clone());
+            }
          }
       }
-   }
-
-   /// The precompiled header clang finds beside an `-include`d one, which
-   /// only its cc1 job names.
-   fn read_implicit_precompiled(&mut self, compiler: &str) -> io::Result<()> {
-      if !self.cacheable || !self.args.iter().any(|arg| arg == "-include") {
-         return Ok(());
-      }
-      let printed = Command::new(compiler)
-         .arg("-###")
-         .args(&self.args)
-         .output()?;
-      let job = String::from_utf8_lossy(&printed.stderr);
-      let mut tokens = job
-         .lines()
-         .filter(|line| line.starts_with(" \""))
-         .flat_map(|line| line.split("\" \""))
-         .map(|token| token.trim().trim_matches('"'));
-      while let Some(token) = tokens.next() {
-         if token == "-include-pch"
-            && let Some(path) = tokens.next()
-            && !self.inputs.iter().any(|input| input == path)
-         {
-            self.inputs.push(path.to_owned());
-         }
-      }
-      Ok(())
    }
 
    /// clang reopens the headers a .pch names, so a precompile matches them
@@ -365,17 +326,11 @@ impl Invocation {
 
    /// The cc1 command clang runs for this compile, which also carries what its
    /// config files and environment add, the output's own paths as tokens.
-   fn compile_job(&self, compiler: &str) -> io::Result<String> {
-      let printed = Command::new(compiler)
-         .arg("-###")
-         .args(&self.args)
-         .output()?;
-      if !printed.status.success() {
-         return Err(io::Error::other("clang -### refused the arguments"));
-      }
-      let mut job = String::from_utf8_lossy(&printed.stderr)
-         .lines()
-         .filter(|line| line.starts_with(" \""))
+   fn compile_job(&self) -> String {
+      let mut job = self
+         .jobs
+         .iter()
+         .map(|tokens| format!("\"{}\"", tokens.join("\" \"")))
          .collect::<Vec<_>>()
          .join("\n");
       let output = self.output.to_string_lossy();
@@ -408,7 +363,7 @@ impl Invocation {
          rest = &rest[end..];
       }
       masked.push_str(rest);
-      Ok(masked)
+      masked
    }
 
    const fn links(&self) -> bool {
@@ -531,7 +486,7 @@ impl Invocation {
          self.action,
          Action::Compile | Action::Precompile | Action::Assembly | Action::Preprocess
       ) {
-         let mut bytes = self.compile_job(compiler)?.into_bytes();
+         let mut bytes = self.compile_job().into_bytes();
          store.mask_output(&mut bytes, false);
          let job = String::from_utf8_lossy(&bytes);
          field(&mut hasher, match toolchain {
@@ -563,11 +518,15 @@ impl Invocation {
 }
 
 pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut Client) -> io::Result<bool> {
-   let mut invocation = Invocation::parse(raw.to_vec());
+   let expanded = driver.arguments(Language::Cc, raw);
+   let mut invocation = Invocation::parse(
+      raw.to_vec(),
+      jobs(driver.compiler(Language::Cc), &expanded)?,
+   );
    if invocation.action != Action::Compile || !invocation.cacheable {
       return Ok(false);
    }
-   invocation.args = driver.arguments(Language::Cc, raw);
+   invocation.args = expanded;
    invocation.key_injected(raw);
    let mut store = Store::new();
    let request = invocation.request_key(&mut store, cache, driver.compiler(Language::Cc))?;
@@ -606,16 +565,16 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
       )));
    }
 
-   let mut invocation = Invocation::parse(user.clone());
+   let expanded = driver.arguments(language, &user);
+   let mut invocation = Invocation::parse(user.clone(), jobs(compiler, &expanded)?);
    if !invocation.split.is_empty() && driver.format() == BinaryFormat::Elf {
       return run_split(&invocation);
    }
    if invocation.links() && driver.format() != BinaryFormat::Elf {
       invocation.cacheable = false;
    }
-   invocation.args = driver.arguments(language, &invocation.args);
+   invocation.args = expanded;
    invocation.prescan(language, compiler)?;
-   invocation.read_implicit_precompiled(compiler)?;
    let mut store = Store::new();
    let mut manifest_store = invocation.manifest_store();
    store.learn_random(&invocation.args);
@@ -883,6 +842,39 @@ pub fn run_cc(mode: &str, raw: &[String], socket: &Path) -> io::Result<i32> {
    };
    log("cc", outcome, &explained, started);
    Ok(result.status)
+}
+
+/// The jobs the compiler driver would run for `args`, each as its tokens,
+/// or none when it refuses them, which leaves the call uncacheable.
+fn jobs(compiler: &str, args: &[String]) -> io::Result<Vec<Vec<String>>> {
+   let printed = Command::new(compiler).arg("-###").args(args).output()?;
+   if !printed.status.success() {
+      return Ok(Vec::new());
+   }
+   Ok(String::from_utf8_lossy(&printed.stderr)
+      .lines()
+      .filter(|line| line.starts_with(" \""))
+      .map(job_tokens)
+      .collect())
+}
+
+/// One `-###` line's quoted tokens, with clang's backslash escapes undone.
+fn job_tokens(line: &str) -> Vec<String> {
+   let mut tokens = Vec::new();
+   let mut token = String::new();
+   let mut quoted = false;
+   let mut characters = line.chars();
+   while let Some(character) = characters.next() {
+      match character {
+         '"' if quoted => tokens.push(take(&mut token)),
+         '"' => {},
+         '\\' if quoted => token.extend(characters.next()),
+         other if quoted => token.push(other),
+         _ => continue,
+      }
+      quoted ^= character == '"';
+   }
+   tokens
 }
 
 /// A compile and link in one call, run as this wrapper's compile of each
