@@ -24,10 +24,7 @@ use std::{
    },
    mem::take,
    os::unix::fs::PermissionsExt as _,
-   path::{
-      Path,
-      PathBuf,
-   },
+   path::Path,
    process::Command,
    time::{
       Instant,
@@ -56,10 +53,6 @@ use mummer::{
       on_path,
    },
 };
-use serde::{
-   Deserialize,
-   Serialize,
-};
 use tightrope::{
    client::Client,
    digest::Digest,
@@ -73,6 +66,10 @@ use crate::{
    manifest::{
       Manifest,
       Miss,
+   },
+   record::{
+      Artifact,
+      Record,
    },
    wrapper::{
       Wrapper,
@@ -274,13 +271,6 @@ impl Invocation {
    }
 }
 
-#[derive(Deserialize, Serialize)]
-struct Artifact {
-   path: String,
-   mode: u32,
-   hash: Digest,
-}
-
 /// One module compile in front of the cache, and what serving it needs.
 struct Module<'args> {
    compiler:     &'args str,
@@ -333,7 +323,13 @@ impl Wrapper for Module<'_> {
       let after = modified(&invocation.outputs);
       let manifest = Manifest::build(cache, &mut self.store, &inputs, &[], &[])?;
       let key = manifest.result_key(request)?;
-      let mut artifacts = Vec::new();
+      let mut record = Record {
+         status:      0,
+         diagnostics: result.stderr.clone(),
+         depfile:     None,
+         link_deps:   None,
+         artifacts:   Vec::new(),
+      };
 
       for (position, path) in invocation.outputs.iter().enumerate() {
          if after[position].is_none() || after[position] == before[position] {
@@ -347,20 +343,15 @@ impl Wrapper for Module<'_> {
          let mut bytes =
             read(path).map_err(|error| io::Error::other(format!("{path}: {error}")))?;
          self.store.mask_output(&mut bytes, false);
-         let hash = Digest::of(&bytes);
-         cache.put(&Key::digest(Namespace::Blob, &hash), &bytes)?;
-         artifacts.push(Artifact {
-            path: path.clone(),
-            mode: metadata(path)?.permissions().mode() & 0o777,
-            hash,
+         record.artifacts.push(Artifact {
+            name: path.clone(),
+            mode: Some(metadata(path)?.permissions().mode() & 0o777),
+            bytes,
+            settle: false,
          });
       }
 
-      cache.put(
-         &Key::digest(Namespace::Object, &key),
-         &serde_json::to_vec(&artifacts)?,
-      )?;
-      cache.put(&Key::digest(Namespace::Diagnostics, &key), &result.stderr)?;
+      record.put(cache, &key)?;
       manifest.publish(cache, request)?;
       Ok(true)
    }
@@ -476,37 +467,11 @@ fn modified(paths: &[String]) -> Vec<Option<SystemTime>> {
 }
 
 fn replay(cache: &mut Client, store: &Store, key: &Digest) -> Result<(), Miss> {
-   let Some(listing) = cache.get(&Key::digest(Namespace::Object, key))? else {
-      return Err(Miss::ObjectGone);
-   };
-   let artifacts = serde_json::from_slice::<Vec<Artifact>>(&listing).map_err(io::Error::from)?;
-   let mut values = Vec::new();
-
-   for artifact in &artifacts {
-      relative_path(&artifact.path)?;
-      if artifact.mode > 0o777 {
-         return Err(Miss::Failed(io::Error::other(
-            "invalid cached Haskell artifact",
-         )));
-      }
-      let Some(mut bytes) = cache.get(&Key::digest(Namespace::Blob, &artifact.hash))? else {
-         return Err(Miss::ObjectGone);
-      };
-      if Digest::of(&bytes) != artifact.hash {
-         return Err(Miss::Failed(io::Error::other(
-            "Haskell artifact content hash differs",
-         )));
-      }
-      store.mask_output(&mut bytes, true);
-      values.push(bytes);
+   let record = Record::get(cache, key)?;
+   for mut artifact in record.artifacts {
+      store.mask_output(&mut artifact.bytes, true);
+      write_file(Path::new(&artifact.name), &artifact.bytes, artifact.mode)?;
    }
-
-   let Some(diagnostics) = cache.get(&Key::digest(Namespace::Diagnostics, key))? else {
-      return Err(Miss::ObjectGone);
-   };
-   for (artifact, bytes) in artifacts.iter().zip(values) {
-      write_file(&PathBuf::from(&artifact.path), &bytes, Some(artifact.mode))?;
-   }
-   io::stderr().lock().write_all(&diagnostics)?;
+   io::stderr().lock().write_all(&record.diagnostics)?;
    Ok(())
 }

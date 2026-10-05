@@ -8,6 +8,7 @@ mod gocache;
 mod header;
 mod manifest;
 mod nix_store;
+mod record;
 mod rustc;
 mod wrapper;
 

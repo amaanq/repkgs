@@ -17,11 +17,9 @@ use crate::{
 #[derive(Clone, Copy)]
 pub enum Namespace {
    Manifest,
-   Object,
-   Depfile,
-   Diagnostics,
-   LinkDepfile,
-   Status,
+   /// A compile's result, its status, diagnostics, dependency files and
+   /// outputs.
+   Record,
    Blob,
    Cc,
    Rust,
@@ -38,11 +36,7 @@ impl Namespace {
    const fn prefix(self) -> &'static str {
       match self {
          Self::Manifest => "m/",
-         Self::Object => "o/",
-         Self::Depfile => "d/",
-         Self::Diagnostics => "e/",
-         Self::LinkDepfile => "l/",
-         Self::Status => "r/",
+         Self::Record => "rec/",
          Self::Blob => "b/",
          Self::Cc => "cc/",
          Self::Rust => "rs/",

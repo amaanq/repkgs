@@ -86,6 +86,10 @@ use crate::{
       parse_depfile,
       prefetch,
    },
+   record::{
+      Artifact,
+      Record,
+   },
    wrapper::{
       Wrapper,
       serve,
@@ -609,14 +613,11 @@ pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut Client) -> io:
       Err(Miss::Failed(error)) => return Err(error),
       Err(_) => return Ok(false),
    };
-   let results = cache.get_many(&[
-      Key::digest(Namespace::Status, &key),
-      Key::digest(Namespace::Diagnostics, &key),
-   ])?;
-   Ok(
-      matches!(results.as_slice(), [Some(status), Some(diagnostics)]
-      if status == b"0" && diagnostics.is_empty()),
-   )
+   match Record::get(cache, &key) {
+      Ok(record) => Ok(record.status == 0_i32 && record.diagnostics.is_empty()),
+      Err(Miss::Failed(error)) => Err(error),
+      Err(_) => Ok(false),
+   }
 }
 
 /// One compile or link in front of the cache.
@@ -826,41 +827,42 @@ impl Wrapper for Compile<'_> {
          .collect::<Vec<_>>();
       let manifest = Manifest::build(cache, &mut self.manifests, &inputs, &[], &absent)?;
       let key = manifest.result_key(request)?;
-      let masked = |mut bytes: Vec<u8>| {
-         store.mask_output(&mut bytes, false);
-         bytes
+      let mut diagnostics = result.stderr.clone();
+      store.mask_output(&mut diagnostics, false);
+      let mut record = Record {
+         status: result.status,
+         diagnostics,
+         depfile: None,
+         link_deps: None,
+         artifacts: Vec::new(),
       };
       if result.status == 0_i32 {
-         let object = match compiled.linked {
+         let mut object = match compiled.linked {
             Some(bytes) => bytes,
             None => read(compiled.output_path(invocation))?,
          };
-         cache.put(&Key::digest(Namespace::Object, &key), &masked(object))?;
+         store.mask_output(&mut object, false);
+         record.artifacts.push(Artifact {
+            name:   invocation.output.file_name().map_or_else(
+               || "output".to_owned(),
+               |name| name.to_string_lossy().into_owned(),
+            ),
+            mode:   invocation.links().then_some(0o755),
+            bytes:  object,
+            settle: invocation.links(),
+         });
          if invocation.depfile.is_some() {
-            cache.put(
-               &Key::digest(Namespace::Depfile, &key),
-               &masked(store.mask_text(&dependencies).into_bytes()),
-            )?;
+            record.depfile = Some(store.stored_text(&dependencies)?);
          }
          if let Some(text) = link_text {
             let target = format!("{}:", invocation.output.display());
             let body = text
                .strip_prefix(&target)
                .map_or_else(|| text.clone(), |rest| format!("<output>:{rest}"));
-            cache.put(
-               &Key::digest(Namespace::LinkDepfile, &key),
-               &masked(store.mask_text(&body).into_bytes()),
-            )?;
+            record.link_deps = Some(store.stored_text(&body)?);
          }
       }
-      cache.put(
-         &Key::digest(Namespace::Diagnostics, &key),
-         &masked(result.stderr.clone()),
-      )?;
-      cache.put(
-         &Key::digest(Namespace::Status, &key),
-         result.status.to_string().as_bytes(),
-      )?;
+      record.put(cache, &key)?;
       manifest.publish(cache, request)?;
       Ok(true)
    }
@@ -1215,45 +1217,30 @@ fn cached(
    invocation: &Invocation,
    key: &Digest,
 ) -> Result<i32, Miss> {
-   let keys = [
-      Namespace::Status,
-      Namespace::Object,
-      Namespace::Depfile,
-      Namespace::Diagnostics,
-      Namespace::LinkDepfile,
-   ]
-   .map(|namespace| Key::digest(namespace, key));
-   let mut objects = cache.get_many(&keys)?.into_iter();
-   let Some(Some(status_bytes)) = objects.next() else {
-      return Err(Miss::ObjectGone);
-   };
-   let status = String::from_utf8(status_bytes)
-      .map_err(io::Error::other)?
-      .parse::<u8>()
-      .map_err(io::Error::other)?;
-   let object = objects.next().flatten();
-   let dependency = objects.next().flatten();
-   let Some(Some(mut diagnostics)) = objects.next() else {
-      return Err(Miss::ObjectGone);
-   };
-   let linked = objects.next().flatten();
-   if status == 0 {
-      let Some(object_bytes) = object else {
+   let Record {
+      status,
+      mut diagnostics,
+      depfile,
+      link_deps,
+      artifacts,
+   } = Record::get(cache, key)?;
+   if status == 0_i32 {
+      let Some(object) = artifacts.into_iter().next() else {
          return Err(Miss::ObjectGone);
       };
       let dep_text = if invocation.depfile.is_some() {
-         let Some(dep_bytes) = dependency else {
+         let Some(text) = depfile else {
             return Err(Miss::ObjectGone);
          };
-         Some(invocation.retarget(&store.replayed_text(dep_bytes)?))
+         Some(invocation.retarget(&store.replayed_text(text)?))
       } else {
          None
       };
       let link_text = if invocation.links() {
-         let Some(link_bytes) = linked else {
+         let Some(stored) = link_deps else {
             return Err(Miss::ObjectGone);
          };
-         let text = store.replayed_text(link_bytes)?;
+         let text = store.replayed_text(stored)?;
          let target = format!("{}:", invocation.output.display());
          Some(
             text
@@ -1263,15 +1250,12 @@ fn cached(
       } else {
          None
       };
-      let bytes = replayed_link(store, object_bytes, link_text.as_deref())?;
+      let settling = link_text.as_deref().filter(|_| object.settle);
+      let bytes = replayed_link(store, object.bytes, settling)?;
       if invocation.stdout {
          io::stdout().lock().write_all(&bytes)?;
       } else {
-         write_file(
-            &invocation.output,
-            &bytes,
-            invocation.links().then_some(0o755),
-         )?;
+         write_file(&invocation.output, &bytes, object.mode)?;
       }
       if let (Some(path), Some(text)) = (invocation.depfile.as_ref(), dep_text.as_ref()) {
          write_file(path, text.as_bytes(), None)?;
@@ -1282,5 +1266,5 @@ fn cached(
    }
    store.mask_output(&mut diagnostics, true);
    io::stderr().lock().write_all(&diagnostics)?;
-   Ok(i32::from(status))
+   Ok(status)
 }
