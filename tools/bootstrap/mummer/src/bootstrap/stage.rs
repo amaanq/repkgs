@@ -23,6 +23,7 @@ use std::{
 
 use mummer::{
    attrs::load,
+   config::BinaryFormat,
    files::{
       glob,
       remove_if_exists,
@@ -41,7 +42,6 @@ use serde::{
 };
 
 use crate::bootstrap::target::{
-   Binfmt,
    Cpu,
    Libc,
    Os,
@@ -63,7 +63,7 @@ struct Facts {
    cpu:          Cpu,
    libc:         Libc,
    os:           Os,
-   binfmt:       Binfmt,
+   binfmt:       BinaryFormat,
    interp:       String,
    karch:        String,
    flags:        String,
@@ -85,7 +85,7 @@ pub struct Stage {
    pub cpu:          Cpu,
    pub libc:         Libc,
    pub os:           Os,
-   pub binfmt:       Binfmt,
+   pub binfmt:       BinaryFormat,
    pub profile:      Profile,
    pub interp:       String,
    pub karch:        String,

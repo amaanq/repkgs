@@ -7,10 +7,8 @@ use std::{
    io,
 };
 
-use serde::{
-   Deserialize,
-   Serialize,
-};
+use mummer::config::BinaryFormat;
+use serde::Deserialize;
 
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -66,14 +64,6 @@ pub enum Libc {
    Msvc,
    Mingw,
    Apple,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Binfmt {
-   Elf,
-   Coff,
-   Macho,
 }
 
 #[derive(Clone, Copy)]
@@ -136,12 +126,12 @@ pub enum Profile {
 }
 
 impl Profile {
-   pub fn of(binfmt: Binfmt, libc: Libc, cpu: Cpu) -> io::Result<Self> {
+   pub fn of(binfmt: BinaryFormat, libc: Libc, cpu: Cpu) -> io::Result<Self> {
       Ok(match (binfmt, libc) {
-         (Binfmt::Coff, Libc::Mingw) => Self::Mingw(MingwMachine::try_from(cpu)?),
-         (Binfmt::Coff, _) => Self::Msvc,
-         (Binfmt::Macho, _) => Self::Macho,
-         (Binfmt::Elf, _) => Self::Elf,
+         (BinaryFormat::Coff, Libc::Mingw) => Self::Mingw(MingwMachine::try_from(cpu)?),
+         (BinaryFormat::Coff, _) => Self::Msvc,
+         (BinaryFormat::MachO, _) => Self::Macho,
+         (BinaryFormat::Elf, _) => Self::Elf,
       })
    }
 

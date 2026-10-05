@@ -35,7 +35,7 @@ pub enum Mode {
       alias = "clang++-build"
    )]
    Cxx,
-   /// the Fortran compiler, what etc/mummer.json names as fc.
+   /// the Fortran compiler.
    #[pound(
       alias = "gfortran",
       alias = "flang",

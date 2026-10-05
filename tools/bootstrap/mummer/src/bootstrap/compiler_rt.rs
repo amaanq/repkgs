@@ -9,7 +9,10 @@ use std::{
    process::Command,
 };
 
-use mummer::attrs::load;
+use mummer::{
+   attrs::load,
+   config::BinaryFormat,
+};
 use serde::Deserialize;
 
 use crate::bootstrap::{
@@ -26,10 +29,7 @@ use crate::bootstrap::{
       read_list,
       say,
    },
-   target::{
-      Binfmt,
-      Cpu,
-   },
+   target::Cpu,
 };
 
 #[derive(Deserialize)]
@@ -147,11 +147,11 @@ impl CompilerRt {
    /// stage1 only. *`ROCm`* is the separate `clang_rt.profile_rocm`,
    /// `WindowsMMap` the win32 mmap port.
    fn profile_runtime(stage: &Stage, attrs: &Attrs, src: &Path) -> io::Result<()> {
-      if stage.binfmt == Binfmt::Elf && attrs.linux_headers.is_none() {
+      if stage.binfmt == BinaryFormat::Elf && attrs.linux_headers.is_none() {
          return Ok(());
       }
       let profile = src.join("compiler-rt/lib/profile");
-      let coff = stage.binfmt == Binfmt::Coff;
+      let coff = stage.binfmt == BinaryFormat::Coff;
       let named = |path: &Path| {
          path
             .file_name()
@@ -263,7 +263,7 @@ impl Recipe for CompilerRt {
          &stage.out.join("include"),
          "**/*",
       )?;
-      if stage.binfmt == Binfmt::Elf {
+      if stage.binfmt == BinaryFormat::Elf {
          Self::elf_extras(stage, &builtins, &common)?;
       }
       Self::profile_runtime(stage, &attrs, &src)
