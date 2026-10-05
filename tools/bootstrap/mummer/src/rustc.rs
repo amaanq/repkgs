@@ -47,10 +47,6 @@ use mummer::{
       on_path,
    },
 };
-use serde::{
-   Deserialize,
-   Serialize,
-};
 use tempfile::{
    TempDir,
    tempdir,
@@ -73,6 +69,10 @@ use crate::{
       Manifest,
       Miss,
       parse_depfile,
+   },
+   record::{
+      Artifact,
+      Record,
    },
    wrapper::{
       Wrapper,
@@ -319,16 +319,6 @@ impl Invocation {
          .map(|path| path.to_string_lossy().into_owned())
          .collect()
    }
-}
-
-#[derive(Deserialize, Serialize)]
-struct Artifact {
-   name:   String,
-   mode:   u32,
-   hash:   Digest,
-   /// A link output kept as the linker wrote it, its RUNPATH settled on replay.
-   #[serde(default)]
-   settle: bool,
 }
 
 /// One crate compile in front of the cache.
@@ -616,7 +606,15 @@ fn store_result(
          "Rust dependency file lists no compiler artifacts",
       ));
    }
-   let mut artifacts = Vec::new();
+   let mut record = Record {
+      status:      0,
+      diagnostics: diagnostics.to_vec(),
+      depfile:     None,
+      link_deps:   link_text
+         .map(|dependencies| store.stored_text(&dependencies))
+         .transpose()?,
+      artifacts:   Vec::new(),
+   };
    for output in outputs {
       let name = output
          .file_name()
@@ -631,25 +629,14 @@ fn store_result(
       if invocation.links {
          store.mask_output(&mut bytes, false);
       }
-      let hash = Digest::of(&bytes);
-      cache.put(&Key::digest(Namespace::Blob, &hash), &bytes)?;
-      artifacts.push(Artifact {
+      record.artifacts.push(Artifact {
          name: stem(name, &invocation.suffix, "@"),
-         mode: metadata(&output)?.permissions().mode() & 0o777,
-         hash,
+         mode: Some(metadata(&output)?.permissions().mode() & 0o777),
+         bytes,
          settle,
       });
    }
-   if let Some(dependencies) = link_text {
-      let mut link_bytes = store.mask_text(&dependencies).into_bytes();
-      store.mask_output(&mut link_bytes, false);
-      cache.put(&Key::digest(Namespace::LinkDepfile, &key), &link_bytes)?;
-   }
-   cache.put(
-      &Key::digest(Namespace::Object, &key),
-      &serde_json::to_vec(&artifacts)?,
-   )?;
-   cache.put(&Key::digest(Namespace::Diagnostics, &key), diagnostics)?;
+   record.put(cache, &key)?;
    manifest.publish(cache, request)
 }
 
@@ -667,60 +654,41 @@ fn replay(
    invocation: &Invocation,
    key: &Digest,
 ) -> Result<(), Miss> {
-   let Some(listing) = cache.get(&Key::digest(Namespace::Object, key))? else {
-      return Err(Miss::ObjectGone);
-   };
-   let artifacts = serde_json::from_slice::<Vec<Artifact>>(&listing).map_err(io::Error::from)?;
-   if artifacts.is_empty() {
+   let record = Record::get(cache, key)?;
+   if record.artifacts.is_empty()
+      || record
+         .artifacts
+         .iter()
+         .any(|artifact| Path::new(&artifact.name).components().count() != 1)
+   {
       return Err(Miss::Failed(io::Error::other(
-         "cached Rust result contains no artifacts",
+         "invalid cached Rust artifacts",
       )));
    }
-   let mut values = Vec::new();
-   for artifact in &artifacts {
-      relative_path(&artifact.name)?;
-      if Path::new(&artifact.name).components().count() != 1 || artifact.mode > 0o777 {
-         return Err(Miss::Failed(io::Error::other(
-            "invalid cached Rust artifact",
-         )));
-      }
-      let Some(bytes) = cache.get(&Key::digest(Namespace::Blob, &artifact.hash))? else {
+   let link_text = if record.artifacts.iter().any(|artifact| artifact.settle) {
+      let Some(stored) = record.link_deps else {
          return Err(Miss::ObjectGone);
       };
-      if Digest::of(&bytes) != artifact.hash {
-         return Err(Miss::Failed(io::Error::other(
-            "Rust artifact content hash differs",
-         )));
-      }
-      values.push(bytes);
-   }
-   let Some(diagnostics) = cache.get(&Key::digest(Namespace::Diagnostics, key))? else {
-      return Err(Miss::ObjectGone);
-   };
-   let link_text = if artifacts.iter().any(|artifact| artifact.settle) {
-      let Some(link_bytes) = cache.get(&Key::digest(Namespace::LinkDepfile, key))? else {
-         return Err(Miss::ObjectGone);
-      };
-      Some(store.replayed_text(link_bytes)?)
+      Some(store.replayed_text(stored)?)
    } else {
       None
    };
-   for (artifact, stored) in artifacts.iter().zip(values) {
+   for artifact in record.artifacts {
       let bytes = if invocation.links {
          let settling = link_text.as_deref().filter(|_| artifact.settle);
-         replayed_link(store, stored, settling)?
+         replayed_link(store, artifact.bytes, settling)?
       } else {
-         stored
+         artifact.bytes
       };
       write_file(
          &invocation
             .out_dir
             .join(stem(&artifact.name, "@", &invocation.suffix)),
          &bytes,
-         Some(artifact.mode),
+         artifact.mode,
       )?;
    }
-   io::stderr().lock().write_all(&diagnostics)?;
+   io::stderr().lock().write_all(&record.diagnostics)?;
    Ok(())
 }
 

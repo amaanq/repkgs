@@ -286,9 +286,18 @@ impl Store {
 
    /// Stored text with this build's output and store paths put back.
    #[inline]
-   pub fn replayed_text(&self, mut bytes: Vec<u8>) -> io::Result<String> {
+   pub fn replayed_text(&self, text: String) -> io::Result<String> {
+      let mut bytes = text.into_bytes();
       self.mask_output(&mut bytes, true);
       Ok(self.resolve_all(&String::from_utf8(bytes).map_err(io::Error::other)?))
+   }
+
+   /// Text to store with this build's output and store hashes masked.
+   #[inline]
+   pub fn stored_text(&self, text: &str) -> io::Result<String> {
+      let mut bytes = self.mask_text(text).into_bytes();
+      self.mask_output(&mut bytes, false);
+      String::from_utf8(bytes).map_err(io::Error::other)
    }
 
    /// The scratch names `CMake` made up for this run, so paths a manifest
