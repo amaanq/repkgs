@@ -57,10 +57,125 @@ use crate::{
    manifest::parse_depfile,
 };
 
-#[expect(
-   clippy::too_many_lines,
-   reason = "single path validates compiler inputs and cache lookup in one pass"
-)]
+/// One autoconf header check, answered by preprocessing it with the
+/// compile's flags.
+struct Probe<'args> {
+   context:  &'args str,
+   warnings: &'args str,
+   compiler: &'args str,
+   expanded: Vec<String>,
+}
+
+/// The check's source with unused autoconf defines blanked, what the
+/// preprocessor printed and the headers it read.
+struct Preprocessed {
+   source:       String,
+   output:       Vec<u8>,
+   dependencies: Vec<String>,
+}
+
+impl Probe<'_> {
+   /// The flags and environment leave the compiler reading only what its
+   /// dependency file reports.
+   fn supported(&self) -> io::Result<bool> {
+      let compiles_conftest = matches!(
+         jobs(self.compiler, &self.expanded)?.as_slice(),
+         [job] if job.last().is_some_and(|input| input == "conftest.c")
+      );
+      Ok(is_store_path(self.compiler)
+         && compiles_conftest
+         && !self.expanded.iter().any(|arg| reads_unreported_file(arg))
+         && ![
+            "CCC_OVERRIDE_OPTIONS",
+            "CL",
+            "_CL_",
+            "GCC_EXEC_PREFIX",
+            "COMPILER_PATH",
+            "SDKROOT",
+         ]
+         .iter()
+         .any(|name| var_os(name).is_some_and(|value| !value.is_empty())))
+   }
+
+   fn preprocess(&self, cache: &mut Client) -> Result<Result<Preprocessed, Outcome>> {
+      let dependency_file = NamedTempFile::new_in(".")?;
+      let slot = Slot::acquire(cache)?;
+      let output = Command::new(self.compiler)
+         .args(self.expanded.iter().filter(|arg| *arg != "-c"))
+         .args(["-E", "-MD", "-MF"])
+         .arg(dependency_file.path())
+         .args([
+            "-MT",
+            "probe",
+            "-Wunused-macros",
+            "-Wno-error=unused-macros",
+            "-fno-color-diagnostics",
+            "-fno-caret-diagnostics",
+         ])
+         .env("LC_ALL", "C")
+         .output()?;
+      drop(slot);
+      if !output.status.success() {
+         return Ok(Err(Outcome::PreprocessFailed));
+      }
+      let diagnostics = String::from_utf8(output.stderr)?;
+      let Some(source) = normalize_source(&read_to_string("conftest.c")?, &diagnostics) else {
+         return Ok(Err(Outcome::Diagnostics));
+      };
+      let dependencies = parse_depfile(&read_to_string(dependency_file.path())?);
+      if dependencies.is_empty() {
+         bail!("header preprocessor produced no dependencies")
+      }
+      Ok(Ok(Preprocessed {
+         source,
+         output: output.stdout,
+         dependencies,
+      }))
+   }
+
+   fn key(&self, preprocessed: Preprocessed) -> Result<Key> {
+      let mut hasher = Hasher::new();
+      field(&mut hasher, self.context);
+      field(&mut hasher, self.compiler);
+      field(&mut hasher, self.warnings);
+      for arg in &self.expanded {
+         field(&mut hasher, arg);
+      }
+      for name in [
+         "CPATH",
+         "C_INCLUDE_PATH",
+         "CPLUS_INCLUDE_PATH",
+         "OBJC_INCLUDE_PATH",
+         "LIBRARY_PATH",
+         "SOURCE_DATE_EPOCH",
+         "LANG",
+         "LC_ALL",
+         "LC_CTYPE",
+         "LC_MESSAGES",
+      ] {
+         field(&mut hasher, name);
+         field(&mut hasher, serde_json::to_vec(&var_os(name))?);
+      }
+      field(&mut hasher, preprocessed.source);
+      field(&mut hasher, preprocessed.output);
+      let source_path = canonicalize("conftest.c")?;
+      for dependency in preprocessed.dependencies {
+         let path = canonicalize(dependency)?;
+         if path == source_path {
+            continue;
+         }
+         field(&mut hasher, path.as_os_str().as_encoded_bytes());
+         if !is_store_path(&path.to_string_lossy()) {
+            field(&mut hasher, read(path)?);
+         }
+      }
+      Ok(Key::hex(
+         Namespace::HeaderProbe,
+         hasher.finalize().as_bytes(),
+      ))
+   }
+}
+
 pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
    let started = Instant::now();
    let &[ref context, ref warnings, ref compiler, ref raw @ ..] = args else {
@@ -80,25 +195,13 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
       return Ok(1);
    }
    let driver = Driver::load()?;
-   let expanded = driver.arguments(Language::Cc, raw);
-   let compiles_conftest = matches!(
-      jobs(driver.cc(), &expanded)?.as_slice(),
-      [job] if job.last().is_some_and(|input| input == "conftest.c")
-   );
-   if !is_store_path(driver.cc())
-      || !compiles_conftest
-      || expanded.iter().any(|arg| reads_unreported_file(arg))
-      || [
-         "CCC_OVERRIDE_OPTIONS",
-         "CL",
-         "_CL_",
-         "GCC_EXEC_PREFIX",
-         "COMPILER_PATH",
-         "SDKROOT",
-      ]
-      .iter()
-      .any(|name| var_os(name).is_some_and(|value| !value.is_empty()))
-   {
+   let probe = Probe {
+      context,
+      warnings,
+      compiler: driver.cc(),
+      expanded: driver.arguments(Language::Cc, raw),
+   };
+   if !probe.supported()? {
       log(
          Tool::Header,
          Outcome::UnsupportedOptions,
@@ -112,78 +215,14 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
       log(Tool::Header, Outcome::CompileHit, "conftest.c", started);
       return Ok(0);
    }
-   let dependency_file = NamedTempFile::new_in(".")?;
-   let slot = Slot::acquire(&mut cache)?;
-   let output = Command::new(driver.cc())
-      .args(expanded.iter().filter(|arg| *arg != "-c"))
-      .args(["-E", "-MD", "-MF"])
-      .arg(dependency_file.path())
-      .args([
-         "-MT",
-         "probe",
-         "-Wunused-macros",
-         "-Wno-error=unused-macros",
-         "-fno-color-diagnostics",
-         "-fno-caret-diagnostics",
-      ])
-      .env("LC_ALL", "C")
-      .output()?;
-   drop(slot);
-   if !output.status.success() {
-      log(
-         Tool::Header,
-         Outcome::PreprocessFailed,
-         "conftest.c",
-         started,
-      );
-      return Ok(1);
-   }
-   let source = read_to_string("conftest.c")?;
-   let diagnostics = String::from_utf8(output.stderr)?;
-   let Some(normalized) = normalize_source(&source, &diagnostics) else {
-      log(Tool::Header, Outcome::Diagnostics, "conftest.c", started);
-      return Ok(1);
+   let preprocessed = match probe.preprocess(&mut cache)? {
+      Ok(preprocessed) => preprocessed,
+      Err(outcome) => {
+         log(Tool::Header, outcome, "conftest.c", started);
+         return Ok(1);
+      },
    };
-   let mut hasher = Hasher::new();
-   field(&mut hasher, context);
-   field(&mut hasher, driver.cc());
-   field(&mut hasher, warnings);
-   for arg in &expanded {
-      field(&mut hasher, arg);
-   }
-   for name in [
-      "CPATH",
-      "C_INCLUDE_PATH",
-      "CPLUS_INCLUDE_PATH",
-      "OBJC_INCLUDE_PATH",
-      "LIBRARY_PATH",
-      "SOURCE_DATE_EPOCH",
-      "LANG",
-      "LC_ALL",
-      "LC_CTYPE",
-      "LC_MESSAGES",
-   ] {
-      field(&mut hasher, name);
-      field(&mut hasher, serde_json::to_vec(&var_os(name))?);
-   }
-   field(&mut hasher, normalized);
-   field(&mut hasher, output.stdout);
-   let source_path = canonicalize("conftest.c")?;
-   let dependencies = parse_depfile(&read_to_string(dependency_file.path())?);
-   if dependencies.is_empty() {
-      bail!("header preprocessor produced no dependencies")
-   }
-   for dependency in dependencies {
-      let path = canonicalize(dependency)?;
-      if path == source_path {
-         continue;
-      }
-      field(&mut hasher, path.as_os_str().as_encoded_bytes());
-      if !is_store_path(&path.to_string_lossy()) {
-         field(&mut hasher, read(path)?);
-      }
-   }
-   let key = Key::hex(Namespace::HeaderProbe, hasher.finalize().as_bytes());
+   let key = probe.key(preprocessed)?;
    match cache.get(&key)? {
       Some(bytes) if bytes == b"yes\n" => {
          log(Tool::Header, Outcome::Hit, &key, started);
