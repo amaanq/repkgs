@@ -1,4 +1,5 @@
 pub mod attrs;
+pub mod config;
 pub mod directory;
 pub mod elf;
 pub mod files;

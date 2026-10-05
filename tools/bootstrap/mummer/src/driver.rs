@@ -17,6 +17,10 @@ use std::{
 };
 
 use mummer::{
+   config::{
+      BinaryFormat,
+      Config,
+   },
    elf::{
       RUNPATH_SLACK,
       is_elf,
@@ -37,40 +41,29 @@ use crate::manifest::{
    parse_depfile,
 };
 
-#[derive(Clone, Copy, Default, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum BinaryFormat {
-   #[default]
-   Elf,
-   MachO,
-   Coff,
-}
-
-impl BinaryFormat {
-   fn keeps(self, arg: &str) -> Option<String> {
-      match self {
-         Self::Elf => {
-            (!arg.starts_with("-Wl,--dynamic-linker") && !arg.starts_with("-Wl,-dynamic-linker"))
-               .then(|| arg.to_owned())
-         },
-         Self::MachO => Some(arg.to_owned()),
-         Self::Coff => {
-            if matches!(
-               arg,
-               "-fPIC" | "-fpic" | "-fPIE" | "-fpie" | "-fno-PIC" | "-fno-pic" | "-pie"
-            ) {
-               return None;
-            }
-            if (arg.starts_with("-std=c") || arg.starts_with("-std=gnu"))
-               && ["++98", "++03", "++0x", "++11"]
-                  .iter()
-                  .any(|suffix| arg.ends_with(suffix))
-            {
-               return Some(format!("{}14", &arg[..arg.len() - 2]));
-            }
-            Some(arg.to_owned())
-         },
-      }
+fn kept(format: BinaryFormat, arg: &str) -> Option<String> {
+   match format {
+      BinaryFormat::Elf => {
+         (!arg.starts_with("-Wl,--dynamic-linker") && !arg.starts_with("-Wl,-dynamic-linker"))
+            .then(|| arg.to_owned())
+      },
+      BinaryFormat::MachO => Some(arg.to_owned()),
+      BinaryFormat::Coff => {
+         if matches!(
+            arg,
+            "-fPIC" | "-fpic" | "-fPIE" | "-fpie" | "-fno-PIC" | "-fno-pic" | "-pie"
+         ) {
+            return None;
+         }
+         if (arg.starts_with("-std=c") || arg.starts_with("-std=gnu"))
+            && ["++98", "++03", "++0x", "++11"]
+               .iter()
+               .any(|suffix| arg.ends_with(suffix))
+         {
+            return Some(format!("{}14", &arg[..arg.len() - 2]));
+         }
+         Some(arg.to_owned())
+      },
    }
 }
 
@@ -91,64 +84,45 @@ pub struct PackageFlags {
    ldflags:  Vec<String>,
 }
 
-#[derive(Deserialize)]
-#[serde(default)]
-pub struct Driver {
-   #[serde(rename = "cc")]
-   compiler:    String,
-   fc:          Option<String>,
-   #[serde(rename = "binfmt")]
-   format:      BinaryFormat,
-   #[serde(skip)]
-   configured:  bool,
-   libc:        String,
-   #[serde(rename = "interp")]
-   interpreter: String,
-   crt:         String,
-   flags:       Vec<String>,
-   cxxflags:    Vec<String>,
-   fflags:      Vec<String>,
-   #[serde(rename = "prefix-map")]
-   prefix_map:  Vec<String>,
-   #[serde(skip)]
-   package:     PackageFlags,
+pub struct Toolchain {
+   config:  Config,
+   package: PackageFlags,
 }
 
-impl Default for Driver {
-   fn default() -> Self {
-      Self {
-         compiler:    String::new(),
-         fc:          None,
-         format:      BinaryFormat::Elf,
-         configured:  false,
-         libc:        String::new(),
-         interpreter: "ld-linux-x86-64.so.2".to_owned(),
-         crt:         String::new(),
-         flags:       Vec::new(),
-         cxxflags:    Vec::new(),
-         fflags:      Vec::new(),
-         prefix_map:  Vec::new(),
-         package:     PackageFlags::default(),
-      }
-   }
+pub enum Driver {
+   Bare(String),
+   Configured(Box<Toolchain>),
 }
 
 impl Driver {
    /// The C compiler, which also compiles C++ under its g++ driver mode.
    pub fn cc(&self) -> &str {
-      &self.compiler
+      match *self {
+         Self::Bare(ref compiler) => compiler,
+         Self::Configured(ref toolchain) => &toolchain.config.cc,
+      }
    }
 
    pub fn compiler(&self, language: Language) -> Option<&str> {
       match language {
-         Language::Cc | Language::Cxx => Some(&self.compiler),
-         Language::Fortran => self.fc.as_deref(),
+         Language::Cc | Language::Cxx => Some(self.cc()),
+         Language::Fortran => self.toolchain()?.config.fc.as_deref(),
       }
    }
 
-   pub const fn format(&self) -> BinaryFormat {
-      self.format
+   fn toolchain(&self) -> Option<&Toolchain> {
+      match *self {
+         Self::Bare(_) => None,
+         Self::Configured(ref toolchain) => Some(toolchain),
+      }
    }
+
+   pub fn format(&self) -> BinaryFormat {
+      self
+         .toolchain()
+         .map_or(BinaryFormat::Elf, |toolchain| toolchain.config.binfmt)
+   }
+
    pub fn load() -> io::Result<Self> {
       let executable = current_exe()?;
       Self::load_at(
@@ -161,44 +135,43 @@ impl Driver {
 
    /// The driver of the toolchain installed at `root`.
    pub fn load_at(root: &Path) -> io::Result<Self> {
-      let mut driver = Self::default();
-
-      match read_to_string(root.join("etc/mummer.json")) {
-         Ok(config_text) => {
-            driver = serde_json::from_str(&config_text)
-               .map_err(|error| io::Error::other(format!("invalid mummer.json, {error}")))?;
-            driver.configured = true;
-
-            for flag in &mut driver.fflags {
-               if let Some(position) = flag.find("@/")
-                  && (position == 0
-                     || (position == 2 && flag.starts_with('-'))
-                     || flag.as_bytes().get(position - 1) == Some(&b'='))
-               {
-                  flag.replace_range(position..=position, &root.to_string_lossy());
-               }
-            }
-
-            if let Ok(packages_text) = var("PKGS_CC") {
-               let mut packages =
-                  serde_json::from_str::<HashMap<String, PackageFlags>>(&packages_text)?;
-               let name = root
-                  .to_str()
-                  .ok_or_else(|| io::Error::other("mummer installation path is not UTF-8"))?;
-               driver.package = packages.remove(name).unwrap_or_default();
-            }
-         },
+      let text = match read_to_string(root.join("etc/mummer.json")) {
+         Ok(text) => text,
          Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            driver.compiler = var("MUMMER_CC").unwrap_or_default();
+            return var("MUMMER_CC")
+               .ok()
+               .filter(|compiler| !compiler.is_empty())
+               .map(Self::Bare)
+               .ok_or_else(|| io::Error::other("mummer needs etc/mummer.json or MUMMER_CC"));
          },
          Err(error) => return Err(error),
+      };
+      let mut config = serde_json::from_str::<Config>(&text)
+         .map_err(|error| io::Error::other(format!("invalid mummer.json, {error}")))?;
+      if config.cc.is_empty() {
+         return Err(io::Error::other("mummer.json names no cc"));
       }
-      if driver.compiler.is_empty() {
-         return Err(io::Error::other(
-            "mummer needs etc/mummer.json or MUMMER_CC",
-         ));
+      for flag in &mut config.fflags {
+         if let Some(position) = flag.find("@/")
+            && (position == 0
+               || (position == 2 && flag.starts_with('-'))
+               || flag.as_bytes().get(position - 1) == Some(&b'='))
+         {
+            flag.replace_range(position..=position, &root.to_string_lossy());
+         }
       }
-      Ok(driver)
+      let package = match var("PKGS_CC") {
+         Ok(packages_text) => {
+            let mut packages =
+               serde_json::from_str::<HashMap<String, PackageFlags>>(&packages_text)?;
+            let name = root
+               .to_str()
+               .ok_or_else(|| io::Error::other("mummer installation path is not UTF-8"))?;
+            packages.remove(name).unwrap_or_default()
+         },
+         Err(_) => PackageFlags::default(),
+      };
+      Ok(Self::Configured(Box::new(Toolchain { config, package })))
    }
 
    #[expect(
@@ -206,9 +179,12 @@ impl Driver {
       reason = "compiler mode rewrite is linear, each case is in one place"
    )]
    pub fn arguments(&self, language: Language, raw: &[String]) -> Vec<String> {
-      if !self.configured {
+      let Some(toolchain) = self.toolchain() else {
          return raw.to_vec();
-      }
+      };
+      let config = &toolchain.config;
+      let package = &toolchain.package;
+      let format = config.binfmt;
       let cxx = language == Language::Cxx;
       let fortran = language == Language::Fortran;
       let mut user = Vec::new();
@@ -223,7 +199,7 @@ impl Driver {
       while index < raw.len() {
          let arg = &raw[index];
          index += 1;
-         let Some(kept) = self.format.keeps(arg) else {
+         let Some(kept) = kept(format, arg) else {
             continue;
          };
          linking &= !matches!(
@@ -245,12 +221,15 @@ impl Driver {
       } else {
          "--start-no-unused-arguments".to_owned()
       }];
-      output.extend_from_slice(if fortran { &self.fflags } else { &self.flags });
+      output.extend_from_slice(if fortran {
+         &config.fflags
+      } else {
+         &config.flags
+      });
 
       if !fortran {
          output.extend(
-            self
-               .package
+            package
                .cflags
                .iter()
                .filter(|flag| !fortify(flag) || (!sets_fortify && optimizes))
@@ -259,11 +238,11 @@ impl Driver {
       }
       if cxx {
          output.push("--driver-mode=g++".to_owned());
-         output.extend_from_slice(&self.cxxflags);
-         output.extend_from_slice(&self.package.cxxflags);
+         output.extend_from_slice(&config.cxxflags);
+         output.extend_from_slice(&package.cxxflags);
       }
       if !fortran {
-         for mapping in self.prefix_map.iter().map(String::as_str).chain(
+         for mapping in config.prefix_map.iter().map(String::as_str).chain(
             var("PKGS_PREFIX_MAP")
                .unwrap_or_default()
                .split(':')
@@ -272,7 +251,7 @@ impl Driver {
             output.push(format!("-ffile-prefix-map={mapping}"));
          }
       }
-      if self.format == BinaryFormat::Elf && linking && have_input {
+      if format == BinaryFormat::Elf && linking && have_input {
          output.extend([
             "-Wl,--build-id=sha1".to_owned(),
             r#"-Wl,--package-metadata={"type":"motley"}"#.to_owned(),
@@ -282,18 +261,18 @@ impl Driver {
          output.push("--end-no-unused-arguments".to_owned());
       }
 
-      if linking && have_input && self.format == BinaryFormat::Coff {
-         self.lower_libraries(&mut user);
+      if linking && have_input && format == BinaryFormat::Coff {
+         lower_libraries(&mut user, &package.ldflags);
       }
 
       output.extend_from_slice(&user);
       if linking && have_input {
-         output.extend_from_slice(&self.package.ldflags);
+         output.extend_from_slice(&package.ldflags);
       }
       if !linking || !have_input || no_policy {
          return output;
       }
-      match self.format {
+      match format {
          BinaryFormat::Elf => {},
          BinaryFormat::MachO => {
             output.push("-Wl,-headerpad_max_install_names".to_owned());
@@ -308,67 +287,70 @@ impl Driver {
          format!("-Wl,-rpath,{path}"),
          "-Wl,--enable-new-dtags".to_owned(),
       ]);
+      let Some(ref policy) = config.policy else {
+         return output;
+      };
       if shared || no_startup {
          return output;
       }
-      if self.crt.is_empty() {
-         output.push(format!(
-            "-Wl,--dynamic-linker={}/lib/{}",
-            self.libc, self.interpreter
-         ));
-      } else {
+      if let Some(ref crt) = policy.crt {
          output.extend([
             "-x".to_owned(),
             "none".to_owned(),
-            self.crt.clone(),
+            crt.clone(),
             format!(
                "-Wl,--dynamic-linker={}/lib/{}{}",
-               self.libc,
+               policy.libc,
                "./".repeat(12),
-               self.interpreter
+               policy.interp
             ),
             "-Wl,--export-dynamic-symbol=__reloc_start".to_owned(),
          ]);
+      } else {
+         output.push(format!(
+            "-Wl,--dynamic-linker={}/lib/{}",
+            policy.libc, policy.interp
+         ));
       }
       output
    }
+}
 
-   fn lower_libraries(&self, user: &mut [String]) {
-      let mut directories = Vec::new();
+fn lower_libraries(user: &mut [String], ldflags: &[String]) {
+   let mut directories = Vec::new();
 
-      for args in [&*user, self.package.ldflags.as_slice()] {
-         for (position, arg) in args.iter().enumerate() {
-            if let Some(tail) = arg.strip_prefix("-L") {
-               let directory = if tail.is_empty() {
-                  args.get(position + 1).map(String::as_str)
-               } else {
-                  Some(tail)
-               };
+   for args in [&*user, ldflags] {
+      for (position, arg) in args.iter().enumerate() {
+         if let Some(tail) = arg.strip_prefix("-L") {
+            let directory = if tail.is_empty() {
+               args.get(position + 1).map(String::as_str)
+            } else {
+               Some(tail)
+            };
 
-               if let Some(path) = directory {
-                  directories.push(Path::new(path).to_path_buf());
-               }
+            if let Some(path) = directory {
+               directories.push(Path::new(path).to_path_buf());
             }
          }
       }
+   }
 
-      for arg in user {
-         let Some(name) = arg.strip_prefix("-l") else {
-            continue;
-         };
+   for arg in user {
+      let Some(name) = arg.strip_prefix("-l") else {
+         continue;
+      };
 
-         if arg.contains('/')
-            || directories.iter().any(|directory| {
-               directory.join(format!("lib{name}.dll.a")).exists()
-                  || directory.join(format!("lib{name}.a")).exists()
-                  || directory.join(name).exists()
-            })
-         {
-            continue;
-         }
-
-         arg.make_ascii_lowercase();
+      if arg.contains('/')
+         || directories.iter().any(|directory| {
+            directory.join(format!("lib{name}.dll.a")).exists()
+               || directory.join(format!("lib{name}.a")).exists()
+               || directory.join(name).exists()
+         })
+      {
+         continue;
       }
+
+      arg.make_ascii_lowercase();
    }
 }
 

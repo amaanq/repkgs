@@ -34,6 +34,7 @@ use std::{
 
 use blake3::Hasher;
 use mummer::{
+   config::BinaryFormat,
    files::{
       remove_if_exists,
       write_file,
@@ -71,7 +72,6 @@ use tightrope::{
 
 use crate::{
    driver::{
-      BinaryFormat,
       Driver,
       Language,
       Settled,
