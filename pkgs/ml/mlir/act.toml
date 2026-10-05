@@ -30,3 +30,6 @@ MLIR_LINK_MLIR_DYLIB           = false
 
 [install]
 "bin/" = "bin/mlir-tblgen"
+
+[cc]
+debugInfo = "lines"
