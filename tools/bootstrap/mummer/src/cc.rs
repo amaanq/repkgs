@@ -12,7 +12,6 @@ use std::{
       metadata,
       read,
       read_to_string,
-      remove_file,
    },
    io::{
       self,
@@ -30,7 +29,10 @@ use std::{
 
 use blake3::Hasher;
 use mummer::{
-   files::write_file,
+   files::{
+      remove_if_exists,
+      write_file,
+   },
    process::{
       RunResult,
       Slot,
@@ -936,10 +938,7 @@ fn run_split(invocation: &Invocation) -> io::Result<i32> {
       status = status_code(Command::new(&wrapper).args(&link).status()?);
    }
    for object in &objects {
-      match remove_file(object) {
-         Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
-         Ok(()) | Err(_) => {},
-      }
+      remove_if_exists(Path::new(object))?;
    }
    Ok(status)
 }

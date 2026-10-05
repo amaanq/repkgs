@@ -42,6 +42,24 @@ pub fn write_file(path: &Path, bytes: &[u8], mode: Option<u32>) -> io::Result<()
    Ok(())
 }
 
+/// A directory's entries in name order.
+#[inline]
+pub fn sorted_entries(directory: &Path) -> io::Result<Vec<PathBuf>> {
+   let mut found = read_dir(directory)?
+      .map(|entry| entry.map(|found| found.path()))
+      .collect::<io::Result<Vec<_>>>()?;
+   found.sort();
+   Ok(found)
+}
+
+#[inline]
+pub fn remove_if_exists(path: &Path) -> io::Result<()> {
+   match fs::remove_file(path) {
+      Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+      Ok(()) | Err(_) => Ok(()),
+   }
+}
+
 #[inline]
 pub fn relative_path(text: &str) -> io::Result<&Path> {
    let path = Path::new(text);

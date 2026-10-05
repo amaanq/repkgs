@@ -10,7 +10,6 @@ use std::{
       read,
       read_dir,
       read_to_string,
-      remove_file,
    },
    io::{
       self,
@@ -30,6 +29,7 @@ use blake3::Hasher;
 use mummer::{
    files::{
       relative_path,
+      remove_if_exists,
       write_file,
    },
    process::{
@@ -400,10 +400,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
       )
    });
    for record in link_records {
-      match remove_file(record) {
-         Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
-         Ok(()) | Err(_) => {},
-      }
+      remove_if_exists(&record)?;
    }
    let Some(stored) = storing else {
       log("rustc", "failed", &explained, started);

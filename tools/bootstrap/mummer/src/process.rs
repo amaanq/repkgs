@@ -39,6 +39,8 @@ use misstep::{
 use pound::Error as ArgumentError;
 use tightrope::client::Client;
 
+use crate::store::STORE_DIR;
+
 pub struct Slot<'client> {
    client: &'client mut Client,
    build:  String,
@@ -227,11 +229,41 @@ where
    }
 }
 
+/// A child that must succeed, its failure an error naming the command.
+pub trait Checked {
+   fn checked(&mut self) -> io::Result<()>;
+   /// Its stdout, with stderr passed through.
+   fn checked_output(&mut self) -> io::Result<Vec<u8>>;
+}
+
+impl Checked for Command {
+   #[inline]
+   fn checked(&mut self) -> io::Result<()> {
+      let status = self.status()?;
+      if status.success() {
+         return Ok(());
+      }
+      Err(io::Error::other(format!("{self:?} failed, {status}")))
+   }
+
+   #[inline]
+   fn checked_output(&mut self) -> io::Result<Vec<u8>> {
+      let output = self.stderr(Stdio::inherit()).output()?;
+      if output.status.success() {
+         return Ok(output.stdout);
+      }
+      Err(io::Error::other(format!(
+         "{self:?} failed, {}",
+         output.status
+      )))
+   }
+}
+
 #[inline]
 pub fn socket() -> PathBuf {
    var_os("MUMMER_SOCK").map_or_else(
       || {
-         let store = Path::new(option_env!("MUMMER_STORE_DIR").unwrap_or("/nix/store"));
+         let store = Path::new(STORE_DIR);
          store
             .parent()
             .unwrap_or_else(|| Path::new("/nix"))
