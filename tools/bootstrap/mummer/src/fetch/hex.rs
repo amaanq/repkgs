@@ -2,6 +2,7 @@ use std::{
    collections::BTreeMap,
    fs::read_to_string,
    io,
+   iter::from_fn,
    path::Path,
 };
 
@@ -30,32 +31,33 @@ const REPO: &str = "https://repo.hex.pm/tarballs";
 struct Package {
    name:    String,
    version: String,
-   sha256:  String,
+   sha256:  OutputHash,
 }
 
 fn is_sha256(text: &str) -> bool {
    Digest::from_hex(Algorithm::Sha256, text).is_ok()
 }
 
-/// the `"…"` strings of one line, in order.
-fn quoted(line: &str) -> Vec<&str> {
-   let mut found = Vec::new();
-   let mut rest = line;
-   while let Some(start) = rest.find('"') {
-      let body = &rest[start + 1..];
-      let Some(end) = body.find('"') else {
-         break;
-      };
-      found.push(&body[..end]);
-      rest = &body[end + 1..];
-   }
-   found
+/// every string between `open` and `close` in `text`, in order.
+fn delimited<'text>(
+   text: &'text str,
+   open: &'static str,
+   close: &'static str,
+) -> impl Iterator<Item = &'text str> {
+   let mut rest = text;
+   from_fn(move || {
+      let body = &rest[rest.find(open)? + open.len()..];
+      let end = body.find(close)?;
+      rest = &body[end + close.len()..];
+      Some(&body[..end])
+   })
 }
 
 /// `"app": {:hex, :name, "version", "inner", [tools], [deps], "hexpm",
 /// "outer"}`.
 fn mix_lock(text: &str) -> io::Result<Vec<Package>> {
    let mut foreign = Vec::new();
+   let mut unhashed = Vec::new();
    let mut packages = Vec::new();
    for line in text.lines() {
       let Some((quoted_app, rest)) = line.trim().split_once("\": {:") else {
@@ -70,7 +72,7 @@ fn mix_lock(text: &str) -> io::Result<Vec<Package>> {
          continue;
       };
       let name = after.split(',').next().unwrap_or_default().to_owned();
-      let strings = quoted(after);
+      let strings = delimited(after, "\"", "\"").collect::<Vec<_>>();
       // a dependency's `repo: "hexpm"` comes first, the outer hash follows the
       // last one
       let outer = strings
@@ -78,31 +80,19 @@ fn mix_lock(text: &str) -> io::Result<Vec<Package>> {
          .rev()
          .find(|pair| matches!(**pair, [repo, hash] if repo == "hexpm" && is_sha256(hash)))
          .and_then(|pair| pair.get(1).copied());
-      if let (Some(version), Some(sha256)) = (strings.first(), outer) {
-         packages.push(Package {
-            name,
-            version: (*version).to_owned(),
-            sha256: sha256.to_owned(),
-         });
-      }
+      let (Some(version), Some(sha256)) = (strings.first(), outer) else {
+         unhashed.push(app);
+         continue;
+      };
+      packages.push(Package {
+         name,
+         version: (*version).to_owned(),
+         sha256: OutputHash::hex(Algorithm::Sha256, sha256)?,
+      });
    }
    reject("hexDeps: mix.lock has non-hex entries", &foreign)?;
+   reject("hexDeps: mix.lock has no hexpm hash for", &unhashed)?;
    Ok(packages)
-}
-
-/// every `<<"…">>` binary of a text, in order.
-fn binaries(text: &str) -> Vec<&str> {
-   let mut found = Vec::new();
-   let mut rest = text;
-   while let Some(start) = rest.find("<<\"") {
-      let body = &rest[start + 3..];
-      let Some(end) = body.find("\">>") else {
-         break;
-      };
-      found.push(&body[..end]);
-      rest = &body[end + 3..];
-   }
-   found
 }
 
 /// `{<<"name">>,{pkg,<<"name">>,<<"version">>},_}` in the first term,
@@ -117,35 +107,43 @@ fn rebar_lock(text: &str) -> io::Result<Vec<Package>> {
       })
       .collect();
    reject("hexDeps: rebar.lock has non-hex entries", &foreign)?;
-   let hashes: BTreeMap<String, String> = text
+   let hashes: BTreeMap<&str, &str> = text
       .split_once("{pkg_hash_ext,[")
       .map(|(_head, tail)| tail.split("]}").next().unwrap_or_default())
       .map(|ext| {
-         let names = binaries(ext);
-         names
+         delimited(ext, "<<\"", "\">>")
+            .collect::<Vec<_>>()
             .chunks(2)
             .filter_map(|pair| {
                match *pair {
-                  [name, hash] if is_sha256(hash) => Some((name.to_owned(), hash.to_lowercase())),
+                  [name, hash] if is_sha256(hash) => Some((name, hash)),
                   _ => None,
                }
             })
             .collect()
       })
       .unwrap_or_default();
+   let mut unhashed = Vec::new();
    let mut packages = Vec::new();
    for (at, _found) in text.match_indices("{pkg,<<\"") {
-      let fields = binaries(&text[at..]);
-      if let [name, version, ..] = fields[..]
-         && let Some(sha256) = hashes.get(name)
-      {
-         packages.push(Package {
-            name:    name.to_owned(),
-            version: version.to_owned(),
-            sha256:  sha256.clone(),
-         });
-      }
+      let mut fields = delimited(&text[at..], "<<\"", "\">>");
+      let (Some(name), Some(version)) = (fields.next(), fields.next()) else {
+         continue;
+      };
+      let Some(sha256) = hashes.get(name) else {
+         unhashed.push(name);
+         continue;
+      };
+      packages.push(Package {
+         name:    name.to_owned(),
+         version: version.to_owned(),
+         sha256:  OutputHash::hex(Algorithm::Sha256, &sha256.to_lowercase())?,
+      });
    }
+   reject(
+      "hexDeps: rebar.lock has no pkg_hash_ext entry for",
+      &unhashed,
+   )?;
    Ok(packages)
 }
 
@@ -166,13 +164,13 @@ impl Producer for Hex {
          rebar_lock(&read_to_string(format!("{dir}/rebar.lock"))?)?
       };
       let mut plan = Plan::new("hex-deps");
-      for package in &packages {
+      for package in packages {
          let file = format!("{}-{}.tar", package.name, package.version);
          plan.fetch(
             Row {
                url:  format!("{REPO}/{file}"),
                file: file.clone(),
-               hash: OutputHash::hex(Algorithm::Sha256, &package.sha256)?,
+               hash: package.sha256,
             },
             Place::Link(format!("packages/hexpm/{file}")),
          );
