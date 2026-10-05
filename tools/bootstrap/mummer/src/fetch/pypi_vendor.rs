@@ -16,16 +16,17 @@ use serde::{
    Deserialize,
    Serialize,
 };
-use serde_json::Map;
 
 use crate::{
    fetch::{
       cargo::vendor_layout,
       dispatch::Producer,
       drv::{
+         Assembly,
          Entry,
+         NoAttrs,
          attr,
-         collect,
+         collect_with,
          say,
       },
    },
@@ -120,14 +121,10 @@ impl Producer for PypiVendor {
          ));
       }
 
-      collect(
-         store,
-         "python-deps",
-         &stage.layout,
-         &stage.drvs,
-         None,
-         Map::new(),
-         &stage.srcs,
-      )
+      collect_with(store, "python-deps", &stage.layout, &stage.drvs, Assembly {
+         script: "assemble",
+         attrs:  NoAttrs,
+         srcs:   &stage.srcs,
+      })
    }
 }

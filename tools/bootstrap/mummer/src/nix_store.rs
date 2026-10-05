@@ -4,6 +4,12 @@ use std::{
       BTreeSet,
    },
    env::var,
+   fmt::{
+      Display,
+      Formatter,
+      Result as FormatResult,
+      Write as _,
+   },
    io::{
       self,
       BufReader,
@@ -64,78 +70,118 @@ pub struct Derivation {
    pub env:     BTreeMap<String, String>,
 }
 
-impl Derivation {
-   fn aterm(&self) -> String {
-      let outputs = self
-         .outputs
-         .iter()
-         .map(|(name, spec)| {
-            format!(
-               "({},{},{},{})",
-               quote(name),
-               quote(&spec.path),
-               quote(&spec.algorithm),
-               quote(&spec.hash)
-            )
-         })
-         .collect::<Vec<_>>()
-         .join(",");
-      let inputs = self
-         .inputs
-         .iter()
-         .map(|(path, names)| {
-            format!(
-               "({},[{}])",
-               quote(path.as_str()),
-               names
-                  .iter()
-                  .map(|name| quote(name))
-                  .collect::<Vec<_>>()
-                  .join(",")
-            )
-         })
-         .collect::<Vec<_>>()
-         .join(",");
-      let sources = self
-         .sources
-         .iter()
-         .map(|source| quote(source.as_str()))
-         .collect::<Vec<_>>()
-         .join(",");
-      let arguments = self
-         .args
-         .iter()
-         .map(|arg| quote(arg))
-         .collect::<Vec<_>>()
-         .join(",");
-      let environment = self
-         .env
-         .iter()
-         .map(|(key, value)| format!("({},{})", quote(key), quote(value)))
-         .collect::<Vec<_>>()
-         .join(",");
-      format!(
-         "Derive([{outputs}],[{inputs}],[{sources}],{},{},[{arguments}],[{environment}])",
-         quote(&self.system),
-         quote(&self.builder)
-      )
+/// The output modes of the floating content-addressed derivations producers
+/// write, as a derivation's `hashAlgo` spells them.
+#[derive(Clone, Copy)]
+pub enum Floating {
+   Recursive,
+   Text,
+}
+
+impl Display for Floating {
+   #[expect(
+      clippy::renamed_function_params,
+      reason = "formatter describes the argument"
+   )]
+   fn fmt(&self, formatter: &mut Formatter<'_>) -> FormatResult {
+      formatter.write_str(match *self {
+         Self::Recursive => "r:sha256",
+         Self::Text => "text:sha256",
+      })
    }
 }
 
-fn quote(text: &str) -> String {
-   let mut result = String::from("\"");
-   for character in text.chars() {
-      match character {
-         '"' => result.push_str("\\\""),
-         '\\' => result.push_str("\\\\"),
-         '\n' => result.push_str("\\n"),
-         '\r' => result.push_str("\\r"),
-         '\t' => result.push_str("\\t"),
-         other => result.push(other),
+impl Output {
+   pub fn floating(mode: Floating) -> Self {
+      Self {
+         algorithm: mode.to_string(),
+         ..Self::default()
       }
    }
-   result.push('"');
-   result
+}
+
+/// A string in `ATerm` quoting.
+struct Quoted<'text>(&'text str);
+
+impl Display for Quoted<'_> {
+   #[expect(
+      clippy::renamed_function_params,
+      reason = "formatter describes the argument"
+   )]
+   fn fmt(&self, formatter: &mut Formatter<'_>) -> FormatResult {
+      formatter.write_char('"')?;
+      for character in self.0.chars() {
+         match character {
+            '"' => formatter.write_str("\\\"")?,
+            '\\' => formatter.write_str("\\\\")?,
+            '\n' => formatter.write_str("\\n")?,
+            '\r' => formatter.write_str("\\r")?,
+            '\t' => formatter.write_str("\\t")?,
+            other => formatter.write_char(other)?,
+         }
+      }
+      formatter.write_char('"')
+   }
+}
+
+/// `items` comma-separated, each written by `item`.
+fn list<Item>(
+   formatter: &mut Formatter<'_>,
+   items: impl IntoIterator<Item = Item>,
+   mut item: impl FnMut(&mut Formatter<'_>, Item) -> FormatResult,
+) -> FormatResult {
+   for (index, each) in items.into_iter().enumerate() {
+      if index > 0 {
+         formatter.write_char(',')?;
+      }
+      item(formatter, each)?;
+   }
+   Ok(())
+}
+
+/// The derivation in `ATerm`, what its store path hashes.
+impl Display for Derivation {
+   #[expect(
+      clippy::renamed_function_params,
+      reason = "formatter describes the argument"
+   )]
+   fn fmt(&self, formatter: &mut Formatter<'_>) -> FormatResult {
+      formatter.write_str("Derive([")?;
+      list(formatter, &self.outputs, |out, (name, spec)| {
+         write!(
+            out,
+            "({},{},{},{})",
+            Quoted(name),
+            Quoted(&spec.path),
+            Quoted(&spec.algorithm),
+            Quoted(&spec.hash)
+         )
+      })?;
+      formatter.write_str("],[")?;
+      list(formatter, &self.inputs, |out, (path, names)| {
+         write!(out, "({},[", Quoted(path.as_str()))?;
+         list(out, names, |inner, name| write!(inner, "{}", Quoted(name)))?;
+         out.write_str("])")
+      })?;
+      formatter.write_str("],[")?;
+      list(formatter, &self.sources, |out, source| {
+         write!(out, "{}", Quoted(source.as_str()))
+      })?;
+      write!(
+         formatter,
+         "],{},{},[",
+         Quoted(&self.system),
+         Quoted(&self.builder)
+      )?;
+      list(formatter, &self.args, |out, arg| {
+         write!(out, "{}", Quoted(arg))
+      })?;
+      formatter.write_str("],[")?;
+      list(formatter, &self.env, |out, (key, value)| {
+         write!(out, "({},{})", Quoted(key), Quoted(value))
+      })?;
+      formatter.write_str("])")
+   }
 }
 
 fn store_path(kind: &str, name: &str, contents: &[u8]) -> io::Result<StorePath> {
@@ -487,7 +533,7 @@ impl Store {
       derivation: &Derivation,
    ) -> io::Result<DrvPath> {
       self
-         .add_text(name, references, derivation.aterm().as_bytes())?
+         .add_text(name, references, derivation.to_string().as_bytes())?
          .try_into()
    }
 
@@ -527,7 +573,7 @@ fn add_from_stdin(
    io::stdin().read_to_end(&mut bytes)?;
    if derivation {
       bytes = serde_json::from_slice::<Derivation>(&bytes)?
-         .aterm()
+         .to_string()
          .into_bytes();
    }
    let paths = references

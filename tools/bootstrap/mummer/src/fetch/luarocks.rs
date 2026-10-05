@@ -1,26 +1,25 @@
 use std::{
    collections::BTreeMap,
    fmt::Write as _,
-   fs::read_to_string,
    io,
 };
 
-use mummer::{
-   hash::OutputHash,
-   store_path::DrvPath,
+use mummer::hash::{
+   Digest,
+   OutputHash,
 };
 use serde::Deserialize;
-use serde_json::Map;
 
 use crate::{
    fetch::{
       dispatch::Producer,
       drv::{
          Entry,
+         Place,
+         Plan,
          Row,
          attr,
-         collect,
-         fetchurls,
+         read_toml,
          say,
       },
    },
@@ -37,7 +36,7 @@ struct Locks {
 #[derive(Deserialize)]
 struct Locked {
    version: String,
-   sha256:  String,
+   sha256:  Digest,
 }
 
 /// locks/luarocks.toml -> a rocks server directory, .src.rock files plus the
@@ -50,23 +49,19 @@ impl Producer for Luarocks {
    }
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
-      let locks: Locks =
-         toml::from_str(&read_to_string(attr("locks")?)?).map_err(io::Error::other)?;
-      let rows: Vec<Row> = locks
-         .luarocks
-         .iter()
-         .map(|(name, entry)| {
-            let file = format!("{name}-{}.src.rock", entry.version);
-            Ok(Row {
-               url: format!("{LUAROCKS}/{file}"),
-               file,
-               hash: OutputHash::integrity(&entry.sha256)?,
-            })
-         })
-         .collect::<io::Result<Vec<_>>>()?;
-      let fetched = fetchurls(store, &rows)?;
+      let locks: Locks = read_toml(attr("locks")?)?;
+      let mut plan = Plan::new("luarocks-set");
       let mut manifest = String::from("commands = {}\nmodules = {}\nrepository = {\n");
       for (name, entry) in &locks.luarocks {
+         let file = format!("{name}-{}.src.rock", entry.version);
+         plan.fetch(
+            Row {
+               url:  format!("{LUAROCKS}/{file}"),
+               file: file.clone(),
+               hash: OutputHash::sri(entry.sha256.clone()),
+            },
+            Place::Link(file),
+         );
          writeln!(
             manifest,
             "   [\"{name}\"] = {{ [\"{}\"] = {{ {{ arch = \"src\" }} }} }},",
@@ -78,24 +73,10 @@ impl Producer for Luarocks {
       say(&format!("luaRocksSet: {} rocks", locks.luarocks.len()));
       let lua_version = attr("luaVersion")?;
       let major_minor: Vec<&str> = lua_version.split('.').take(2).collect();
-      let mut layout: Vec<Entry> = rows
-         .iter()
-         .zip(&fetched)
-         .map(|(row, made)| Entry::link(made.out.to_string(), row.file.clone()))
-         .collect();
-      layout.push(Entry::write(
+      plan.add(Entry::write(
          manifest,
          format!("manifest-{}", major_minor.join(".")),
       ));
-      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(
-         store,
-         "luarocks-set",
-         &layout,
-         &inputs,
-         None,
-         Map::new(),
-         &[],
-      )
+      plan.submit(store)
    }
 }

@@ -5,25 +5,21 @@ use std::{
    path::Path,
 };
 
-use mummer::{
-   hash::{
-      Algorithm,
-      Digest,
-      OutputHash,
-   },
-   store_path::DrvPath,
+use mummer::hash::{
+   Algorithm,
+   Digest,
+   OutputHash,
 };
-use serde_json::Map;
 
 use crate::{
    fetch::{
       dispatch::Producer,
       drv::{
-         Entry,
+         Place,
+         Plan,
          Row,
-         attr,
-         collect,
-         fetchurls,
+         lock_dir,
+         reject,
       },
    },
    nix_store::Store,
@@ -90,12 +86,7 @@ fn mix_lock(text: &str) -> io::Result<Vec<Package>> {
          });
       }
    }
-   if !foreign.is_empty() {
-      return Err(io::Error::other(format!(
-         "hexDeps: mix.lock has non-hex entries: {}",
-         foreign.join(", ")
-      )));
-   }
+   reject("hexDeps: mix.lock has non-hex entries", &foreign)?;
    Ok(packages)
 }
 
@@ -125,12 +116,7 @@ fn rebar_lock(text: &str) -> io::Result<Vec<Package>> {
          scm.then(|| text[..at].rsplit("<<\"").next().unwrap_or_default())
       })
       .collect();
-   if !foreign.is_empty() {
-      return Err(io::Error::other(format!(
-         "hexDeps: rebar.lock has non-hex entries: {}",
-         foreign.join(", ")
-      )));
-   }
+   reject("hexDeps: rebar.lock has non-hex entries", &foreign)?;
    let hashes: BTreeMap<String, String> = text
       .split_once("{pkg_hash_ext,[")
       .map(|(_head, tail)| tail.split("]}").next().unwrap_or_default())
@@ -172,33 +158,25 @@ impl Producer for Hex {
    }
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
-      let dir = format!("{}/{}", attr("source")?, attr("root")?);
+      let dir = lock_dir()?;
       let mix = format!("{dir}/mix.lock");
       let packages = if Path::new(&mix).exists() {
          mix_lock(&read_to_string(mix)?)?
       } else {
          rebar_lock(&read_to_string(format!("{dir}/rebar.lock"))?)?
       };
-      let rows: Vec<Row> = packages
-         .iter()
-         .map(|package| {
-            let file = format!("{}-{}.tar", package.name, package.version);
-            Ok(Row {
-               url: format!("{REPO}/{file}"),
-               file,
+      let mut plan = Plan::new("hex-deps");
+      for package in &packages {
+         let file = format!("{}-{}.tar", package.name, package.version);
+         plan.fetch(
+            Row {
+               url:  format!("{REPO}/{file}"),
+               file: file.clone(),
                hash: OutputHash::hex(Algorithm::Sha256, &package.sha256)?,
-            })
-         })
-         .collect::<io::Result<Vec<_>>>()?;
-      let fetched = fetchurls(store, &rows)?;
-      let layout: Vec<Entry> = rows
-         .iter()
-         .zip(&fetched)
-         .map(|(row, made)| {
-            Entry::link(made.out.to_string(), format!("packages/hexpm/{}", row.file))
-         })
-         .collect();
-      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "hex-deps", &layout, &inputs, None, Map::new(), &[])
+            },
+            Place::Link(format!("packages/hexpm/{file}")),
+         );
+      }
+      plan.submit(store)
    }
 }

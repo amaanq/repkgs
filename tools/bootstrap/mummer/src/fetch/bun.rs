@@ -1,45 +1,62 @@
 use std::{
-   collections::BTreeMap,
+   collections::{
+      BTreeMap,
+      BTreeSet,
+   },
    fs::read_to_string,
    io,
 };
 
-use mummer::{
-   hash::OutputHash,
-   store_path::DrvPath,
-};
+use mummer::hash::OutputHash;
 use serde::{
    Deserialize,
    Serialize,
 };
-use serde_json::{
-   Map,
-   Value,
-};
+use serde_json::Value;
 
 use crate::{
    fetch::{
       dispatch::Producer,
       drv::{
-         Entry,
+         Place,
+         Plan,
          Row,
-         collect,
-         fetchurls,
          json_file,
          lock_path,
+         reject,
       },
-      registry::{
-         flat_name,
-         split_id,
-         tarball_url,
-      },
+      registry::PackageId,
    },
    nix_store::Store,
 };
 
 #[derive(Deserialize)]
 struct Lock {
-   packages: BTreeMap<String, Vec<Value>>,
+   packages: BTreeMap<String, Package>,
+}
+
+/// `[id, registry, info, integrity]`, a workspace or git package without the
+/// integrity bun writes last for registry tarballs.
+#[derive(Deserialize)]
+#[serde(try_from = "Vec<Value>")]
+struct Package {
+   id:        String,
+   registry:  Option<String>,
+   integrity: Option<String>,
+}
+
+impl TryFrom<Vec<Value>> for Package {
+   type Error = io::Error;
+
+   fn try_from(fields: Vec<Value>) -> io::Result<Self> {
+      let text = |field: Option<&Value>| field.and_then(Value::as_str).map(str::to_owned);
+      Ok(Self {
+         id:        text(fields.first())
+            .ok_or_else(|| io::Error::other("bunDeps: a bun.lock package has no id"))?,
+         registry:  text(fields.get(1)).filter(|registry| !registry.is_empty()),
+         integrity: text(fields.last()).filter(|last| last.starts_with("sha512-")),
+      })
+   }
 }
 
 #[derive(Serialize)]
@@ -108,58 +125,39 @@ impl Producer for Bun {
       let text = read_to_string(lock_path("bun.lock")?)?;
       let lock: Lock = serde_json::from_str(&strip_trailing_commas(&text))?;
       let mut unhashed = Vec::new();
-      let mut rows = Vec::new();
-      let mut ids: Vec<String> = Vec::new();
-      let mut dirs: Vec<String> = Vec::new();
-      for entry in lock.packages.values() {
-         let id = entry.first().and_then(Value::as_str).unwrap_or_default();
-         let registry = entry.get(1).and_then(Value::as_str).unwrap_or_default();
-         let hashed = entry
-            .last()
-            .and_then(Value::as_str)
-            .filter(|last| last.starts_with("sha512-"));
-         let Some(integrity) = hashed else {
-            if !id.contains("@workspace:") {
-               unhashed.push(id);
+      let mut plan = Plan::new("bun-deps");
+      let mut seen = BTreeSet::new();
+      let mut index = Vec::new();
+      for package in lock.packages.values() {
+         let Some(ref integrity) = package.integrity else {
+            if !package.id.contains("@workspace:") {
+               unhashed.push(package.id.as_str());
             }
             continue;
          };
-         if ids.iter().any(|seen| seen == id) {
+         if !seen.insert(package.id.as_str()) {
             continue;
          }
-         let (name, version) = split_id(id);
-         ids.push(id.to_owned());
-         dirs.push(format!("p/{}@{version}", flat_name(name)));
-         rows.push(Row {
-            file: format!("{}-{version}.tgz", flat_name(name)),
-            url:  tarball_url(name, version, registry),
-            hash: OutputHash::integrity(integrity)?,
+         let id = PackageId::try_from(package.id.as_str())?;
+         let dir = format!("p/{}@{}", id.flat_name(), id.version);
+         plan.fetch(
+            Row {
+               file: format!("{}-{}.tgz", id.flat_name(), id.version),
+               url:  id.tarball_url(package.registry.as_deref()),
+               hash: OutputHash::integrity(integrity)?,
+            },
+            Place::Unpack(dir.clone()),
+         );
+         index.push(Indexed {
+            id: &package.id,
+            dir,
          });
       }
-      if !unhashed.is_empty() {
-         return Err(io::Error::other(format!(
-            "bunDeps: bun.lock has no integrity for {} (git/github/file dependencies)",
-            unhashed.join(", ")
-         )));
-      }
-      let fetched = fetchurls(store, &rows)?;
-      let mut layout: Vec<Entry> = dirs
-         .iter()
-         .zip(&fetched)
-         .map(|(dir, made)| Entry::unpack(made.out.to_string(), dir.clone()))
-         .collect();
-      let index: Vec<Indexed<'_>> = ids
-         .iter()
-         .zip(&dirs)
-         .map(|(id, dir)| {
-            Indexed {
-               id,
-               dir: dir.clone(),
-            }
-         })
-         .collect();
-      layout.push(json_file("index.json", &index)?);
-      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "bun-deps", &layout, &inputs, None, Map::new(), &[])
+      reject(
+         "bunDeps: bun.lock has no integrity (git/github/file dependencies) for",
+         &unhashed,
+      )?;
+      plan.add(json_file("index.json", &index)?);
+      plan.submit(store)
    }
 }

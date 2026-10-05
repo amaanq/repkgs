@@ -13,6 +13,7 @@ use base64::{
    Engine as _,
    engine::general_purpose::STANDARD,
 };
+use serde::Deserialize;
 use sha2::{
    Digest as _,
    Sha256,
@@ -65,7 +66,8 @@ impl FromStr for Algorithm {
 }
 
 /// A digest of a known algorithm and length. `Display` writes its SRI form.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "String")]
 pub struct Digest {
    algorithm: Algorithm,
    bytes:     Vec<u8>,
@@ -173,6 +175,15 @@ pub enum Spelling {
    Sri,
    LowerHex,
    UpperHex,
+}
+
+impl TryFrom<String> for Digest {
+   type Error = io::Error;
+
+   #[inline]
+   fn try_from(text: String) -> io::Result<Self> {
+      text.parse()
+   }
 }
 
 /// A fixed output's hash as the lock spelled it.

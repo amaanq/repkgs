@@ -1,26 +1,26 @@
 use std::{
    collections::BTreeMap,
-   fs::read_to_string,
    io,
 };
 
 use mummer::{
    hackage::PackageId,
-   hash::OutputHash,
-   store_path::DrvPath,
+   hash::{
+      Digest,
+      OutputHash,
+   },
 };
 use serde::Deserialize;
-use serde_json::Map;
 
 use crate::{
    fetch::{
       dispatch::Producer,
       drv::{
-         Entry,
+         Place,
+         Plan,
          Row,
          attr,
-         collect,
-         fetchurls,
+         read_toml,
          say,
       },
    },
@@ -37,8 +37,8 @@ struct Locks {
 #[derive(Deserialize)]
 struct Locked {
    rev:   String,
-   src:   String,
-   cabal: String,
+   src:   Digest,
+   cabal: Digest,
 }
 
 /// locks/hackage.toml -> one file+noindex repository for all cabal packages,
@@ -51,33 +51,27 @@ impl Producer for Hackage {
    }
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
-      let locks: Locks =
-         toml::from_str(&read_to_string(attr("locks")?)?).map_err(io::Error::other)?;
-      let mut rows = Vec::with_capacity(locks.hackage.len() * 2);
-      let mut targets = Vec::with_capacity(locks.hackage.len() * 2);
+      let locks: Locks = read_toml(attr("locks")?)?;
+      let mut plan = Plan::new("hackage-set");
       for (id, entry) in &locks.hackage {
-         targets.push(format!("{id}.tar.gz"));
-         rows.push(Row {
-            file: format!("{id}.tar.gz"),
-            url:  format!("{HACKAGE}/{id}/{id}.tar.gz"),
-            hash: OutputHash::integrity(&entry.src)?,
-         });
-         targets.push(format!("{id}.cabal"));
-         rows.push(Row {
-            file: format!("{id}-r{}.cabal", entry.rev),
-            url:  format!("{HACKAGE}/{id}/revision/{}.cabal", entry.rev),
-            hash: OutputHash::integrity(&entry.cabal)?,
-         });
+         plan.fetch(
+            Row {
+               file: format!("{id}.tar.gz"),
+               url:  format!("{HACKAGE}/{id}/{id}.tar.gz"),
+               hash: OutputHash::sri(entry.src.clone()),
+            },
+            Place::Link(format!("{id}.tar.gz")),
+         );
+         plan.fetch(
+            Row {
+               file: format!("{id}-r{}.cabal", entry.rev),
+               url:  format!("{HACKAGE}/{id}/revision/{}.cabal", entry.rev),
+               hash: OutputHash::sri(entry.cabal.clone()),
+            },
+            Place::Link(format!("{id}.cabal")),
+         );
       }
-      let fetched = fetchurls(store, &rows)?;
       say(&format!("hackageSet: {} packages", locks.hackage.len()));
-      let layout: Vec<Entry> = targets
-         .iter()
-         .zip(&fetched)
-         .map(|(to, made)| Entry::link(made.out.to_string(), to.clone()))
-         .collect();
-      let inputs: Vec<DrvPath> = fetched.into_iter().map(|made| made.drv).collect();
-      collect(store, "hackage-set", &layout, &inputs, None, Map::new(), &[
-      ])
+      plan.submit(store)
    }
 }
