@@ -299,11 +299,59 @@ impl OptionType for DebugInfo {
    }
 }
 
+/// The linker a package's links run, lld unless it asks for another.
+#[derive(Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(try_from = "String")]
+pub enum Linker {
+   Lld,
+   Wild,
+}
+
+impl Linker {
+   const ALL: [Self; 2] = [Self::Lld, Self::Wild];
+
+   pub const fn name(self) -> &'static str {
+      match self {
+         Self::Lld => "lld",
+         Self::Wild => "wild",
+      }
+   }
+}
+
+impl TryFrom<String> for Linker {
+   type Error = io::Error;
+
+   fn try_from(value: String) -> io::Result<Self> {
+      Self::ALL
+         .into_iter()
+         .find(|linker| linker.name() == value)
+         .ok_or_else(|| io::Error::other(format!("unknown linker {value}")))
+   }
+}
+
+impl Serialize for Linker {
+   fn serialize<Encoder>(&self, serializer: Encoder) -> Result<Encoder::Ok, Encoder::Error>
+   where
+      Encoder: Serializer,
+   {
+      serializer.serialize_str(self.name())
+   }
+}
+
+impl OptionType for Linker {
+   fn kind() -> Type {
+      Type::Enum {
+         values: Self::ALL.map(|linker| linker.name().to_owned()).to_vec(),
+      }
+   }
+}
+
 record! {
    pub Cc {
       optional {
          hardening ("hardening"): Choice,
          debug_info ("debugInfo"): DebugInfo,
+         linker ("linker"): Linker,
          cflags ("cflags"): Vec<String>,
          cxxflags ("cxxflags"): Vec<String>,
          ldflags ("ldflags"): Vec<String>,

@@ -676,11 +676,19 @@
             "element": {
               "kind": "string"
             }
+          },
+          "linker": {
+            "kind": "enum",
+            "values": [
+              "lld",
+              "wild"
+            ]
           }
         },
         "optional": [
           "hardening",
           "debugInfo",
+          "linker",
           "cflags",
           "cxxflags",
           "ldflags"

@@ -29,6 +29,7 @@ use crate::{
       Attrs,
       Cc,
       DebugInfo,
+      Linker,
       Platform,
       Spec,
       build_top,
@@ -39,6 +40,7 @@ use crate::{
       exports_of,
    },
    hardening::{
+      BinaryFormat,
       Line,
       flags as hardening_flags,
    },
@@ -295,6 +297,19 @@ fn package_cc(
       .collect();
    ldflags.extend(harden(Line::Link));
    ldflags.extend(given(|found| found.ldflags.as_deref().unwrap_or_default()));
+   match cc.and_then(|found| found.linker) {
+      None | Some(Linker::Lld) => {},
+      Some(Linker::Wild) => {
+         if platform.binfmt != BinaryFormat::Elf {
+            return Err(io::Error::other(
+               "wild links only ELF, keep lld for this platform",
+            ));
+         }
+         let wild = find_tool(bins, "wild")
+            .ok_or_else(|| io::Error::other("[cc] linker = \"wild\" needs wild in tools"))?;
+         ldflags.push(format!("--ld-path={}", wild.display()));
+      },
+   }
    let cc_path = find_tool(bins, "cc").ok_or_else(|| io::Error::other("cc not on PATH"))?;
    let root = canonicalize(&cc_path)?
       .parent()
