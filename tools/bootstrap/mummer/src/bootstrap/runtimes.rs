@@ -15,9 +15,12 @@ use std::{
    process::Command,
 };
 
-use mummer::files::{
-   remove_if_exists,
-   write_file,
+use mummer::{
+   config::BinaryFormat,
+   files::{
+      remove_if_exists,
+      write_file,
+   },
 };
 
 use crate::bootstrap::{
@@ -33,7 +36,6 @@ use crate::bootstrap::{
       say,
    },
    target::{
-      Binfmt,
       Libc,
       Os,
    },
@@ -338,7 +340,7 @@ impl Runtimes {
    ) -> io::Result<Built> {
       let out = &stage.out;
       let profile = stage.profile;
-      let coff = stage.binfmt == Binfmt::Coff;
+      let coff = stage.binfmt == BinaryFormat::Coff;
       let mut items = Self::items(lib, &stage.build_top.join("obj"), profile.posix())?;
       say(&format!("lib{}: {} files", lib.name, items.len()));
       let mut flags = common.to_vec();

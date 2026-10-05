@@ -19,12 +19,14 @@ use std::{
 
 use mummer::{
    attrs::load,
+   config::{
+      BinaryFormat,
+      Config,
+      ElfPolicy,
+   },
    files::write_file,
 };
-use serde::{
-   Deserialize,
-   Serialize,
-};
+use serde::Deserialize;
 
 use crate::bootstrap::{
    dispatch::Recipe,
@@ -36,7 +38,6 @@ use crate::bootstrap::{
       say,
    },
    target::{
-      Binfmt,
       Os,
       Profile,
    },
@@ -55,25 +56,6 @@ struct Attrs {
 struct Driver {
    flags:    Vec<String>,
    cxxflags: Vec<String>,
-}
-
-#[derive(Serialize)]
-struct Config<'stage> {
-   cc:         PathBuf,
-   binfmt:     Binfmt,
-   flags:      Vec<String>,
-   cxxflags:   Vec<String>,
-   #[serde(rename = "prefix-map")]
-   prefix_map: Vec<String>,
-   #[serde(flatten, skip_serializing_if = "Option::is_none")]
-   policy:     Option<ElfPolicy<'stage>>,
-}
-
-#[derive(Serialize)]
-struct ElfPolicy<'stage> {
-   libc:   &'stage Path,
-   interp: &'stage str,
-   crt:    PathBuf,
 }
 
 const STUB_LD: &str = "SECTIONS {
@@ -179,11 +161,7 @@ impl Cc {
 
    /// The entry stub every ELF executable starts in, compiled from cwd so its
    /// `STT_FILE` symbol records no store path.
-   fn elf_policy<'stage>(
-      stage: &'stage Stage,
-      attrs: &Attrs,
-      sysroot: &'stage Path,
-   ) -> io::Result<ElfPolicy<'stage>> {
+   fn elf_policy(stage: &Stage, attrs: &Attrs, sysroot: &Path) -> io::Result<ElfPolicy> {
       let crt_interp = attrs
          .crt_interp
          .as_deref()
@@ -237,9 +215,9 @@ impl Cc {
             .arg(stage.out.join("lib/reloc_stub.bin")),
       )?;
       Ok(ElfPolicy {
-         libc: sysroot,
-         interp: &stage.interp,
-         crt,
+         libc:   text(sysroot.to_path_buf())?,
+         interp: stage.interp.clone(),
+         crt:    Some(text(crt)?),
       })
    }
 
@@ -337,7 +315,7 @@ impl Recipe for Cc {
             .join(format!("reloc_self_{}.h", stage.os.name())),
          include.join("reloc_self.h"),
       )?;
-      let policy = if stage.binfmt == Binfmt::Elf {
+      let policy = if stage.binfmt == BinaryFormat::Elf {
          Some(Self::elf_policy(stage, &attrs, sysroot)?)
       } else {
          None
@@ -352,7 +330,7 @@ impl Recipe for Cc {
       ];
       flags.extend(driver.flags);
       let config = Config {
-         cc: Self::llvm_bin(stage, "clang"),
+         cc: text(Self::llvm_bin(stage, "clang"))?,
          binfmt: stage.binfmt,
          flags,
          cxxflags: driver.cxxflags,
@@ -361,6 +339,8 @@ impl Recipe for Cc {
             format!("{}=/cc", out.display()),
          ],
          policy,
+         fc: None,
+         fflags: Vec::new(),
       };
       write_file(
          &out.join("etc/mummer.json"),
@@ -369,4 +349,12 @@ impl Recipe for Cc {
       )?;
       Self::smoke_test(stage)
    }
+}
+
+/// A path as `mummer.json` holds it, which must be UTF-8.
+fn text(path: PathBuf) -> io::Result<String> {
+   path
+      .into_os_string()
+      .into_string()
+      .map_err(|raw| io::Error::other(format!("{} is not UTF-8", raw.display())))
 }
