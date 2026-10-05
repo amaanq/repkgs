@@ -3,7 +3,7 @@
   {
     npm.script = null;
     source = tree {
-      dir = "src";
+      dir = "tests/builder/npm/src";
       name = "src";
     };
   }

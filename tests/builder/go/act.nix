@@ -3,7 +3,7 @@
   {
     go.deps = null;
     source = tree {
-      dir = "src";
+      dir = "tests/builder/go/src";
       name = "src";
     };
   }

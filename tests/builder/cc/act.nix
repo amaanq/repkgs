@@ -2,7 +2,7 @@
 [
   {
     source = tree {
-      dir = "src";
+      dir = "tests/builder/cc/src";
       name = "src";
     };
   }
