@@ -81,10 +81,9 @@ def build-coreutils [directory: string, graph: table, shell: string, cores: int,
 
 def main []: nothing -> nothing { help main }
 
-def "main start" [--state: path, --cores: int = 30, --jobs: int = 3, --llvm-cores: int = 4, --memory: filesize = 48GiB, --through: string = "", --refresh]: nothing -> nothing {
-   if $cores < 1 or $jobs < 1 or $llvm_cores < 1 { error make {msg: "cores and jobs must be positive"} }
+def "main start" [--state: path, --cores: int = 30, --jobs: int = 3, --memory: filesize = 48GiB, --through: string = "", --refresh]: nothing -> nothing {
+   if $cores < 1 or $jobs < 1 { error make {msg: "cores and jobs must be positive"} }
    if $jobs > $cores { error make {msg: "jobs must not exceed the total core budget"} }
-   if $llvm_cores > $cores { error make {msg: "LLVM workers must not exceed the total core budget"} }
    if $memory <= 0B { error make {msg: "memory limit must be positive"} }
    if $through not-in ["" llvm peanut] { error make {msg: "--through must be llvm or peanut"} }
    let directory = (state-dir $state)
@@ -114,13 +113,13 @@ def "main start" [--state: path, --cores: int = 30, --jobs: int = 3, --llvm-core
       $"--property=StandardOutput=append:($directory)/build.log"
       --property=StandardError=inherit
       $lock --no-fork --nonblock ($directory | path join lock)
-      $shell --no-config-file $script work $directory ($cores | into string) ($jobs | into string) ($llvm_cores | into string) $through ($refresh | into string)] | ignore
+      $shell --no-config-file $script work $directory ($cores | into string) ($jobs | into string) $through ($refresh | into string)] | ignore
    print $"Started (unit-name $directory) with ($cores) total cores and ($jobs) build jobs"
-   print $"Checked LLVM builds use ($llvm_cores) workers, service memory limit is ($memory)"
+   print $"Service memory limit is ($memory)"
    print $"Log is ($directory)/build.log"
 }
 
-def "main work" [directory: path, cores: int, jobs: int, llvm_cores: int, through: string, refresh: bool]: nothing -> nothing {
+def "main work" [directory: path, cores: int, jobs: int, through: string, refresh: bool]: nothing -> nothing {
    print $"Starting bootstrap (date now)"
    let verified = (try {
       let plan = (prepare $directory $through --refresh=$refresh)
@@ -152,9 +151,9 @@ def "main work" [directory: path, cores: int, jobs: int, llvm_cores: int, throug
                and not ($entry.drv.outputs | values | all {|output| $"/nix/store/($output.path)" in $valid }))
          }) {
             let derivation = $"/nix/store/($compiler.path)"
-            print $"Building ($compiler.drv.name) separately with ($llvm_cores) workers for compilation and tests"
+            print $"Building ($compiler.drv.name) separately with ($cores) workers for compilation and tests"
             build-stage $directory $derivation $cores_per_build $jobs --shell $shell --dependencies
-            build-stage $directory $derivation $llvm_cores 1 --shell $shell
+            build-stage $directory $derivation $cores 1 --shell $shell
          }
          build-stage $directory $stage.derivation $cores_per_build $jobs --shell $shell --dependencies
          build-stage $directory $stage.derivation $cores 1 --shell $shell
