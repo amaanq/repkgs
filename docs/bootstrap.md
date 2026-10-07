@@ -47,19 +47,15 @@ claiming the stricter live-bootstrap standard.
 
 ## Rust and the peanut
 
-`bootstrap-mrustc` builds Rust 1.90 and Cargo using mrustc, then rebuilds the compiler and its
-standard library with Rustc. `pkgs/pe/peanut/rust-chain.toml` pins the intermediate source
-releases from 1.91 through 1.97. Each builds its host compiler, Cargo and standard library
-using the preceding release and LLVM 21. Each completed release is a separate Nix output.
+`bootstrap-mrustc` builds Rust 1.98.1 and Cargo using our mrustc fork, then rebuilds the compiler
+and its standard library with that Rustc. `pkgs/pe/peanut/mrustc.toml` pins the fork revision and
+the Rust source release it builds. The shipped Cargo is the one mrustc built.
 
-The first handoff builds stage2 because mrustc's output includes private compiler libraries
-that conflict with the next release's stage1 Rustdoc build. Later intermediate releases
-use stage1 builds from the clean installed toolchains.
-
-`bootstrap-rust-stage0` is the last compiler in that chain. `bootstrap-rust` uses it to build
-our pinned Rust source release. The source-built Clang compiles the matching LLVM backend
-included in the final Rust release. That build produces a stage2 Rust compiler, Cargo and
-standard libraries for the GNU host and the musl target.
+`bootstrap-rust` uses that compiler to build our pinned Rust source release. It builds stage2
+because mrustc's output includes private compiler libraries that conflict with a stage1 Rustdoc
+build. The source-built Clang compiles the matching LLVM backend included in the final Rust
+release. That build produces a stage2 Rust compiler, Cargo and standard libraries for the GNU
+host and the musl target.
 
 `bootstrap-nushell` uses that compiler to build our pinned Nushell source as a static musl
 executable. Its features match the normal package recipe. Shell and Python builders handle
@@ -143,9 +139,9 @@ nix-build nix/self-host.nix -A stage2 ...$bootstrap_args ...(cache-args) -o resu
 nix-build nix/self-host.nix -A pkgs.ripgrep -A pkgs.jq ...$bootstrap_args ...(cache-args) -o result-self-host-packages
 ```
 
-The provided Rust toolchain supplies Cargo and rustc throughout. This does not rebuild the
-mrustc chain. Nushell's system-library dependencies can still require a package-set LLVM build.
-Its parser macro patch preserves the deterministic map ordering used by the peanut recipe.
+The provided Rust toolchain supplies Cargo and rustc throughout. This does not rebuild mrustc.
+Nushell's system-library dependencies can still require a package-set LLVM build. Its parser
+macro patch preserves the deterministic map ordering used by the peanut recipe.
 
 `buildTools = { mummer = ...; bigtop = ...; nu = ...; }` selects tools explicitly when importing
 `default.nix` or `nix/set.nix`. Values can be derivations or existing store paths, and omitted
@@ -158,22 +154,20 @@ static mummer. Replacing that binary requires a static build suitable for copyin
 toolchain. These stages do not remove the initial peanut or establish output reproducibility
 without a comparison.
 
-## Building the Rust chain
+## Building the Rust bootstrap
 
-The pinned nixpkgs provides mrustc 0.12 and a Rust 1.90 bootstrap using LLVM 20. Build and
-inspect that starting point with the separate target, or select an intermediate compiler.
+The pinned nixpkgs provides the C++ compiler and LLVM 22 that build the mrustc fork. Build and
+inspect that starting point with the separate target.
 
 ```console
 nix build .#bootstrap-mrustc -L
 nu bootstrap/audit.nu .#bootstrap-mrustc --mrustc > /tmp/motley-mrustc-inputs.json
-nix build .#bootstrap-rust-1_91_1 --cores 30 --max-jobs 1 -L
 nix build .#bootstrap-peanut --cores 30 --max-jobs 1 --keep-failed -L
 ```
 
-Rust's supported bootstrap path uses the preceding minor release. The compiler uses unstable
-features and internals that older compilers cannot reliably build. Patch releases can be
-skipped. Our Nushell pin requires at least Rust 1.95, while the final peanut compiler follows
-the repository's Rust pin.
+Rust's supported bootstrap path uses the preceding minor release or the same one. The compiler
+uses unstable features and internals that older compilers cannot reliably build, so moving the
+repository's Rust pin past 1.99 needs the fork ported further.
 
 The assembled peanut still contains the tools needed for ordinary package builds. Reducing its
 compiler trust roots to hex0 does not make that runtime tool bundle 229 bytes or remove the

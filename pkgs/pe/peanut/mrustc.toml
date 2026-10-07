@@ -1,0 +1,10 @@
+# the rustc source mrustc builds, also read by bootstrap/audit.nu
+[rustc]
+hash    = "sha256-3J+LkXsyRE1sesQ8wbQJAT06mmMzOLtgwUza4dFe5lo="
+version = "1.98.1"
+
+[fork]
+hash  = "sha256-8OV+cUSJ7WV+WwJbTRR/1KyJvhVKWJmFceHe9bXe7GQ="
+owner = "amaanq"
+repo  = "mrustc"
+rev   = "15d279ccbfc4884064e24868b6d6ad4117d1a6de"
