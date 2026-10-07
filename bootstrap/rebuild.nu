@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 
-use store.nu [capture save-progress store-args plan-dir prepare verify-stage]
+use store.nu [capture save-progress store-args builder-ssh plan-dir prepare verify-stage]
 
 def state-dir [directory: any]: nothing -> string {
    let base = ($env.XDG_STATE_HOME? | default ($env.HOME | path join .local/state))
@@ -34,7 +34,7 @@ def failure-context [directory: string]: nothing -> string {
    $excerpt.stdout | str trim
 }
 
-def build-stage [directory: string, derivation: string, cores: int, jobs: int, --shell: string = "", --build-dir: string = "", --dependencies]: nothing -> nothing {
+def build-stage [directory: string, derivation: string, cores: int, jobs: int, --shell: string = "", --build-dir: string = "", --dependencies, --remote]: nothing -> nothing {
    let installables = (if $dependencies {
       let graph = (open (plan-dir $directory | path join graph.json)).derivations
       $graph | get ($derivation | path basename) | get inputs.drvs | transpose path spec
@@ -47,10 +47,13 @@ def build-stage [directory: string, derivation: string, cores: int, jobs: int, -
    if $shell != "" { print $"Sandbox /bin/sh uses bootstrapped ($shell)" }
    let arguments = ([
       --cores $cores --max-jobs $jobs --keep-failed --option max-silent-time 0 --option timeout 0
-   ] ++ $links ++ (store-args $directory --shell $shell --build-dir $build_dir))
+   ] ++ $links ++ (store-args $directory --shell $shell --build-dir $build_dir --remote=$remote))
    # rom only draws its live tree on a terminal, so it gets a pty sized like the one that ran start
    let command = ([rom --platform nix build ...$installables -- ...$arguments] | each {|word| $"'($word)'" } | str join ' ')
-   ^script --quiet --flush --return --command $"stty cols ($env.ROM_COLUMNS) rows ($env.ROM_LINES); exec ($command)" /dev/null
+   let ssh = (if $remote { builder-ssh $directory } else { "" })
+   with-env {NIX_SSHOPTS: $ssh} {
+      ^script --quiet --flush --return --command $"stty cols ($env.ROM_COLUMNS) rows ($env.ROM_LINES); exec ($command)" /dev/null
+   }
 }
 
 def build-coreutils [directory: string, graph: table, shell: string, cores: int, jobs: int]: nothing -> nothing {
@@ -243,4 +246,52 @@ def "main stop" [--state: path]: nothing -> nothing {
       if $progress.phase != complete { save-progress $directory {phase: stopped} }
    }
    print "Stopped the bootstrap, completed derivations remain in its store"
+}
+
+def "main builder" [...names: string, --state: path, --cores: int = 30, --jobs: int = 3, --memory: filesize = 48GiB, --port: int = 2222]: nothing -> nothing {
+   if ($names | is-empty) { error make {msg: "name the derivations to build in the VM, like sqlite-3.53.3"} }
+   let directory = (state-dir $state)
+   if (unit-info $directory).SubState == running { error make {msg: "stop the bootstrap before building in the VM"} }
+   let unit = $"motley-builder-($directory | hash sha256 | str substring 0..11).service"
+   let graph = ((open (plan-dir $directory | path join graph.json)).derivations | transpose path drv)
+   let shells = ($graph | where drv.name == bash-static-5.3)
+   if ($shells | length) != 1 { error make {msg: "expected one bash-static-5.3 in the frozen bootstrap graph"} }
+   let shell = $"/nix/store/(($shells | first).drv.outputs.out.path | path basename)"
+   let targets = ($names | each {|name|
+      let found = ($graph | where drv.name == $name)
+      if ($found | length) != 1 { error make {msg: $"expected one ($name) in the frozen bootstrap graph"} }
+      $"/nix/store/(($found | first).path)"
+   })
+   let key = ($directory | path join builder-key)
+   if not ($key | path exists) { capture ssh-keygen [-q -t ed25519 -N "" -C motley-builder -f $key] | ignore }
+   let vm = ($directory | path join builder-vm)
+   capture nix-build [($env.FILE_PWD | path join builder.nix) --out-link $vm
+      --argstr shell $"($shell)/bin/bash" --argstr publicKey (open --raw $"($key).pub" | str trim)
+      --arg port ($port | into string) --arg cores ($cores | into string) --arg jobs ($jobs | into string)
+      --arg memory ($memory / 1MiB | into int | into string)] | ignore
+   {port: $port, jobs: $jobs} | to json | save --force ($directory | path join builder.json)
+   do { ^systemctl --user stop $unit } | complete | ignore
+   capture systemd-run [--user --unit $unit --property=KillSignal=SIGINT
+      $"--setenv=NIX_DISK_IMAGE=($directory)/builder.qcow2" $"--property=WorkingDirectory=($directory)"
+      $"--property=StandardOutput=append:($directory)/builder.log" --property=StandardError=inherit
+      ($vm | path join bin/run-motley-builder-vm)] | ignore
+   let ssh = (builder-ssh $directory)
+   print $"Waiting for the builder VM on port ($port)"
+   mut ready = false
+   for _ in 1..90 {
+      if (do { ^ssh ...($ssh | split row ' ') -o ConnectTimeout=2 -o BatchMode=yes root@127.0.0.1 true } | complete).exit_code == 0 {
+         $ready = true
+         break
+      }
+      sleep 2sec
+   }
+   if not $ready { error make {msg: $"the builder VM did not answer ssh, see ($directory)/builder.log"} }
+   with-env {NIX_SSHOPTS: $ssh} {
+      capture nix ([copy --no-check-sigs --to ssh://root@127.0.0.1 $shell] ++ (store-args $directory)) | ignore
+   }
+   with-env {ROM_COLUMNS: (term size).columns, ROM_LINES: (term size).rows} {
+      for target in $targets { build-stage $directory $target ($cores // $jobs) $jobs --shell $"($shell)/bin/bash" --remote }
+   }
+   capture systemctl [--user stop $unit] | ignore
+   print "Built in the VM and stopped it, start resumes the bootstrap on this host"
 }
