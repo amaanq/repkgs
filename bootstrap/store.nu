@@ -16,11 +16,22 @@ export def save-progress [directory: string, progress: record]: nothing -> nothi
    mv --force ($directory | path join progress.tmp.json) ($directory | path join progress.json)
 }
 
-export def store-args [directory: string, --shell: string = "", --build-dir: string = ""]: nothing -> list<string> {
+export def builder-ssh [directory: string]: nothing -> string {
+   let builder = (open ($directory | path join builder.json))
+   $"-p ($builder.port) -i ($directory | path join builder-key) -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+}
+
+export def store-args [directory: string, --shell: string = "", --build-dir: string = "", --remote]: nothing -> list<string> {
    let paths = (if $shell == "" { "" } else { $"/bin/sh=($shell)" })
    let scratch = (if $build_dir == "" { $directory | path join build } else { $build_dir })
+   let builders = (if $remote {
+      let builder = (open ($directory | path join builder.json))
+      [--option builders $"ssh://root@127.0.0.1 x86_64-linux - ($builder.jobs) 1 big-parallel,benchmark - -"
+         --option builders-use-substitutes "false" --option max-jobs "0"]
+   } else { [--option builders ""] })
    [--store ($directory | path join store)
-      --option substitute "false" --option substituters "" --option builders ""
+      --option substitute "false" --option substituters ""
+      ...$builders
       --option connect-timeout "15" --option stalled-download-timeout "30"
       --option sandbox "true" --option sandbox-fallback "false"
       --option sandbox-paths $paths --option extra-sandbox-paths ""
