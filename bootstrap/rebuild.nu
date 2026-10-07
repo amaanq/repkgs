@@ -23,7 +23,7 @@ def unit-info [directory: string]: nothing -> record {
 def failure-context [directory: string]: nothing -> string {
    let log = ($directory | path join build.log)
    if not ($log | path exists) { return "" }
-   let matches = (^rg --line-number '^(Starting bootstrap|Building /nix/store/|error:)' $log | complete)
+   let matches = (^rg --line-number '^(\x1b\[[0-9;?]*[A-Za-z])*(Starting bootstrap|Building /nix/store/|error:|Cannot build )' $log | complete)
    if $matches.exit_code > 1 { error make {msg: $matches.stderr} }
    let errors = ($matches.stdout | lines | reverse
       | take until {|line| $line =~ '^\d+:(Starting bootstrap|Building /nix/store/)' } | reverse)
@@ -45,10 +45,12 @@ def build-stage [directory: string, derivation: string, cores: int, jobs: int, -
    print $"Building ($derivation)"
    if $dependencies { print $"Building dependencies with ($jobs) jobs and ($cores) cores per build" }
    if $shell != "" { print $"Sandbox /bin/sh uses bootstrapped ($shell)" }
-   let arguments = ([build] ++ $installables ++ [
+   let arguments = ([
       --cores $cores --max-jobs $jobs --keep-failed --option max-silent-time 0 --option timeout 0
-      --json -L] ++ $links ++ (store-args $directory --shell $shell --build-dir $build_dir))
-   ^nix ...$arguments out> ($directory | path join result.tmp.json)
+   ] ++ $links ++ (store-args $directory --shell $shell --build-dir $build_dir))
+   # rom only draws its live tree on a terminal, so it gets a pty sized like the one that ran start
+   let command = ([rom --platform nix build ...$installables -- ...$arguments] | each {|word| $"'($word)'" } | str join ' ')
+   ^script --quiet --flush --return --command $"stty cols ($env.ROM_COLUMNS) rows ($env.ROM_LINES); exec ($command)" /dev/null
 }
 
 def build-coreutils [directory: string, graph: table, shell: string, cores: int, jobs: int]: nothing -> nothing {
@@ -104,6 +106,8 @@ def "main start" [--state: path, --cores: int = 30, --jobs: int = 3, --llvm-core
       --property=RemainAfterExit=yes --property=KillSignal=SIGINT --property=TimeoutStopSec=60
       $"--property=MemoryHigh=($high)" $"--property=MemoryMax=($maximum)"
       $"--property=WorkingDirectory=($directory)"
+      $"--setenv=PATH=($env.PATH | str join (char esep))"
+      $"--setenv=ROM_COLUMNS=((term size).columns)" $"--setenv=ROM_LINES=((term size).rows)"
       $"--property=StandardOutput=append:($directory)/build.log"
       --property=StandardError=inherit
       $lock --no-fork --nonblock ($directory | path join lock)
@@ -153,7 +157,6 @@ def "main work" [directory: path, cores: int, jobs: int, llvm_cores: int, throug
          build-stage $directory $stage.derivation $cores 1 --shell $shell
          $results = ($results | append (verify-stage $directory $stage))
       }
-      mv --force ($directory | path join result.tmp.json) ($directory | path join result.json)
       $results
    } catch {|failure|
       save-progress $directory {phase: failed, error: $failure.msg}
