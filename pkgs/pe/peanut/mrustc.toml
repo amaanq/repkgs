@@ -4,7 +4,7 @@ hash    = "sha256-3J+LkXsyRE1sesQ8wbQJAT06mmMzOLtgwUza4dFe5lo="
 version = "1.98.1"
 
 [fork]
-hash  = "sha256-8OV+cUSJ7WV+WwJbTRR/1KyJvhVKWJmFceHe9bXe7GQ="
+hash  = "sha256-jrRWiRsznP5I7VBM44Lo2OXwevavthymf7DCHkKJkWo="
 owner = "amaanq"
 repo  = "mrustc"
-rev   = "15d279ccbfc4884064e24868b6d6ad4117d1a6de"
+rev   = "686efcd885a3d2eb5a2218d63f6429b7bb8a6bd3"
