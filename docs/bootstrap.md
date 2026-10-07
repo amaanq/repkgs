@@ -191,11 +191,10 @@ checkpoints get the full budget once their dependencies are ready. `start --core
 reduces the budget to 22 cores. A recipe may impose a lower limit where parallel compilation
 is unsupported.
 
-The runner builds checked LLVM packages separately with four workers by default because
-LLVM 20 exhausted the host's memory with ten test workers. `--llvm-cores` changes that limit.
-The pinned recipes use `NIX_BUILD_CORES` for both compilation and tests, so this currently
-limits both phases. Independent limits need runtime support beyond the existing recipes.
-Worker and memory settings stay in the runner and do not change derivation hashes.
+The runner builds checked LLVM packages separately with the full core budget. The pinned
+recipes use `NIX_BUILD_CORES` for both compilation and tests, so raise `--memory` if the test
+suite outgrows the service limit. Worker and memory settings stay in the runner and do not
+change derivation hashes.
 
 All Rust checkpoints use the full compile budget. Final Rust builds its bundled LLVM backend
 with two link jobs and does not run LLVM's `check-all` suite.
