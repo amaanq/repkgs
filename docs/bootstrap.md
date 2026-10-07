@@ -247,7 +247,7 @@ The runner does not change that account setting.
 When LLVM finishes, the runner compares its NAR hash with the existing LLVM output if one
 was available when the run began. A mismatch reports failure and preserves both outputs.
 
-Extend a completed LLVM run through mrustc, the final Rust, Nushell, mummer and peanut assembly
+Extend a completed LLVM run through mrustc, the final Rust, mummer and peanut assembly
 with the same store and log commands.
 
 ```console

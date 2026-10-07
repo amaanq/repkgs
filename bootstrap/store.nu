@@ -91,8 +91,7 @@ def resolved-paths [directory: string, graph: table, paths: list<string>]: nothi
 
 def checkpoints [graph: table, derivation: string]: nothing -> table {
    let names = [
-      '^peanut-llvm-static-' '^peanut-mrustc-' '^peanut-rust-[0-9]'
-      '^peanut-nushell-static-' '^peanut-mummer-static-'
+      '^peanut-llvm-static-' '^peanut-mrustc-' '^peanut-rust-[0-9]' '^peanut-mummer-static-'
    ] | each {|pattern|
       let found = ($graph | where {|entry| $entry.drv.name =~ $pattern } | sort-by --natural drv.name)
       if ($found | is-empty) { error make {msg: $"missing bootstrap checkpoint matching ($pattern)"} }
