@@ -134,7 +134,7 @@ def "main work" [directory: path, cores: int, jobs: int, llvm_cores: int, throug
          $shell = $"/nix/store/($candidate.drv.outputs.out.path)/bin/bash"
       }
       build-coreutils $directory $graph $shell $cores $jobs
-      let checkpoints = (if $metadata == $directory { [$plan | insert name LLVM] } else { $plan.checkpoints })
+      let checkpoints = (if $metadata == $directory { [($plan | insert name LLVM)] } else { $plan.checkpoints })
       let checked_llvm = ($graph | where {|entry|
          ($entry.drv.name =~ '^llvm-[0-9]+\.[0-9]+\.[0-9]+$'
             and ($entry.drv.structuredAttrs?.doCheck? | default $entry.drv.env.doCheck?) in [true "1"])
