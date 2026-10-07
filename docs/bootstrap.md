@@ -69,9 +69,9 @@ nu bootstrap/audit.nu .#bootstrap-nushell --rust > /tmp/motley-bootstrap-inputs.
 nix build .#bootstrap-peanut -L
 ```
 
-The Rust audit checks the intermediate source URLs and hashes against the manifest and
-rejects Rust binary toolchains in the build dependencies. Nix generates the bootstrap config
-directly, since its general TOML converter needs Rust. The normal package set still uses
+The Rust audit checks mrustc's Rust source URL and hash against `mrustc.toml` and rejects Rust
+binary toolchains in the build dependencies. Nix generates the bootstrap config directly, since
+its general TOML converter needs Rust. The normal package set still uses
 `pkgs/ru/rust-bootstrap/act.lock`. The source peanut build does not depend on that manifest.
 
 Peanut assembly takes Nu from this build and strips its binaries with the source-built LLVM.
@@ -177,7 +177,7 @@ host and generated-source assumptions above.
 
 `bootstrap/rebuild.nu` rebuilds hex0 through LLVM in its own store, with compiled substitutes
 and remote builders disabled. The default run stops after LLVM. It leaves the completed Rust
-chain in the normal store available for ordinary peanut builds.
+builds in the normal store available for ordinary peanut builds.
 
 ```console
 nu bootstrap/rebuild.nu start
@@ -220,9 +220,9 @@ nu bootstrap/rebuild.nu start
 
 Starting again reuses every completed derivation. Nix may restart the interrupted derivation
 from its beginning. `--keep-failed` preserves its build directory for inspection, but does
-not turn it into a compiler checkpoint. Each Rust release in the normal store is already a
-separate derivation, so rebuilding the normal peanut does not repeat unchanged compilers.
-Keep the `result-bootstrap-rust*` and `result-bootstrap-mrustc` links to protect those outputs
+not turn it into a compiler checkpoint. mrustc and the final Rust are separate derivations in
+the normal store, so rebuilding the normal peanut does not repeat unchanged compilers.
+Keep the `result-bootstrap-rust` and `result-bootstrap-mrustc` links to protect those outputs
 from garbage collection.
 
 The runner saves its evaluated derivation and dependency audit on the first run. Later starts
@@ -247,7 +247,7 @@ The runner does not change that account setting.
 When LLVM finishes, the runner compares its NAR hash with the existing LLVM output if one
 was available when the run began. A mismatch reports failure and preserves both outputs.
 
-Extend a completed LLVM run through mrustc, each Rust release, Nushell, mummer and peanut assembly
+Extend a completed LLVM run through mrustc, the final Rust, Nushell, mummer and peanut assembly
 with the same store and log commands.
 
 ```console
