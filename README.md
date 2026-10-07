@@ -221,11 +221,11 @@ peanut        static clang, lld, bsdtar, toybox, make and the like
 `pkgs/pe/peanut/build.nix` reproduces the peanut. `nix build .#bootstrap-llvm -L` builds its LLVM,
 Clang and LLD through nixpkgs' minimal x86-64 bootstrap with no Rust or nushell involved, and
 [docs/bootstrap.md](docs/bootstrap.md) records the trust boundary of that source build.
-`nix build .#bootstrap-nushell -L` starts from Rust 1.90 built by mrustc, builds the following Rust
-source releases with that Clang and then a static nu with the last of them. `.#bootstrap-mrustc`
-is the starting compiler and `.#bootstrap-peanut` the assembled peanut, and nowhere in that graph is a
-downloaded Rust compiler. `nix build .#bootstrap-mummer -L` builds the static mummer with the same
-compiler. The first mummer build needs the whole Rust chain, later mummer edits rebuild only mummer.
+`nix build .#bootstrap-nushell -L` starts from Rust 1.98.1 built by mrustc, rebuilds the pinned Rust
+release with that Clang and then a static nu with it. `.#bootstrap-mrustc` is the starting compiler
+and `.#bootstrap-peanut` the assembled peanut, and nowhere in that graph is a downloaded Rust
+compiler. `nix build .#bootstrap-mummer -L` builds the static mummer with the same
+compiler. The first mummer build needs both Rust builds, later mummer edits rebuild only mummer.
 
 ## License
 

@@ -436,9 +436,7 @@ in
     ;
   inherit (rustBootstrap)
     rust
-    stage0
     mrustc
-    rustStages
     ;
 }
 // tools

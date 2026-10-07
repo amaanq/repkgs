@@ -31,10 +31,6 @@
             inherit system;
             buildSystem = system;
           };
-          stages = nixpkgs.lib.mapAttrs' (
-            version: stage:
-            nixpkgs.lib.nameValuePair "bootstrap-rust-${builtins.replaceStrings [ "." ] [ "_" ] version}" stage
-          ) peanut.rustStages;
         in
         import ./default.nix { inherit system; }
         // {
@@ -42,13 +38,11 @@
           bootstrap-llvm = peanut.llvm;
           bootstrap-mummer = peanut.mummer;
           bootstrap-bigtop = peanut.bigtop;
-          bootstrap-rust-stage0 = peanut.stage0;
           bootstrap-rust = peanut.rust;
           bootstrap-nushell = peanut.nu;
           bootstrap-mrustc = peanut.mrustc;
           bootstrap-peanut = peanut.peanut;
         }
-        // stages
       );
 
       checks = each (system: import ./nix/checks.nix { inherit system nixpkgs; });
