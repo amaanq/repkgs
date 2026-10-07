@@ -46,10 +46,18 @@ export def plan-dir [directory: string]: nothing -> string {
    if ($peanut | path join plan.json | path exists) { $peanut } else { $directory }
 }
 
-def output-path [drv: record, name: string]: nothing -> string {
-   let path = ($drv.outputs | get $name | get -o path | default ($drv.env | get -o $name))
+def output-path [drv: record, name: string]: nothing -> any {
+   let known = ($drv.outputs | get $name | get -o path)
+   if $known != null { return (if $known starts-with '/' { $known } else { $"/nix/store/($known)" }) }
+   let path = ($drv.env | get -o $name)
    if $path == null { error make {msg: $"missing ($name) output path for ($drv.name)"} }
-   if $path starts-with '/' { $path } else { $"/nix/store/($path)" }
+   # floating content-addressed outputs, and outputs built from them, only get a path once realised
+   if $path starts-with '/nix/store/' { $path } else { null }
+}
+
+def realised [derivation: string, name: string, arguments: list<string>]: nothing -> any {
+   let result = (^nix path-info --extra-experimental-features "nix-command ca-derivations" ...$arguments $"($derivation)^($name)" | complete)
+   if $result.exit_code == 0 { $result.stdout | str trim } else { null }
 }
 
 def declared-paths [graph: table]: nothing -> list<string> {
@@ -67,7 +75,13 @@ def resolved-paths [directory: string, graph: table, paths: list<string>]: nothi
          if ($original.drv | reject inputs) != ($entry.drv | reject inputs) { false } else {
             let inputs = ($original.drv.inputs.drvs | transpose path spec | each {|dependency|
                let target = ($graph | where path == $dependency.path | first | get drv)
-               $dependency.spec.outputs | each {|name| output-path $target $name | path basename }
+               $dependency.spec.outputs | each {|name|
+                  let known = (output-path $target $name)
+                  let output = (if $known != null { $known } else {
+                     realised $"/nix/store/($dependency.path)" $name (store-args $directory)
+                  })
+                  $output | default "" | path basename
+               }
             } | flatten | append $original.drv.inputs.srcs | sort | uniq)
             $entry.drv.inputs == {drvs: {}, srcs: $inputs}
          }
@@ -86,8 +100,9 @@ def checkpoints [graph: table, derivation: string]: nothing -> table {
    } | flatten | append ($derivation | path basename)
    $names | each {|path|
       let drv = ($graph | where path == $path | first | get drv)
-      let output = (output-path $drv out)
-      let baseline = (if ($output | path exists) {
+      let known = (output-path $drv out)
+      let output = (if $known != null { $known } else { realised $"/nix/store/($path)" out [] })
+      let baseline = (if $output != null and ($output | path exists) {
          let info = (capture nix [path-info --json --json-format "2" $output] | from json)
          if $info.version != 2 { error make {msg: "expected Nix path-info JSON version 2"} }
          $info.info | values | first | get narHash
@@ -142,8 +157,9 @@ def freeze [directory: string, peanut: bool]: nothing -> nothing {
    }
    let flags = (if $peanut { [--rust] } else { [] })
    let report = (capture nu ([--no-config-file ($bootstrap_dir | path join audit.nu) $drv] ++ $flags) | from json)
-   let output = (output-path ($document.derivations | get ($drv | path basename)) out)
-   let baseline = (if ($output | path exists) { capture nix [hash path $output] } else { null })
+   let known = (output-path ($document.derivations | get ($drv | path basename)) out)
+   let output = (if $known != null { $known } else { realised $drv out [] })
+   let baseline = (if $output != null and ($output | path exists) { capture nix [hash path $output] } else { null })
    let plan = {derivation: $drv, output: $output, baseline: $baseline, source: $source, created: (date now)}
    let frozen = (if $peanut { $plan | insert checkpoints (checkpoints $graph $drv) } else { $plan })
    mkdir $metadata
@@ -193,7 +209,7 @@ export def prepare [directory: string, through: string, --refresh]: nothing -> r
    let prior_outputs = (if $metadata != $directory {
       (open ($directory | path join graph.json)).derivations | values | each {|drv|
          $drv.outputs | columns | each {|name| output-path $drv $name }
-      } | flatten
+      } | flatten | compact
    } else { [] })
    let sources = ($graph | each {|entry|
       $entry.drv.outputs | transpose name spec | where spec.hash? != null | each {|output|
@@ -202,7 +218,7 @@ export def prepare [directory: string, through: string, --refresh]: nothing -> r
    } | flatten | uniq-by path)
    let historical_outputs = ($historical | each {|entry|
       $entry.drv.outputs | columns | each {|name| output-path $entry.drv $name }
-   } | flatten)
+   } | flatten | compact)
    mut allowed = ((declared-paths $graph) ++ (declared-paths $historical) ++ $historical_outputs
       ++ $prior_outputs ++ ($sources | get path) ++ [$plan.source.path])
    let store = ($directory | path join store)
@@ -258,7 +274,9 @@ export def prepare [directory: string, through: string, --refresh]: nothing -> r
 }
 
 export def verify-stage [directory: string, stage: record]: nothing -> record {
-   let physical = ($directory | path join store ($stage.output | str trim --left --char '/'))
+   let output = (realised $stage.derivation out (store-args $directory))
+   if $output == null { error make {msg: $"($stage.name) has no realised output in the isolated store"} }
+   let physical = ($directory | path join store ($output | str trim --left --char '/'))
    let hash = (capture nix [hash path $physical])
    let comparison = (if $stage.baseline == null { "unavailable" } else if $hash == $stage.baseline { "identical" } else { "different" })
    let result = {name: $stage.name, derivation: $stage.derivation, output: $physical, nar_hash: $hash, comparison: $comparison, verified: (date now)}
