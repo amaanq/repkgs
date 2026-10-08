@@ -5,7 +5,7 @@ The work still ahead. design.md covers what exists.
 ## Source bootstrap
 
 The x86-64 source bootstrap has completed in an isolated store without compiled substitutes.
-All 13 checkpoints through LLVM, mrustc, Rust 1.98.1, Nushell, mummer and peanut assembly match the
+All 5 checkpoints, LLVM, mrustc, Rust 1.98.1, mummer and the assembled peanut, match the
 normal-store builds byte for byte. The assembled peanut has no store references and runs after
 relocation. The complete source archive restores offline into an empty store, and the 49 early
 stages through kaem rebuild there with a matching kaem output. A full replay on another machine
