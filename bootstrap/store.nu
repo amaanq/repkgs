@@ -65,13 +65,20 @@ def declared-paths [graph: table]: nothing -> list<string> {
       | flatten | uniq | each {|path| $"/nix/store/($path)" }
 }
 
-def resolved-paths [directory: string, graph: table, paths: list<string>]: nothing -> list<string> {
+def resolved-paths [directory: string, graph: table, paths: list<string>, realised: list<string>]: nothing -> list<string> {
    let recipes = ($paths | where {|path| $path ends-with '.drv' })
    if ($recipes | is-empty) { return [] }
    let resolved = (capture nix ([derivation show] ++ $recipes ++ (store-args $directory)) | from json)
    if $resolved.version != 4 { error make {msg: "expected Nix derivation JSON version 4"} }
    $resolved.derivations | transpose path drv | where {|entry|
-      $graph | where drv.name == $entry.drv.name | any {|original|
+      let outputs = ($entry.drv.outputs | values | each {|output| $output.path? } | compact)
+      let names = ($graph | where drv.name == $entry.drv.name)
+      # a deferred derivation resolves to one with its inputs' realised paths substituted in
+      let substituted = ($outputs | is-not-empty) and ($outputs | all {|output|
+         $"/nix/store/($output | path basename)" in $realised
+      })
+      if ($names | is-not-empty) and $substituted { return true }
+      $names | any {|original|
          if ($original.drv | reject inputs) != ($entry.drv | reject inputs) { false } else {
             let inputs = ($original.drv.inputs.drvs | transpose path spec | each {|dependency|
                let target = ($graph | where path == $dependency.path | first | get drv)
@@ -222,9 +229,16 @@ export def prepare [directory: string, through: string, --refresh]: nothing -> r
       ++ $prior_outputs ++ ($sources | get path) ++ [$plan.source.path])
    let store = ($directory | path join store)
    if ($store | path exists) {
+      let known = ($graph ++ $historical | uniq-by path)
+      let realised_outputs = ($known | each {|entry|
+         $entry.drv.outputs | columns | where {|name| (output-path $entry.drv $name) == null } | each {|name|
+            realised $"/nix/store/($entry.path)" $name (store-args $directory)
+         }
+      } | flatten | compact)
+      $allowed = ($allowed ++ $realised_outputs)
       let existing = (capture nix ([path-info --all] ++ (store-args $directory)) | lines)
       let extra = ($existing | where {|path| $path not-in $allowed })
-      $allowed = ($allowed ++ (resolved-paths $directory ($graph ++ $historical | uniq-by path) $extra))
+      $allowed = ($allowed ++ (resolved-paths $directory $known $extra $realised_outputs))
       let unexpected = ($existing | where {|path| $path not-in $allowed })
       if ($unexpected | is-not-empty) {
          error make {msg: $"isolated store contains unexpected paths before preparation\n($unexpected | str join (char newline))"}
