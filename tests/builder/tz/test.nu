@@ -1,7 +1,7 @@
 # libc reads time zones from /usr/share/zoneinfo and then /etc/zoneinfo for NixOS, never from its
 # own prefix (pkgs/gl/glibc/glibc-tzdir-etc-zoneinfo.patch). The sandbox has neither, so this reads
 # the paths compiled into the libc and does one real lookup through TZDIR
-use checks.nu *
+use checks.nu [expect pass]
 use glob.nu [files]
 
 # the sandbox holds only the closure, so the store's one libc.so.6 is the program's

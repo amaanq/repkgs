@@ -1,4 +1,4 @@
-use checks.nu *
+use checks.nu [expect pass split-debug]
 use glob.nu [files]
 
 let extension = (files $"($env.pkg)/lib/python3*/site-packages/tpy/_speed*.so" | first | path relative-to $env.pkg)
