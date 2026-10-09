@@ -1,4 +1,5 @@
 use std::{
+   cmp::Reverse,
    collections::{
       BTreeMap,
       BTreeSet,
@@ -18,8 +19,10 @@ use std::{
       canonicalize,
       metadata,
       read,
+      read_to_string,
    },
    io,
+   ops::Range,
    os::unix::fs::{
       MetadataExt as _,
       PermissionsExt as _,
@@ -29,7 +32,9 @@ use std::{
       Path,
       PathBuf,
    },
+   process,
    str::FromStr,
+   sync::LazyLock,
    time::{
       Duration,
       SystemTime,
@@ -77,7 +82,36 @@ pub const STORE_DIR: &str = match option_env!("MUMMER_STORE_DIR") {
 
 const OUTPUT_PLACEHOLDER: &[u8] = b"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const PATH_ENDS: &str = " \t\n\\:\"';,)]}>";
-const RANDOM_NAMES: [(&str, usize); 3] = [("TryCompile-", 6), ("cmTC_", 5), ("/rustc", 6)];
+const RANDOM_NAMES: [(&str, usize); 3] =
+   [("TryCompile-", 6), ("cmTC_", 5), ("meson-private/tmp", 8)];
+/// cc-rs names its compiler probe after a random number.
+const RANDOM_STEMS: [&str; 1] = ["detect_compiler_family.c"];
+/// mkdtemp templates whose random part can come out one case with no digit:
+/// rustc's link dir and Python's tempfile, directly under `$TMPDIR`.
+const TEMPLATES: [(&str, usize); 2] = [("rustc", 6), ("tmp", 8)];
+static ANCESTORS: LazyLock<BTreeSet<String>> = LazyLock::new(|| {
+   let mut pid = process::id().to_string();
+   let mut ancestors = BTreeSet::from([pid.clone()]);
+   while let Ok(stat) = read_to_string(format!("/proc/{pid}/stat")) {
+      let Some(parent) = stat
+         .rsplit_once(')')
+         .and_then(|(_, fields)| fields.split_whitespace().nth(1))
+      else {
+         break;
+      };
+      if matches!(parent, "0" | "1") || !ancestors.insert(parent.to_owned()) {
+         break;
+      }
+      parent.clone_into(&mut pid);
+   }
+   ancestors
+});
+static TEMPORARY: LazyLock<Option<String>> = LazyLock::new(|| {
+   var("TMPDIR")
+      .ok()
+      .map(|directory| directory.trim_end_matches('/').to_owned())
+      .filter(|directory| directory.starts_with('/') && directory.len() > 1)
+});
 
 /// What a key records of an input file.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -290,31 +324,41 @@ impl Store {
       String::from_utf8(bytes).map_err(io::Error::other)
    }
 
-   /// The scratch names `CMake` made up for this run, so paths a manifest
-   /// stored masked lead back into this run's directories.
+   /// The scratch names `CMake`, meson, cc-rs and GHC made up for this run, so
+   /// paths a manifest stored masked lead back into this run's directories.
    #[inline]
    pub fn learn_random(&mut self, args: &[String]) {
       for arg in args {
-         for (prefix, width) in RANDOM_NAMES {
-            let mut position = 0;
-            while let Some(found) = arg[position..].find(prefix) {
-               let start = position + found + prefix.len();
-               position = start;
-               let Some(tail) = random_tail(arg, start, width) else {
-                  continue;
-               };
-               let masked = format!("{prefix}{}", "#".repeat(width));
-               if !self.random.iter().any(|known| known.0 == masked) {
-                  self.random.push((masked, format!("{prefix}{tail}")));
-               }
+         for (span, masked) in random_names(arg) {
+            if !self.random.iter().any(|known| known.0 == masked) {
+               self.random.push((masked, arg[span].to_owned()));
             }
          }
       }
    }
 
+   /// A cc1 job also names its source bare, as `-main-file-name`, so the
+   /// file names this call made up are masked as whole tokens too.
+   #[inline]
+   #[must_use]
+   pub fn key_job(&self, job: &str) -> String {
+      let base = |path: &str| path.rsplit('/').next().unwrap_or(path).to_owned();
+      self.random.iter().fold(self.key(job), |keyed, pair| {
+         let (masked, real) = (base(&pair.0), base(&pair.1));
+         if masked == real {
+            keyed
+         } else {
+            keyed.replace(&format!("\"{real}\""), &format!("\"{masked}\""))
+         }
+      })
+   }
+
+   /// Longest first, since a dir's spelling begins its files'.
    fn unmask_random(&self, text: &str) -> String {
-      self.random.iter().fold(text.to_owned(), |unmasked, known| {
-         unmasked.replace(&known.0, &known.1)
+      let mut known = self.random.iter().collect::<Vec<_>>();
+      known.sort_by_key(|pair| Reverse(pair.0.len()));
+      known.into_iter().fold(text.to_owned(), |unmasked, pair| {
+         unmasked.replace(&pair.0, &pair.1)
       })
    }
 
@@ -432,6 +476,9 @@ impl Store {
       let mut bytes = read(path)?;
       if !is_store_path(path) {
          self.mask_output(&mut bytes, false);
+         if let Some(ref temporary) = *TEMPORARY {
+            bytes = mask_scratch_bytes(&bytes, temporary);
+         }
       }
       Ok(InputId::Content(Identity::of(&bytes)))
    }
@@ -631,30 +678,228 @@ fn normalize_path_arg(arg: &str) -> String {
    )
 }
 
-/// The `width` alphanumerics at `start`, when nothing alphanumeric follows.
-fn random_tail(text: &str, start: usize, width: usize) -> Option<&str> {
-   let tail = text.get(start..start + width)?;
+/// Whether the `width` bytes at `start` are a scratch name, letters, digits
+/// or `_` with nothing alphanumeric after them.
+fn random_tail(text: &str, start: usize, width: usize) -> bool {
+   let Some(tail) = text.get(start..start + width) else {
+      return false;
+   };
    let ends = text
       .as_bytes()
       .get(start + width)
       .is_none_or(|byte| !byte.is_ascii_alphanumeric());
-   (ends && tail.bytes().all(|byte| byte.is_ascii_alphanumeric())).then_some(tail)
+   ends
+      && tail
+         .bytes()
+         .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+}
+
+fn random_names(text: &str) -> Vec<(Range<usize>, String)> {
+   let mut names = Vec::new();
+   for (prefix, width) in RANDOM_NAMES {
+      for (found, _) in text.match_indices(prefix) {
+         let start = found + prefix.len();
+         if random_tail(text, start, width) {
+            names.push((
+               found..start + width,
+               format!("{prefix}{}", "#".repeat(width)),
+            ));
+         }
+      }
+   }
+   for stem in RANDOM_STEMS {
+      for (found, _) in text.match_indices(stem) {
+         let digits = text[..found]
+            .bytes()
+            .rev()
+            .take_while(u8::is_ascii_digit)
+            .count();
+         if digits > 0 {
+            names.push((found - digits..found + stem.len(), format!("#{stem}")));
+         }
+      }
+   }
+   names.extend(pid_names(text));
+   if let Some(ref temporary) = *TEMPORARY {
+      names.extend(scratch_names(text, temporary));
+   }
+   names.sort_by_key(|name| name.0.start);
+   names.dedup_by(|later, earlier| later.0.start < earlier.0.end);
+   names
+}
+
+/// What tools make up directly under `$TMPDIR` for one run, go-build,
+/// config.guess's cg, GHC's and base's pid-numbered names, mkdtemp's: every
+/// entry there with a random run in its name, and the entries below it while
+/// they have one too. One span per path, so each spells apart for unmasking.
+fn scratch_names(text: &str, temporary: &str) -> Vec<(Range<usize>, String)> {
+   let mut names = Vec::new();
+   let root = format!("{temporary}/");
+   for (found, _) in text.match_indices(&root) {
+      if !scratch_root_at(text.as_bytes(), found) {
+         continue;
+      }
+      let mut spelling = temporary.to_owned();
+      let mut start = found + root.len();
+      let mut end = found;
+      loop {
+         let length = text[start..]
+            .bytes()
+            .take_while(|byte| is_name_byte(*byte))
+            .count();
+         let component = &text[start..start + length];
+         let templated = (end == found)
+            .then(|| {
+               TEMPLATES.iter().find(|&&(prefix, width)| {
+                  component.len() == prefix.len() + width
+                     && component.starts_with(prefix)
+                     && random_tail(component, prefix.len(), width)
+               })
+            })
+            .flatten();
+         let masked = match templated {
+            Some(&(prefix, _)) => format!("{prefix}#"),
+            None => mask_runs(component),
+         };
+         if masked == component {
+            break;
+         }
+         spelling.push('/');
+         spelling.push_str(&masked);
+         end = start + length;
+         if text.as_bytes().get(end) != Some(&b'/') {
+            break;
+         }
+         start = end + 1;
+      }
+      if end > found {
+         names.push((found..end, spelling));
+      }
+   }
+   names
+}
+
+/// A `$TMPDIR` path standing alone or joined to an option, as in
+/// `-I/build/tmp…`, not the tail of a longer path.
+fn scratch_root_at(text: &[u8], found: usize) -> bool {
+   let before = text[..found]
+      .iter()
+      .rev()
+      .take_while(|byte| is_name_byte(**byte))
+      .count();
+   before == 0 || text[found - before] == b'-'
+}
+
+const fn is_name_byte(byte: u8) -> bool {
+   byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'+')
+}
+
+/// Names a process of this build made from its pid, gen$$.c and the like:
+/// a digit run, three digits or more, that is the pid of this process or
+/// one of its ancestors.
+fn pid_names(text: &str) -> Vec<(Range<usize>, String)> {
+   let mut names = Vec::new();
+   let bytes = text.as_bytes();
+   let mut index = 0;
+   while index < bytes.len() {
+      let digits = bytes[index..]
+         .iter()
+         .take_while(|byte| byte.is_ascii_digit())
+         .count();
+      if digits == 0 {
+         index += 1;
+         continue;
+      }
+      let run = &text[index..index + digits];
+      let start = text[..index]
+         .bytes()
+         .rev()
+         .take_while(|byte| is_name_byte(*byte))
+         .count();
+      let end = text[index + digits..]
+         .bytes()
+         .take_while(|byte| is_name_byte(*byte))
+         .count();
+      let name = index - start..index + digits + end;
+      let chunk = index
+         - text[..index]
+            .bytes()
+            .rev()
+            .take_while(u8::is_ascii_alphanumeric)
+            .count()
+         ..index
+            + digits
+            + text[index + digits..]
+               .bytes()
+               .take_while(u8::is_ascii_alphanumeric)
+               .count();
+      let hashed = chunk.len() >= 8 && text[chunk].bytes().all(|byte| byte.is_ascii_hexdigit());
+      // only a file's stem ending in the pid, as gen$$.c, since sandbox pids
+      // are small and new for every call and would match version numbers,
+      // flag values and digests
+      let extension = text[index + digits..name.end]
+         .strip_prefix('.')
+         .and_then(|rest| rest.split('.').next())
+         .is_some_and(|part| {
+            !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_alphabetic())
+         });
+      if digits >= 3 && ANCESTORS.contains(run) && extension && !hashed {
+         let spelling = format!(
+            "{}#{}",
+            &text[name.start..index],
+            &text[index + digits..name.end]
+         );
+         names.push((name, spelling));
+      }
+      index += digits;
+   }
+   names
+}
+
+/// A name with its random runs, letters, digits and `_` holding a digit or
+/// both cases in six or more, as `#`.
+fn mask_runs(name: &str) -> String {
+   let mut masked = String::with_capacity(name.len());
+   let mut rest = name;
+   while !rest.is_empty() {
+      let run = rest
+         .bytes()
+         .take_while(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+         .count();
+      if run == 0 {
+         let other = rest
+            .bytes()
+            .take_while(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
+            .count();
+         masked.push_str(&rest[..other]);
+         rest = &rest[other..];
+         continue;
+      }
+      let word = &rest[..run];
+      let random = word.bytes().any(|byte| byte.is_ascii_digit())
+         || run >= 6
+            && word.bytes().any(|byte| byte.is_ascii_uppercase())
+            && word.bytes().any(|byte| byte.is_ascii_lowercase());
+      masked.push_str(if random { "#" } else { word });
+      rest = &rest[run..];
+   }
+   masked
 }
 
 #[must_use]
 #[inline]
 pub fn mask_random_names(text: &str) -> String {
-   let mut masked = text.to_owned();
-   for (prefix, width) in RANDOM_NAMES {
-      let mut position = 0;
-      while let Some(found) = masked[position..].find(prefix) {
-         let start = position + found + prefix.len();
-         position = start;
-         if random_tail(&masked, start, width).is_some() {
-            masked.replace_range(start..start + width, &"#".repeat(width));
-         }
+   let mut masked = String::with_capacity(text.len());
+   let mut copied = 0;
+   for (span, spelling) in random_names(text) {
+      if span.start < copied {
+         continue;
       }
+      masked.push_str(&text[copied..span.start]);
+      masked.push_str(&spelling);
+      copied = span.end;
    }
+   masked.push_str(&text[copied..]);
    masked
 }
 
@@ -695,4 +940,37 @@ pub fn on_path(program: &str) -> PathBuf {
       }
    }
    PathBuf::from(program)
+}
+
+/// An object built in a scratch dir carries the dir's name in its debug
+/// info, as GHC's link stubs and rustdoc's doctests do, and a replayed one
+/// carries the name from the run that stored it, so both mask alike.
+fn mask_scratch_bytes(data: &[u8], temporary: &str) -> Vec<u8> {
+   let root = format!("{temporary}/");
+   let mut masked = Vec::with_capacity(data.len());
+   let mut rest = data;
+   while let Some(position) = rest
+      .windows(root.len())
+      .position(|window| window == root.as_bytes())
+   {
+      let length = rest[position..]
+         .iter()
+         .take_while(|byte| is_name_byte(**byte) || **byte == b'/')
+         .count();
+      let path = str::from_utf8(&rest[position..position + length]).unwrap_or_default();
+      masked.extend_from_slice(&rest[..position]);
+      let unbounded = scratch_root_at(rest, position);
+      match scratch_names(path, temporary).first() {
+         Some(found) if unbounded && found.0.start == 0 => {
+            masked.extend_from_slice(found.1.as_bytes());
+            rest = &rest[position + found.0.end..];
+         },
+         _ => {
+            masked.extend_from_slice(root.as_bytes());
+            rest = &rest[position + root.len()..];
+         },
+      }
+   }
+   masked.extend_from_slice(rest);
+   masked
 }
