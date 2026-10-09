@@ -181,7 +181,9 @@ impl Invocation {
          jobs,
       };
       let (compile_jobs, link_jobs) = invocation.jobs.iter().partition::<Vec<_>, _>(|job| {
-         job.get(1)
+         job.iter()
+            .skip(1)
+            .find(|token| token.starts_with('-'))
             .is_some_and(|mode| matches!(mode.as_str(), "-cc1" | "-cc1as" | "-fc1"))
       });
       let linked = link_jobs.into_iter().flatten().collect::<Vec<_>>();
