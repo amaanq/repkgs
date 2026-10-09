@@ -1,4 +1,4 @@
-//! The lock side of builder/sys-libs.json.
+//! The lock side of builder/sys-libs.toml.
 //!
 //! Locked third-party packages that link a C library and which package of
 //! ours provides it. spieler decides act.lock's `sys` from the lock files of a
@@ -33,20 +33,65 @@ use serde::{
    Serialize,
 };
 
-#[derive(Deserialize)]
+/// One locked package, written `name = "pkg"` when it needs nothing beyond
+/// the package that provides its library.
+#[derive(Default, Deserialize)]
+#[serde(from = "Spelled")]
 pub struct Entry {
    pub pkg:             Option<String>,
-   #[serde(default)]
    pub env:             BTreeMap<String, String>,
-   #[serde(default)]
    pub tags:            Vec<String>,
-   #[serde(default)]
    pub flags:           Vec<String>,
-   #[serde(default, rename = "configSettings")]
    pub config_settings: BTreeMap<String, String>,
 }
 
-/// The package ecosystems sys-libs.json has a table for.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Spelled {
+   Package(String),
+   Table {
+      pkg:             Option<String>,
+      #[serde(default)]
+      env:             BTreeMap<String, String>,
+      #[serde(default)]
+      tags:            Vec<String>,
+      #[serde(default)]
+      flags:           Vec<String>,
+      #[serde(default, rename = "configSettings")]
+      config_settings: BTreeMap<String, String>,
+   },
+}
+
+impl From<Spelled> for Entry {
+   #[inline]
+   fn from(spelled: Spelled) -> Self {
+      match spelled {
+         Spelled::Package(pkg) => {
+            Self {
+               pkg: Some(pkg),
+               ..Self::default()
+            }
+         },
+         Spelled::Table {
+            pkg,
+            env,
+            tags,
+            flags,
+            config_settings,
+         } => {
+            Self {
+               pkg,
+               env,
+               tags,
+               flags,
+               config_settings,
+            }
+         },
+      }
+   }
+}
+
+/// The package ecosystems sys-libs.toml has a table for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
@@ -115,7 +160,7 @@ pub type Tables = BTreeMap<Ecosystem, BTreeMap<String, Entry>>;
 
 #[inline]
 pub fn load(path: &Path) -> io::Result<Tables> {
-   Ok(serde_json::from_str(&read_to_string(path)?)?)
+   toml::from_str(&read_to_string(path)?).map_err(io::Error::other)
 }
 
 /// Package names in one ecosystem's lock file.

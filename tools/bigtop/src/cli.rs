@@ -123,7 +123,7 @@ pub enum Mode {
    /// the package on the structured attrs as one self-contained tree, for
    /// the bundle derivation.
    Bundle,
-   /// the lock side of sys-libs.json, what act.lock's sys should say.
+   /// the lock side of sys-libs.toml, what act.lock's sys should say.
    Syslibs {
       #[pound(subcommand)]
       operation: SyslibsOperation,
@@ -133,7 +133,7 @@ pub enum Mode {
 #[derive(Parse)]
 pub enum SyslibsOperation {
    /// our packages the lock files under `dir` can link, as JSON. --tables
-   /// names sys-libs.json outside a package build.
+   /// names sys-libs.toml outside a package build.
    Wanted {
       dir:    PathBuf,
       #[pound(long)]

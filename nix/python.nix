@@ -8,7 +8,9 @@
   python,
 }:
 let
-  hints = (builtins.fromJSON (builtins.readFile ../builder/sys-libs.json)).python;
+  hints = builtins.mapAttrs (_: entry: if builtins.isString entry then { pkg = entry; } else entry) (
+    builtins.fromTOML (builtins.readFile ../builder/sys-libs.toml)
+  ).python;
   ignored = [
     ".git"
     ".venv"

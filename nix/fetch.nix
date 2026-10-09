@@ -121,7 +121,7 @@ in
           environ
           cpu
           ;
-        sysLibs = ../builder/sys-libs.json;
+        sysLibs = ../builder/sys-libs.toml;
         pythonVersion = python.version;
         extras = commas extras;
         groups = commas groups;
