@@ -2,6 +2,7 @@ tag   = "v{version}"
 track = "github:manic-systems/circus"
 fetch = { archive = true }
 with  = [ "cargo" ]
+tools = [ "capnproto" ]
 
 [on.linux]
 tools = [ "wild" ]
