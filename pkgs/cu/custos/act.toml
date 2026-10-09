@@ -10,3 +10,7 @@ tools = [ "wild" ]
 
 [on.linux.cc]
 linker = "wild"
+
+# the binary has no --version
+[test]
+version = false
