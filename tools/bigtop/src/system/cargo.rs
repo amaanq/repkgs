@@ -171,7 +171,9 @@ impl Cargo {
    /// pkg-config, the -sys crates' usual probe, refuses to answer under
    /// --target without `ALLOW_CROSS`. bindgen asks a clang executable for
    /// its include dirs, ours and not a bare one on PATH. rustflags go in the
-   /// config because RUSTFLAGS from the environment would replace them.
+   /// config because RUSTFLAGS from the environment would replace them, the
+   /// linker in the environment too since a project's own .cargo/config.toml
+   /// outranks `CARGO_HOME`'s.
    pub fn configure(
       ctx: &Ctx,
       attrs: &Attrs,
@@ -243,6 +245,15 @@ impl Cargo {
          None => linkers.push((target.as_str(), "cc")),
       }
       for (triple, linker) in linkers {
+         if !linker.is_empty() {
+            env.insert(
+               format!(
+                  "CARGO_TARGET_{}_LINKER",
+                  triple.to_uppercase().replace('-', "_")
+               ),
+               linker.to_owned(),
+            );
+         }
          writeln!(
             config,
             "[target.{}]\nlinker = {}\nrustflags = {}\n",
