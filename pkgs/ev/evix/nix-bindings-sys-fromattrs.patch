@@ -1,0 +1,14 @@
+Nix 2.36 dropped the fetchers::Settings argument of FlakeRef::fromAttrs, and the
+crate is written against 2.35.2.
+
+--- a/src/wrappers/flake.cc
++++ b/src/wrappers/flake.cc
+@@ -36,7 +36,7 @@
+ 
+ static nix::FlakeRef flake_ref_from_json(
+     const nix::fetchers::Settings &settings, const nlohmann::json &value) {
+-  return nix::FlakeRef::fromAttrs(settings, nix::fetchers::jsonToAttrs(value));
++  return nix::FlakeRef::fromAttrs(nix::fetchers::jsonToAttrs(value));
+ }
+ 
+ static void collect_lock_file_nodes(

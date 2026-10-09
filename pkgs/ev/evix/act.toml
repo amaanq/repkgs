@@ -2,6 +2,7 @@ tag   = "v{version}"
 track = "github:manic-systems/evix"
 fetch = { archive = true }
 with  = [ "cargo" ]
+deps  = [ "nix" ]
 tools = [ "capnproto" ]
 
 [on.linux]
