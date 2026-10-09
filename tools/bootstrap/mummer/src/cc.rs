@@ -957,6 +957,16 @@ pub fn run_cc(language: Language, raw: &[String], socket: &Path) -> io::Result<i
    if let Some(status) = served_query(&invocation, &user, compiler, socket, started)? {
       return Ok(status);
    }
+   if invocation.jobs.is_empty()
+      && !invocation.query
+      && matches!(
+         invocation.action,
+         Action::Compile | Action::Assembly | Action::Preprocess
+      )
+      && let Some(status) = served_rejection(&invocation, &user, compiler, socket, started)?
+   {
+      return Ok(status);
+   }
    let outcome = if invocation.query {
       Outcome::Query
    } else if let Some(ref refusal) = invocation.refused {
@@ -1138,6 +1148,67 @@ fn served_query(
    }
    .put(&mut cache, &key)?;
    log(Tool::Cc, Outcome::Compiled, "query", started);
+   Ok(Some(status))
+}
+
+/// A compile the driver refuses, which fails alike until its inputs change.
+fn served_rejection(
+   invocation: &Invocation,
+   user: &[String],
+   compiler: &str,
+   socket: &Path,
+   started: Instant,
+) -> io::Result<Option<i32>> {
+   let Ok(mut cache) = Client::connect(socket) else {
+      return Ok(None);
+   };
+   let store = Store::new();
+   let mut hasher = Hasher::new();
+   field(&mut hasher, "rejected");
+   field(&mut hasher, store.tool_identity(&mut cache, compiler)?);
+   field(&mut hasher, store.key(utf8(&current_dir()?)?));
+   for argument in &invocation.args {
+      field(&mut hasher, store.key(argument));
+   }
+   for name in KEYED_ENVIRONMENT {
+      field(&mut hasher, name);
+      field(&mut hasher, var(name).unwrap_or_default());
+   }
+   for argument in user.iter().filter(|argument| !argument.starts_with('-')) {
+      match read(argument) {
+         Ok(mut bytes) => {
+            store.mask_output(&mut bytes, false);
+            field(&mut hasher, bytes);
+         },
+         Err(_) => field(&mut hasher, "absent"),
+      }
+   }
+   let key = Digest::from(hasher.finalize());
+   if let Ok(record) = Record::get(&mut cache, &key) {
+      io::stderr().lock().write_all(&record.diagnostics)?;
+      log(Tool::Cc, Outcome::CachedError, "rejected", started);
+      return Ok(Some(record.status));
+   }
+   let output = Command::new(compiler)
+      .args(&invocation.args)
+      .stdin(Stdio::null())
+      .output()?;
+   io::stdout().lock().write_all(&output.stdout)?;
+   io::stderr().lock().write_all(&output.stderr)?;
+   let status = status_code(output.status);
+   if status == 0_i32 || !output.stdout.is_empty() {
+      log(Tool::Cc, Outcome::Uncacheable, "rejected-but-ran", started);
+      return Ok(Some(status));
+   }
+   Record {
+      status,
+      diagnostics: output.stderr,
+      depfile: None,
+      link_deps: None,
+      artifacts: Vec::new(),
+   }
+   .put(&mut cache, &key)?;
+   log(Tool::Cc, Outcome::CompiledError, "rejected", started);
    Ok(Some(status))
 }
 
