@@ -1,0 +1,4 @@
+track = "gnu:bc"
+fetch = { url = "https://ftp.gnu.org/gnu/bc/bc-{version}.tar.gz" }
+with  = [ "autotools" ]
+tools = [ "texinfo" ]
