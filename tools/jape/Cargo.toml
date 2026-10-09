@@ -11,10 +11,10 @@ readme.workspace       = true
 rust-version.workspace = true
 
 [dependencies]
-misstep    = { workspace = true }
-mummer     = { workspace = true }
-libc       = "0.2"
-rustix     = { features = [ "process" ], workspace = true }
+misstep = { workspace = true }
+mummer  = { workspace = true }
+libc    = "0.2"
+rustix  = { features = [ "process" ], workspace = true }
 
 [lints]
 workspace = true

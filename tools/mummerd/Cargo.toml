@@ -11,22 +11,22 @@ readme.workspace       = true
 rust-version.workspace = true
 
 [dependencies]
-blake3       = { workspace = true }
-bytes        = "1"
-misstep      = { workspace = true }
-h2           = "0.4"
-http         = "1"
-pound        = "0.1.7"
+blake3         = { workspace = true }
+bytes          = "1"
+misstep        = { workspace = true }
+h2             = "0.4"
+http           = "1"
+pound          = "0.1.7"
 quick-protobuf = { default-features = false, features = [ "std" ], version = "0.8" }
-rustix       = { features = [ "process" ], workspace = true }
-rustls       = { default-features = false, features = [ "ring", "std", "tls12" ], version = "0.23" }
-sha2         = "0.11"
-signal-hook  = { default-features = false, version = "0.3" }
-tempfile     = "3"
-tightrope    = { workspace = true }
-tokio        = { features = [ "net", "rt-multi-thread", "time" ], version = "1" }
-tokio-rustls = { default-features = false, features = [ "ring", "tls12" ], version = "0.26" }
-webpki-roots = "1"
+rustix         = { features = [ "process" ], workspace = true }
+rustls         = { default-features = false, features = [ "ring", "std", "tls12" ], version = "0.23" }
+sha2           = "0.11"
+signal-hook    = { default-features = false, version = "0.3" }
+tempfile       = "3"
+tightrope      = { workspace = true }
+tokio          = { features = [ "net", "rt-multi-thread", "time" ], version = "1" }
+tokio-rustls   = { default-features = false, features = [ "ring", "tls12" ], version = "0.26" }
+webpki-roots   = "1"
 
 [lints]
 workspace = true
