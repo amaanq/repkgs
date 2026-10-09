@@ -1,0 +1,8 @@
+tag   = "version_{version}"
+track = "github:WebAssembly/binaryen"
+fetch = { archive = true }
+with  = [ "cmake" ]
+tools = [ "cpython" ]
+
+[cmake.defs]
+BUILD_TESTS = false
