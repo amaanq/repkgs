@@ -50,7 +50,7 @@ $ nix-build bootstrap -A stage2.x86_64.cc           # the toolchain alone
 
 The first build fetches the peanut and builds the toolchain, and later ones are incremental.
 
-`motley`, on PATH through direnv, covers the everyday tasks, all of them listed in
+`motley`, on PATH through cade, covers the everyday tasks, all of them listed in
 [tools/motley/README.md](tools/motley/README.md):
 
 ```console

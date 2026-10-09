@@ -1,6 +1,6 @@
 # motley
 
-The command for working on the package set, on PATH through direnv and otherwise at
+The command for working on the package set, on PATH through cade and otherwise at
 `tools/motley/motley`. Each subcommand has `--help`, and those where a platform matters take
 `--for <platform>` (`aarch64-linux`, `aarch64-macos`, `x86_64-windows-msvc` and the rest).
 
