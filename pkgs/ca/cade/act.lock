@@ -1,4 +1,5 @@
-version = "0.1.0"
-date    = "2026-05-27"
+version = "0.1.3-unstable-2026-10-08"
+date    = "2026-10-08"
+rev     = "f4ceea1506464301da0b90516c4a1f4d044f45be"
 sys     = [ "sqlite" ]
-hash    = "sha256-ql+7Ywpb/ytrKOX1CwAdobA1Beas5xGtv7zr9PiHfLE="
+hash    = "sha256-T09DldgaPDIfO6X27avDs1Zd0VIbt/VF1MaXow644+c="
