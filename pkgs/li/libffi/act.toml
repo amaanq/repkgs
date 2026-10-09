@@ -9,3 +9,14 @@ flags = [ "--disable-symvers" ]
 
 [on.windows.autotools]
 flags = [ "--disable-symvers" ]
+
+[bindings]
+python  = [ "cffi" ]
+hackage = [ "bindings-libffi" ]
+
+[bindings.cargo]
+names = [ "libffi-sys" ]
+env   = { LIBFFI_SYS_USE_PKG_CONFIG = "1" }
+
+[bindings.gems]
+flags.ffi = [ "--enable-system-libffi" ]

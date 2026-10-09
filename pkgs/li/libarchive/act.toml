@@ -25,3 +25,7 @@ deps = [ "acl", "attr" ]
 [on.linux.cmake.defs]
 ENABLE_ACL   = true
 ENABLE_XATTR = true
+
+[bindings]
+cargo   = [ "libarchive3-sys" ]
+hackage = [ "libarchive" ]

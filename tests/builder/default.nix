@@ -62,7 +62,9 @@ let
         ];
         PATH = "${nu}/bin:${bigtop}/bin:${set.bootstrap.peanut}/bin:${set.pkgs.rust-bootstrap}/bin";
         fixtures = dir;
-        SYS_LIBS = ../../nix/sys-libs.toml;
+        SYS_LIBS = builtins.toFile "bindings.json" (
+          builtins.toJSON (import ../../nix/bindings.nix).bindings
+        );
       }
       // (
         if builtins.elem name built then

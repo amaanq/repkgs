@@ -7,3 +7,6 @@ deps  = [ "abseil-cpp", "googletest", "icu" ]
 [cmake.defs]
 RE2_TEST    = true
 RE2_USE_ICU = true
+
+[bindings.gems]
+flags.re2 = [ "--enable-system-libraries" ]

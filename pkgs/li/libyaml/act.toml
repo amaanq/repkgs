@@ -1,3 +1,13 @@
 track = "github:yaml/libyaml"
 fetch = { url = "https://github.com/yaml/libyaml/releases/download/{version}/yaml-{version}.tar.gz" }
 with  = [ "autotools" ]
+
+[bindings]
+hackage = [ "libyaml-streamly" ]
+
+[bindings.python]
+names = [ "pyyaml" ]
+env   = { PYYAML_FORCE_LIBYAML = "1" }
+
+[bindings.gems]
+flags.psych = [ "--with-libyaml-dir={root}" ]

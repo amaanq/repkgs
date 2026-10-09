@@ -23,3 +23,7 @@ WITH_LIBSODIUM               = true
 # the select poller cannot carry IPC, which windows has over AF_UNIX, so use the bundled wepoll
 [on.windows.cmake.defs]
 POLLER = "epoll"
+
+[bindings.python]
+names = [ "pyzmq" ]
+env   = { PYZMQ_NO_BUNDLE = "1" }

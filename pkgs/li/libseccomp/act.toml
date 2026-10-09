@@ -10,3 +10,7 @@ os = [ "linux" ]
 
 [env]
 LIBSECCOMP_TSTCFG_JOBS = "0"
+
+[bindings]
+cargo = [ "libseccomp-sys" ]
+go    = [ "github.com/seccomp/libseccomp-golang" ]

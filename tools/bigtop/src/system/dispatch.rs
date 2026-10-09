@@ -147,7 +147,7 @@ pub fn mode(operation: SystemOperation, socket: &Path) -> io::Result<()> {
    let ctx = Ctx::load(&build_top()?)?;
    match operation {
       SystemOperation::SysEnv { ecosystem } => {
-         let active = syslibs::active(&Attrs::load()?, ecosystem.parse()?, &ctx.deps)?;
+         let active = syslibs::active(&Attrs::load()?, ecosystem.parse()?, &ctx.deps);
          let mut stdout = io::stdout().lock();
          serde_json::to_writer(&mut stdout, &active.env)?;
          writeln!(stdout)?;

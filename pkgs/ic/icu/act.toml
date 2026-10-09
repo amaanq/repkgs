@@ -23,3 +23,9 @@ flags = [ "--with-cross-build=/build/native-icu" ]
 
 [on.macos.autotools]
 flags = [ "--enable-rpath" ]
+
+[bindings]
+hackage = [ "text-icu" ]
+
+[bindings.gems]
+flags.charlock_holmes = [ "--with-icu-dir={root}" ]

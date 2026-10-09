@@ -40,9 +40,7 @@ let
     schema = import ../schema.nix;
   };
   elf = platform.binfmt == "elf";
-  sysTables = mapAttrs (_: mapAttrs (_: entry: if isString entry then { pkg = entry; } else entry)) (
-    builtins.fromTOML (builtins.readFile ../sys-libs.toml)
-  );
+  inherit (import ../bindings.nix) bindings;
 
   # the builder modules every script imports: one string for the set
   tree = builtins.path {
@@ -208,7 +206,7 @@ let
       ++ concatMap (system: buildSystems.${system}.tools spec ++ before buildSystems.${system}.stack) uses
     )
     ++ base;
-  # act.lock's sys: libraries the lock files can link (nix/sys-libs.toml). Those the set lacks
+  # act.lock's sys: libraries the lock files can link (their `[bindings]`). Those the set lacks
   # here are left to the locked package (vendored copy or feature off)
   dependencies =
     (valid.dependencies or [ ])
@@ -227,17 +225,12 @@ let
       tests = if separate then [ ] else testDependencies;
       base = if args.bootstrapTools or false then baseTools.bootstrap else baseTools.full;
     };
-    sysLibs = mapAttrs (
-      _: table:
-      listToAttrs (
-        filter (pair: elem (pair.value.pkg or null) provided) (
-          map (name: {
-            inherit name;
-            value = table.${name};
-          }) (builtins.attrNames table)
-        )
-      )
-    ) sysTables;
+    sysLibs = builtins.intersectAttrs (listToAttrs (
+      map (name: {
+        inherit name;
+        value = null;
+      }) provided
+    )) bindings;
   };
   drv = derivation (
     common

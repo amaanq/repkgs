@@ -35,45 +35,40 @@ pub struct Active {
    pub flags: BTreeMap<String, String>,
 }
 
-// the table entries of one ecosystem whose library is among the dependencies,
-// {root} filled in
-pub fn active(attrs: &Attrs, ecosystem: Ecosystem, deps: &[Exports]) -> io::Result<Active> {
-   let table = attrs
-      .sys_libs
-      .get(&ecosystem)
-      .ok_or_else(|| io::Error::other(format!("sys-libs has no {ecosystem} table")))?;
+// what the dependencies' bindings of one ecosystem turn on, {root} filled in
+pub fn active(attrs: &Attrs, ecosystem: Ecosystem, deps: &[Exports]) -> Active {
    let mut found = Active {
       env:   BTreeMap::new(),
       tags:  Vec::new(),
       flags: BTreeMap::new(),
    };
-   for (locked, entry) in table {
-      let Some(dep) = deps
-         .iter()
-         .find(|dep| entry.pkg.as_ref() == Some(&dep.name))
+   for dep in deps {
+      let Some(binding) = attrs
+         .sys_libs
+         .get(&dep.name)
+         .and_then(|bindings| bindings.get(&ecosystem))
       else {
          continue;
       };
-      for (name, value) in &entry.env {
+      for (name, value) in &binding.env {
          found
             .env
             .insert(name.clone(), value.replace("{root}", &dep.root));
       }
-      for tag in &entry.tags {
+      for tag in &binding.tags {
          if !found.tags.contains(tag) {
             found.tags.push(tag.clone());
          }
       }
-      if !entry.flags.is_empty() {
-         let rendered = entry
-            .flags
+      for (locked, flags) in &binding.flags {
+         let rendered = flags
             .iter()
             .map(|flag| flag.replace("{root}", &dep.root))
             .collect::<Vec<String>>();
          found.flags.insert(locked.clone(), rendered.join(" "));
       }
    }
-   Ok(found)
+   found
 }
 
 /// Every `sys` package among the dependencies must be what the outputs link,

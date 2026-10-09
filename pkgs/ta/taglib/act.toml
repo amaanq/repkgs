@@ -8,3 +8,7 @@ patches = [ "relocatable.patch" ]
 
 [cmake.defs]
 WITH_ZLIB = true
+
+[bindings]
+go      = [ "github.com/deluan/go-taglib", "go.senan.xyz/taglib" ]
+hackage = [ "htaglib", "libtagc", "taglib", "taglib-api" ]

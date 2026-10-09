@@ -99,6 +99,34 @@ conditions. `<when>` is `cross`, `native`, or a value of the platform's `os`, `c
 Tables merge, lists append, anything else replaces. `with` is a Nix keyword, so act.nix spells it
 `"with"`.
 
+### Bindings
+
+`[bindings]` names the locked packages of other ecosystems that link this library, so a lock file
+that pins one gets the library as a dependency and the library's settings in its build. An
+ecosystem (`cargo`, `go`, `python`, `gems`, `hackage`) is a list of names, or a table with
+`names` and
+
+- `env`, set in every build that locks one of them, `{root}` being the library's store path
+- `tags`, go build tags
+- `flags.<gem>`, that gem's extension build flags
+- `configSettings.<package>`, that python package's PEP 517 config settings
+
+A name under `flags` or `configSettings` needs no entry in `names`. `[builds.python]` is the same
+for a tool, the `names` whose sdist builds with this package plus the `tools` it needs. After an
+edit, `motley update rehash` rewrites the act.lock `sys` it changed.
+
+```toml
+[bindings]
+hackage = [ "zlib", "digest" ]
+
+[bindings.cargo]
+names = [ "libz-sys", "libz-ng-sys" ]
+env   = { ZLIB_NO_VENDOR = "1" }
+
+[bindings.gems]
+flags.zlib = [ "--with-zlib-dir={root}" ]
+```
+
 ### act.nix
 
 A function of `{ platform, pkgs, tools, toolchain, pin, source, file, fetch, tree, when }` to a

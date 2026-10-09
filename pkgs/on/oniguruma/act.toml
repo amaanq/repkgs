@@ -5,3 +5,7 @@ with  = [ "autotools" ]
 
 [autotools]
 configureScript = "configure"
+
+[bindings.cargo]
+names = [ "onig_sys" ]
+env   = { RUSTONIG_DYNAMIC_LIBONIG = "1", RUSTONIG_SYSTEM_LIBONIG = "1" }

@@ -5,3 +5,7 @@ with  = [ "cmake" ]
 
 [cmake.defs]
 CARES_BUILD_TOOLS = false
+
+[bindings.python]
+names = [ "pycares" ]
+env   = { PYCARES_USE_SYSTEM_LIB = "1" }

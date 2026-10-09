@@ -161,5 +161,5 @@ spieler get <url> [--max-age d]          a cached GET as JSON, for hooks
 ```
 
 spieler shares mummer's unpacking, so a prefetched hash matches what the set fetches, and the lock
-side of nix/sys-libs.toml with the builder. Not built yet are a dashboard of pending and held
+side of act.toml `[bindings]` with the builder. Not built yet are a dashboard of pending and held
 updates, libyear and advisory reports (OSV by purl, NVD where `cpe` is set), and grouped updates.

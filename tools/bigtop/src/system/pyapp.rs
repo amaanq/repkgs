@@ -202,7 +202,7 @@ impl System for Pyapp {
          ("PYTHONNOUSERSITE".to_owned(), "1".to_owned()),
          ("PIP_NO_INDEX".to_owned(), "1".to_owned()),
       ]);
-      env.extend(syslibs::active(attrs, Ecosystem::Python, &ctx.deps)?.env);
+      env.extend(syslibs::active(attrs, Ecosystem::Python, &ctx.deps).env);
       Ok(env.into())
    }
 
@@ -369,9 +369,10 @@ fn build_wheel(
 
       let mut settings = attrs
          .sys_libs
-         .get(&Ecosystem::Python)
-         .and_then(|table| table.get(name))
-         .map(|entry| entry.config_settings.clone())
+         .values()
+         .filter_map(|bindings| bindings.get(&Ecosystem::Python))
+         .find_map(|binding| binding.config_settings.get(name))
+         .cloned()
          .unwrap_or_default();
       settings.extend(
          overrides

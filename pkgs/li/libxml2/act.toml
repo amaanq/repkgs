@@ -14,3 +14,11 @@ flags = [ "--sysconfdir=/etc" ]
 
 [on.windows]
 deps = [ "libiconv" ]
+
+[bindings]
+cargo  = [ "libxml" ]
+python = [ "lxml" ]
+
+[bindings.gems]
+env            = { NOKOGIRI_USE_SYSTEM_LIBRARIES = "1" }
+flags.nokogiri = [ "--use-system-libraries" ]

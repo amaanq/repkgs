@@ -26,3 +26,21 @@ flags = [
   "--with-terminfo-dirs=/etc/terminfo:/lib/terminfo:/usr/share/terminfo",
   "--with-manpage-format=normal",
 ]
+
+[bindings]
+gems = [ "curses" ]
+hackage = [
+  "LibClang",
+  "fearOfView",
+  "hetris",
+  "hmp3",
+  "hmp3-ng",
+  "hscurses",
+  "htalkat",
+  "mage",
+  "nanocurses",
+  "ncurses",
+  "riot",
+  "terminfo",
+  "vimus",
+]

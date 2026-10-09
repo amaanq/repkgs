@@ -128,8 +128,8 @@ impl System for Bundler {
          ),
          ("MAKEFLAGS".to_owned(), format!("-j{}", ctx.njobs)),
       ]);
-      env.extend(syslibs::active(attrs, Ecosystem::Gems, &ctx.deps)?.env);
-      gem_build_env(attrs, ctx, &mut env)?;
+      env.extend(syslibs::active(attrs, Ecosystem::Gems, &ctx.deps).env);
+      gem_build_env(attrs, ctx, &mut env);
       cross_rbconfig(ctx, &mut env)?;
       Ok(env.into())
    }
@@ -181,10 +181,10 @@ fn cross_rbconfig(ctx: &Ctx, env: &mut BTreeMap<String, String>) -> io::Result<(
 
 /// `BUNDLE_BUILD__<GEM>` is how `bundle config build.<gem> <flags>` reaches
 /// `gem install` without a config file.
-fn gem_build_env(attrs: &Attrs, ctx: &Ctx, env: &mut BTreeMap<String, String>) -> io::Result<()> {
-   let flags = syslibs::active(attrs, Ecosystem::Gems, &ctx.deps)?.flags;
+fn gem_build_env(attrs: &Attrs, ctx: &Ctx, env: &mut BTreeMap<String, String>) {
+   let flags = syslibs::active(attrs, Ecosystem::Gems, &ctx.deps).flags;
    if flags.is_empty() {
-      return Ok(());
+      return;
    }
    note(
       "sys-libs",
@@ -196,7 +196,6 @@ fn gem_build_env(attrs: &Attrs, ctx: &Ctx, env: &mut BTreeMap<String, String>) -
          value,
       );
    }
-   Ok(())
 }
 
 /// the .gem archives, bundler's download cache, the extension build logs and

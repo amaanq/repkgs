@@ -25,3 +25,10 @@ tool = "cmake-bootstrap"
 BUILD_EXAMPLES          = false
 CRYPTO_BACKEND          = "OpenSSL"
 ENABLE_ZLIB_COMPRESSION = true
+
+[bindings]
+hackage = [ "libssh2", "simplessh" ]
+
+[bindings.cargo]
+names = [ "libssh2-sys" ]
+env   = { LIBSSH2_SYS_USE_PKG_CONFIG = "1" }

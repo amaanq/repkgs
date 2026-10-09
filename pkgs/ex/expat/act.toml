@@ -9,3 +9,7 @@ tool = "cmake-bootstrap"
 [cmake.defs]
 EXPAT_BUILD_DOCS     = false
 EXPAT_BUILD_EXAMPLES = false
+
+[bindings]
+cargo   = [ "expat-sys" ]
+hackage = [ "hexpat" ]
