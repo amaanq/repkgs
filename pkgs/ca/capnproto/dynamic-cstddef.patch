@@ -1,0 +1,13 @@
+dynamic.h names std::nullptr_t without including <cstddef>, which libc++ no longer
+pulls in transitively.
+
+--- a/c++/src/capnp/dynamic.h
++++ b/c++/src/capnp/dynamic.h
+@@ -38,6 +38,7 @@
+ #include "any.h"
+ #include "capability.h"
+ #include <kj/windows-sanity.h>  // work-around macro conflict with `VOID`
++#include <cstddef>
+ 
+ CAPNP_BEGIN_HEADER
+ 
