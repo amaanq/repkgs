@@ -577,7 +577,7 @@ impl Invocation {
             Some(ref root) if self.action == Action::Precompile => {
                job.replace(root.as_str(), "<toolchain>")
             },
-            _ => store.key(&job),
+            _ => store.key_job(&job),
          });
       }
       if let Some(ref text) = self.preprocessed {
