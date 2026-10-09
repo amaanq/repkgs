@@ -1,5 +1,8 @@
 use std::{
-   collections::BTreeMap,
+   collections::{
+      BTreeMap,
+      HashSet,
+   },
    env::var_os,
    fmt::{
       Display,
@@ -182,6 +185,7 @@ fn reply(output: &mut impl Write, response: &Response) -> io::Result<()> {
 struct Session {
    cache:     Option<Client>,
    directory: PathBuf,
+   missed:    HashSet<[u8; 32]>,
 }
 
 impl Session {
@@ -210,10 +214,14 @@ impl Session {
                path,
             })
          },
-         Ok(_) => Ok(ResponseBody::Miss { miss: true }),
+         Ok(_) => {
+            self.missed.insert(action.0);
+            Ok(ResponseBody::Miss { miss: true })
+         },
          Err(error) => {
             diagnostic(format_args!("mummer Go cache lookup failed, {error}"));
             self.cache = None;
+            self.missed.insert(action.0);
             Ok(ResponseBody::Miss { miss: true })
          },
       }
@@ -236,12 +244,14 @@ impl Session {
          diagnostic(format_args!("mummer Go cache upload failed, {error}"));
          self.cache = None;
       }
-      let outcome = if self.cache.is_some() {
-         Outcome::Compiled
-      } else {
-         Outcome::CompiledUnstored
-      };
-      log(Tool::Go, outcome, action, started);
+      if self.missed.remove(&action.0) {
+         let outcome = if self.cache.is_some() {
+            Outcome::Compiled
+         } else {
+            Outcome::CompiledUnstored
+         };
+         log(Tool::Go, outcome, action, started);
+      }
       Ok(ResponseBody::Stored { path })
    }
 }
@@ -281,7 +291,11 @@ pub fn run(socket: &Path) -> io::Result<()> {
       PathBuf::from,
    );
    create_dir_all(&directory)?;
-   let mut session = Session { cache, directory };
+   let mut session = Session {
+      cache,
+      directory,
+      missed: HashSet::new(),
+   };
    let mut input = BufReader::new(io::stdin());
    let stdout = io::stdout();
    let mut writer = stdout.lock();
