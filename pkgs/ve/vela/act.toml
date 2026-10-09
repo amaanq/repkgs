@@ -1,9 +1,7 @@
-fetch = { url = "https://github.com/manic-systems/vela/archive/{rev}.tar.gz" }
+tag   = "v{version}"
+track = "github:manic-systems/vela"
+fetch = { archive = true }
 with  = [ "cargo" ]
-
-[track]
-from = "github:manic-systems/vela?branch=master"
-base = "0.2.2"
 
 [on.linux]
 tools = [ "wild" ]
