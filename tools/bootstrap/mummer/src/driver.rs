@@ -108,6 +108,12 @@ impl Driver {
       }
    }
 
+   pub fn ldflags(&self) -> &[String] {
+      self
+         .toolchain()
+         .map_or(&[], |toolchain| toolchain.package.ldflags.as_slice())
+   }
+
    pub fn format(&self) -> BinaryFormat {
       self
          .toolchain()

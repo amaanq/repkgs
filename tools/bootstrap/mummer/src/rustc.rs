@@ -507,11 +507,18 @@ fn linker_identity(store: &Store, cache: &mut Client, linker: &str) -> io::Resul
    };
    let driver = Driver::load_at(root)?;
    let config = read_to_string(root.join("etc/mummer.json"))?;
-   Ok(format!(
+   let mut identity = format!(
       "{}{}",
       store.key(&config),
       store.tool_identity(cache, driver.cc())?
-   ))
+   );
+   for flag in driver.ldflags() {
+      identity.push_str(&store.key(flag));
+      if let Some(program) = flag.strip_prefix("--ld-path=") {
+         identity.push_str(&store.tool_identity(cache, program)?);
+      }
+   }
+   Ok(identity)
 }
 
 /// The standard library rustc links for this invocation, as rustc itself
