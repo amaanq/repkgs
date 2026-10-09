@@ -40,7 +40,7 @@ pub fn tables(attrs: &Attrs) -> io::Result<Tables> {
       .probe_inputs
       .first()
       .ok_or_else(|| io::Error::other("the builder tree is not among probeInputs"))?;
-   load(&Path::new(tree).join("sys-libs.json"))
+   load(&Path::new(tree).join("sys-libs.toml"))
 }
 
 pub struct Active {

@@ -621,7 +621,7 @@ mummerd, with failed uploads reported without failing the build. `restore-dir` a
 `system setup|workdir|phase <name> [<verb>]` is every build system, package.nix calls them
 from the build script. autotools keeps `config.cache` and cmake its `INTERNAL` entries under the probe key of
 the same name. cargo and python read
-`builder/sys-libs.json`, the table of locked C bindings and the libraries and environment
+`builder/sys-libs.toml`, the table of locked C bindings and the libraries and environment
 they get, through the builder tree in `probeInputs`.
 
 `env` reads the derivation's structured attrs from `NIX_ATTRS_JSON_FILE` and prints the

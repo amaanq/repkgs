@@ -59,7 +59,7 @@ upstream lock has no usable hash, a `locks/<registry>.toml`. Roughly by value fo
 Swift (its own LLVM fork), Dart and Flutter, Julia, Nim, Crystal and D are not planned. Yarn berry
 stays out because its checksum covers a zip yarn repacks, not the registry tarball.
 
-**Native dependencies for JS locks.** sys-libs.json covers cargo, go, python, gems. node-gyp
+**Native dependencies for JS locks.** sys-libs.toml covers cargo, go, python, gems. node-gyp
 addons (`sharp` with libvips, `better-sqlite3`, `canvas` with cairo and pango) need the same table
 for npm, pnpm and bun, and `spieler check` should warn when a lock names a library the set lacks.
 

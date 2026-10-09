@@ -62,7 +62,7 @@ let
         ];
         PATH = "${nu}/bin:${bigtop}/bin:${set.bootstrap.peanut}/bin:${set.pkgs.rust-bootstrap}/bin";
         fixtures = dir;
-        SYS_LIBS = ../../builder/sys-libs.json;
+        SYS_LIBS = ../../builder/sys-libs.toml;
       }
       // (
         if builtins.elem name built then

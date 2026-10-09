@@ -215,7 +215,7 @@ let
       tests = if separate then [ ] else testDependencies;
       base = if args.bootstrapTools or false then baseTools.bootstrap else baseTools.full;
     };
-    # act.lock's sys: libraries the lock files can link (builder/sys-libs.json). Those the set lacks
+    # act.lock's sys: libraries the lock files can link (builder/sys-libs.toml). Those the set lacks
     # here are left to the locked package (vendored copy or feature off)
     dependencies =
       (valid.dependencies or [ ])
