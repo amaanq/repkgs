@@ -7,31 +7,25 @@
   system ? null,
 }:
 let
-  mirrors = import ./mirrors.nix;
+  mirrorGroups = builtins.attrValues (builtins.fromTOML (builtins.readFile ./mirrors.toml));
 
-  hostOf =
-    url:
-    let
-      found = builtins.match "https://([^/]+)/.*" url;
-    in
-    if found == null then null else builtins.head found;
-  byHost = builtins.groupBy hostOf (builtins.attrNames mirrors);
   startsWith = prefix: url: builtins.substring 0 (builtins.stringLength prefix) url == prefix;
   spellings =
     url:
     let
-      host = hostOf url;
-      rest = prefix: builtins.substring (builtins.stringLength prefix) (-1) url;
+      inGroup =
+        group:
+        let
+          owners = builtins.filter (prefix: startsWith prefix url) group;
+          owner = builtins.head owners;
+          path = builtins.substring (builtins.stringLength owner) (-1) url;
+        in
+        if owners == [ ] then
+          [ ]
+        else
+          map (prefix: prefix + path) (builtins.filter (prefix: prefix != owner) group);
     in
-    [ url ]
-    ++ (
-      if host == null then
-        [ ]
-      else
-        builtins.concatMap (prefix: map (other: other + rest prefix) mirrors.${prefix}) (
-          builtins.filter (prefix: startsWith prefix url) (byHost.${host} or [ ])
-        )
-    );
+    [ url ] ++ builtins.concatMap inGroup mirrorGroups;
 
   # a fixed-output path is fixed by name and hash, so naming it after the URL keeps a bumped URL
   # with a stale hash from reusing the old download

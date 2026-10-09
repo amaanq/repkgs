@@ -61,7 +61,7 @@ hash    = "sha256-…"               # the NAR hash of the unpacked tree, top di
 # file = "25.0.4.1_1"              anything else a resolve hook returned, a {file} placeholder in urls
 ```
 
-URLs name the canonical host, and nix/mirrors.nix adds fallbacks by prefix. `{version}`, `{tag}`,
+URLs name the canonical host, and nix/mirrors.toml adds fallbacks by prefix. `{version}`, `{tag}`,
 `{version_}`, `{major}`, `{minor}` and every key of act.lock fill url placeholders. The lock holds
 `tag` only where act.toml's template does not spell it. Keeping what spieler writes in its own file
 means a version bump never touches the act a person wrote, and one pair per package makes a whole

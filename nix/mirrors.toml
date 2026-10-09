@@ -1,0 +1,18 @@
+# Each list names prefixes that serve one tree. A source URL under any of them is tried as written,
+# then under the rest in list order.
+gnu = [
+  "https://ftp.gnu.org/gnu/",
+  "https://ftpmirror.gnu.org/",
+  "https://mirrors.kernel.org/gnu/",
+]
+kernel = [
+  "https://cdn.kernel.org/pub/",
+  "https://www.kernel.org/pub/",
+  "https://mirrors.edge.kernel.org/pub/",
+]
+savannah = [
+  "https://download.savannah.gnu.org/releases/",
+  "https://download.savannah.nongnu.org/releases/",
+  "https://download-mirror.savannah.gnu.org/releases/",
+]
+sourceware = [ "https://sourceware.org/pub/", "https://mirrors.kernel.org/sourceware/" ]
