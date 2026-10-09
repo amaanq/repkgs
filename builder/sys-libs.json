@@ -34,15 +34,11 @@
     },
     "lzma-sys": {
       "pkg": "xz",
-      "env": {
-        "LZMA_API_STATIC": "0"
-      }
+      "env": {}
     },
     "liblzma-sys": {
       "pkg": "xz",
-      "env": {
-        "LZMA_API_STATIC": "0"
-      }
+      "env": {}
     },
     "libsqlite3-sys": {
       "pkg": "sqlite",
