@@ -44,6 +44,7 @@ let
 
   orEmpty = value: if value == null then "" else value;
   commas = builtins.concatStringsSep ",";
+  sysPython = (builtins.fromTOML (builtins.readFile ./sys-libs.toml)).python;
 
   tree =
     name: kind:
@@ -121,7 +122,15 @@ in
           environ
           cpu
           ;
-        sysLibs = ../builder/sys-libs.toml;
+        sysSdists = commas (
+          builtins.filter (
+            name:
+            let
+              entry = sysPython.${name};
+            in
+            builtins.isString entry || entry ? pkg
+          ) (builtins.attrNames sysPython)
+        );
         pythonVersion = python.version;
         extras = commas extras;
         groups = commas groups;

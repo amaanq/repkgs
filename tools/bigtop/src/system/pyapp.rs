@@ -69,8 +69,6 @@ use crate::{
 
 options! {
    Options {
-      root ("root"): String = ".".to_owned()
-         => "directory below the source the project lives in (monorepos, build/cmake)",
       deps ("deps"): PackagePath
          => "the locked dependencies, fetched (fetch.pythonDeps) from the package's own lock file",
       check ("check"): Vec<String> = Vec::new()
@@ -194,7 +192,6 @@ impl System for Pyapp {
    /// PYTHONPATH is the application's site-packages, filling up during the
    /// build, then the build backends.
    fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      let options = ctx.options::<Options>(self.name())?;
       let site = site_packages(ctx)?;
       create_dir_all(&site)?;
       let mut path = vec![site];
@@ -205,12 +202,6 @@ impl System for Pyapp {
          ("PYTHONNOUSERSITE".to_owned(), "1".to_owned()),
          ("PIP_NO_INDEX".to_owned(), "1".to_owned()),
       ]);
-      syslibs::check(
-         attrs,
-         &ctx.project_dir(&options.root),
-         ctx.spec()?.sys.as_deref(),
-         None,
-      )?;
       env.extend(syslibs::active(attrs, Ecosystem::Python, &ctx.deps)?.env);
       Ok(env.into())
    }
@@ -376,8 +367,8 @@ fn build_wheel(
          );
       }
 
-      let tables = syslibs::tables(attrs)?;
-      let mut settings = tables
+      let mut settings = attrs
+         .sys_libs
          .get(&Ecosystem::Python)
          .and_then(|table| table.get(name))
          .map(|entry| entry.config_settings.clone())

@@ -20,6 +20,7 @@ use mummer::{
       is_store_path,
       normalize,
    },
+   syslibs::Tables,
 };
 use serde::{
    Deserialize,
@@ -70,6 +71,8 @@ pub struct Attrs {
    pub probe_inputs:       Vec<String>,
    #[serde(default)]
    pub plan:               Plan,
+   #[serde(rename = "sysLibs", default)]
+   pub sys_libs:           Tables,
 }
 
 /// what nix/package.nix used to render as the build script.

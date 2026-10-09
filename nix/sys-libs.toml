@@ -1,3 +1,4 @@
+# after an edit, `motley update rehash` rewrites any act.lock whose sys this changed
 [cargo]
 libz-ng-sys = "zlib"
 # both crates bundle their own xz whenever LZMA_API_STATIC is set at all, even to 0

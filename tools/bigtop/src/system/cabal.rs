@@ -28,7 +28,6 @@ use mummer::{
       utf8,
       write_file,
    },
-   syslibs::Ecosystem,
    tree::{
       EntryKind,
       note,
@@ -65,7 +64,6 @@ use crate::{
          unknown,
       },
       dispatch::System,
-      syslibs,
    },
 };
 
@@ -93,12 +91,10 @@ struct Plan {
 #[derive(Deserialize)]
 struct Unit {
    #[serde(rename = "type")]
-   kind:     UnitType,
+   kind:  UnitType,
    #[serde(default)]
-   style:    Option<UnitStyle>,
-   id:       String,
-   #[serde(rename = "pkg-name")]
-   pkg_name: String,
+   style: Option<UnitStyle>,
+   id:    String,
 }
 
 #[derive(Deserialize, PartialEq, Eq)]
@@ -227,10 +223,10 @@ impl System for Cabal {
       .into())
    }
 
-   fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
+   fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
       let options = ctx.options::<Options>("cabal")?;
       match verb {
-         "build" => Self::build(ctx, attrs, &options, socket),
+         "build" => Self::build(ctx, &options, socket),
          "test" => Self::test(ctx, &options),
          "install" => Self::install(ctx, &options),
          _ => Err(unknown("cabal", verb)),
@@ -432,7 +428,7 @@ impl Cabal {
       })
    }
 
-   fn build(ctx: &Ctx, attrs: &Attrs, options: &Options, socket: &Path) -> io::Result<()> {
+   fn build(ctx: &Ctx, options: &Options, socket: &Path) -> io::Result<()> {
       let targets = Self::targets(options);
       let dist = if ctx.cache {
          let key = Self::dist_key(ctx, options)?;
@@ -449,15 +445,6 @@ impl Cabal {
       dry.extend(strs(&targets));
       run("cabal", &dry, &[])?;
       let planned = Self::plan()?;
-      let names = planned
-         .iter()
-         .map(|unit| unit.pkg_name.clone())
-         .collect::<Vec<String>>();
-      syslibs::check_names(
-         &syslibs::wanted_for(attrs, Ecosystem::Hackage, &names)?,
-         ctx.spec()?.sys.as_deref(),
-         "lock",
-      )?;
       if ctx.cache {
          let ids = planned
             .into_iter()

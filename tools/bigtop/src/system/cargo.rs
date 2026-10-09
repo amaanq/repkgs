@@ -101,12 +101,6 @@ impl System for Cargo {
       };
       let home = format!("{}/cargo-home", ctx.build.display());
       let mut env = Env::from(Self::configure(ctx, attrs, vendor.as_deref(), &home)?);
-      syslibs::check(
-         attrs,
-         &ctx.project_dir(&options.root),
-         ctx.spec()?.sys.as_deref(),
-         Some(&Self::build(&options, Some(home.into()))),
-      )?;
       env.unset("RUSTFLAGS");
       Ok(env)
    }

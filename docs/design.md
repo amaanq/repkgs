@@ -80,9 +80,10 @@ the sandbox.
 - Ecosystems whose locks lack file hashes (Go, Hackage, LuaRocks) keep them in one sorted
   `locks/<ecosystem>.toml` each, merged as a union by git and written by `spieler lock`.
 - Native libraries behind locked dependencies are resolved when spieler pins, through
-  builder/sys-libs.toml, and recorded as `sys` in act.lock. They become ordinary dependencies that
-  evaluation, `supported` and overrides all see. A lock that gains a new `-sys` crate fails the
-  build instead of falling back to a vendored copy.
+  nix/sys-libs.toml, and recorded as `sys` in act.lock. They become ordinary dependencies that
+  evaluation, `supported` and overrides all see. Each build gets only the table entries for its own
+  dependencies, so an edit to the table rebuilds just those packages, and `motley update rehash`
+  catches a lock whose `sys` the edit made stale.
 - A source's store name follows its URL, so a version bump with a stale hash fails instead of
   reusing the old download.
 

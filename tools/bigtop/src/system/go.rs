@@ -34,8 +34,6 @@ use crate::{
 
 options! {
    Options {
-      root ("root"): String = ".".to_owned()
-         => "directory below the source the project lives in (monorepos, build/cmake)",
       tags ("tags"): Vec<String> = Vec::new()
          => "-tags",
       ldflags ("ldflags"): Vec<String> = Vec::new()
@@ -67,19 +65,13 @@ impl System for Go {
    }
 
    /// compile, asm and link take a host-wide mummerd slot like cc and rustc do.
-   fn setup(&self, ctx: &Ctx, attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
+   fn setup(&self, ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
       let options = ctx.options::<Options>(self.name())?;
       let platform = ctx.platform()?;
       let (mode, proxy) = options.deps.as_deref().map_or_else(
          || ("vendor", "off".to_owned()),
          |deps| ("mod", format!("file://{deps}")),
       );
-      syslibs::check(
-         attrs,
-         &ctx.project_dir(&options.root),
-         ctx.spec()?.sys.as_deref(),
-         None,
-      )?;
       Ok([
          ("GOCACHE", format!("{}/go-cache", ctx.build.display())),
          ("GOPATH", format!("{}/go", ctx.build.display())),
