@@ -1,0 +1,2 @@
+load flake
+call nu -n -c 'print $"PATH=($env.PWD)/tools/motley"'
