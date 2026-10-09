@@ -29,7 +29,10 @@ use std::{
       Path,
       PathBuf,
    },
-   process::Command,
+   process::{
+      Command,
+      Stdio,
+   },
    time::Instant,
 };
 
@@ -49,6 +52,7 @@ use mummer::{
       Tool,
       diagnostic,
       expand_response_files,
+      log,
       run,
       run_slotted,
       status_code,
@@ -139,6 +143,17 @@ impl Display for Refusal {
       }
    }
 }
+
+const KEYED_ENVIRONMENT: [&str; 8] = [
+   "CPATH",
+   "C_INCLUDE_PATH",
+   "CPLUS_INCLUDE_PATH",
+   "OBJC_INCLUDE_PATH",
+   "LIBRARY_PATH",
+   "SOURCE_DATE_EPOCH",
+   "LANG",
+   "LC_ALL",
+];
 
 struct Invocation {
    args:         Vec<String>,
@@ -243,7 +258,8 @@ impl Invocation {
                keyed = false;
                wants_deps = true;
             },
-            "-M" | "-MM" | "-" | "-v" | "-V" | "--version" | "-###" | "-fsyntax-only" => {
+            "-M" | "-MM" | "-" | "-v" | "-V" | "--version" | "-?" | "-help" | "--help" | "-###"
+            | "-fsyntax-only" => {
                invocation.query = true;
             },
             "-shared" | "-r" => objects = true,
@@ -582,16 +598,7 @@ impl Invocation {
             _ => store.key(&masked),
          });
       }
-      for name in [
-         "CPATH",
-         "C_INCLUDE_PATH",
-         "CPLUS_INCLUDE_PATH",
-         "OBJC_INCLUDE_PATH",
-         "LIBRARY_PATH",
-         "SOURCE_DATE_EPOCH",
-         "LANG",
-         "LC_ALL",
-      ] {
+      for name in KEYED_ENVIRONMENT {
          field(&mut hasher, name);
          field(&mut hasher, var(name).unwrap_or_default());
       }
@@ -947,6 +954,9 @@ pub fn run_cc(language: Language, raw: &[String], socket: &Path) -> io::Result<i
       .clone()
       .unwrap_or_else(|| invocation.output.display().to_string());
 
+   if let Some(status) = served_query(&invocation, &user, compiler, socket, started)? {
+      return Ok(status);
+   }
    let outcome = if invocation.query {
       Outcome::Query
    } else if let Some(ref refusal) = invocation.refused {
@@ -1011,6 +1021,124 @@ pub fn run_cc(language: Language, raw: &[String], socket: &Path) -> io::Result<i
    let result = run_uncached(&invocation, driver.format(), compiler, slot)?;
    uncached(Tool::Cc, outcome, &subject, &user, started);
    Ok(result.status)
+}
+
+fn served_uncompiled(
+   invocation: &Invocation,
+   user: &[String],
+   compiler: &str,
+   socket: &Path,
+   started: Instant,
+) -> io::Result<Option<i32>> {
+   if let Some(status) = served_query(invocation, user, compiler, socket, started)? {
+      return Ok(Some(status));
+   }
+   let rejected = invocation.jobs.is_empty()
+      && !invocation.query
+      && matches!(
+         invocation.action,
+         Action::Compile | Action::Assembly | Action::Preprocess
+      );
+   if !rejected {
+      return Ok(None);
+   }
+   served_rejection(invocation, user, compiler, socket, started)
+}
+
+/// A query only the compiler answers, `-?`, `--version` or `as` on /dev/null.
+fn served_query(
+   invocation: &Invocation,
+   user: &[String],
+   compiler: &str,
+   socket: &Path,
+   started: Instant,
+) -> io::Result<Option<i32>> {
+   let null = |path: &str| path == "/dev/null";
+   let discarded = invocation.output == Path::new("/dev/null")
+      && invocation.source.as_deref().is_none_or(null)
+      && invocation.inputs.iter().all(|input| null(input));
+   let reads_files = user.iter().any(|arg| {
+      matches!(arg.as_str(), "-" | "-include" | "-imacros")
+         || discarded && matches!(arg.as_str(), "-v" | "-###")
+         || [
+            "-print-file-name",
+            "--print-file-name",
+            "-print-prog-name",
+            "--print-prog-name",
+         ]
+         .iter()
+         .any(|prefix| arg.starts_with(prefix))
+   });
+   // nothing to link reaches only the linker's own options, as in meson's
+   // `-Wl,--version`
+   let inputless = invocation.action == Action::Other
+      && invocation.source.is_none()
+      && invocation.inputs.is_empty()
+      && user.iter().all(|arg| {
+         arg.strip_prefix("-Wl,").map_or_else(
+            || !arg.starts_with("-l") && arg != "-Xlinker",
+            |words| {
+               words
+                  .split(',')
+                  .all(|word| word.starts_with('-') && !word.contains('='))
+            },
+         )
+      });
+   if !(invocation.query || discarded || inputless)
+      || reads_files
+      || invocation
+         .source
+         .as_deref()
+         .is_some_and(|source| !null(source))
+      || !invocation.inputs.iter().all(|input| null(input))
+   {
+      return Ok(None);
+   }
+   let Ok(mut cache) = Client::connect(socket) else {
+      return Ok(None);
+   };
+   let store = Store::new();
+   let mut hasher = Hasher::new();
+   field(&mut hasher, "query");
+   field(&mut hasher, store.tool_identity(&mut cache, compiler)?);
+   for argument in &invocation.args {
+      field(&mut hasher, store.key(argument));
+   }
+   for name in KEYED_ENVIRONMENT {
+      field(&mut hasher, name);
+      field(&mut hasher, var(name).unwrap_or_default());
+   }
+   let key = Digest::from(hasher.finalize());
+   if let Ok(record) = Record::get(&mut cache, &key) {
+      for artifact in &record.artifacts {
+         io::stdout().lock().write_all(&artifact.bytes)?;
+      }
+      io::stderr().lock().write_all(&record.diagnostics)?;
+      log(Tool::Cc, Outcome::Cached, "query", started);
+      return Ok(Some(record.status));
+   }
+   let output = Command::new(compiler)
+      .args(&invocation.args)
+      .stdin(Stdio::null())
+      .output()?;
+   io::stdout().lock().write_all(&output.stdout)?;
+   io::stderr().lock().write_all(&output.stderr)?;
+   let status = status_code(output.status);
+   Record {
+      status,
+      diagnostics: output.stderr,
+      depfile: None,
+      link_deps: None,
+      artifacts: vec![Artifact {
+         name:   "stdout".to_owned(),
+         mode:   None,
+         bytes:  output.stdout,
+         settle: false,
+      }],
+   }
+   .put(&mut cache, &key)?;
+   log(Tool::Cc, Outcome::Compiled, "query", started);
+   Ok(Some(status))
 }
 
 /// The jobs the compiler driver would run for `args`, each as its tokens,
