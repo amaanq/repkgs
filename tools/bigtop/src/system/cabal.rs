@@ -378,7 +378,8 @@ impl Cabal {
    /// redoes C sources and alex or happy output only by mtime. The plan is
    /// dropped so Cabal configures against this build's inputs, and linked
    /// outputs so ghc links again, since it checks dependency libraries by
-   /// mtime alone.
+   /// mtime alone. Each component's `cache/build` record goes too, or Cabal
+   /// hashes the touched sources, finds them unchanged and never relinks.
    fn settle_restored(project: &Path) -> io::Result<()> {
       let now = SystemTime::now();
       let restored = now
@@ -389,7 +390,8 @@ impl Cabal {
             continue;
          }
          let built = entry.rel.starts_with("dist-newstyle/");
-         if built && Self::linked(Path::new(&entry.path))? {
+         if built && (entry.rel.ends_with("/cache/build") || Self::linked(Path::new(&entry.path))?)
+         {
             remove_file(&entry.path)?;
             continue;
          }
