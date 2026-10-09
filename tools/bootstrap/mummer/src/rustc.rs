@@ -228,8 +228,16 @@ impl Invocation {
          index += 1;
       }
       invocation.links = !library;
+      let has = |prefix: &str| {
+         invocation
+            .key_args
+            .iter()
+            .any(|argument| argument.starts_with(prefix))
+      };
+      let foreign_linker = invocation.links && !has("-C=linker=") && has("--target=");
       if query
          || !cacheable
+         || foreign_linker
          || sources != 1_i32
          || !dep_info
          || invocation.out_dir.as_os_str().is_empty()
