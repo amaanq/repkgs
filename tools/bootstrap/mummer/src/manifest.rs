@@ -31,6 +31,8 @@ use tightrope::{
    },
 };
 
+const MANIFESTS: usize = 8;
+
 #[derive(Deserialize, Serialize)]
 struct Input {
    path:     String,
@@ -101,16 +103,67 @@ impl Manifest {
       Ok(Digest::from(hasher.finalize()))
    }
 
-   pub fn publish(&self, cache: &mut Client, request: &Key) -> io::Result<()> {
-      cache.put(
-         &Key::of(Namespace::Manifest, request),
-         &serde_json::to_vec(self)?,
-      )
+   /// llvm and llvm22 precompiles share request keys, so several sets stay.
+   pub fn publish(self, cache: &mut Client, request: &Key) -> io::Result<()> {
+      let key = Key::of(Namespace::Manifest, request);
+      let result = self.result_key(request)?;
+      let known = cache
+         .get(&key)?
+         .and_then(|bytes| serde_json::from_slice::<Vec<Self>>(&bytes).ok())
+         .unwrap_or_default();
+      let mut manifests = vec![self];
+      for manifest in known {
+         if manifest.result_key(request)? != result {
+            manifests.push(manifest);
+         }
+      }
+      manifests.truncate(MANIFESTS);
+      cache.put(&key, &serde_json::to_vec(&manifests)?)
+   }
+
+   fn matches(&self, cache: &mut Client, store: &mut Store) -> Result<(), Miss> {
+      let mut paths = Vec::with_capacity(self.inputs.len());
+      for input in &self.inputs {
+         let Some(path) = store.resolve(&input.path) else {
+            return Err(Miss::InputsChanged(input.path.clone()));
+         };
+         paths.push(path);
+      }
+      prefetch(cache, store, &paths)?;
+      for (input, path) in self.inputs.iter().zip(paths) {
+         match store.input_id(&path) {
+            Ok(identity) if identity == input.identity => {},
+            Ok(_) => return Err(Miss::InputsChanged(path)),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+               return Err(Miss::InputsChanged(path));
+            },
+            Err(error) => return Err(Miss::Failed(error)),
+         }
+      }
+      for absent in &self.absent {
+         if store
+            .resolve(absent)
+            .is_some_and(|path| Path::new(&path).exists())
+         {
+            return Err(Miss::Appeared(absent.clone()));
+         }
+      }
+
+      if let Some(entry) = self
+         .environment
+         .iter()
+         .find(|entry| var(&entry.name).ok() != entry.value)
+      {
+         return Err(Miss::EnvironmentChanged(entry.name.clone()));
+      }
+      Ok(())
    }
 }
 
 pub enum Miss {
    NewKey,
+   /// A manifest in a shape this mummer does not read, replaced on store.
+   Unreadable,
    InputsChanged(String),
    EnvironmentChanged(String),
    Appeared(String),
@@ -123,6 +176,7 @@ impl Display for Miss {
    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
       match *self {
          Self::NewKey => f.write_str("new-key"),
+         Self::Unreadable => f.write_str("manifest-unreadable"),
          Self::InputsChanged(ref path) => write!(f, "inputs-changed:{path}"),
          Self::EnvironmentChanged(ref name) => write!(f, "env-changed:{name}"),
          Self::Appeared(ref path) => write!(f, "appeared:{path}"),
@@ -143,42 +197,20 @@ pub fn lookup(cache: &mut Client, store: &mut Store, request: &Key) -> Result<Di
    let Some(bytes) = cache.get(&Key::of(Namespace::Manifest, request))? else {
       return Err(Miss::NewKey);
    };
-   let manifest = serde_json::from_slice::<Manifest>(&bytes).map_err(io::Error::from)?;
-   let mut paths = Vec::with_capacity(manifest.inputs.len());
-   for input in &manifest.inputs {
-      let Some(path) = store.resolve(&input.path) else {
-         return Err(Miss::InputsChanged(input.path.clone()));
-      };
-      paths.push(path);
-   }
-   prefetch(cache, store, &paths)?;
-   for (input, path) in manifest.inputs.iter().zip(paths) {
-      match store.input_id(&path) {
-         Ok(identity) if identity == input.identity => {},
-         Ok(_) => return Err(Miss::InputsChanged(path)),
-         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Err(Miss::InputsChanged(path));
+   let Ok(manifests) = serde_json::from_slice::<Vec<Manifest>>(&bytes) else {
+      return Err(Miss::Unreadable);
+   };
+   let mut newest = None;
+   for manifest in &manifests {
+      match manifest.matches(cache, store) {
+         Ok(()) => return Ok(manifest.result_key(request)?),
+         Err(Miss::Failed(error)) => return Err(Miss::Failed(error)),
+         Err(miss) => {
+            newest.get_or_insert(miss);
          },
-         Err(error) => return Err(Miss::Failed(error)),
       }
    }
-   for absent in &manifest.absent {
-      if store
-         .resolve(absent)
-         .is_some_and(|path| Path::new(&path).exists())
-      {
-         return Err(Miss::Appeared(absent.clone()));
-      }
-   }
-
-   if let Some(entry) = manifest
-      .environment
-      .iter()
-      .find(|entry| var(&entry.name).ok() != entry.value)
-   {
-      return Err(Miss::EnvironmentChanged(entry.name.clone()));
-   }
-   Ok(manifest.result_key(request)?)
+   Err(newest.unwrap_or(Miss::NewKey))
 }
 
 pub fn prefetch(cache: &mut Client, store: &mut Store, paths: &[String]) -> io::Result<()> {
