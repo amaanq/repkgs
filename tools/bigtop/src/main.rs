@@ -67,7 +67,6 @@ use crate::{
    system::{
       dispatch,
       msbuild,
-      syslibs,
    },
 };
 
@@ -108,7 +107,7 @@ fn probe_mode(operation: ProbeOperation, socket: &Path) -> Result<i32> {
 }
 
 fn lock_tables(path: Option<&Path>) -> io::Result<Tables> {
-   path.map_or_else(|| syslibs::tables(&Attrs::load()?), load)
+   path.map_or_else(|| Ok(Attrs::load()?.sys_libs), load)
 }
 
 fn syslibs_mode(operation: SyslibsOperation) -> io::Result<()> {

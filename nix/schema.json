@@ -1524,15 +1524,6 @@
       ],
       "options": [
         {
-          "name": "root",
-          "type": {
-            "kind": "string"
-          },
-          "default": ".",
-          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-          "system": "go"
-        },
-        {
           "name": "tags",
           "type": {
             "kind": "list",
@@ -2093,15 +2084,6 @@
       ],
       "prebuilt": true,
       "options": [
-        {
-          "name": "root",
-          "type": {
-            "kind": "string"
-          },
-          "default": ".",
-          "doc": "directory below the source the project lives in (monorepos, build/cmake)",
-          "system": "pyapp"
-        },
         {
           "name": "deps",
           "type": {

@@ -1,4 +1,4 @@
-//! The lock side of builder/sys-libs.toml.
+//! The lock side of nix/sys-libs.toml.
 //!
 //! Locked third-party packages that link a C library and which package of
 //! ours provides it. spieler decides act.lock's `sys` from the lock files of a

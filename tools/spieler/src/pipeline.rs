@@ -74,7 +74,7 @@ pub fn root() -> PathBuf {
 }
 
 pub fn tables() -> io::Result<Tables> {
-   load(&root().join("builder/sys-libs.toml"))
+   load(&root().join("nix/sys-libs.toml"))
 }
 
 #[derive(Clone, Deserialize, Serialize)]

@@ -77,7 +77,7 @@ pub trait System: Sync {
 
    fn workdir(&self, ctx: &Ctx) -> io::Result<PathBuf> {
       let options = ctx.options::<Root>(self.name())?;
-      Ok(ctx.project_dir(&options.root))
+      Ok(ctx.project_dir(options.root.as_deref().unwrap_or(".")))
    }
 
    fn setup(&self, _ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
@@ -89,7 +89,7 @@ pub trait System: Sync {
 
 #[derive(Deserialize)]
 struct Root {
-   root: String,
+   root: Option<String>,
 }
 
 const SYSTEMS: &[&dyn System] = &[

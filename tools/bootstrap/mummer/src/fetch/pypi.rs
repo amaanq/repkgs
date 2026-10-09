@@ -646,16 +646,8 @@ impl Request {
             .map(str::to_owned)
             .collect::<Vec<_>>()
       };
-      let sys_libs = load(Path::new(&attr("sysLibs")?))?;
       let mut sdists = no_binary.into_iter().collect::<BTreeSet<_>>();
-      sdists.extend(
-         sys_libs
-            .get(&Ecosystem::Python)
-            .into_iter()
-            .flat_map(|table| table.iter())
-            .filter(|&(_name, entry)| entry.pkg.is_some())
-            .map(|(name, _entry)| name.clone()),
-      );
+      sdists.extend(csv(attr("sysSdists")?));
       sdists.extend(csv(attr("sdist")?));
       let git = attr("git")?
          .lines()

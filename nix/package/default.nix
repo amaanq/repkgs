@@ -40,6 +40,9 @@ let
     schema = import ../schema.nix;
   };
   elf = platform.binfmt == "elf";
+  sysTables = mapAttrs (_: mapAttrs (_: entry: if isString entry then { pkg = entry; } else entry)) (
+    builtins.fromTOML (builtins.readFile ../sys-libs.toml)
+  );
 
   # the builder modules every script imports: one string for the set
   tree = builtins.path {
@@ -205,8 +208,17 @@ let
       ++ concatMap (system: buildSystems.${system}.tools spec ++ before buildSystems.${system}.stack) uses
     )
     ++ base;
+  # act.lock's sys: libraries the lock files can link (nix/sys-libs.toml). Those the set lacks
+  # here are left to the locked package (vendored copy or feature off)
+  dependencies =
+    (valid.dependencies or [ ])
+    ++ map (library: pkgs.${library}) (
+      filter (library: pkgs.${library}.supported or false) (if sys == null then [ ] else sys)
+    )
+    ++ concatMap (system: buildSystems.${system}.dependencies) uses;
+  provided = map (dependency: dependency.pname or "") dependencies;
   common = shared // {
-    inherit src spec;
+    inherit src spec dependencies;
     inherit (phases) plan;
     probeInputs = [ tree ] ++ phases.modules;
     inherit (args) version;
@@ -215,14 +227,17 @@ let
       tests = if separate then [ ] else testDependencies;
       base = if args.bootstrapTools or false then baseTools.bootstrap else baseTools.full;
     };
-    # act.lock's sys: libraries the lock files can link (builder/sys-libs.toml). Those the set lacks
-    # here are left to the locked package (vendored copy or feature off)
-    dependencies =
-      (valid.dependencies or [ ])
-      ++ map (library: pkgs.${library}) (
-        filter (library: pkgs.${library}.supported or false) (if sys == null then [ ] else sys)
+    sysLibs = mapAttrs (
+      _: table:
+      listToAttrs (
+        filter (pair: elem (pair.value.pkg or null) provided) (
+          map (name: {
+            inherit name;
+            value = table.${name};
+          }) (builtins.attrNames table)
+        )
       )
-      ++ concatMap (system: buildSystems.${system}.dependencies) uses;
+    ) sysTables;
   };
   drv = derivation (
     common
