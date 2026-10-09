@@ -1,0 +1,27 @@
+Fall back to the compiler's own ELF when the host has neither /usr/bin/env nor
+/system/bin/env, as in a build sandbox, so -lc executables get the interpreter of the
+libc the compiler was linked against instead of a /lib64 path that does not exist there.
+The reader buffer grows so a RUNPATH padded to 4096 bytes for later rewriting still parses.
+
+--- a/lib/std/zig/system.zig
++++ b/lib/std/zig/system.zig
+@@ -977,7 +977,7 @@
+     // *including* "#!" characters and ignoring newline.
+     // For safety, we set max length as 255 + \n (1).
+     const max_shebang_line_size = 256;
+-    var file_reader_buffer: [4096]u8 = undefined;
++    var file_reader_buffer: [8192]u8 = undefined;
+     comptime assert(file_reader_buffer.len >= max_shebang_line_size);
+ 
+     // Best case scenario: the executable is dynamically linked, and we can iterate
+@@ -1016,6 +1016,10 @@
+                     // Android does not have a /usr directory, so try again
+                     file_name = "/system/bin/env";
+                     continue;
++                } else if (builtin.target.os.tag == .linux and e == error.FileNotFound and mem.eql(u8, file_name, "/system/bin/env")) {
++                    // a build sandbox has no env at all, and the compiler was linked against the libc it targets
++                    file_name = "/proc/self/exe";
++                    continue;
+                 } else return error.UnableToOpenElfFile,
+                 else => |e| return e,
+             };
