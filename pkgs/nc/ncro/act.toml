@@ -2,6 +2,7 @@ tag   = "v{version}"
 track = "github:manic-systems/ncro"
 fetch = { archive = true }
 with  = [ "cargo" ]
+tools = [ "cacert" ]
 
 [on.linux]
 tools = [ "wild" ]
