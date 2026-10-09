@@ -278,7 +278,7 @@ impl Invocation {
                   let option = index
                      .checked_sub(1)
                      .map(|before| invocation.args[before].as_str())
-                     .filter(|before| before.starts_with('-'));
+                     .filter(|before| before.starts_with('-') && !before.contains('='));
                   linked.iter().enumerate().any(|(position, token)| {
                      **token == arg
                         && !(position > 0
