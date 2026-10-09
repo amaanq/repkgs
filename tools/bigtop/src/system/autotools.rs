@@ -12,11 +12,11 @@ use std::{
       self,
       Write as _,
    },
+   iter::once,
    path::{
       Path,
       PathBuf,
    },
-   slice,
 };
 
 use mummer::{
@@ -173,9 +173,13 @@ impl Autotools {
          format!("--build={build}"),
       ];
       let cache = ctx.build.join("config.cache");
+      let sites = var("CONFIG_SITE").unwrap_or_default();
+      let scripts = once(script.as_str())
+         .chain(sites.split_whitespace())
+         .collect::<Vec<&str>>();
       let key = probe::key(
          "autotools",
-         slice::from_ref(&script),
+         &scripts,
          Some(&Extra {
             script: &options.configure_script,
             flags:  &options.flags,

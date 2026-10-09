@@ -56,14 +56,15 @@ struct Record<'inputs, Extra> {
 
 /// Leaves `$out` out, since a CA derivation's is a placeholder that changes
 /// with every input, and `store` keeps whatever names it out of the cache.
-pub fn key<Extra>(kind: &str, scripts: &[String], extra: Option<&Extra>) -> io::Result<Key>
+pub fn key<Script, Extra>(kind: &str, scripts: &[Script], extra: Option<&Extra>) -> io::Result<Key>
 where
+   Script: AsRef<str>,
    Extra: Serialize,
 {
    let top = build_top()?;
    let ctx = Ctx::load(&top)?;
-   let mut sorted = scripts.to_vec();
-   sorted.sort();
+   let mut sorted = scripts.iter().map(AsRef::as_ref).collect::<Vec<&str>>();
+   sorted.sort_unstable();
    let files = sorted
       .iter()
       .map(|path| Ok(format!("{path}={}", hex(&read(path)?))))
