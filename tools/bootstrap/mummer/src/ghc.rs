@@ -13,7 +13,6 @@ use std::{
    },
    ffi::OsStr,
    fs::{
-      canonicalize,
       metadata,
       read,
       read_to_string,
@@ -35,8 +34,8 @@ use std::{
 use blake3::Hasher;
 use mummer::{
    files::{
-      utf8,
       relative_path,
+      utf8,
       write_file,
    },
    process::{
@@ -51,7 +50,6 @@ use mummer::{
    store::{
       Store,
       field,
-      on_path,
    },
 };
 use tightrope::{
@@ -67,6 +65,7 @@ use crate::{
    manifest::{
       Manifest,
       Miss,
+      parse_depfile,
    },
    record::{
       Artifact,
@@ -79,10 +78,12 @@ use crate::{
    },
 };
 
-const SOURCES: [&str; 4] = [".hs", ".lhs", ".hs-boot", ".lhs-boot"];
+const SOURCES: [&str; 5] = [".hs", ".lhs", ".hs-boot", ".lhs-boot", ".cmm"];
 
 struct Invocation {
    source:   String,
+   /// Its headers are in hadrian's `<object>.d`.
+   cmm:      bool,
    output:   String,
    outputs:  Vec<String>,
    required: usize,
@@ -186,23 +187,37 @@ impl Invocation {
          return Err(source);
       }
 
-      let mut outputs = vec![
-         output.clone(),
-         interface.unwrap_or_else(|| format!("{stem}.{interface_suffix}{boot}")),
-      ];
-      // ghc writes no dynamic object for a boot interface
-      let required = if dynamic_too && boot.is_empty() { 4 } else { 2 };
-      if dynamic_too {
-         outputs.extend([
-            format!("{stem}.{dynamic_object}{boot}"),
-            format!("{stem}.{dynamic_interface}{boot}"),
-         ]);
-      }
-      outputs.push(format!("{stem}_stub.h"));
+      let cmm = Path::new(&source)
+         .extension()
+         .is_some_and(|extension| extension.eq_ignore_ascii_case("cmm"));
+      let (outputs, required) = if cmm {
+         let mut outputs = vec![output.clone()];
+         // ghc ignores -dynamic-too for Cmm, hadrian compiles the dyn way apart
+         if dynamic_too {
+            outputs.push(format!("{stem}.{dynamic_object}"));
+         }
+         (outputs, 1)
+      } else {
+         let mut outputs = vec![
+            output.clone(),
+            interface.unwrap_or_else(|| format!("{stem}.{interface_suffix}{boot}")),
+         ];
+         // ghc writes no dynamic object for a boot interface
+         let required = if dynamic_too && boot.is_empty() { 4 } else { 2 };
+         if dynamic_too {
+            outputs.extend([
+               format!("{stem}.{dynamic_object}{boot}"),
+               format!("{stem}.{dynamic_interface}{boot}"),
+            ]);
+         }
+         outputs.push(format!("{stem}_stub.h"));
+         (outputs, required)
+      };
       files.retain(|file| *file != source && !outputs.contains(file));
 
       Ok(Self {
          source,
+         cmm,
          output,
          outputs,
          required,
@@ -215,6 +230,13 @@ impl Invocation {
    /// it, following interfaces in the same package transitively since hadrian
    /// lists direct imports only.
    fn dependencies(&self) -> io::Result<Vec<String>> {
+      if self.cmm {
+         let listed = read_to_string(format!("{}.d", self.output))?;
+         return Ok(parse_depfile(&listed)
+            .into_iter()
+            .filter(|path| *path != self.source && Path::new(path).is_file())
+            .collect());
+      }
       let (ref object_suffix, ref interface_suffix) = self.suffixes;
       let interface_of = |object: &str| {
          ["", "-boot"].into_iter().find_map(|boot| {
@@ -397,14 +419,14 @@ fn prepare(
    invocation: &Invocation,
    socket: &Path,
 ) -> Option<(Client, Key, Vec<String>)> {
-   let client = Client::connect(socket)
+   let mut client = Client::connect(socket)
       .map_err(|error| diagnostic(format_args!("mummer Haskell cache unavailable, {error}")))
       .ok()?;
    let dependencies = invocation
       .dependencies()
       .map_err(|error| diagnostic(format_args!("mummer cannot find Haskell inputs, {error}")))
       .ok()?;
-   let key = request_key(store, compiler, arguments, invocation)
+   let key = request_key(store, &mut client, compiler, arguments, invocation)
       .map_err(|error| {
          diagnostic(format_args!(
             "mummer cannot identify Haskell inputs, {error}"
@@ -416,6 +438,7 @@ fn prepare(
 
 fn request_key(
    store: &Store,
+   cache: &mut Client,
    compiler: &str,
    arguments: &[String],
    invocation: &Invocation,
@@ -424,12 +447,8 @@ fn request_key(
    if !info.status.success() {
       return Err(io::Error::other(format!("{compiler} --info failed")));
    }
-   let real = canonicalize(on_path(compiler))?;
    let mut hasher = Hasher::new();
-   field(
-      &mut hasher,
-      store.input_id(utf8(&real)?)?.to_string(),
-   );
+   field(&mut hasher, store.tool_identity(cache, compiler)?);
    field(
       &mut hasher,
       store.key(&String::from_utf8(info.stdout).map_err(io::Error::other)?),
