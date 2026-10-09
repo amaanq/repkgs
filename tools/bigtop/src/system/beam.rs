@@ -199,7 +199,7 @@ fn deps_key(tool: Tool, options: &Options) -> io::Result<Key> {
    let set = utf8(Path::new(
       Path::new(&*options.deps).file_name().unwrap_or_default(),
    ))?;
-   probe::key(&format!("{}-deps/{set}", tool.name()), &[], None::<&()>)
+   probe::key::<&str, ()>(&format!("{}-deps/{set}", tool.name()), &[], None)
 }
 
 struct Locked {
