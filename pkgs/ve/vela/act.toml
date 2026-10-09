@@ -3,7 +3,7 @@ with  = [ "cargo" ]
 
 [track]
 from = "github:manic-systems/vela?branch=master"
-base = "0.2.0"
+base = "0.2.2"
 
 [on.linux]
 tools = [ "wild" ]
