@@ -1,4 +1,4 @@
-use checks.nu *
+use checks.nu [expect pass split-debug]
 
 let lib = $"($env.pkg)/lib"
 split-debug bin/hello

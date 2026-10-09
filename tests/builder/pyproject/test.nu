@@ -1,4 +1,4 @@
-use checks.nu *
+use checks.nu [expect pass]
 
 let python   = $"($env.pkg)/bin/python3"
 let greeting = (with-env {MOTLEY_PROJECT: $env.src} { ^$python -c "import tproj; tproj.main()" } | str trim)

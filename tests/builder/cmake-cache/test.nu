@@ -1,5 +1,5 @@
 # bigtop probe cmake-init turns a CMakeCache.txt into `set(... CACHE INTERNAL "")` lines
-use checks.nu *
+use checks.nu [expect pass]
 
 let cache = [
    "# comment"
