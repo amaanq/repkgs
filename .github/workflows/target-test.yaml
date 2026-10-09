@@ -1,57 +1,74 @@
+# Driven by tools/target-test, which reads the log back as `<job> <step> <time> <line>`, so the job
+# stays `run` and step names stay one word
 name: target-test
-# Cross-built outputs run on real hardware. tools/target-test packs their closure (nix-store -qR
-# into tar -C /) as a release asset, starts this with one command per line and follows the run.
+
 on:
   workflow_dispatch:
     inputs:
       runner:
-        description: the machine, a runs-on label
-        required: true
+        description: GitHub runner label
         type: choice
-        options: [windows-latest, windows-11-arm, macos-latest, macos-13, ubuntu-24.04-arm]
+        required: true
+        options:
+          - ubuntu-24.04-arm
+          - macos-latest
+          - macos-13
+          - windows-latest
+          - windows-11-arm
       url:
-        description: the closure tarball
+        description: closure tarball, store paths relative to /
         required: true
       commands:
-        description: one per line, naming store paths as they were packed
+        description: newline separated shell checks naming /nix/store paths
         required: true
 
 jobs:
   run:
     runs-on: ${{ inputs.runner }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CLOSURE_URL: ${{ inputs.url }}
+      CHECKS: ${{ inputs.commands }}
     steps:
-      - name: unpack the closure
-        shell: bash
+      - name: store
         run: |
-          curl -fsSL -o closure.tar.gz "${{ inputs.url }}"
-          if [ "$RUNNER_OS" = Windows ]; then
-            # Windows has no /nix, so the store lands under C: and the commands are rewritten to match
-            mkdir -p /c/nix
-            tar -C /c -xzf closure.tar.gz
-            echo "STORE_PREFIX=/c" >> "$GITHUB_ENV"
-          elif [ "$RUNNER_OS" = macOS ]; then
-            curl -fsSL https://install.determinate.systems/nix | sh -s -- install --no-confirm >/dev/null
-            sudo tar -C / -xzf closure.tar.gz
-            echo "STORE_PREFIX=" >> "$GITHUB_ENV"
-          else
-            sudo mkdir -p /nix
-            sudo chown "$USER" /nix
-            tar -C / -xzf closure.tar.gz
-            echo "STORE_PREFIX=" >> "$GITHUB_ENV"
-          fi
-      - name: run the commands
-        shell: bash
+          case "$RUNNER_OS" in
+            Linux)
+              sudo install -d -o "$USER" /nix
+              echo "STORE_ROOT=" >> "$GITHUB_ENV"
+              ;;
+            macOS)
+              # the sealed system volume refuses mkdir /nix, the installer adds a synthetic.conf entry and an APFS volume
+              curl -fsSL https://nixos.org/nix/install | sh -s -- --daemon --yes
+              echo "STORE_ROOT=" >> "$GITHUB_ENV"
+              ;;
+            Windows)
+              mkdir -p /c/nix
+              echo "STORE_ROOT=/c" >> "$GITHUB_ENV"
+              ;;
+          esac
+
+      - name: fetch
+        run: |
+          as_root=""
+          if [ "$RUNNER_OS" = macOS ]; then as_root=sudo; fi
+          curl -fsSL --retry 3 "$CLOSURE_URL" | $as_root tar -xzf - -C "${STORE_ROOT:-/}"
+
+      - name: check
         run: |
           failed=0
-          while IFS= read -r command; do
-            if [ -z "$command" ]; then continue; fi
-            echo "::group::$command"
-            if ! (cd "$STORE_PREFIX/" && eval "${command//\/nix\/store/$STORE_PREFIX/nix/store}"); then
-              echo "::error::$command failed"
+          while IFS= read -r line; do
+            line="${line%$'\r'}"
+            case "$line" in "" | "#"*) continue ;; esac
+
+            check="${line//\/nix\/store\//$STORE_ROOT/nix/store/}"
+            echo "::group::$check"
+            if ! bash -c "$check"; then
+              echo "::error::failed: $check"
               failed=1
             fi
             echo "::endgroup::"
-          done <<'EOF'
-          ${{ inputs.commands }}
-          EOF
-          exit $failed
+          done <<< "$CHECKS"
+          exit "$failed"
