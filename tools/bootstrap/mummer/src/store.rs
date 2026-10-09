@@ -62,6 +62,8 @@ use tightrope::{
 
 use crate::{
    elf::{
+      PT_LOAD,
+      build_ids,
       is_elf,
       needed,
       runpath_text,
@@ -503,8 +505,10 @@ impl Store {
       Ok(found.into_iter().collect::<Vec<_>>().join(","))
    }
 
-   /// One file's identity with its RUNPATH and the room reserved after it
-   /// left out, and the libraries it loads, remembered by its stat stamp.
+   /// One file's identity, the bytes it loads with its RUNPATH, the room
+   /// reserved after it and its build-id left out, since the build-id
+   /// hashes debug info too, and the libraries it loads, remembered by its
+   /// stat stamp.
    fn loaded_identity(
       &self,
       cache: &mut Client,
@@ -527,19 +531,24 @@ impl Store {
       let identity = if is_elf(&image) {
          let program_headers = segments(&image)?;
          let mut hasher = Hasher::new();
+         let mut loaded = image.bytes.clone();
+         loaded
+            .get_mut(40..48)
+            .ok_or_else(|| io::Error::other("ELF header is too short"))?
+            .fill(0);
+         for range in build_ids(&image, &program_headers)? {
+            loaded[range].fill(0);
+         }
          if let Some(text) = runpath_text(&image, &program_headers)? {
             let mut end = text.offset + text.capacity;
             while image.bytes.get(end) == Some(&0) {
                end += 1;
             }
-            let outside = image
-               .bytes
-               .get(..text.offset)
-               .zip(image.bytes.get(end..))
-               .ok_or_else(|| io::Error::other("ELF RUNPATH is outside the file"))?;
-            hasher.update(outside.0);
+            loaded
+               .get_mut(text.offset..end)
+               .ok_or_else(|| io::Error::other("ELF RUNPATH is outside the file"))?
+               .fill(0);
             field(&mut hasher, format!("runpath {}", end - text.offset));
-            hasher.update(outside.1);
             let origin = utf8(file.parent().unwrap_or_else(|| Path::new("/")))?;
             let directories = text
                .value
@@ -562,8 +571,12 @@ impl Store {
                   libraries.push(canonicalize(path)?);
                }
             }
-         } else {
-            hasher.update(&image.bytes);
+         }
+         for segment in program_headers
+            .iter()
+            .filter(|segment| segment.kind == PT_LOAD)
+         {
+            hasher.update(&loaded[segment.offset..segment.offset + segment.size]);
          }
          InputId::Loaded(hasher.finalize())
       } else {

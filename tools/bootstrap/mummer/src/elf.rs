@@ -1,5 +1,6 @@
 use std::{
    io,
+   ops::Range,
    path::{
       Path,
       PathBuf,
@@ -25,6 +26,7 @@ pub const PT_NULL: u32 = 0;
 pub const PT_LOAD: u32 = 1;
 pub const PT_DYNAMIC: u32 = 2;
 pub const PT_INTERP: u32 = 3;
+pub const PT_NOTE: u32 = 4;
 
 pub const DT_NULL: u64 = 0;
 pub const DT_NEEDED: u64 = 1;
@@ -33,6 +35,7 @@ pub const DT_RPATH: u64 = 15;
 pub const DT_RUNPATH: u64 = 29;
 
 const SHN_UNDEF: u16 = 0;
+const NT_GNU_BUILD_ID: u32 = 3;
 const SHN_ABS: u16 = 0xFFF1;
 const STB_GLOBAL: u8 = 1;
 const STB_WEAK: u8 = 2;
@@ -429,4 +432,31 @@ pub fn shared_library(name: &str) -> bool {
                .all(|byte| byte == b'.' || byte.is_ascii_digit())
          })
    })
+}
+
+#[inline]
+pub fn build_ids(image: &Image, segments: &[Segment]) -> io::Result<Vec<Range<usize>>> {
+   let mut found = Vec::new();
+   for segment in segments.iter().filter(|segment| segment.kind == PT_NOTE) {
+      let end = segment.offset + segment.size;
+      let mut cursor = segment.offset;
+      while cursor + 12 <= end {
+         let owner_size = image.long_usize(cursor)?;
+         let description_size = image.long_usize(cursor + 4)?;
+         let kind = image.long(cursor + 8)?;
+         let owner_start = cursor + 12;
+         let description_start = owner_start + owner_size.next_multiple_of(4);
+         let next = description_start + description_size.next_multiple_of(4);
+         if next > end {
+            return Err(io::Error::other("ELF note extends beyond its segment"));
+         }
+         if kind == NT_GNU_BUILD_ID
+            && image.bytes.get(owner_start..owner_start + owner_size) == Some(b"GNU\0")
+         {
+            found.push(description_start..description_start + description_size);
+         }
+         cursor = next;
+      }
+   }
+   Ok(found)
 }
