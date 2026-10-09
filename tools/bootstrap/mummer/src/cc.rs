@@ -25,6 +25,7 @@ use std::{
    mem::take,
    os::unix::fs::PermissionsExt as _,
    path::{
+      Component,
       Path,
       PathBuf,
    },
@@ -36,6 +37,7 @@ use blake3::Hasher;
 use mummer::{
    config::BinaryFormat,
    files::{
+      relative_path,
       remove_if_exists,
       utf8,
       write_file,
@@ -152,6 +154,7 @@ struct Invocation {
    refused:      Option<Refusal>,
    stdout:       bool,
    preprocessed: Option<String>,
+   modules:      Vec<PathBuf>,
    split:        Vec<usize>,
    jobs:         Vec<Vec<String>>,
 }
@@ -177,6 +180,7 @@ impl Invocation {
          refused: None,
          stdout: false,
          preprocessed: None,
+         modules: Vec::new(),
          split: Vec::new(),
          jobs,
       };
@@ -470,14 +474,39 @@ impl Invocation {
       if language != Language::Fortran {
          return Ok(());
       }
-      self.preprocessed = if self.refused.is_none() && self.action == Action::Compile {
+      let scanned = if self.refused.is_none() && self.action == Action::Compile {
          prescanned(compiler, &self.args)?
       } else {
          None
       };
-      if self.preprocessed.is_none() {
+      let Some(scan) = scanned else {
          self.refuse(Refusal::UnscannedFortran);
+         return Ok(());
+      };
+      let search = ModuleSearch::of(&self.args);
+      for name in scan.used.iter().filter(|name| !scan.defined.contains(name)) {
+         let found = search
+            .directories()
+            .map(|directory| directory.join(format!("{name}.mod")))
+            .filter(|path| path.is_file())
+            .map(|path| utf8(&path).map(str::to_owned))
+            .collect::<io::Result<Vec<String>>>()?;
+         if found.is_empty() {
+            self.refuse(Refusal::UnscannedFortran);
+            return Ok(());
+         }
+         for path in found {
+            if !self.inputs.contains(&path) {
+               self.inputs.push(path);
+            }
+         }
       }
+      self.modules = scan
+         .defined
+         .iter()
+         .map(|name| search.output.join(format!("{name}.mod")))
+         .collect();
+      self.preprocessed = Some(scan.text);
       Ok(())
    }
 
@@ -867,6 +896,10 @@ impl Wrapper for Compile<'_> {
             bytes:  object,
             settle: invocation.links(),
          });
+         let Some(modules) = invocation.stored_modules(store)? else {
+            return Ok(false);
+         };
+         record.artifacts.extend(modules);
          if invocation.depfile.is_some() {
             record.depfile = Some(store.stored_text(&dependencies)?);
          }
@@ -1090,10 +1123,10 @@ fn failed_dependencies(compiler: &str, args: &[String]) -> io::Result<Option<Str
    Ok(Some(read_to_string(listing.path())?).filter(|text| !text.is_empty()))
 }
 
-/// The source as flang prescans it with every INCLUDE inlined, or None when
-/// that fails or a statement uses or defines a module, whose `.mod` files
-/// the key cannot see.
-fn prescanned(compiler: &str, args: &[String]) -> io::Result<Option<String>> {
+/// The source as flang prescans it with every INCLUDE inlined and the
+/// modules it uses and defines, or None when that fails or it has a
+/// submodule, whose `.smod` files the key does not follow.
+fn prescanned(compiler: &str, args: &[String]) -> io::Result<Option<Scan>> {
    let mut arguments = Vec::with_capacity(args.len() + 3);
    let mut words = args.iter();
    while let Some(arg) = words.next() {
@@ -1113,30 +1146,102 @@ fn prescanned(compiler: &str, args: &[String]) -> io::Result<Option<String>> {
    let Ok(text) = String::from_utf8(output.stdout) else {
       return Ok(None);
    };
-   // fixed form ignores blanks, so "U S E M" is a USE statement and only an =
-   // tells USEEI = .TRUE. apart from one
-   let modular = text
+   let mut used = Vec::new();
+   let mut defined = Vec::new();
+   for statement in text
       .lines()
       .filter(|line| !line.starts_with('#'))
       .flat_map(|line| line.split(';'))
-      .map(|statement| {
-         statement
-            .chars()
-            .filter(|character| !character.is_whitespace())
-            .collect::<String>()
-            .to_ascii_lowercase()
-      })
-      .any(|statement| {
-         let body = statement.trim_start_matches(|character: char| character.is_ascii_digit());
-         let assigns = body
-            .match_indices('=')
-            .any(|(at, _)| body.as_bytes().get(at + 1) != Some(&b'>'));
-         !assigns
-            && ["use", "module", "submodule"]
-               .iter()
-               .any(|keyword| body.starts_with(keyword))
-      });
-   Ok((!modular).then_some(text))
+   {
+      // fixed form ignores blanks, so "U S E M" is a USE statement and only an
+      // = tells USEEI = .TRUE. apart from one
+      let compact = statement
+         .chars()
+         .filter(|character| !character.is_whitespace())
+         .collect::<String>()
+         .to_ascii_lowercase();
+      let body = compact.trim_start_matches(|character: char| character.is_ascii_digit());
+      let assigns = body
+         .match_indices('=')
+         .any(|(at, _)| body.as_bytes().get(at + 1) != Some(&b'>'));
+      if assigns {
+         continue;
+      }
+      if body.starts_with("submodule") {
+         return Ok(None);
+      }
+      if let Some(rest) = body.strip_prefix("use") {
+         let named = [",intrinsic::", ",non_intrinsic::", "::"]
+            .iter()
+            .find_map(|prefix| rest.strip_prefix(prefix))
+            .unwrap_or(rest);
+         let name = named
+            .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+            .next()
+            .unwrap_or_default();
+         if !name.is_empty() && !used.iter().any(|known| known == name) {
+            used.push(name.to_owned());
+         }
+         continue;
+      }
+      let tokens = statement.split_whitespace().collect::<Vec<&str>>();
+      if let [keyword, name] = *tokens.as_slice()
+         && keyword.eq_ignore_ascii_case("module")
+      {
+         defined.push(name.to_ascii_lowercase());
+      }
+   }
+   Ok(Some(Scan {
+      text,
+      used,
+      defined,
+   }))
+}
+
+struct Scan {
+   text:    String,
+   used:    Vec<String>,
+   defined: Vec<String>,
+}
+
+struct ModuleSearch {
+   output:    PathBuf,
+   includes:  Vec<PathBuf>,
+   intrinsic: Vec<PathBuf>,
+}
+
+impl ModuleSearch {
+   fn of(args: &[String]) -> Self {
+      let mut search = Self {
+         output:    PathBuf::from("."),
+         includes:  Vec::new(),
+         intrinsic: Vec::new(),
+      };
+      let mut words = args.iter();
+      while let Some(arg) = words.next() {
+         match arg.as_str() {
+            "-J" | "-module-dir" => {
+               search.output = words.next().map(PathBuf::from).unwrap_or_default();
+            },
+            "-I" => search.includes.extend(words.next().map(PathBuf::from)),
+            "-fintrinsic-modules-path" => search.intrinsic.extend(words.next().map(PathBuf::from)),
+            _ => {
+               if let Some(directory) = arg.strip_prefix("-J") {
+                  search.output = PathBuf::from(directory);
+               } else if let Some(directory) = arg.strip_prefix("-I") {
+                  search.includes.push(PathBuf::from(directory));
+               }
+            },
+         }
+      }
+      search
+   }
+
+   fn directories(&self) -> impl Iterator<Item = &PathBuf> {
+      once(&self.output)
+         .chain(&self.includes)
+         .chain(&self.intrinsic)
+   }
 }
 
 fn run_uncached(
@@ -1270,7 +1375,8 @@ fn cached(
       artifacts,
    } = Record::get(cache, key)?;
    if status == 0_i32 {
-      let Some(object) = artifacts.into_iter().next() else {
+      let mut written = artifacts.into_iter();
+      let Some(object) = written.next() else {
          return Err(Miss::ObjectGone);
       };
       let dep_text = if invocation.depfile.is_some() {
@@ -1301,6 +1407,10 @@ fn cached(
          io::stdout().lock().write_all(&bytes)?;
       } else {
          write_file(&invocation.output, &bytes, object.mode)?;
+      }
+      for module in written {
+         let replayed = replayed_link(store, module.bytes, None)?;
+         write_file(Path::new(&module.name), &replayed, module.mode)?;
       }
       if let (Some(path), Some(text)) = (invocation.depfile.as_ref(), dep_text.as_ref()) {
          write_file(path, text.as_bytes(), None)?;
