@@ -1,4 +1,5 @@
-version = "1.0.1"
-date    = "2026-08-03"
+version = "1.0.1-unstable-2026-10-03"
+date    = "2026-10-03"
+rev     = "4a8b68df58488b311840eb0244c75b4857871789"
 sys     = [ "xz", "zstd" ]
-hash    = "sha256-2wwH6pzL2vzffXKuMQwVMbUhfRubDwjPbrqdcbcJZqA="
+hash    = "sha256-ST/08SMwfjtXeP/+72GJYVFkO2xT6PDU5ofh9Gh9IJ8="

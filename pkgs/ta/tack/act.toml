@@ -1,7 +1,9 @@
-tag   = "v{version}"
-track = "github:manic-systems/tack"
-fetch = { archive = true }
+fetch = { url = "https://github.com/manic-systems/tack/archive/{rev}.tar.gz" }
 with  = [ "cargo" ]
+
+[track]
+from = "github:manic-systems/tack?branch=main"
+base = "1.0.1"
 
 [on.linux]
 tools = [ "wild" ]
