@@ -1,4 +1,9 @@
 use std::{
+   collections::BTreeMap,
+   env::{
+      current_exe,
+      vars,
+   },
    fs::{
       canonicalize,
       create_dir_all,
@@ -40,18 +45,22 @@ use tightrope::{
    key::Key,
 };
 
-use crate::attrs::{
-   Ctx,
-   build_top,
+use crate::{
+   attrs::{
+      Ctx,
+      build_top,
+   },
+   build::nu_internal,
 };
 
 #[derive(Serialize)]
 struct Record<'inputs, Extra> {
-   files:      Vec<String>,
-   args:       Option<&'inputs Extra>,
-   roots:      Vec<&'inputs String>,
-   cc:         Vec<&'inputs PackageFlags>,
-   toolchains: Vec<String>,
+   files:       Vec<String>,
+   environment: BTreeMap<String, String>,
+   args:        Option<&'inputs Extra>,
+   roots:       Vec<&'inputs String>,
+   cc:          Vec<&'inputs PackageFlags>,
+   toolchains:  Vec<String>,
 }
 
 /// Leaves `$out` out, since a CA derivation's is a placeholder that changes
@@ -74,13 +83,34 @@ where
       .keys()
       .map(|root| toolchain(root, &top))
       .collect::<io::Result<Vec<_>>>()?;
+   let own = current_exe()?
+      .parent()
+      .and_then(Path::parent)
+      .map(Path::to_path_buf)
+      .unwrap_or_default();
    let roots = ctx
       .roots
       .iter()
-      .filter(|root| !cc.contains_key(root.as_str()))
+      .filter(|root| !cc.contains_key(root.as_str()) && Path::new(root) != own)
       .collect::<Vec<_>>();
+   // what configure inherits from bigtop, so a change to it reruns probes
+   // while bigtop's own store path stays out
+   let environment = vars()
+      .filter_map(|(name, value)| {
+         let kept = !nu_internal(&name)
+            && !matches!(
+               name.as_str(),
+               "NIX_LOG_FD" | "NIX_BUILD_CORES" | "TERM" | "SHLVL" | "_"
+            );
+         kept.then(|| {
+            let masked = mask_hashes(&value);
+            (name, masked)
+         })
+      })
+      .collect();
    let record = Record {
       files,
+      environment,
       args: extra,
       roots,
       cc: cc.values().collect(),
