@@ -1,0 +1,38 @@
+Find the bundled schemas beside the capnp binary instead of at the configured include
+directory, so the install moves with its prefix.
+
+--- a/c++/src/capnp/CMakeLists.txt
++++ b/c++/src/capnp/CMakeLists.txt
+@@ -189,7 +189,6 @@
+     $<JOIN:$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>,$<INSTALL_INTERFACE:${CMAKE_INSTALL_BINDIR}/..>>
+   )
+   target_compile_definitions(capnp_tool PRIVATE
+-    "CAPNP_INCLUDE_DIR=\"${CMAKE_INSTALL_FULL_INCLUDEDIR}\""
+     "VERSION=\"${VERSION}\""
+   )
+ 
+--- a/c++/src/capnp/compiler/capnp.c++
++++ b/c++/src/capnp/compiler/capnp.c++
+@@ -56,6 +56,7 @@
+ #include <errno.h>
+ #include <stdlib.h>
+ #include <kj/map.h>
++#include "reloc.h"
+ 
+ #if _WIN32
+ #include <process.h>
+@@ -348,12 +349,10 @@
+     }
+ 
+     if (addStandardImportPaths) {
+-      static constexpr kj::StringPtr STANDARD_IMPORT_PATHS[] = {
++      const kj::StringPtr STANDARD_IMPORT_PATHS[] = {
+         "/usr/local/include"_kj,
+         "/usr/include"_kj,
+-#ifdef CAPNP_INCLUDE_DIR
+-        KJ_CONCAT(CAPNP_INCLUDE_DIR, _kj),
+-#endif
++        kj::StringPtr(RELOC("../include")),
+       };
+       for (auto path: STANDARD_IMPORT_PATHS) {
+         KJ_IF_MAYBE(dir, getSourceDirectory(path, false)) {
