@@ -775,21 +775,43 @@ impl Wrapper for Compile<'_> {
    ) -> io::Result<bool> {
       let invocation = &self.invocation;
       let store = &self.store;
+      let absent = read_to_string(compiled.absent_log.path())?
+         .lines()
+         .map(str::to_owned)
+         .collect::<Vec<_>>();
+      let mut missing_allowed = false;
       let dependencies = if invocation.action == Action::Link {
          String::new()
       } else if compiled.own_depfile && compiled.self_contained {
          format!("o: {}", invocation.source.as_deref().unwrap_or_default())
       } else {
-         match read_to_string(compiled.dependency_path(invocation)) {
-            Ok(text) => text,
-            // clang deletes the dependency file when a header is missing
-            Err(error) if error.kind() == io::ErrorKind::NotFound && result.status != 0_i32 => {
-               return Ok(false);
-            },
+         let written = match read_to_string(compiled.dependency_path(invocation)) {
+            Ok(text) => Some(text).filter(|text| !text.is_empty()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
             Err(error) => return Err(error),
+         };
+         match written {
+            Some(text) => text,
+            None if result.status == 0_i32 => String::new(),
+            // clang writes no dependency file for a failed compile, and only a
+            // compiler that logs its absent lookups shows a missing header
+            // appearing later
+            None => {
+               if absent.is_empty() || invocation.links() {
+                  return Ok(false);
+               }
+               let Some(text) = failed_dependencies(self.compiler, &invocation.args)? else {
+                  return Ok(false);
+               };
+               missing_allowed = true;
+               text
+            },
          }
       };
       let mut inputs = parse_depfile(&dependencies);
+      if missing_allowed {
+         inputs.retain(|path| Path::new(path).exists());
+      }
       let link_text = if invocation.links() {
          let text = read_to_string(&compiled.link_file)?;
          if text.is_empty() {
@@ -809,7 +831,8 @@ impl Wrapper for Compile<'_> {
       if result.status != 0_i32
          && (invocation.links()
             || inputs.is_empty()
-            || String::from_utf8_lossy(&result.stderr).contains("file not found")
+            || (absent.is_empty()
+               && String::from_utf8_lossy(&result.stderr).contains("file not found"))
             || !result.reported_error())
       {
          return Ok(false);
@@ -818,10 +841,6 @@ impl Wrapper for Compile<'_> {
       inputs.extend_from_slice(&invocation.inputs);
       inputs.sort_unstable();
       inputs.dedup();
-      let absent = read_to_string(compiled.absent_log.path())?
-         .lines()
-         .map(str::to_owned)
-         .collect::<Vec<_>>();
       let manifest = Manifest::build(cache, &mut self.manifests, &inputs, &[], &absent)?;
       let key = manifest.result_key(request)?;
       let mut diagnostics = result.stderr.clone();
@@ -1045,6 +1064,30 @@ fn run_split(invocation: &Invocation) -> io::Result<i32> {
       remove_if_exists(Path::new(object))?;
    }
    Ok(status)
+}
+
+fn failed_dependencies(compiler: &str, args: &[String]) -> io::Result<Option<String>> {
+   let listing = Builder::new().prefix(".mummer-").suffix(".d").tempfile()?;
+   let mut arguments = Vec::with_capacity(args.len() + 4);
+   let mut words = args.iter();
+   while let Some(arg) = words.next() {
+      match arg.as_str() {
+         "-c" | "-MD" | "-MMD" | "-MP" => {},
+         "-o" | "-MF" | "-MT" | "-MQ" => {
+            words.next();
+         },
+         _ if arg.starts_with("-Wp,-M") || arg == "-pedantic-errors" => {},
+         _ => arguments.push(arg.as_str()),
+      }
+   }
+   // the listing only needs the headers, and a -Werror build's warnings
+   // would fail the pass that finds them
+   arguments.extend(["-w", "-M", "-MG", "-MF", utf8(listing.path())?]);
+   let output = Command::new(compiler).args(&arguments).output()?;
+   if !output.status.success() {
+      return Ok(None);
+   }
+   Ok(Some(read_to_string(listing.path())?).filter(|text| !text.is_empty()))
 }
 
 /// The source as flang prescans it with every INCLUDE inlined, or None when
