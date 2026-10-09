@@ -22,6 +22,7 @@ use std::{
       self,
       Write as _,
    },
+   iter::once,
    mem::take,
    os::unix::fs::PermissionsExt as _,
    path::{
@@ -534,6 +535,31 @@ impl Invocation {
       }
    }
 
+   fn stored_modules(&self, store: &Store) -> io::Result<Option<Vec<Artifact>>> {
+      let cwd = current_dir()?;
+      let mut artifacts = Vec::with_capacity(self.modules.len());
+      for module in &self.modules {
+         let relative = module
+            .strip_prefix(&cwd)
+            .unwrap_or(module)
+            .components()
+            .filter(|part| *part != Component::CurDir)
+            .collect::<PathBuf>();
+         let name = utf8(&relative)?;
+         let (Ok(_), Ok(mut bytes)) = (relative_path(name), read(module)) else {
+            return Ok(None);
+         };
+         store.mask_output(&mut bytes, false);
+         artifacts.push(Artifact {
+            name: name.to_owned(),
+            mode: None,
+            bytes,
+            settle: false,
+         });
+      }
+      Ok(Some(artifacts))
+   }
+
    fn retarget(&self, depfile: &str) -> String {
       let target = self
          .target
@@ -815,34 +841,10 @@ impl Wrapper for Compile<'_> {
          .lines()
          .map(str::to_owned)
          .collect::<Vec<_>>();
-      let mut missing_allowed = false;
-      let dependencies = if invocation.action == Action::Link {
-         String::new()
-      } else if compiled.own_depfile && compiled.self_contained {
-         format!("o: {}", invocation.source.as_deref().unwrap_or_default())
-      } else {
-         let written = match read_to_string(compiled.dependency_path(invocation)) {
-            Ok(text) => Some(text).filter(|text| !text.is_empty()),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-            Err(error) => return Err(error),
-         };
-         match written {
-            Some(text) => text,
-            None if result.status == 0_i32 => String::new(),
-            // clang writes no dependency file for a failed compile, and only a
-            // compiler that logs its absent lookups shows a missing header
-            // appearing later
-            None => {
-               if absent.is_empty() || invocation.links() {
-                  return Ok(false);
-               }
-               let Some(text) = failed_dependencies(self.compiler, &invocation.args)? else {
-                  return Ok(false);
-               };
-               missing_allowed = true;
-               text
-            },
-         }
+      let Some((dependencies, missing_allowed)) =
+         self.dependencies(result, &compiled, absent.is_empty())?
+      else {
+         return Ok(false);
       };
       let mut inputs = parse_depfile(&dependencies);
       if missing_allowed {
@@ -924,6 +926,38 @@ impl Wrapper for Compile<'_> {
    }
 }
 
+impl Compile<'_> {
+   fn dependencies(
+      &self,
+      result: &RunResult,
+      compiled: &Scratch,
+      unlogged: bool,
+   ) -> io::Result<Option<(String, bool)>> {
+      let invocation = &self.invocation;
+      if invocation.action == Action::Link {
+         return Ok(Some((String::new(), false)));
+      }
+      if compiled.own_depfile && compiled.self_contained {
+         let source = invocation.source.as_deref().unwrap_or_default();
+         return Ok(Some((format!("o: {source}"), false)));
+      }
+      let written = match read_to_string(compiled.dependency_path(invocation)) {
+         Ok(text) => Some(text).filter(|listed| !listed.is_empty()),
+         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+         Err(error) => return Err(error),
+      };
+      match written {
+         Some(text) => Ok(Some((text, false))),
+         None if result.status == 0_i32 => Ok(Some((String::new(), false))),
+         // clang writes no dependency file for a failed compile, and only a
+         // compiler that logs its absent lookups shows a missing header
+         // appearing later
+         None if unlogged || invocation.links() => Ok(None),
+         None => Ok(failed_dependencies(self.compiler, &invocation.args)?.map(|text| (text, true))),
+      }
+   }
+}
+
 pub fn run_cc(language: Language, raw: &[String], socket: &Path) -> io::Result<i32> {
    let started = Instant::now();
    let user = expand_response_files(raw)?;
@@ -954,17 +988,7 @@ pub fn run_cc(language: Language, raw: &[String], socket: &Path) -> io::Result<i
       .clone()
       .unwrap_or_else(|| invocation.output.display().to_string());
 
-   if let Some(status) = served_query(&invocation, &user, compiler, socket, started)? {
-      return Ok(status);
-   }
-   if invocation.jobs.is_empty()
-      && !invocation.query
-      && matches!(
-         invocation.action,
-         Action::Compile | Action::Assembly | Action::Preprocess
-      )
-      && let Some(status) = served_rejection(&invocation, &user, compiler, socket, started)?
-   {
+   if let Some(status) = served_uncompiled(&invocation, &user, compiler, socket, started)? {
       return Ok(status);
    }
    let outcome = if invocation.query {
