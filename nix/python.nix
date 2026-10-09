@@ -8,9 +8,17 @@
   python,
 }:
 let
-  hints = builtins.mapAttrs (_: entry: if builtins.isString entry then { pkg = entry; } else entry) (
-    builtins.fromTOML (builtins.readFile ./sys-libs.toml)
-  ).python;
+  index = import ./bindings.nix;
+  linking = index.locked "python";
+  building = builtins.listToAttrs (
+    builtins.concatMap (
+      tool:
+      map (name: {
+        inherit name;
+        value = [ tool ] ++ index.builds.${tool}.python.tools or [ ];
+      }) (index.builds.${tool}.python.names or [ ])
+    ) (builtins.attrNames index.builds)
+  );
   ignored = [
     ".git"
     ".venv"
@@ -54,7 +62,7 @@ let
       locked =
         (builtins.fromTOML (builtins.readFile (if lock != null then lock else src + "/uv.lock"))).package
           or [ ];
-      hinted = builtins.filter (hint: hints ? ${hint}) (map (entry: entry.name) locked);
+      names = map (entry: entry.name) locked;
       named = builtins.attrNames overrides;
       fromOverrides = field: builtins.concatMap (name: overrides.${name}.${field} or [ ]) named;
 
@@ -117,13 +125,13 @@ let
       sys =
         sys
         ++ builtins.filter (lib: pkgs ? ${lib}) (
-          builtins.concatMap (hint: if hints.${hint} ? pkg then [ hints.${hint}.pkg ] else [ ]) hinted
+          builtins.concatMap (name: if linking ? ${name} then [ linking.${name} ] else [ ]) names
         )
         ++ fromOverrides "sys";
       buildDependencies = map (tool: buildPkgs.${tool}) (
         tools
         ++ builtins.filter (tool: buildPkgs ? ${tool}) (
-          builtins.concatMap (hint: hints.${hint}.tools or [ ]) hinted
+          builtins.concatMap (name: building.${name} or [ ]) names
         )
         ++ fromOverrides "tools"
       );

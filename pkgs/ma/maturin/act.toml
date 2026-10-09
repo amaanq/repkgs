@@ -8,3 +8,7 @@ skip = [ "cargo.test" ]
 
 [cargo]
 noDefaultFeatures = true
+
+[builds.python]
+names = [ "bcrypt", "cryptography", "orjson", "pydantic-core", "rpds-py" ]
+tools = [ "rust" ]

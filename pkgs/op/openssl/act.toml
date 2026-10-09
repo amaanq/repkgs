@@ -17,3 +17,36 @@ cflags = [ "-DOSSL_RELOCATABLE" ]
 configureScript = "Configure"
 installFlags    = [ "OPENSSLDIR=$(prefix)/etc/ssl" ]
 installTarget   = [ "install_sw", "install_ssldirs", "install_man_docs" ]
+
+[bindings]
+hackage = [
+  "Dust-crypto",
+  "HsOpenSSL",
+  "aes-gcm",
+  "apache-md5",
+  "clckwrks",
+  "cryptonite-openssl",
+  "fastpbkdf2",
+  "ginsu",
+  "happstack-server-tls",
+  "hashes",
+  "hlibgit2",
+  "hopenssl",
+  "lesspass",
+  "nano-hmac",
+  "nano-md5",
+  "randomgen",
+  "sqlcipher",
+  "uniform-io",
+]
+
+[bindings.cargo]
+names = [ "openssl-sys" ]
+env   = { OPENSSL_DIR = "{root}", OPENSSL_INCLUDE_DIR = "{root}/include", OPENSSL_LIB_DIR = "{root}/lib", OPENSSL_NO_VENDOR = "1" }
+
+[bindings.python]
+names = [ "cryptography" ]
+env   = { OPENSSL_DIR = "{root}" }
+
+[bindings.gems]
+flags.openssl = [ "--with-openssl-dir={root}" ]

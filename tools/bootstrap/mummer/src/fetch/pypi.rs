@@ -16,10 +16,6 @@ use mummer::{
       OutputHash,
    },
    store_path::StorePath,
-   syslibs::{
-      Ecosystem,
-      load,
-   },
 };
 use serde::{
    Deserialize,

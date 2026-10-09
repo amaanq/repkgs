@@ -24,3 +24,14 @@ CURL_USE_LIBSSH2    = true
 CURL_USE_OPENSSL    = true
 ENABLE_CURL_MANUAL  = false
 USE_NGHTTP2         = true
+
+[bindings]
+hackage = [ "curl", "darcs-beta", "minicurl" ]
+
+[bindings.cargo]
+names = [ "curl-sys" ]
+env   = { LIBCURL_NO_VENDOR = "1" }
+
+[bindings.python]
+names = [ "pycurl" ]
+env   = { PYCURL_SSL_LIBRARY = "openssl" }

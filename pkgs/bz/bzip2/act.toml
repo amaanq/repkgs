@@ -10,3 +10,10 @@ abi = [ "gnu", "apple" ]
 buildTarget = [ "libbz2.a", "bzip2", "bzip2recover" ]
 flags       = [ "CC=cc", "AR=llvm-ar", "RANLIB=llvm-ranlib", "CFLAGS=-O2 -fPIC" ]
 programs    = [ "bzip2", "bzip2recover" ]
+
+[bindings]
+hackage = [ "bzlib", "bzlib-conduit", "bzlib-conduit-jappie", "pipes-bzip" ]
+
+[bindings.cargo]
+names = [ "bzip2-sys" ]
+env   = { BZIP2_SYS_USE_PKG_CONFIG = "1" }

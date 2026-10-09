@@ -12,3 +12,10 @@ PCRE2GREP_SUPPORT_CALLOUT_FORK = false
 PCRE2_BUILD_PCRE2_16           = true
 PCRE2_BUILD_PCRE2_32           = true
 PCRE2_SUPPORT_JIT              = true
+
+[bindings]
+hackage = [ "pcre-light", "regex-pcre2" ]
+
+[bindings.cargo]
+names = [ "pcre2-sys" ]
+env   = { PCRE2_SYS_STATIC = "0" }

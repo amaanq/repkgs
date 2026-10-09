@@ -17,3 +17,10 @@ bzip2    = "enabled"
 harfbuzz = "disabled"
 png      = "enabled"
 zlib     = "system"
+
+[bindings]
+hackage = [ "gi-freetype2" ]
+
+[bindings.cargo]
+names = [ "freetype-sys" ]
+env   = { FREETYPE_SYS_USE_PKG_CONFIG = "1" }

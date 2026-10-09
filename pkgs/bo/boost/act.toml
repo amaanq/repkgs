@@ -21,3 +21,6 @@ deps = [ "xz" ]
 
 [on.native]
 deps = [ "icu" ]
+
+[bindings]
+hackage = [ "hercules-ci-agent", "hercules-ci-cnix-expr", "hercules-ci-cnix-store" ]

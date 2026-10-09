@@ -1,4 +1,4 @@
 version = "1.98.1"
 date    = "2026-09-03"
-sys     = [ "curl", "jemalloc", "libffi", "libgit2", "openssl", "xz", "zlib" ]
+sys     = [ "curl", "libffi", "libgit2", "openssl", "xz", "zlib" ]
 hash    = "sha256-lBWYklstPu8ltF3JEPmr+FbMRoD+ax8ji9oTSlYhamM="

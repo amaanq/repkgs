@@ -1,8 +1,8 @@
-//! The lock side of nix/sys-libs.toml.
+//! The lock side of the `[bindings]` tables in act.toml.
 //!
-//! Locked third-party packages that link a C library and which package of
-//! ours provides it. spieler decides act.lock's `sys` from the lock files of a
-//! tree with it, bigtop checks the pin at build time.
+//! A package names the locked third-party packages that link it. spieler
+//! decides act.lock's `sys` from the lock files of a tree with them, bigtop
+//! gets the tables of a build's dependencies and turns their settings on.
 
 use std::{
    collections::{
@@ -17,6 +17,7 @@ use std::{
    },
    fs::{
       canonicalize,
+      read_dir,
       read_to_string,
    },
    io,
@@ -33,54 +34,60 @@ use serde::{
    Serialize,
 };
 
-/// One locked package, written `name = "pkg"` when it needs nothing beyond
-/// the package that provides its library.
+use crate::files::utf8;
+
+/// The locked packages of one ecosystem that link a package, written as a
+/// bare list when they need nothing beyond the names. A name with `flags`
+/// or `configSettings` is one of them without being listed.
 #[derive(Default, Deserialize)]
 #[serde(from = "Spelled")]
-pub struct Entry {
-   pub pkg:             Option<String>,
+pub struct Binding {
+   pub names:           BTreeSet<String>,
    pub env:             BTreeMap<String, String>,
    pub tags:            Vec<String>,
-   pub flags:           Vec<String>,
-   pub config_settings: BTreeMap<String, String>,
+   pub flags:           BTreeMap<String, Vec<String>>,
+   pub config_settings: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum Spelled {
-   Package(String),
+   Names(BTreeSet<String>),
    Table {
-      pkg:             Option<String>,
+      #[serde(default)]
+      names:           BTreeSet<String>,
       #[serde(default)]
       env:             BTreeMap<String, String>,
       #[serde(default)]
       tags:            Vec<String>,
       #[serde(default)]
-      flags:           Vec<String>,
+      flags:           BTreeMap<String, Vec<String>>,
       #[serde(default, rename = "configSettings")]
-      config_settings: BTreeMap<String, String>,
+      config_settings: BTreeMap<String, BTreeMap<String, String>>,
    },
 }
 
-impl From<Spelled> for Entry {
+impl From<Spelled> for Binding {
    #[inline]
    fn from(spelled: Spelled) -> Self {
       match spelled {
-         Spelled::Package(pkg) => {
+         Spelled::Names(names) => {
             Self {
-               pkg: Some(pkg),
+               names,
                ..Self::default()
             }
          },
          Spelled::Table {
-            pkg,
+            mut names,
             env,
             tags,
             flags,
             config_settings,
          } => {
+            names.extend(flags.keys().cloned());
+            names.extend(config_settings.keys().cloned());
             Self {
-               pkg,
+               names,
                env,
                tags,
                flags,
@@ -91,7 +98,7 @@ impl From<Spelled> for Entry {
    }
 }
 
-/// The package ecosystems sys-libs.toml has a table for.
+/// The package ecosystems a binding can name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
@@ -156,11 +163,47 @@ impl FromStr for Ecosystem {
    }
 }
 
-pub type Tables = BTreeMap<Ecosystem, BTreeMap<String, Entry>>;
+pub type Bindings = BTreeMap<Ecosystem, Binding>;
 
+/// Packages of the set by name, each with its bindings.
+pub type Tables = BTreeMap<String, Bindings>;
+
+/// Tables as JSON, the way Nix hands them to a build.
 #[inline]
 pub fn load(path: &Path) -> io::Result<Tables> {
-   toml::from_str(&read_to_string(path)?).map_err(io::Error::other)
+   Ok(serde_json::from_str(&read_to_string(path)?)?)
+}
+
+#[derive(Deserialize)]
+struct Act {
+   #[serde(default)]
+   bindings: Bindings,
+}
+
+/// The tables of every `pkgs/<shard>/<name>/act.toml` under `pkgs`.
+#[inline]
+pub fn collect(pkgs: &Path) -> io::Result<Tables> {
+   let mut tables = Tables::new();
+   for entry in read_dir(pkgs)? {
+      let shard = entry?.path();
+      if !shard.is_dir() {
+         continue;
+      }
+      for package in read_dir(&shard)? {
+         let dir = package?.path();
+         let file = dir.join("act.toml");
+         if !file.is_file() {
+            continue;
+         }
+         let act = toml::from_str::<Act>(&read_to_string(&file)?)
+            .map_err(|error| io::Error::other(format!("{}: {error}", file.display())))?;
+         if !act.bindings.is_empty() {
+            let name = utf8(Path::new(dir.file_name().unwrap_or_default()))?;
+            tables.insert(name.to_owned(), act.bindings);
+         }
+      }
+   }
+   Ok(tables)
 }
 
 /// Package names in one ecosystem's lock file.
@@ -202,13 +245,13 @@ pub fn locked(ecosystem: Ecosystem, text: &str) -> Vec<String> {
 #[inline]
 pub fn wanted_for(tables: &Tables, ecosystem: Ecosystem, names: &[String]) -> Vec<String> {
    tables
-      .get(&ecosystem)
-      .into_iter()
-      .flatten()
-      .filter(|&(name, _)| names.contains(name))
-      .filter_map(|(_, entry)| entry.pkg.clone())
-      .collect::<BTreeSet<_>>()
-      .into_iter()
+      .iter()
+      .filter(|&(_, bindings)| {
+         bindings
+            .get(&ecosystem)
+            .is_some_and(|binding| names.iter().any(|name| binding.names.contains(name)))
+      })
+      .map(|(pkg, _)| pkg.clone())
       .collect()
 }
 

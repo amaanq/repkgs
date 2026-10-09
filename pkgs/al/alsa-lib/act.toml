@@ -9,3 +9,16 @@ os = [ "linux" ]
 
 [autotools]
 flags = [ "--with-plugindir=/usr/lib/alsa-lib", "--disable-python", "--disable-topology" ]
+
+[bindings]
+cargo = [ "alsa-sys" ]
+hackage = [
+  "PortMidi",
+  "RtMidi",
+  "alsa",
+  "alsa-core",
+  "alsa-midi",
+  "alsa-mixer",
+  "alsa-pcm",
+  "alsa-seq",
+]

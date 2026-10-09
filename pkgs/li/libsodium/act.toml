@@ -2,3 +2,14 @@ tag   = "{version}"
 track = "github:jedisct1/libsodium"
 fetch = { archive = true }
 with  = [ "autotools" ]
+
+[bindings]
+hackage = [ "libsodium", "libsodium-bindings", "netcode-io", "saltine", "saltine-quickcheck" ]
+
+[bindings.cargo]
+names = [ "libsodium-sys" ]
+env   = { SODIUM_USE_PKG_CONFIG = "1" }
+
+[bindings.python]
+names = [ "pynacl" ]
+env   = { SODIUM_INSTALL = "system" }

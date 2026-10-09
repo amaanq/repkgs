@@ -173,6 +173,8 @@ let
     "fetch"
     "on"
     "extras"
+    "bindings"
+    "builds"
   ];
 
   tree =

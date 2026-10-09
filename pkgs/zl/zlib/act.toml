@@ -15,3 +15,26 @@ ZLIB_BUILD_EXAMPLES = false
 
 [on.cross.cmake]
 skipTests = [ "add_subdirectory", "find_package" ]
+
+[bindings]
+hackage = [
+  "HsHTSLib",
+  "adler32",
+  "cabal-install-bundle",
+  "digest",
+  "iterIO",
+  "keter-rate-limiting-plugin",
+  "language-ocaml",
+  "samtools",
+  "sfnt2woff",
+  "streaming-utils",
+  "zlib",
+  "zlib-core",
+]
+
+[bindings.cargo]
+names = [ "libz-ng-sys", "libz-sys" ]
+env   = { LIBZ_SYS_STATIC = "0", ZLIB_NO_VENDOR = "1" }
+
+[bindings.gems]
+flags.zlib = [ "--with-zlib-dir={root}" ]

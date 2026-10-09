@@ -27,3 +27,18 @@ sysprof       = "disabled"
 systemtap     = "disabled"
 tests         = false
 wrap_mode     = "nodownload"
+
+[bindings]
+cargo = [ "gio-sys", "glib-sys", "gobject-sys" ]
+python = [ "pygobject" ]
+hackage = [
+  "bindings-glib",
+  "bindings-gobject",
+  "gi-gio",
+  "gi-glib",
+  "gi-gmodule",
+  "gi-gobject",
+  "glib",
+  "glib-stopgap",
+  "haskell-gi-base",
+]

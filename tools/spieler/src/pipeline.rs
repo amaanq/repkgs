@@ -33,7 +33,7 @@ use mummer::{
    syslibs::{
       CargoBuild,
       Tables,
-      load,
+      collect,
       wanted,
    },
    tree::parallel,
@@ -74,7 +74,7 @@ pub fn root() -> PathBuf {
 }
 
 pub fn tables() -> io::Result<Tables> {
-   load(&root().join("nix/sys-libs.toml"))
+   collect(&root().join("pkgs"))
 }
 
 #[derive(Clone, Deserialize, Serialize)]

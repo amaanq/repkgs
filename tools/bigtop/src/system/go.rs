@@ -133,7 +133,7 @@ impl Go {
    /// gobuildid gives finish a GNU build-id for the debug split.
    fn common_args(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<Vec<String>> {
       let mut tags = options.tags.clone();
-      for tag in syslibs::active(attrs, Ecosystem::Go, &ctx.deps)?.tags {
+      for tag in syslibs::active(attrs, Ecosystem::Go, &ctx.deps).tags {
          if !tags.contains(&tag) {
             tags.push(tag);
          }

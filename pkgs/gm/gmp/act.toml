@@ -6,3 +6,10 @@ patches = [ "upstream-loongarch-int128.patch" ]
 
 [autotools]
 flags = [ "--enable-cxx", "--with-pic" ]
+
+[bindings]
+hackage = [ "bitset", "gmpint", "idris" ]
+
+[bindings.cargo]
+names = [ "gmp-mpfr-sys" ]
+env   = { CARGO_FEATURE_USE_SYSTEM_LIBS = "1" }

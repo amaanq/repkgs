@@ -13,3 +13,10 @@ tool = "cmake-bootstrap"
 ZSTD_BUILD_CONTRIB  = false
 ZSTD_BUILD_TESTS    = false
 ZSTD_LEGACY_SUPPORT = false
+
+[bindings.cargo]
+names = [ "zstd-sys" ]
+env   = { ZSTD_SYS_USE_PKG_CONFIG = "1" }
+
+[bindings.python]
+configSettings.zstandard.--build-option = "--system-zstd"

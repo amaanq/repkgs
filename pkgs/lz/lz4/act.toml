@@ -10,3 +10,6 @@ allow = "<100"
 [cmake]
 root = "build/cmake"
 tool = "cmake-bootstrap"
+
+[bindings]
+cargo = [ "lz4-sys" ]

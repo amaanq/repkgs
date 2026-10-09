@@ -13,3 +13,27 @@ configureFlags = [
   "--enable-update-limit",
   "CFLAGS=-DSQLITE_ENABLE_UNLOCK_NOTIFY -DSQLITE_SECURE_DELETE -DSQLITE_MAX_VARIABLE_NUMBER=250000 -DSQLITE_MAX_EXPR_DEPTH=10000",
 ]
+
+[bindings]
+python = [ "pysqlite3" ]
+hackage = [
+  "HDBC-sqlite3",
+  "bindings-sqlite3",
+  "dani-sqlite",
+  "hsql-sqlite3",
+  "persistent-sqlite",
+  "simplest-sqlite",
+  "sqlite",
+  "yesod-examples",
+]
+
+[bindings.cargo]
+names = [ "libsqlite3-sys" ]
+env   = { LIBSQLITE3_SYS_USE_PKG_CONFIG = "1" }
+
+[bindings.go]
+names = [ "github.com/mattn/go-sqlite3" ]
+tags  = [ "libsqlite3" ]
+
+[bindings.gems]
+flags.sqlite3 = [ "--enable-system-libraries", "--with-sqlite3-dir={root}" ]
