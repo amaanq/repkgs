@@ -3,7 +3,7 @@ fetch    = { url = "https://ziglang.org/download/{version}/zig-{version}.tar.xz"
 with     = [ "cmake" ]
 deps     = [ "llvm22", "clang22", "lld22", "zlib", "zstd" ]
 prebuilt = true
-patches  = [ "cmake-zig-executable.patch" ]
+patches  = [ "cmake-zig-executable.patch", "ld-script-relative-members.patch" ]
 
 [test]
 run     = false

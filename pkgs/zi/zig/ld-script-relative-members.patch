@@ -1,0 +1,43 @@
+Resolve relative GNU ld script members against the script's directory, as lld does.
+Our glibc installs libc.so and libm.so with relative members so the prefix can move, and
+the host libc loader opens them by path, which hit this TODO.
+
+--- a/src/link.zig
++++ b/src/link.zig
+@@ -1213,20 +1213,24 @@
+             if (mem.startsWith(u8, arg.path, "-l")) {
+                 @panic("TODO");
+             } else {
+-                if (fs.path.isAbsolute(arg.path)) {
+-                    const new_path = Path.initCwd(path: {
++                const new_path: Path = if (fs.path.isAbsolute(arg.path)) .initCwd(path: {
++                    comp.mutex.lockUncancelable(io);
++                    defer comp.mutex.unlock(io);
++                    break :path try comp.arena.dupe(u8, arg.path);
++                }) else .{
++                    .root_dir = path.root_dir,
++                    .sub_path = sub_path: {
+                         comp.mutex.lockUncancelable(io);
+                         defer comp.mutex.unlock(io);
+-                        break :path try comp.arena.dupe(u8, arg.path);
+-                    });
+-                    switch (Compilation.classifyFileExt(arg.path)) {
+-                        .shared_library => try openLoadDso(base, new_path, query),
+-                        .object => try openLoadObject(base, new_path),
+-                        .static_library => try openLoadArchiveQuery(base, new_path, query),
+-                        else => diags.addParseError(path, "GNU ld script references file with unrecognized extension: {s}", .{arg.path}),
+-                    }
+-                } else {
+-                    @panic("TODO");
++                        const dir = fs.path.dirname(path.sub_path) orelse ".";
++                        break :sub_path try fs.path.join(comp.arena, &.{ dir, arg.path });
++                    },
++                };
++                switch (Compilation.classifyFileExt(arg.path)) {
++                    .shared_library => try openLoadDso(base, new_path, query),
++                    .object => try openLoadObject(base, new_path),
++                    .static_library => try openLoadArchiveQuery(base, new_path, query),
++                    else => diags.addParseError(path, "GNU ld script references file with unrecognized extension: {s}", .{arg.path}),
+                 }
+             }
+         }
