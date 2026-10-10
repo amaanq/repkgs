@@ -201,6 +201,9 @@ impl Cargo {
       }
       env.extend(sys);
       env.insert("CLANG_PATH".to_owned(), utf8(&on_path("cc"))?.to_owned());
+      if let Some(stdlib) = Self::cxx_stdlib()? {
+         env.insert("CXXSTDLIB".to_owned(), stdlib);
+      }
       let mut rustflags = vec![
          format!("--remap-path-prefix={}=/src", ctx.src.display()),
          format!("--remap-path-prefix={home}=/cargo"),
@@ -263,6 +266,20 @@ impl Cargo {
          None,
       )?;
       Ok(env)
+   }
+
+   /// cc-rs links libstdc++ on Linux unless `CXXSTDLIB` says otherwise.
+   fn cxx_stdlib() -> io::Result<Option<String>> {
+      let output = Command::new("c++")
+         .args(["-###", "-x", "c++", "/dev/null"])
+         .output()?;
+      let jobs = String::from_utf8_lossy(&output.stderr);
+      Ok(jobs.split_whitespace().find_map(|word| {
+         let library = word.trim_matches('"').strip_prefix("-l")?;
+         ["c++", "stdc++"]
+            .contains(&library)
+            .then(|| library.to_owned())
+      }))
    }
 
    // the toolchain carries std for the build machine only, the target's is
