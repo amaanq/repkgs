@@ -494,11 +494,12 @@ impl Invocation {
       if language != Language::Fortran || self.source.is_none() {
          return Ok(());
       }
-      let scanned = if self.refused.is_none() && self.action == Action::Compile {
-         prescanned(compiler, &self.args)?
-      } else {
-         None
-      };
+      let scanned =
+         if self.refused.is_none() && matches!(self.action, Action::Compile | Action::Assembly) {
+            prescanned(compiler, &self.args)?
+         } else {
+            None
+         };
       let Some(scan) = scanned else {
          self.refuse(Refusal::UnscannedFortran);
          return Ok(());
