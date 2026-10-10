@@ -859,7 +859,7 @@ impl Wrapper for Compile<'_> {
    ) -> io::Result<bool> {
       let invocation = &self.invocation;
       let store = &self.store;
-      let absent = read_to_string(compiled.absent_log.path())?
+      let mut absent = read_to_string(compiled.absent_log.path())?
          .lines()
          .map(str::to_owned)
          .collect::<Vec<_>>();
@@ -905,6 +905,11 @@ impl Wrapper for Compile<'_> {
       inputs.extend_from_slice(&invocation.inputs);
       inputs.sort_unstable();
       inputs.dedup();
+      if invocation.links()
+         && let Some(job) = invocation.jobs.last()
+      {
+         absent.extend(absent_libraries(job)?);
+      }
       let manifest = Manifest::build(cache, &mut self.manifests, &inputs, &[], &absent)?;
       let key = manifest.result_key(request)?;
       let mut diagnostics = result.stderr.clone();
@@ -1575,6 +1580,56 @@ fn link_depfile(args: &mut Vec<String>, ours: &Path) -> PathBuf {
    }
    args.push(format!("-Wl,--dependency-file={}", ours.display()));
    ours.to_path_buf()
+}
+
+/// The library files a link would have taken over the ones it found, had
+/// they existed: each `-l` name's candidates in the search directories
+/// before the one that satisfied it, in lld's order of `.so` then `.a`.
+fn absent_libraries(job: &[String]) -> io::Result<Vec<String>> {
+   let cwd = current_dir()?;
+   let mut directories = Vec::new();
+   let mut wanted = Vec::new();
+   let mut only_static = false;
+   let mut tokens = job.iter().skip(1);
+   while let Some(token) = tokens.next() {
+      match token.as_str() {
+         "-L" | "--library-path" => directories.extend(tokens.next().map(PathBuf::from)),
+         "-l" | "--library" => wanted.extend(tokens.next().map(|name| (name.clone(), only_static))),
+         "-Bstatic" | "-static" | "-dn" | "-non_shared" => only_static = true,
+         "-Bdynamic" | "-dy" | "-call_shared" => only_static = false,
+         other => {
+            if let Some(directory) = other
+               .strip_prefix("--library-path=")
+               .or_else(|| other.strip_prefix("-L"))
+            {
+               directories.push(PathBuf::from(directory));
+            } else if let Some(name) = other
+               .strip_prefix("--library=")
+               .or_else(|| other.strip_prefix("-l"))
+            {
+               wanted.push((name.to_owned(), only_static));
+            }
+         },
+      }
+   }
+   let mut absent = Vec::new();
+   for (name, archive_only) in wanted {
+      let files = match name.strip_prefix(':') {
+         Some(exact) => vec![exact.to_owned()],
+         None if archive_only => vec![format!("lib{name}.a")],
+         None => vec![format!("lib{name}.so"), format!("lib{name}.a")],
+      };
+      'search: for directory in &directories {
+         for file in &files {
+            let path = cwd.join(directory).join(file);
+            if path.exists() {
+               break 'search;
+            }
+            absent.push(utf8(&path)?.to_owned());
+         }
+      }
+   }
+   Ok(absent)
 }
 
 /// A link that failed only on undefined symbols found every library it
