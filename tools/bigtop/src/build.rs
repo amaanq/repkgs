@@ -8,6 +8,7 @@ use std::{
    io,
    path::Path,
    process::Command,
+   time::Instant,
 };
 
 use mummer::{
@@ -124,11 +125,13 @@ fn nu_phase(attrs: &Attrs, index: usize, name: &str, body: &str, top: &str) -> i
 pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<()> {
    let attrs = Attrs::load()?;
    let spec = attrs.spec()?;
+   let started = Instant::now();
    let mut ctx = setup(
       &attrs,
       from_tree.map_or(Source::Unpack, Source::Archive),
       socket,
    )?;
+   let mut timings = vec![format!("prepare {:.1}s", started.elapsed().as_secs_f64())];
    for (index, step) in attrs.plan.phases.iter().enumerate() {
       let wanted = if tests {
          step.test
@@ -136,15 +139,25 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
          !step.test || (spec.tests.run.unwrap_or(true) && !attrs.plan.separate && ctx.tests_run)
       };
       if wanted {
+         let begun = Instant::now();
          phase(&attrs, &mut ctx, index, socket)?;
+         timings.push(format!(
+            "{} {:.1}s",
+            step.name,
+            begun.elapsed().as_secs_f64()
+         ));
       }
    }
    set_phase("finish");
-   if tests {
+   let finishing = Instant::now();
+   let finished = if tests {
       finish::tests()
    } else {
       finish::run(attrs.plan.separate)
-   }
+   };
+   timings.push(format!("finish {:.1}s", finishing.elapsed().as_secs_f64()));
+   note("phases", &timings.join(", "));
+   finished
 }
 
 pub fn setup(attrs: &Attrs, source: Source<'_>, socket: &Path) -> io::Result<Ctx> {
