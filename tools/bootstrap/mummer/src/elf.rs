@@ -38,7 +38,6 @@ const SHN_UNDEF: u16 = 0;
 const NT_GNU_BUILD_ID: u32 = 3;
 const SHN_ABS: u16 = 0xFFF1;
 const STB_GLOBAL: u8 = 1;
-const STB_WEAK: u8 = 2;
 const STT_OBJECT: u8 = 1;
 const STT_FUNC: u8 = 2;
 
@@ -137,7 +136,8 @@ pub fn symbols(sections: &[Section], table: &Section) -> io::Result<impl Iterato
 }
 
 /// The functions and data a symbol table of `kind`, `SHT_SYMTAB` or
-/// `SHT_DYNSYM`, defines with global or weak binding.
+/// `SHT_DYNSYM`, defines with global binding, since a weak one is the
+/// template or inline instance every C++ consumer of a library emits.
 #[inline]
 pub fn defined_symbols(image: &Image, sections: &[Section], kind: u32) -> io::Result<Vec<String>> {
    let mut found = Vec::new();
@@ -146,7 +146,7 @@ pub fn defined_symbols(image: &Image, sections: &[Section], kind: u32) -> io::Re
          let info = image.byte(symbol.entry + 4)?;
          let index = image.word(symbol.entry + 6)?;
          if matches!(index, SHN_UNDEF | SHN_ABS)
-            || !matches!(info >> 4_u8, STB_GLOBAL | STB_WEAK)
+            || info >> 4_u8 != STB_GLOBAL
             || !matches!(info & 0xF, STT_OBJECT | STT_FUNC)
          {
             continue;
