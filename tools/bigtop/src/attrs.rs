@@ -55,6 +55,8 @@ pub struct Attrs {
    #[serde(rename = "buildDependencies")]
    pub build_dependencies: Vec<String>,
    pub dependencies:       Vec<String>,
+   #[serde(default)]
+   pub plumbing:           Vec<String>,
    #[serde(rename = "CONFIG_SITE")]
    pub config_site:        String,
    pub spec:               Value,
