@@ -61,6 +61,7 @@ use mummer::{
    store::{
       Store,
       field,
+      mask_hashes,
       on_path,
    },
 };
@@ -618,9 +619,7 @@ impl Invocation {
          let embedded =
             self.links() && (argument.contains("dynamic-linker") || argument.contains("rpath"));
          field(&mut hasher, match toolchain {
-            Some(ref root) if self.action == Action::Precompile => {
-               masked.replace(root.as_str(), "<toolchain>")
-            },
+            Some(ref root) if self.action == Action::Precompile => precompile_keyed(&masked, root),
             _ if embedded => store.key_embedded(&masked),
             _ => store.key(&masked),
          });
@@ -637,9 +636,7 @@ impl Invocation {
          store.mask_output(&mut bytes, false);
          let job = String::from_utf8(bytes).map_err(io::Error::other)?;
          field(&mut hasher, match toolchain {
-            Some(ref root) if self.action == Action::Precompile => {
-               job.replace(root.as_str(), "<toolchain>")
-            },
+            Some(ref root) if self.action == Action::Precompile => precompile_keyed(&job, root),
             _ => store.key_job(&job),
          });
       }
@@ -662,6 +659,24 @@ impl Invocation {
       }
       Ok(Key::digest(Namespace::Cc, &Digest::from(hasher.finalize())))
    }
+}
+
+/// A precompile keeps store hashes, since the headers it reads are matched
+/// by exact path, but a prefix map only renames what reaches the output, and
+/// bigtop maps every build tool, so its hashes stay out.
+fn precompile_keyed(text: &str, root: &str) -> String {
+   text
+      .replace(root, "<toolchain>")
+      .split('"')
+      .map(|part| {
+         if part.contains("prefix-map=") {
+            mask_hashes(part)
+         } else {
+            part.to_owned()
+         }
+      })
+      .collect::<Vec<String>>()
+      .join("\"")
 }
 
 pub fn cached_header(driver: &Driver, raw: &[String], cache: &mut Client) -> io::Result<bool> {
