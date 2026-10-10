@@ -236,7 +236,10 @@ pub fn get_directory(cache: &mut Client, key: &Key, root: &Path) -> io::Result<b
          match entry.kind {
             Kind::File(ref blob) => {
                let Some(Some(data)) = values.next() else {
-                  return Ok(false);
+                  return Err(io::Error::other(format!(
+                     "the listing names {}, which the cache lacks",
+                     entry.path.display()
+                  )));
                };
                if Digest::of(&data) != blob.hash {
                   return Err(io::Error::other("cached file content hash differs"));
