@@ -631,7 +631,30 @@ fn cache_summary() -> io::Result<()> {
    Ok(())
 }
 
+const MISSED_SHOWN: usize = 300;
+
 fn miss_notes(tool: Tool, runs: &[Logged<'_>]) {
+   // every call the cache did not answer, so a warm run accounts for each one
+   let missed = runs
+      .iter()
+      .filter(|run| run.tool == tool && !run.outcome.is_cached())
+      .collect::<Vec<_>>();
+   for run in missed.iter().take(MISSED_SHOWN) {
+      note(
+         &format!("{tool}-missed"),
+         &format!(
+            "{} {}",
+            run.outcome.name(),
+            run.subject.chars().take(240).collect::<String>()
+         ),
+      );
+   }
+   if missed.len() > MISSED_SHOWN {
+      note(
+         &format!("{tool}-missed"),
+         &format!("{} more", missed.len() - MISSED_SHOWN),
+      );
+   }
    let reasons = runs
       .iter()
       .filter(|run| run.tool == tool && run.outcome.is_compiled() && run.subject.contains(' '))
