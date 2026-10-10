@@ -117,7 +117,7 @@ where
 /// The cc toolchain's files and a program it links, its own path masked and
 /// its mummer binary left out, so a driver change re-runs probes and a
 /// cache-only one does not.
-fn toolchain(root: &str, top: &str) -> io::Result<String> {
+pub fn toolchain(root: &str, top: &str) -> io::Result<String> {
    let wrapper = canonicalize(Path::new(root).join("bin/cc"))?;
    let sample = Path::new(top).join(".probe-sample");
    create_dir_all(&sample)?;

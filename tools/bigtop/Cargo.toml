@@ -12,6 +12,7 @@ rust-version.workspace = true
 
 [dependencies]
 blake3     = { workspace = true }
+memchr     = "2.8.3"
 misstep    = { workspace = true }
 glob       = "0.3"
 mummer     = { workspace = true }

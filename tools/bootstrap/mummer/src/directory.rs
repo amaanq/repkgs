@@ -83,6 +83,29 @@ enum Kind {
 #[inline]
 pub fn put_directory(cache: &mut Client, key: &Key, root: &Path) -> io::Result<()> {
    let store = Store::new();
+   put_tree(
+      cache,
+      key,
+      root,
+      |data| stored(&store, data),
+      |target| target,
+   )
+}
+
+/// A tree whose file contents and link targets go through `file` and `link`
+/// on the way into the cache.
+#[inline]
+pub fn put_tree<File, Link>(
+   cache: &mut Client,
+   key: &Key,
+   root: &Path,
+   file: File,
+   link: Link,
+) -> io::Result<()>
+where
+   File: Fn(Vec<u8>) -> Vec<u8>,
+   Link: Fn(String) -> String,
+{
    let mut listing = String::new();
    let mut pending = vec![root.to_path_buf()];
    let mut files = 0_i32;
@@ -100,9 +123,12 @@ pub fn put_directory(cache: &mut Client, key: &Key, root: &Path) -> io::Result<(
          let metadata = symlink_metadata(&path)?;
          if metadata.is_symlink() {
             let target = read_link(&path)?;
-            let target_text = target
-               .to_str()
-               .ok_or_else(|| io::Error::other("cache symlink target is not UTF-8"))?;
+            let target_text = link(
+               target
+                  .to_str()
+                  .ok_or_else(|| io::Error::other("cache symlink target is not UTF-8"))?
+                  .to_owned(),
+            );
             if target_text.contains(['\n', '\r', '\t', '\0']) {
                return Err(io::Error::other(
                   "cache symlink target contains a line delimiter",
@@ -113,7 +139,7 @@ pub fn put_directory(cache: &mut Client, key: &Key, root: &Path) -> io::Result<(
             writeln!(listing, "d 0 -\t{name}").map_err(io::Error::other)?;
             pending.push(path);
          } else if metadata.is_file() {
-            let data = stored(&store, read(&path)?);
+            let data = file(read(&path)?);
             let hash = Digest::of(&data);
             let blob_key = Key::digest(Namespace::Blob, &hash);
             if !cache.has_many(from_ref(&blob_key))?[0] {
@@ -202,6 +228,30 @@ fn parse_listing(text: &str) -> io::Result<Vec<Entry>> {
 
 #[inline]
 pub fn get_directory(cache: &mut Client, key: &Key, root: &Path) -> io::Result<bool> {
+   let store = Store::new();
+   get_tree(
+      cache,
+      key,
+      root,
+      |data| restored(&store, data),
+      |target| target,
+   )
+}
+
+/// The tree `put_tree` stored, file contents and link targets put back
+/// through `file` and `link`.
+#[inline]
+pub fn get_tree<File, Link>(
+   cache: &mut Client,
+   key: &Key,
+   root: &Path,
+   file: File,
+   link: Link,
+) -> io::Result<bool>
+where
+   File: Fn(Vec<u8>) -> Vec<u8>,
+   Link: Fn(String) -> String,
+{
    let Some(listing) = cache.get(key)? else {
       return Ok(false);
    };
@@ -213,7 +263,6 @@ pub fn get_directory(cache: &mut Client, key: &Key, root: &Path) -> io::Result<b
       .unwrap_or_else(|| Path::new("."));
    create_dir_all(parent)?;
    let staging = Builder::new().prefix(".mummer-dir-").tempdir_in(parent)?;
-   let store = Store::new();
    let mut files = 0_i32;
    for batch in entries.chunks(256) {
       let keys = batch
@@ -244,10 +293,20 @@ pub fn get_directory(cache: &mut Client, key: &Key, root: &Path) -> io::Result<b
                if Digest::of(&data) != blob.hash {
                   return Err(io::Error::other("cached file content hash differs"));
                }
-               write_file(&destination, &restored(&store, data), Some(blob.mode))?;
+               write_file(&destination, &file(data), Some(blob.mode))?;
                files += 1_i32;
             },
-            Kind::Link(ref target) => symlink(target, destination)?,
+            Kind::Link(ref target) => {
+               symlink(
+                  link(
+                     target
+                        .to_str()
+                        .ok_or_else(|| io::Error::other("cached symlink target is not UTF-8"))?
+                        .to_owned(),
+                  ),
+                  destination,
+               )?;
+            },
             Kind::Directory => create_dir_all(destination)?,
          }
       }
