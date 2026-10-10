@@ -83,7 +83,8 @@ in
       };
     };
 
-    # not optional, so a dead daemon stops builds instead of letting them compile uncached
-    nix.settings.extra-sandbox-paths = [ socket ];
+    # not optional, so a dead daemon stops builds instead of letting them compile uncached.
+    # The directory, since a file bind keeps the socket a restarted daemon unlinked
+    nix.settings.extra-sandbox-paths = [ (dirOf socket) ];
   };
 }
