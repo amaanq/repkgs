@@ -175,7 +175,7 @@ pub struct Store {
    output:     String,
    /// `$out` when content mode masks its hash in what is stored.
    masked:     Option<StorePath>,
-   roots:      BTreeMap<String, StorePath>,
+   roots:      BTreeMap<String, Vec<StorePath>>,
    identities: HashMap<String, InputId>,
    random:     Vec<(String, String)>,
 }
@@ -216,7 +216,12 @@ impl Store {
          .chain([output.as_str(), toolchain.as_str()])
       {
          if let Some(object) = StorePath::containing(root) {
-            roots.entry(mask_hashes(object.as_str())).or_insert(object);
+            let same = roots
+               .entry(mask_hashes(object.as_str()))
+               .or_insert_with(Vec::new);
+            if !same.contains(&object) {
+               same.push(object);
+            }
          }
       }
       Self {
@@ -282,26 +287,47 @@ impl Store {
          .find('/')
          .map_or(masked.len(), |position| STORE_DIR.len() + 3 + position);
       self
-         .roots
-         .get(&masked[..end])
+         .root_for(&masked[..end], &masked[end..])
          .map(|root| format!("{root}{}", &masked[end..]))
+   }
+
+   /// The root a masked one stands for, the one holding `rest` when two
+   /// share a name, as a cross build's host and build zlib do.
+   fn root_for(&self, masked: &str, rest: &str) -> Option<&StorePath> {
+      let candidates = self.roots.get(masked)?;
+      match *candidates.as_slice() {
+         [ref only] => Some(only),
+         _ => {
+            candidates
+               .iter()
+               .find(|root| Path::new(&format!("{root}{rest}")).exists())
+               .or_else(|| candidates.first())
+         },
+      }
    }
 
    #[inline]
    #[must_use]
    pub fn resolve_all(&self, text: &str) -> String {
       let mut resolved = text.to_owned();
-      for (masked, real) in &self.roots {
+      for masked in self.roots.keys() {
          let mut result = String::with_capacity(resolved.len());
          let mut remaining = resolved.as_str();
          while let Some(position) = remaining.find(masked.as_str()) {
             let end = position + masked.len();
-            let whole = remaining[end..]
+            let rest = &remaining[end..];
+            let whole = rest
                .chars()
                .next()
                .is_none_or(|next| next == '/' || PATH_ENDS.contains(next));
+            let path = rest
+               .find(|next: char| next.is_whitespace() || PATH_ENDS.contains(next))
+               .map_or(rest, |length| &rest[..length]);
             result.push_str(&remaining[..position]);
-            result.push_str(if whole { real.as_str() } else { masked });
+            match self.root_for(masked, path) {
+               Some(real) if whole => result.push_str(real.as_str()),
+               _ => result.push_str(masked),
+            }
             remaining = &remaining[end..];
          }
          result.push_str(remaining);
@@ -413,7 +439,12 @@ impl Store {
          let Ok(name) = str::from_utf8(&data[start + 33..end]) else {
             continue;
          };
-         if let Some(root) = self.roots.get(&format!("{STORE_DIR}/*-{name}")) {
+         let rest_end = data[end..]
+            .iter()
+            .position(|&byte| byte == 0 || PATH_ENDS.as_bytes().contains(&byte))
+            .map_or(data.len(), |length| end + length);
+         let rest = str::from_utf8(&data[end..rest_end]).unwrap_or_default();
+         if let Some(root) = self.root_for(&format!("{STORE_DIR}/*-{name}"), rest) {
             data[start..start + 32].copy_from_slice(root.hash_part().as_bytes());
          }
          offset = end;
