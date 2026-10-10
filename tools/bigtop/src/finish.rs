@@ -24,6 +24,7 @@ use std::{
       PathBuf,
    },
    process::Command,
+   time::Instant,
 };
 
 use mummer::{
@@ -85,6 +86,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    let platform = ctx.platform()?;
    let exe = platform.ext.exe.as_str();
    let out = ctx.out.as_path();
+   let mut laps = Laps::new();
    install_map(&spec, out, exe)?;
    if keep_tree {
       let tree = attrs
@@ -106,6 +108,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    }
    prune(out)?;
    layout_check(out)?;
+   laps.lap("checks");
    syslibs::linked(
       spec.sys.as_deref().unwrap_or_default(),
       &ctx.deps,
@@ -113,14 +116,16 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
       &ctx.build,
       platform.binfmt,
    )?;
+   laps.lap("sys");
    shebangs(out, true)?;
+   laps.lap("shebangs");
    let debug = attrs
       .outputs
       .debug
       .as_deref()
       .ok_or_else(|| io::Error::other("no debug output"))?;
    create_dir_all(debug)?;
-   relocate(&attrs, &spec, &ctx, &platform, debug)?;
+   relocate(&attrs, &spec, &ctx, &platform, debug, &mut laps)?;
    let request = Request {
       name:    spec.name.clone(),
       ext:     platform.ext.clone(),
@@ -133,6 +138,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    set_current_dir(&top)?;
    succeed(Command::new("chmod").arg("-R").arg("u+w").arg(&ctx.out))?;
    relativize(utf8(&ctx.out)?, utf8(&ctx.dest)?)?;
+   laps.lap("relativize");
 
    if platform.os == "windows" {
       succeed(Command::new("cp").arg("-rL").arg(&ctx.out).arg(&ctx.dest))?;
@@ -141,8 +147,35 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
       succeed(Command::new("mv").arg(&ctx.out).arg(&ctx.dest))?;
    }
 
+   laps.lap("move");
    version_check(&spec, &ctx, &platform, &top)?;
+   laps.lap("version");
+   note("finish-steps", &laps.shown.join(", "));
    cache_summary()
+}
+
+/// How long each step of finish took, which can pass a minute on large
+/// outputs.
+struct Laps {
+   last:  Instant,
+   shown: Vec<String>,
+}
+
+impl Laps {
+   fn new() -> Self {
+      Self {
+         last:  Instant::now(),
+         shown: Vec::new(),
+      }
+   }
+
+   fn lap(&mut self, name: &str) {
+      let millis = self.last.elapsed().as_millis();
+      self
+         .shown
+         .push(format!("{name} {}.{}s", millis / 1000, millis % 1000 / 100));
+      self.last = Instant::now();
+   }
 }
 
 pub fn mode(keep_tree: bool, tests_only: bool) -> io::Result<()> {
@@ -269,6 +302,7 @@ fn relocate(
    ctx: &Ctx,
    platform: &Platform,
    debug: &str,
+   laps: &mut Laps,
 ) -> io::Result<()> {
    let out = ctx.out.as_path();
    let implanted = spec.prebuilt == Prebuilt::Implanted;
@@ -279,6 +313,7 @@ fn relocate(
          if spec.debug {
             debug::run(out, Path::new(debug))?;
          }
+         laps.lap("debug");
          if implanted {
             implant::run(
                out,
@@ -294,6 +329,7 @@ fn relocate(
             ldso,
             &attrs.dependencies,
          )?;
+         laps.lap("relocate");
       },
       BinaryFormat::MachO => {
          if spec.debug {
