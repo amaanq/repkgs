@@ -1,0 +1,18 @@
+Subject: [PATCH] ghc-pkg: cache a database in name order
+
+The cache followed the order the directory listed the .conf files, which
+on tmpfs is the order they were written. Parallel registration left it
+different every run, and GHC numbers units, and so orders its CPP version
+macros, link info and link lines, by it.
+---
+--- a/utils/ghc-pkg/Main.hs
++++ b/utils/ghc-pkg/Main.hs
+@@ -937,7 +937,7 @@
+                               warn ("Timestamp " ++ show tFile
+                                 ++ " for " ++ file ++ rel)
+             where
+-                 confs = map (path </>) $ filter (".conf" `isSuffixOf`) fs
++                 confs = map (path </>) $ sort $ filter (".conf" `isSuffixOf`) fs
+ 
+                  ignore_cache :: (FilePath -> IO ()) -> IO (PackageDB mode)
+                  ignore_cache checkTime = do
