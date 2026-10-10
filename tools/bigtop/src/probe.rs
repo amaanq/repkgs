@@ -269,7 +269,8 @@ pub fn store_dir(key: &Key, dir: &Path, socket: &Path) -> io::Result<()> {
    let Some(mut client) = daemon(&ctx, socket) else {
       return Ok(());
    };
-   let out = ctx.out.as_os_str().as_encoded_bytes();
+   // the install prefix is the same in every build, only the store output differs
+   let out = ctx.dest.as_os_str().as_encoded_bytes();
    for entry in walk(dir)? {
       if entry.kind == EntryKind::File
          && read(&entry.path)?
