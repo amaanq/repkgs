@@ -5,6 +5,9 @@ with  = [ "cargo" ]
 deps  = [ "nix" ]
 tools = [ "capnproto" ]
 
+[tests]
+dependencies = [ "cacert", "nix" ]
+
 [on.linux]
 tools = [ "wild" ]
 
