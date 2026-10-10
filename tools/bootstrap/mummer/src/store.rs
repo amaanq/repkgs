@@ -75,6 +75,7 @@ use crate::{
       HASH_ALPHABET,
       StorePath,
    },
+   tree::find,
 };
 
 pub const STORE_DIR: &str = match option_env!("MUMMER_STORE_DIR") {
@@ -263,10 +264,7 @@ impl Store {
       };
       let prefix = format!("{STORE_DIR}/");
       let mut offset = 0;
-      while let Some(position) = data[offset..]
-         .windows(from.len())
-         .position(|window| window == from)
-      {
+      while let Some(position) = find(&data[offset..], from) {
          let start = offset + position;
          if data[..start].ends_with(prefix.as_bytes())
             && data.get(start + from.len()) == Some(&b'-')
@@ -420,10 +418,7 @@ impl Store {
       }
       let prefix = format!("{STORE_DIR}/");
       let mut offset = 0;
-      while let Some(position) = data[offset..]
-         .windows(prefix.len())
-         .position(|window| window == prefix.as_bytes())
-      {
+      while let Some(position) = find(&data[offset..], prefix.as_bytes()) {
          let start = offset + position + prefix.len();
          offset = start;
          let named = data.get(start..start + 33).is_some_and(|hash| {
@@ -993,10 +988,7 @@ fn mask_scratch_bytes(data: &[u8], temporary: &str) -> Vec<u8> {
    let root = format!("{temporary}/");
    let mut masked = Vec::with_capacity(data.len());
    let mut rest = data;
-   while let Some(position) = rest
-      .windows(root.len())
-      .position(|window| window == root.as_bytes())
-   {
+   while let Some(position) = find(rest, root.as_bytes()) {
       let length = rest[position..]
          .iter()
          .take_while(|byte| is_name_byte(**byte) || **byte == b'/')

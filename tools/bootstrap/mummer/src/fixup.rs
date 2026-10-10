@@ -54,6 +54,7 @@ use crate::{
       is_store_path,
       normalize,
    },
+   tree::find,
 };
 
 pub struct Context {
@@ -254,7 +255,7 @@ fn fix_file(context: &Context, denied: &[Vec<u8>], path: &Path) -> io::Result<()
 
 fn refuse_denied(bytes: &[u8], denied: &[Vec<u8>]) -> io::Result<()> {
    for hash in denied {
-      let Some(position) = bytes.windows(hash.len()).position(|window| window == hash) else {
+      let Some(position) = find(bytes, hash) else {
          continue;
       };
       let shown = &bytes[position..(position + 100).min(bytes.len())];
@@ -293,11 +294,7 @@ fn fix_elf(context: &Context, path: &Path, image: &mut Image) -> io::Result<()> 
       write_back(path, image)?;
       writeln!(io::stdout().lock(), "relocated {}", context.shown(path))?;
    }
-   if image
-      .bytes
-      .windows(STORE_DIR.len() + 1)
-      .any(|window| window == format!("{STORE_DIR}/").as_bytes())
-   {
+   if find(&image.bytes, format!("{STORE_DIR}/").as_bytes()).is_some() {
       writeln!(
          io::stdout().lock(),
          "absolute store reference remains in {}",

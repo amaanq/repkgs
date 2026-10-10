@@ -35,6 +35,7 @@ use mummer::{
    },
    tree::{
       EntryKind,
+      find,
       note,
       walk,
    },
@@ -144,10 +145,7 @@ fn toolchain(root: &str, top: &str) -> io::Result<String> {
    let mut hasher = blake3::Hasher::new();
    let mut masked = |bytes: &[u8]| {
       let mut rest = bytes;
-      while let Some(position) = rest
-         .windows(root.len())
-         .position(|window| window == root.as_bytes())
-      {
+      while let Some(position) = find(rest, root.as_bytes()) {
          hasher.update(&rest[..position]);
          hasher.update(b"/cc");
          rest = &rest[position + root.len()..];
@@ -277,11 +275,7 @@ pub fn store_dir(key: &Key, dir: &Path, socket: &Path) -> io::Result<()> {
    // differs
    let out = ctx.dest.as_os_str().as_encoded_bytes();
    for entry in walk(dir)? {
-      if entry.kind == EntryKind::File
-         && read(&entry.path)?
-            .windows(out.len())
-            .any(|window| window == out)
-      {
+      if entry.kind == EntryKind::File && find(&read(&entry.path)?, out).is_some() {
          note(
             "probe-cache",
             &format!("not stored, {} names $out", entry.rel),

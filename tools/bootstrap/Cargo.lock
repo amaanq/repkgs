@@ -250,6 +250,7 @@ version = "1.0.0"
 dependencies = [
  "base64",
  "blake3",
+ "memchr",
  "misstep",
  "pound",
  "serde",
