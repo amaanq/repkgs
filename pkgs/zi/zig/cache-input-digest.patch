@@ -1,0 +1,43 @@
+Compare a rehashed input file against the digest the manifest recorded.
+checkInputPath compared it against the input's own digest, which is never
+populated before a check, so an input whose inode or mtime moved missed
+even with identical contents, and a cache moved between directories never
+hit.
+
+--- a/lib/std/Build/Cache.zig
++++ b/lib/std/Build/Cache.zig
+@@ -1358,6 +1358,7 @@
+         const input_file = file_off.get(input_contents);
+         const parent_dir = cache.prefixes()[disk_file.flags.prefix].handle;
+         const file_path = file_off.pathOrDot(disk_contents);
++        const prev_digest: BinDigest = disk_file.digest;
+ 
+         assert(disk_file.flags == input_file.flags);
+ 
+@@ -1420,7 +1421,7 @@
+             hasher.update(file_or_dir_contents);
+             hasher.final(&disk_file.digest);
+ 
+-            if (mem.eql(u8, &disk_file.digest, &input_file.digest)) return .hit;
++            if (mem.eql(u8, &disk_file.digest, &prev_digest)) return .hit;
+             return .{ .contents_changed = file_off };
+         }
+ 
+@@ -1471,7 +1472,7 @@
+                 .populated => unreachable,
+             };
+ 
+-            if (mem.eql(u8, &disk_file.digest, &input_file.digest)) return .hit;
++            if (mem.eql(u8, &disk_file.digest, &prev_digest)) return .hit;
+             return .{ .contents_changed = file_off };
+         } else {
+             const opened_file = if (input_path.have_handle)
+@@ -1525,7 +1526,7 @@
+                 .populated => unreachable,
+             }
+ 
+-            if (mem.eql(u8, &disk_file.digest, &input_file.digest)) return .hit;
++            if (mem.eql(u8, &disk_file.digest, &prev_digest)) return .hit;
+             return .{ .contents_changed = file_off };
+         }
+     }
