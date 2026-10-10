@@ -240,7 +240,7 @@ pub fn store(key: &Key, file: &Path, socket: &Path) -> io::Result<()> {
       return Ok(());
    };
    let text = read_to_string(file)?;
-   let out = utf8(&ctx.out)?;
+   let out = utf8(&ctx.dest)?;
    let kept = mask_hashes(
       &text
          .split_inclusive('\n')
@@ -258,7 +258,11 @@ pub fn restore_dir(key: &Key, dir: &Path, socket: &Path) -> io::Result<bool> {
    let Some(mut client) = daemon(&ctx, socket) else {
       return Ok(false);
    };
-   get_directory(&mut client, key, dir)
+   // a cache the daemon cannot give back is a cold one, not a failed build
+   get_directory(&mut client, key, dir).or_else(|error| {
+      note("probe-cache", &format!("restore failed with {error}"));
+      Ok(false)
+   })
 }
 
 pub fn store_dir(key: &Key, dir: &Path, socket: &Path) -> io::Result<()> {
@@ -269,7 +273,8 @@ pub fn store_dir(key: &Key, dir: &Path, socket: &Path) -> io::Result<()> {
    let Some(mut client) = daemon(&ctx, socket) else {
       return Ok(());
    };
-   // the install prefix is the same in every build, only the store output differs
+   // the install prefix is the same in every build, only the store output
+   // differs
    let out = ctx.dest.as_os_str().as_encoded_bytes();
    for entry in walk(dir)? {
       if entry.kind == EntryKind::File
@@ -284,7 +289,10 @@ pub fn store_dir(key: &Key, dir: &Path, socket: &Path) -> io::Result<()> {
          return Ok(());
       }
    }
-   put_directory(&mut client, key, dir)
+   if let Err(error) = put_directory(&mut client, key, dir) {
+      note("probe-cache", &format!("store failed with {error}"));
+   }
+   Ok(())
 }
 
 pub fn cmake_init(cache: &Path) -> io::Result<String> {
