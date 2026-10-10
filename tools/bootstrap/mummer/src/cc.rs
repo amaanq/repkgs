@@ -1169,10 +1169,14 @@ fn served_query(
       field(&mut hasher, var(name).unwrap_or_default());
    }
    let key = Digest::from(hasher.finalize());
-   if let Ok(record) = Record::get(&mut cache, &key) {
-      for artifact in &record.artifacts {
+   // the key is the compiler's content, so a hit can come from a toolchain
+   // at another store path, which `-print-search-dirs` and the like print
+   if let Ok(mut record) = Record::get(&mut cache, &key) {
+      for artifact in &mut record.artifacts {
+         store.resolve_bytes(&mut artifact.bytes);
          io::stdout().lock().write_all(&artifact.bytes)?;
       }
+      store.resolve_bytes(&mut record.diagnostics);
       io::stderr().lock().write_all(&record.diagnostics)?;
       log(Tool::Cc, Outcome::Cached, "query", started);
       return Ok(Some(record.status));
@@ -1535,6 +1539,16 @@ pub fn uncacheable_marker(arg: &str) -> bool {
          "-MJ",
          "-serialize-diagnostics",
          "-gsplit-dwarf",
+         "-fstack-usage",
+         "-fsave-optimization-record",
+         "-ftest-coverage",
+         "-save-stats",
+         "-fplugin",
+         "-fpass-plugin",
+         "--why-extract",
+         "--print-archive-stats",
+         "--reproduce",
+         "--time-trace",
       ]
       .iter()
       .any(|marker| arg.contains(marker))
