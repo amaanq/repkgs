@@ -1,9 +1,13 @@
-fetch   = { url = "https://downloads.haskell.org/~ghc/{version}/ghc-{version}-src.tar.xz" }
-with    = [ "cabal" ]
-deps    = [ "gmp", "ncurses", "libffi" ]
-tools   = [ "cpython", "autoconf" ]
+fetch = { url = "https://downloads.haskell.org/~ghc/{version}/ghc-{version}-src.tar.xz" }
+with = [ "cabal" ]
+deps = [ "gmp", "ncurses", "libffi" ]
+tools = [ "cpython", "autoconf" ]
 exports = false
-patches = [ "upstream-hadrian-autoreconf-exec.patch", "hadrian-ghc-wrapper.patch" ]
+patches = [
+  "upstream-hadrian-autoreconf-exec.patch",
+  "hadrian-ghc-wrapper.patch",
+  "cpp-macros-sorted.patch",
+]
 
 [track]
 from = 'generic:ghc?url=https://downloads.haskell.org/~ghc/&regex=href="(\d+\.\d+\.\d{1,2})/"'
