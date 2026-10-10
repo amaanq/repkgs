@@ -1,0 +1,19 @@
+Subject: [PATCH] testscript: drain the pty before closing its controller
+
+Closing the controller while the reader goroutine still had output
+queued dropped it, so a loaded machine lost a prompt and ttyout failed.
+Once the command exits and the tty closes, the read ends at EIO with
+every byte copied.
+---
+--- a/testscript/testscript.go
++++ b/testscript/testscript.go
+@@ -1053,8 +1053,8 @@
+ 		}()
+ 		defer func() {
+ 			tty.Close()
+-			ctrl.Close()
+ 			<-doneR
++			ctrl.Close()
+ 			<-doneW
+ 			ts.ttyin = ""
+ 			ts.ttyout = ptyBuf.String()
