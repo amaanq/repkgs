@@ -1,4 +1,5 @@
 use std::{
+   collections::BTreeSet,
    env::{
       args_os,
       current_dir,
@@ -719,6 +720,7 @@ struct Scratch {
    output_capture:  Option<NamedTempFile>,
    link_file:       PathBuf,
    linked:          Option<Vec<u8>>,
+   traced:          Option<Vec<String>>,
    own_depfile:     bool,
    self_contained:  bool,
 }
@@ -788,6 +790,7 @@ impl Wrapper for Compile<'_> {
          absent_log,
          output_capture,
          linked: None,
+         traced: None,
          own_depfile,
          self_contained: plain_assembly || invocation.preprocessed.is_some(),
       };
@@ -836,6 +839,9 @@ impl Wrapper for Compile<'_> {
       } else {
          link(&arguments)?
       };
+      if invocation.links() && result.status != 0_i32 && only_undefined(&result.stderr) {
+         written.traced = traced_inputs(self.compiler, &arguments, &result)?;
+      }
       if invocation.stdout {
          io::stdout()
             .lock()
@@ -882,7 +888,12 @@ impl Wrapper for Compile<'_> {
       } else {
          None
       };
+      let traced = compiled.traced.as_ref().filter(|_| result.status != 0_i32);
+      if let Some(paths) = traced {
+         inputs.extend(paths.iter().cloned());
+      }
       if result.status != 0_i32
+         && traced.is_none()
          && (inputs.is_empty()
             || (absent.is_empty()
                && String::from_utf8_lossy(&result.stderr).contains("file not found"))
@@ -1550,6 +1561,56 @@ fn link_depfile(args: &mut Vec<String>, ours: &Path) -> PathBuf {
    }
    args.push(format!("-Wl,--dependency-file={}", ours.display()));
    ours.to_path_buf()
+}
+
+/// A link that failed only on undefined symbols found every library it
+/// asked for, so what it read decides the failure as fully as a success.
+fn only_undefined(stderr: &[u8]) -> bool {
+   let text = String::from_utf8_lossy(stderr);
+   let errors = text
+      .lines()
+      .filter(|line| line.contains("error:"))
+      .collect::<Vec<&str>>();
+   errors
+      .iter()
+      .any(|line| line.to_lowercase().contains("undefined symbol"))
+      && errors.iter().all(|line| {
+         let lowered = line.to_lowercase();
+         lowered.contains("undefined symbol") || lowered.contains("linker command failed")
+      })
+}
+
+/// lld writes no dependency file when a link fails, so the link runs once
+/// more with `--trace` to name the files it read, the compiler's own
+/// scratch objects left out as the dependency file leaves them.
+fn traced_inputs(
+   compiler: &str,
+   arguments: &[String],
+   failed: &RunResult,
+) -> io::Result<Option<Vec<String>>> {
+   let output = Command::new(compiler)
+      .args(arguments)
+      .arg("-Wl,--trace")
+      .stdin(Stdio::null())
+      .output()?;
+   if status_code(output.status) != failed.status || !only_undefined(&output.stderr) {
+      return Ok(None);
+   }
+   let temporary = var("TMPDIR").unwrap_or_else(|_| "/tmp".to_owned());
+   let prefix = format!("{}/", temporary.trim_end_matches('/'));
+   let paths = String::from_utf8_lossy(&output.stdout)
+      .lines()
+      .map(|line| {
+         line
+            .split_once('(')
+            .map_or(line, |pair| pair.0)
+            .trim()
+            .to_owned()
+      })
+      .filter(|path| !path.is_empty() && Path::new(path).is_file())
+      .filter(|path| !path.starts_with(&prefix) || path[prefix.len()..].contains('/'))
+      .collect::<BTreeSet<String>>();
+   Ok((!paths.is_empty()).then(|| paths.into_iter().collect()))
 }
 
 /// Links, then settles the output's RUNPATH from what the linker opened,
