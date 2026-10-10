@@ -54,6 +54,9 @@ export def --env configure []: nothing -> nothing {
    # targets such as wasm32-unknown-unknown name rustup's bundled rust-lld, which this build does not ship
    for spec in (files compiler/rustc_target/src/spec/*/*.rs) { edit $spec { str replace --all '"rust-lld"' '"lld"' } }
    load-env ({PKG_CONFIG_ALLOW_CROSS: "1"} | merge (^bigtop system sys-env cargo | from json))
+   # x.py puts `-C linker=<cc>` in the bootstrap tool's RUSTFLAGS, and cargo leaves RUSTFLAGS out of
+   # -C metadata only when one remaps a path, else every toolchain move renames every crate
+   $env.RUSTFLAGS_BOOTSTRAP = $"--remap-path-prefix=($c.build)=/rustc/build"
    let triple = $c.platform.rustTriple
    let llvm   = (dep-root llvm22 libLLVM)
    # a cross llvm's bin/llvm-config is a target program, llvm puts one for this machine in host/
