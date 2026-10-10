@@ -8,7 +8,7 @@ from = "github:manic-systems/circus?branch=main"
 base = "0.14.0"
 
 [tests]
-dependencies = [ "cacert", "nix" ]
+dependencies = [ "cacert", "git", "nix" ]
 
 [on.linux]
 tools = [ "wild" ]
