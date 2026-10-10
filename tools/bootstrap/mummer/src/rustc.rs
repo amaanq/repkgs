@@ -454,7 +454,7 @@ fn request_key(
       field(&mut hasher, store.key(argument));
    }
    field(&mut hasher, "source");
-   field(&mut hasher, invocation.source.as_bytes());
+   field(&mut hasher, store.key(&invocation.source));
    field(&mut hasher, read(&invocation.source)?);
    for external in &invocation.externs {
       field(&mut hasher, store.input_id(external)?.to_string());
@@ -690,7 +690,17 @@ fn replay(
       None
    };
    for artifact in record.artifacts {
-      let bytes = if invocation.links {
+      // a crate's dep-info names the vendor dir of the package that stored
+      // it, another store path in this one
+      let bytes = if Path::new(&artifact.name)
+         .extension()
+         .is_some_and(|extension| extension == "d")
+         && !artifact.settle
+      {
+         let mut text = artifact.bytes;
+         store.resolve_bytes(&mut text);
+         text
+      } else if invocation.links {
          let settling = link_text.as_deref().filter(|_| artifact.settle);
          replayed_link(store, artifact.bytes, settling)?
       } else {

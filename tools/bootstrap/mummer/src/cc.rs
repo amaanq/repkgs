@@ -61,7 +61,6 @@ use mummer::{
    store::{
       Store,
       field,
-      mask_random_names,
       on_path,
    },
 };
@@ -650,7 +649,7 @@ impl Invocation {
       }
       if let Some(ref source) = self.source {
          field(&mut hasher, "source");
-         field(&mut hasher, mask_random_names(source));
+         field(&mut hasher, store.key(source));
          let mut bytes = read(source)?;
          store.mask_output(&mut bytes, false);
          field(&mut hasher, bytes);
