@@ -1,0 +1,26 @@
+Subject: [PATCH] cpp: write the version macro header in a stable order
+
+explicitUnits comes from nonDetUniqMapToList, so the MIN_VERSION header
+GHC passes to cpp changed order between runs and no compile cache could
+reuse the preprocessed module.
+---
+--- a/compiler/GHC/SysTools/Cpp.hs
++++ b/compiler/GHC/SysTools/Cpp.hs
+@@ -33,6 +33,7 @@
+ 
+ import Data.Version
+ import Data.Maybe
++import Data.List (sortOn)
+ 
+ import Control.Monad
+ 
+@@ -182,7 +183,8 @@
+ 
+     -- MIN_VERSION macros
+     let uids = explicitUnits unit_state
+-        pkgs = mapMaybe (lookupUnit unit_state . fst) uids
++        pkgs = sortOn (\pkg -> (unitPackageNameString pkg, unitPackageVersion pkg))
++                      (mapMaybe (lookupUnit unit_state . fst) uids)
+     mb_macro_include <-
+         if not (null pkgs) && gopt Opt_VersionMacros dflags
+             then do macro_stub <- newTempName logger tmpfs (tmpDir dflags) TFL_CurrentModule "h"
