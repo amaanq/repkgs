@@ -7,6 +7,7 @@ patches = [
   "cmake-zig-executable.patch",
   "ld-script-relative-members.patch",
   "native-interp-without-env.patch",
+  "cache-input-digest.patch",
 ]
 
 [test]
