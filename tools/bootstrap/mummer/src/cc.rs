@@ -326,6 +326,15 @@ impl Invocation {
          index += if consumed { 2 } else { 1 };
       }
       invocation.linkfile = given_link_depfile(&invocation.args).map(PathBuf::from);
+      for profile in profiles_read(&invocation.args) {
+         if Path::new(&profile).is_file() {
+            invocation.inputs.push(profile);
+         } else {
+            invocation
+               .refused
+               .get_or_insert_with(|| Refusal::Marker(format!("profile:{profile}")));
+         }
+      }
       if matches!(
          invocation.action,
          Action::Compile | Action::Precompile | Action::Assembly | Action::Preprocess
@@ -1536,6 +1545,39 @@ fn run_uncached(
    Ok(result)
 }
 
+/// The profile data a compile reads, `default.profdata` where the flag
+/// names none or names its directory, as clang resolves it.
+fn profiles_read(args: &[String]) -> Vec<String> {
+   let mut profiles = Vec::new();
+   for arg in args {
+      let given = [
+         "-fprofile-use",
+         "-fprofile-instr-use",
+         "-fprofile-sample-use",
+      ]
+      .iter()
+      .find_map(|flag| {
+         let rest = arg.strip_prefix(flag)?;
+         if rest.is_empty() {
+            Some(String::new())
+         } else {
+            rest.strip_prefix('=').map(str::to_owned)
+         }
+      });
+      let Some(path) = given else {
+         continue;
+      };
+      profiles.push(if path.is_empty() {
+         "default.profdata".to_owned()
+      } else if Path::new(&path).is_dir() {
+         format!("{path}/default.profdata")
+      } else {
+         path
+      });
+   }
+   profiles
+}
+
 pub fn uncacheable_marker(arg: &str) -> bool {
    arg.starts_with('@')
       || arg.contains(",@")
@@ -1549,7 +1591,6 @@ pub fn uncacheable_marker(arg: &str) -> bool {
          "--stats",
          "-save-temps",
          "-ftime-trace",
-         "-fprofile",
          "--coverage",
          "-fmodules",
          "-MJ",
