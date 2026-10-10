@@ -1,7 +1,8 @@
-track = 'generic:socat?url=http://www.dest-unreach.org/socat/download/'
-fetch = { url = "http://www.dest-unreach.org/socat/download/socat-{version}.tar.gz" }
-with  = [ "autotools" ]
-deps  = [ "openssl", "readline" ]
+track   = 'generic:socat?url=http://www.dest-unreach.org/socat/download/'
+fetch   = { url = "http://www.dest-unreach.org/socat/download/socat-{version}.tar.gz" }
+with    = [ "autotools" ]
+deps    = [ "openssl", "readline" ]
+patches = [ "cached-libs.patch" ]
 
 [autotools]
 outOfTree = false
