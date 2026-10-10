@@ -13,6 +13,7 @@ mod finish;
 mod hardening;
 mod implant;
 mod launchers;
+mod output;
 mod prepare;
 mod probe;
 mod recipe;

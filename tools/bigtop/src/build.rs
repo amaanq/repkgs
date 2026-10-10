@@ -29,6 +29,7 @@ use crate::{
       build_top,
    },
    finish,
+   output,
    prepare::{
       Source,
       prepare,
@@ -126,6 +127,14 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
    let attrs = Attrs::load()?;
    let spec = attrs.spec()?;
    let started = Instant::now();
+   let cached = !tests && from_tree.is_none();
+   if cached && output::restore(&attrs)? {
+      note(
+         "phases",
+         &format!("output-cache {:.1}s", started.elapsed().as_secs_f64()),
+      );
+      return Ok(());
+   }
    let mut ctx = setup(
       &attrs,
       from_tree.map_or(Source::Unpack, Source::Archive),
@@ -157,7 +166,11 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
    };
    timings.push(format!("finish {:.1}s", finishing.elapsed().as_secs_f64()));
    note("phases", &timings.join(", "));
-   finished
+   finished?;
+   if cached && let Err(error) = output::store(&attrs) {
+      note("output-cache", &format!("store failed with {error}"));
+   }
+   Ok(())
 }
 
 pub fn setup(attrs: &Attrs, source: Source<'_>, socket: &Path) -> io::Result<Ctx> {
