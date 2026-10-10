@@ -1,9 +1,11 @@
-tag   = "v{version}"
-track = "github:manic-systems/circus"
-fetch = { archive = true }
+fetch = { url = "https://github.com/manic-systems/circus/archive/{rev}.tar.gz" }
 with  = [ "cargo" ]
 deps  = [ "nix" ]
 tools = [ "capnproto" ]
+
+[track]
+from = "github:manic-systems/circus?branch=main"
+base = "0.14.0"
 
 [tests]
 dependencies = [ "cacert", "nix" ]
