@@ -8,7 +8,7 @@ def cache-key []: nothing -> string {
 }
 
 export def restore []: nothing -> nothing {
-   let restored = (^bigtop probe restore-dir (cache-key) $env.ZIG_GLOBAL_CACHE_DIR | complete).exit_code == 0
+   let restored = (try { ^bigtop probe restore-dir (cache-key) $env.ZIG_GLOBAL_CACHE_DIR; true } catch { false })
    note zig-cache (if $restored { "restored" } else { "cold" })
 }
 

@@ -107,7 +107,7 @@ export def --env cache-configures [key: string]: nothing -> nothing {
    let dir = $"((ctx).build)/configure-caches"
    $env.PKGS_CONFIGURES_KEY = $key
    mkdir $dir
-   let restored = (^bigtop probe restore-dir $key $dir | complete).exit_code == 0
+   let restored = (try { ^bigtop probe restore-dir $key $dir; true } catch { false })
    note configure-caches (if $restored { "restored" } else { "cold" })
    configure-sums $dir | to json | save -f $"($dir).sums"
    let quote = {|text| "'" + ($text | str replace --all "'" "'\\''") + "'" }

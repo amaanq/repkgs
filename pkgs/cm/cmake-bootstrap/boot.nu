@@ -4,7 +4,7 @@ export def configure []: nothing -> nothing {
    let c = (ctx)
    let key = (^bigtop probe key cmake-bootstrap ...(files $"($c.src)/**/{CMakeLists.txt,*.cmake}"))
    let init = $"($c.build)/probe-init.cmake"
-   let had = (^bigtop probe restore $key $init | complete).exit_code == 0
+   let had = (try { ^bigtop probe restore $key $init; true } catch { false })
    note cmake-probes (if $had { "restored" } else { "cold" })
    (x $env.CONFIG_SHELL ./bootstrap $"--prefix=($c.out)" $"--parallel=($c.njobs)" --no-system-libs
       --no-qt-gui --docdir=share/doc/cmake --mandir=share/man ...(if $had { [$"--init=($init)"] } else { [] })
