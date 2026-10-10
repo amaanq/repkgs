@@ -496,7 +496,7 @@ fn request_key(
       "LC_ALL",
    ] {
       field(&mut hasher, name);
-      field(&mut hasher, var(name).unwrap_or_default());
+      field(&mut hasher, store.key(&var(name).unwrap_or_default()));
    }
    Ok(Key::digest(
       Namespace::Rust,
