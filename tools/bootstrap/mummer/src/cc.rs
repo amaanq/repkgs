@@ -1244,8 +1244,16 @@ fn served_rejection(
    }
    let key = Digest::from(hasher.finalize());
    if let Ok(record) = Record::get(&mut cache, &key) {
+      for artifact in &record.artifacts {
+         io::stdout().lock().write_all(&artifact.bytes)?;
+      }
       io::stderr().lock().write_all(&record.diagnostics)?;
-      log(Tool::Cc, Outcome::CachedError, "rejected", started);
+      let outcome = if record.status == 0_i32 {
+         Outcome::Cached
+      } else {
+         Outcome::CachedError
+      };
+      log(Tool::Cc, outcome, "rejected", started);
       return Ok(Some(record.status));
    }
    let output = Command::new(compiler)
@@ -1255,19 +1263,27 @@ fn served_rejection(
    io::stdout().lock().write_all(&output.stdout)?;
    io::stderr().lock().write_all(&output.stderr)?;
    let status = status_code(output.status);
-   if status == 0_i32 || !output.stdout.is_empty() {
-      log(Tool::Cc, Outcome::Uncacheable, "rejected-but-ran", started);
-      return Ok(Some(status));
-   }
+   // the driver planned no job, so it ran nothing that could write a file,
+   // as for `cc -c /dev/null`, which only warns of an unused linker input
    Record {
       status,
       diagnostics: output.stderr,
       depfile: None,
       link_deps: None,
-      artifacts: Vec::new(),
+      artifacts: vec![Artifact {
+         name:   "stdout".to_owned(),
+         mode:   None,
+         bytes:  output.stdout,
+         settle: false,
+      }],
    }
    .put(&mut cache, &key)?;
-   log(Tool::Cc, Outcome::CompiledError, "rejected", started);
+   let outcome = if status == 0_i32 {
+      Outcome::Compiled
+   } else {
+      Outcome::CompiledError
+   };
+   log(Tool::Cc, outcome, "rejected", started);
    Ok(Some(status))
 }
 
