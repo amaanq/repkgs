@@ -27,15 +27,15 @@ pub const HASH_ALPHABET: &[u8] = b"0123456789abcdfghijklmnpqrsvwxyz";
 pub struct StorePath(String);
 
 impl StorePath {
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn as_str(&self) -> &str {
       &self.0
    }
 
    /// The store object `path` lies in, if it lies in one.
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn containing(path: &str) -> Option<Self> {
       let object = path.strip_prefix(STORE_DIR)?.strip_prefix('/')?;
       let length = STORE_DIR.len() + 1 + object.find('/').unwrap_or(object.len());
@@ -43,21 +43,21 @@ impl StorePath {
    }
 
    /// The 32 characters of its hash.
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn hash_part(&self) -> &str {
       &self.0[STORE_DIR.len() + 1..STORE_DIR.len() + 33]
    }
 
    /// The name after the hash.
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn name(&self) -> &str {
       &self.0[STORE_DIR.len() + 34..]
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn join<Relative>(&self, relative: Relative) -> PathBuf
    where
       Relative: AsRef<Path>,
@@ -128,8 +128,8 @@ impl Display for StorePath {
 pub struct DrvPath(StorePath);
 
 impl DrvPath {
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn as_str(&self) -> &str {
       self.0.as_str()
    }

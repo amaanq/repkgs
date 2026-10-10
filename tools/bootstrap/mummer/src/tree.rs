@@ -315,8 +315,8 @@ fn fix(path: &Path, ledger: &Path, undo: bool) -> io::Result<()> {
    Ok(())
 }
 
-#[must_use]
 #[inline]
+#[must_use]
 pub fn replace_all(text: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
    let mut output = Vec::with_capacity(text.len());
    let mut rest = text;
@@ -378,8 +378,8 @@ fn rewrite_shebang(line: &[u8], first: bool) -> Option<Vec<u8>> {
    Some(format!("#!{}{args}", found.display()).into_bytes())
 }
 
-#[must_use]
 #[inline]
+#[must_use]
 pub fn find(text: &[u8], needle: &[u8]) -> Option<usize> {
    if needle.is_empty() || text.len() < needle.len() {
       return None;

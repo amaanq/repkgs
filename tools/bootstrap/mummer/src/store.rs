@@ -1,5 +1,5 @@
 use std::{
-   cmp::Reverse,
+   cmp,
    collections::{
       BTreeMap,
       BTreeSet,
@@ -188,16 +188,16 @@ impl Default for Store {
 }
 
 impl Store {
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn new() -> Self {
       Self::identified(var("MUMMER_STORE_IDENTITY").is_ok_and(|value| value == "content"))
    }
 
    /// Store paths identified by path, never masked, for outputs that embed
    /// the paths they read.
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn exact() -> Self {
       Self::identified(false)
    }
@@ -229,8 +229,8 @@ impl Store {
       }
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn mask_for_replay(&self, text: &str) -> String {
       if self.content {
          mask_hashes(text)
@@ -239,8 +239,8 @@ impl Store {
       }
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn key(&self, arg: &str) -> String {
       self.mask_for_replay(&mask_random_names(&normalize_path_arg(arg)))
    }
@@ -272,8 +272,8 @@ impl Store {
       }
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn resolve(&self, masked: &str) -> Option<String> {
       if !masked.starts_with(&format!("{STORE_DIR}/*-")) {
          return Some(self.unmask_random(masked));
@@ -287,8 +287,8 @@ impl Store {
          .map(|root| format!("{root}{}", &masked[end..]))
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn resolve_all(&self, text: &str) -> String {
       let mut resolved = text.to_owned();
       for (masked, real) in &self.roots {
@@ -358,7 +358,7 @@ impl Store {
    /// Longest first, since a dir's spelling begins its files'.
    fn unmask_random(&self, text: &str) -> String {
       let mut known = self.random.iter().collect::<Vec<_>>();
-      known.sort_by_key(|pair| Reverse(pair.0.len()));
+      known.sort_by_key(|pair| cmp::Reverse(pair.0.len()));
       known.into_iter().fold(text.to_owned(), |unmasked, pair| {
          unmasked.replace(&pair.0, &pair.1)
       })
@@ -366,8 +366,8 @@ impl Store {
 
    /// A link argument the output embeds as written, its store hashes masked
    /// only when this build's roots give every one back, as a replay must.
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn key_embedded(&self, arg: &str) -> String {
       let masked = mask_hashes(arg);
       if self.content && self.resolve_all(&masked) == arg {
@@ -379,8 +379,8 @@ impl Store {
 
    /// Text to store for replay, store hashes and `CMake` scratch names
    /// masked.
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn mask_text(&self, text: &str) -> String {
       self.mask_for_replay(&mask_random_names(text))
    }
@@ -420,8 +420,8 @@ impl Store {
       }
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn daemon_may_identify(&self, path: &str) -> bool {
       self.content
          && is_store_path(path)
@@ -436,8 +436,8 @@ impl Store {
    /// The cache key for a file's identity, from everything `stat` says about
    /// it, or None when it is a store path named by path, already known, or
    /// changed within the last two seconds, finer than the kernel's timestamps.
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn stamp_key(&self, path: &str) -> Option<Digest> {
       if (is_store_path(path) && !self.content) || self.identities.contains_key(path) {
          return None;
@@ -623,22 +623,22 @@ where
 }
 
 /// `path` lies inside the store, as a path rather than its text.
-#[must_use]
 #[inline]
+#[must_use]
 pub fn in_store(path: &Path) -> bool {
    path.starts_with(STORE_DIR) && path != Path::new(STORE_DIR)
 }
 
-#[must_use]
 #[inline]
+#[must_use]
 pub fn is_store_path(path: &str) -> bool {
    path
       .strip_prefix(STORE_DIR)
       .is_some_and(|tail| tail.starts_with('/'))
 }
 
-#[must_use]
 #[inline]
+#[must_use]
 pub fn mask_hashes(text: &str) -> String {
    let prefix = format!("{STORE_DIR}/");
    let mut remaining = text;
@@ -899,8 +899,8 @@ fn mask_runs(name: &str) -> String {
    masked
 }
 
-#[must_use]
 #[inline]
+#[must_use]
 pub fn mask_random_names(text: &str) -> String {
    let mut masked = String::with_capacity(text.len());
    let mut copied = 0;
@@ -916,8 +916,8 @@ pub fn mask_random_names(text: &str) -> String {
    masked
 }
 
-#[must_use]
 #[inline]
+#[must_use]
 pub fn normalize(path: &Path) -> PathBuf {
    let mut normal = PathBuf::new();
    for component in path.components() {
@@ -939,8 +939,8 @@ pub fn normalize(path: &Path) -> PathBuf {
    normal
 }
 
-#[must_use]
 #[inline]
+#[must_use]
 pub fn on_path(program: &str) -> PathBuf {
    if !program.contains('/') {
       for directory in var("PATH").unwrap_or_default().split(':') {

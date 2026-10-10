@@ -55,32 +55,32 @@ impl Namespace {
 pub struct Key(String);
 
 impl Key {
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn hex(namespace: Namespace, id: &[u8]) -> Self {
       Self(format!("{}{}", namespace.prefix(), Hex(id)))
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn digest(namespace: Namespace, digest: &Digest) -> Self {
       Self::hex(namespace, digest.as_bytes())
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn of(namespace: Namespace, inner: &Self) -> Self {
       Self(format!("{}{inner}", namespace.prefix()))
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn is_local(&self) -> bool {
       self.0.starts_with(Namespace::Stamp.prefix())
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn as_str(&self) -> &str {
       &self.0
    }
