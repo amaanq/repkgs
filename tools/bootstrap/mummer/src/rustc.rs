@@ -70,6 +70,7 @@ use crate::{
       Manifest,
       Miss,
       parse_depfile,
+      prefetch,
    },
    record::{
       Artifact,
@@ -411,13 +412,13 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
       return Err(io::Error::other("rustcwrap requires a compiler"));
    };
    let started = Instant::now();
-   let store = Store::new();
+   let mut store = Store::new();
    let (outcome, label) = match Invocation::parse(arguments) {
       Ok(invocation) => {
          let label = invocation.label();
          match Client::connect(socket) {
             Ok(mut client) => {
-               match request_key(&store, &mut client, compiler, &invocation) {
+               match request_key(&mut store, &mut client, compiler, &invocation) {
                   Ok(request) => {
                      let mut job = Crate {
                         compiler,
@@ -446,7 +447,7 @@ pub fn run_rustc(args: &[String], socket: &Path) -> io::Result<i32> {
 }
 
 fn request_key(
-   store: &Store,
+   store: &mut Store,
    cache: &mut Client,
    compiler: &str,
    invocation: &Invocation,
@@ -461,16 +462,6 @@ fn request_key(
    field(&mut hasher, "source");
    field(&mut hasher, store.key(&invocation.source));
    field(&mut hasher, read(&invocation.source)?);
-   for external in &invocation.externs {
-      field(&mut hasher, store.input_id(external)?.to_string());
-   }
-   if invocation.links {
-      field(&mut hasher, "linker");
-      field(
-         &mut hasher,
-         linker_identity(store, cache, invocation.linker())?,
-      );
-   }
    // empty while the rust build compiles core and std themselves
    let mut libraries = match read_dir(target_libdir(compiler, invocation)?) {
       Ok(entries) => {
@@ -483,6 +474,21 @@ fn request_key(
    };
    libraries.retain(|library| library.is_file());
    libraries.sort_unstable();
+   let mut identified = invocation.externs.clone();
+   for library in &libraries {
+      identified.push(utf8(library)?.to_owned());
+   }
+   prefetch(cache, store, &identified)?;
+   for external in &invocation.externs {
+      field(&mut hasher, store.input_id(external)?.to_string());
+   }
+   if invocation.links {
+      field(&mut hasher, "linker");
+      field(
+         &mut hasher,
+         linker_identity(store, cache, invocation.linker())?,
+      );
+   }
    for library in libraries {
       field(&mut hasher, store.input_id(utf8(&library)?)?.to_string());
    }
