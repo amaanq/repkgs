@@ -1,0 +1,33 @@
+Subject: [PATCH] configure: set NO_AS_NEEDED from a cached --no-as-needed check
+
+NO_AS_NEEDED was set inside AC_CACHE_CHECK, so a run answered from
+config.cache left it empty.
+---
+--- a/configure.ac
++++ b/configure.ac
+@@ -1261,6 +1261,9 @@
+      ac_cv_wl_no_as_needed=no])
+   LDFLAGS="$save_LDFLAGS"
+ ])
++AS_VAR_IF([ac_cv_wl_no_as_needed], [yes],
++  [NO_AS_NEEDED="-Wl,--no-as-needed"],
++  [NO_AS_NEEDED=""])
+ AC_SUBST([NO_AS_NEEDED])
+ 
+ AC_MSG_CHECKING([for the Android API level])
+--- a/configure
++++ b/configure
+@@ -7333,6 +7333,13 @@
+ fi
+ { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_cv_wl_no_as_needed" >&5
+ printf "%s\n" "$ac_cv_wl_no_as_needed" >&6; }
++if test "$ac_cv_wl_no_as_needed" = yes
++then :
++  NO_AS_NEEDED="-Wl,--no-as-needed"
++else case e in #(
++  e) NO_AS_NEEDED="" ;;
++esac
++fi
+ 
+ 
+ { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for the Android API level" >&5
