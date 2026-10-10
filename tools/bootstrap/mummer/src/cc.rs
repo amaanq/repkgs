@@ -444,12 +444,13 @@ impl Invocation {
          .map(|tokens| format!("\"{}\"", tokens.join("\" \"")))
          .collect::<Vec<_>>()
          .join("\n");
+      // whole tokens, since `-o -` would otherwise rewrite every dash
       let output = utf8(&self.output)?;
       if !output.is_empty() {
-         job = job.replace(output, "<output>");
+         job = job.replace(&format!("\"{output}\""), "\"<output>\"");
       }
       if let Some(ref depfile) = self.depfile {
-         job = job.replace(utf8(depfile)?, "<depfile>");
+         job = job.replace(&format!("\"{}\"", utf8(depfile)?), "\"<depfile>\"");
       }
       // a preprocessed .S hands cc1as a file named <stem>-<6 random>.<ext> in
       // TMPDIR
