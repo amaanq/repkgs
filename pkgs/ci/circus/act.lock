@@ -1,3 +1,5 @@
-version = "0.14.0"
-sys     = [ "clang", "libgit2", "openssl", "sqlite", "xz", "zlib", "zstd" ]
-hash    = "sha256-kJONVZ12MCi5fYWuM3z4rrFwauK2yyLXpZhs+qazQ7k="
+version = "0.14.0-unstable-2026-10-10"
+date    = "2026-10-10"
+rev     = "4b947f11256ff7e263ccb70d1f782931cf1f74f4"
+sys     = [ "clang", "sqlite", "xz", "zstd" ]
+hash    = "sha256-9X3Z/1OcgVYsFxsq8Keat63Kd8S/FjYOOtTwKRtqFqA="
