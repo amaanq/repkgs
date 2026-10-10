@@ -13,8 +13,14 @@ def linked [flag: string, dependency: string, headers: string]: nothing -> list<
    [$"--with-($flag)-includes=($root)/($headers)" $"--with-($flag)-libraries=($root)/lib"]
 }
 
-export def configure []: nothing -> nothing {
+def configures-key []: nothing -> string {
+   let given = (attrs)
+   ^bigtop probe key $"configures/($given.src | path basename)" ...$given.patches
+}
+
+export def --env configure []: nothing -> nothing {
    let c = (ctx)
+   cache-configures (configures-key)
    cd $c.src
    let libraries = [(linked ffi libffi include) (linked gmp gmp include) (linked curses ncurses include/ncursesw)] | flatten
    # autoreconf would run aclocal, which needs automake, and AC_PATH_PROG keeps only absolute presets
@@ -23,6 +29,7 @@ export def configure []: nothing -> nothing {
 
 export def build []: nothing -> nothing {
    hadrian binary-dist-dir
+   store-configures
 }
 
 export def install []: nothing -> nothing {

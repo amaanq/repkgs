@@ -99,3 +99,65 @@ export def --env test-locale [locale: string, charmap: string]: nothing -> nothi
    }
    $env.LOCPATH = $"($env.PWD)/locale"
 }
+
+# an autoconf cache per configure a build tool runs itself, as hadrian and cabal do, restored
+# under `key` and named after the precious variables, so a changed CC starts that one cold. The
+# key is kept for store-configures, since this changes CONFIG_SITE, which keys hash
+export def --env cache-configures [key: string]: nothing -> nothing {
+   let dir = $"((ctx).build)/configure-caches"
+   $env.PKGS_CONFIGURES_KEY = $key
+   mkdir $dir
+   let restored = (^bigtop probe restore-dir $key $dir | complete).exit_code == 0
+   note configure-caches (if $restored { "restored" } else { "cold" })
+   configure-sums $dir | to json | save -f $"($dir).sums"
+   let quote = {|text| "'" + ($text | str replace --all "'" "'\\''") + "'" }
+   let sites = ($env.CONFIG_SITE? | default "" | split row " " | where $it != "")
+   let site = [
+      ...($sites | each {|path| $"if test -r (do $quote $path); then . (do $quote $path); fi" })
+      $"CONFIG_SITE=(do $quote ($sites | str join ' '))"
+      'if [ "$cache_file" = /dev/null ]; then'
+      ('  pkgs_cache_base=' + (do $quote $dir) + '/$(pwd | tr / _)')
+      '  pkgs_cache_env=$(for pkgs_var in $ac_precious_vars; do eval "printf %s=%s\\\\n \"\$pkgs_var\" \"\${$pkgs_var}\""; done | cksum | cut -d" " -f1)'
+      '  for pkgs_stale in "$pkgs_cache_base"-*.cache "$pkgs_cache_base"-*.dir; do'
+      '    case $pkgs_stale in "$pkgs_cache_base-$pkgs_cache_env".*) ;; *) rm -f "$pkgs_stale" ;; esac'
+      '  done'
+      '  cache_file=$pkgs_cache_base-$pkgs_cache_env.cache'
+      '  pwd > "$pkgs_cache_base-$pkgs_cache_env.dir"'
+      'fi'
+      ''
+   ] | str join "\n"
+   $site | save -f $"($dir).site"
+   $env.CONFIG_SITE = $"($dir).site"
+}
+
+def configure-sums [dir: string]: nothing -> record {
+   files $"($dir)/*.cache" | reduce -f {} {|cache, sums| $sums | insert ($cache | path basename) (open --raw $cache | hash sha256) }
+}
+
+# a cache whose replayed answers write the same config.status as the run that made it, checked
+# the way bigtop's autotools system checks its own, since a cached answer skips the side effects
+# of the check that gave it
+def configure-replays [cache: string]: nothing -> bool {
+   let sidecar = ($cache | str replace --regex '[.]cache$' '.dir')
+   if not ($sidecar | path exists) { return false }
+   let status = $"(open --raw $sidecar | str trim)/config.status"
+   if not ($status | path exists) { return false }
+   let before = (open --raw $status)
+   let rerun = (do { cd ($status | path dirname); ^sh ./config.status --recheck } | complete)
+   let after = (open --raw $status)
+   if $after != $before { $before | save --force --raw $status }
+   $rerun.exit_code == 0 and $after == $before
+}
+
+export def store-configures []: nothing -> nothing {
+   let dir = $"((ctx).build)/configure-caches"
+   let restored = (open --raw $"($dir).sums" | from json)
+   for entry in (configure-sums $dir | transpose name sum) {
+      let cache = $"($dir)/($entry.name)"
+      if ($restored | get --optional $entry.name) != $entry.sum and not (configure-replays $cache) {
+         note configure-caches $"($entry.name) answers change what configure writes, not cached"
+         rm --force $cache ($cache | str replace --regex '[.]cache$' '.dir')
+      }
+   }
+   ^bigtop probe store-dir $env.PKGS_CONFIGURES_KEY $dir
+}
