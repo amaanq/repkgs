@@ -204,8 +204,10 @@ let
       ++ (if runsNu then [ nu ] else [ ])
       ++ (if prebuilt == true then relocTools else [ ])
       ++ concatMap (system: buildSystems.${system}.tools spec ++ before buildSystems.${system}.stack) uses
+      ++ plumbing
     )
     ++ base;
+  plumbing = concatMap (system: buildSystems.${system}.plumbing) uses;
   # act.lock's sys: libraries the lock files can link (their `[bindings]`). Those the set lacks
   # here are left to the locked package (vendored copy or feature off)
   dependencies =
@@ -218,6 +220,7 @@ let
   common = shared // {
     inherit src spec dependencies;
     inherit (phases) plan;
+    plumbing = [ bigtop ] ++ plumbing;
     probeInputs = [ tree ] ++ phases.modules;
     inherit (args) version;
     patches = valid.patches or [ ];

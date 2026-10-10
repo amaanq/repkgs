@@ -1,9 +1,6 @@
 use std::{
    collections::BTreeMap,
-   env::{
-      current_exe,
-      vars,
-   },
+   env::vars,
    fs::{
       canonicalize,
       create_dir_all,
@@ -48,6 +45,7 @@ use tightrope::{
 
 use crate::{
    attrs::{
+      Attrs,
       Ctx,
       build_top,
    },
@@ -84,15 +82,11 @@ where
       .keys()
       .map(|root| toolchain(root, &top))
       .collect::<io::Result<Vec<_>>>()?;
-   let own = current_exe()?
-      .parent()
-      .and_then(Path::parent)
-      .map(Path::to_path_buf)
-      .unwrap_or_default();
+   let plumbing = Attrs::load()?.plumbing;
    let roots = ctx
       .roots
       .iter()
-      .filter(|root| !cc.contains_key(root.as_str()) && Path::new(root) != own)
+      .filter(|root| !cc.contains_key(root.as_str()) && !plumbing.contains(root))
       .collect::<Vec<_>>();
    // what configure inherits from bigtop, so a change to it reruns probes
    // while bigtop's own store path stays out

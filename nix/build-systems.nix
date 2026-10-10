@@ -61,10 +61,8 @@ let
     };
     cabal = {
       tool = cabal;
-      tools = [
-        ghc-bootstrap
-        jape
-      ];
+      tools = [ ghc-bootstrap ];
+      plumbing = [ jape ];
       lock.deps = _: fetch.hackageSet { };
       # ghc-bignum puts -lgmp in every link, the RTS -lffi
       dependencies = [
@@ -212,6 +210,7 @@ let
         spec:
         lib.on owned [ spec.${name}.tool ] ++ (if builtins.isFunction extras then extras spec else extras);
       dependencies = entry.dependencies or [ ];
+      plumbing = entry.plumbing or [ ];
       prebuilt = descriptor.prebuilt or false;
       unsupported =
         if descriptor ? unsupported && refused descriptor.unsupported.when then
