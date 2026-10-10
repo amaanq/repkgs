@@ -28,9 +28,9 @@ use std::{
 use blake3::Hasher;
 use mummer::{
    files::{
-      utf8,
       relative_path,
       remove_if_exists,
+      utf8,
       write_file,
    },
    process::{
@@ -251,6 +251,10 @@ impl Invocation {
       Ok(invocation)
    }
 
+   fn dep_path(&self) -> PathBuf {
+      self.out_dir.join(format!("{}{}.d", self.name, self.suffix))
+   }
+
    fn label(&self) -> String {
       format!("{}{}", self.name, self.suffix)
    }
@@ -353,10 +357,11 @@ impl Wrapper for Crate<'_> {
    }
 
    fn replay(&mut self, cache: &mut Client, result: &Digest) -> Result<i32, Miss> {
-      replay(cache, &self.store, &self.invocation, result).map(|()| 0_i32)
+      replay(cache, &self.store, &self.invocation, result)
    }
 
    fn compile(&mut self, cache: &mut Client) -> io::Result<(RunResult, Compiled)> {
+      remove_if_exists(&self.invocation.dep_path())?;
       let (command, link_records) = self.invocation.recorded(self.arguments)?;
       let unsettled = self.invocation.links.then(tempdir).transpose()?;
       let result = run(
@@ -392,7 +397,7 @@ impl Wrapper for Crate<'_> {
          )
          .map(|()| true)
       } else {
-         Ok(false)
+         store_failure(cache, &mut self.store, request, &self.invocation, result)
       };
       for record in &compiled.link_records {
          remove_if_exists(record)?;
@@ -479,10 +484,7 @@ fn request_key(
    libraries.retain(|library| library.is_file());
    libraries.sort_unstable();
    for library in libraries {
-      field(
-         &mut hasher,
-         store.input_id(utf8(&library)?)?.to_string(),
-      );
+      field(&mut hasher, store.input_id(utf8(&library)?)?.to_string());
    }
    for name in [
       "CARGO_PKG_NAME",
@@ -564,9 +566,7 @@ fn store_result(
    unsettled: Option<&TempDir>,
    diagnostics: &[u8],
 ) -> io::Result<()> {
-   let dep_path = invocation
-      .out_dir
-      .join(format!("{}{}.d", invocation.name, invocation.suffix));
+   let dep_path = invocation.dep_path();
    let text = read_to_string(&dep_path)?;
    let mut inputs = parse_depfile(&text);
    inputs.extend_from_slice(&invocation.externs);
@@ -597,16 +597,7 @@ fn store_result(
    };
    inputs.sort_unstable();
    inputs.dedup();
-   let variables = text
-      .lines()
-      .filter_map(|line| line.strip_prefix("# env-dep:"))
-      .map(|entry| {
-         entry
-            .split_once('=')
-            .map_or(entry, |(name, _)| name)
-            .to_owned()
-      })
-      .collect::<Vec<String>>();
+   let variables = env_deps(&text);
    let manifest = Manifest::build(cache, store, &inputs, &variables, &[])?;
    let key = manifest.result_key(request)?;
    let mut outputs = vec![dep_path];
@@ -656,6 +647,60 @@ fn store_result(
    manifest.publish(cache, request)
 }
 
+/// rustc writes its dep-info before it reports an error, as for the
+/// feature probes build scripts run, so a failure keys on the same inputs a
+/// success would.
+fn store_failure(
+   cache: &mut Client,
+   store: &mut Store,
+   request: &Key,
+   invocation: &Invocation,
+   result: &RunResult,
+) -> io::Result<bool> {
+   let text = match read_to_string(invocation.dep_path()) {
+      Ok(text) => text,
+      Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+      Err(error) => return Err(error),
+   };
+   if invocation.links || result.status >= 128_i32 {
+      return Ok(false);
+   }
+   let mut inputs = parse_depfile(&text);
+   inputs.extend_from_slice(&invocation.externs);
+   inputs.extend(invocation.static_archives()?);
+   inputs.push(invocation.source.clone());
+   inputs.retain(|path| Path::new(path).exists());
+   inputs.sort_unstable();
+   inputs.dedup();
+   let variables = env_deps(&text);
+   let manifest = Manifest::build(cache, store, &inputs, &variables, &[])?;
+   let key = manifest.result_key(request)?;
+   Record {
+      status:      result.status,
+      diagnostics: result.stderr.clone(),
+      depfile:     None,
+      link_deps:   None,
+      artifacts:   Vec::new(),
+   }
+   .put(cache, &key)?;
+   manifest.publish(cache, request)?;
+   Ok(true)
+}
+
+/// The variables rustc's dep-info says the crate read.
+fn env_deps(text: &str) -> Vec<String> {
+   text
+      .lines()
+      .filter_map(|line| line.strip_prefix("# env-dep:"))
+      .map(|entry| {
+         entry
+            .split_once('=')
+            .map_or(entry, |(name, _)| name)
+            .to_owned()
+      })
+      .collect()
+}
+
 fn stem(name: &str, from: &str, to: &str) -> String {
    if from.is_empty() {
       name.to_owned()
@@ -669,8 +714,12 @@ fn replay(
    store: &Store,
    invocation: &Invocation,
    key: &Digest,
-) -> Result<(), Miss> {
+) -> Result<i32, Miss> {
    let record = Record::get(cache, key)?;
+   if record.status != 0_i32 && record.artifacts.is_empty() {
+      io::stderr().lock().write_all(&record.diagnostics)?;
+      return Ok(record.status);
+   }
    if record.artifacts.is_empty()
       || record
          .artifacts
@@ -715,7 +764,7 @@ fn replay(
       )?;
    }
    io::stderr().lock().write_all(&record.diagnostics)?;
-   Ok(())
+   Ok(0_i32)
 }
 
 /// The program in rustc's `--print link-args` record, past the environment
