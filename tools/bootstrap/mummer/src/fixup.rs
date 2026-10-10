@@ -66,8 +66,8 @@ pub struct Context {
 }
 
 impl Context {
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn final_path(&self, path: &Path) -> PathBuf {
       let normal = normalize(path);
       normal.strip_prefix(&self.prefix).map_or_else(
@@ -76,8 +76,8 @@ impl Context {
       )
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn on_disk(&self, path: &Path) -> PathBuf {
       let normal = normalize(path);
       normal.strip_prefix(&self.dest).map_or_else(
@@ -86,8 +86,8 @@ impl Context {
       )
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn shown<'path>(&self, path: &'path Path) -> Display<'path> {
       path.strip_prefix(&self.prefix).unwrap_or(path).display()
    }

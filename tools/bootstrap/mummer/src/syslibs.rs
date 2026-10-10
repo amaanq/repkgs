@@ -113,8 +113,8 @@ pub enum Ecosystem {
 impl Ecosystem {
    /// The lock file a source of this ecosystem carries, none for Hackage,
    /// whose set is solved apart from the source.
-   #[must_use]
    #[inline]
+   #[must_use]
    pub const fn lock_file(self) -> Option<&'static str> {
       match self {
          Self::Cargo => Some("Cargo.lock"),
@@ -207,8 +207,8 @@ pub fn collect(pkgs: &Path) -> io::Result<Tables> {
 }
 
 /// Package names in one ecosystem's lock file.
-#[must_use]
 #[inline]
+#[must_use]
 pub fn locked(ecosystem: Ecosystem, text: &str) -> Vec<String> {
    match ecosystem {
       Ecosystem::Cargo | Ecosystem::Python => {
@@ -241,8 +241,8 @@ pub fn locked(ecosystem: Ecosystem, text: &str) -> Vec<String> {
 }
 
 /// Our packages the locked names of one ecosystem can link, sorted.
-#[must_use]
 #[inline]
+#[must_use]
 pub fn wanted_for(tables: &Tables, ecosystem: Ecosystem, names: &[String]) -> Vec<String> {
    tables
       .iter()

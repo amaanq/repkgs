@@ -20,8 +20,8 @@ use crate::digest::Digest;
 pub struct Identity(Digest);
 
 impl Identity {
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn of(bytes: &[u8]) -> Self {
       Self(Digest::of(bytes))
    }

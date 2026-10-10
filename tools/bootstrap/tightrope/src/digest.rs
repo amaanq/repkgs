@@ -22,14 +22,14 @@ use crate::key::Hex;
 pub struct Digest([u8; 16]);
 
 impl Digest {
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn of(bytes: &[u8]) -> Self {
       Self::from(blake3::hash(bytes))
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub const fn as_bytes(&self) -> &[u8; 16] {
       &self.0
    }

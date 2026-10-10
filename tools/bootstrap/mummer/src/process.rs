@@ -98,8 +98,8 @@ pub enum Tool {
 impl Tool {
    const ALL: [Self; 5] = [Self::Cc, Self::Rustc, Self::Ghc, Self::Go, Self::Header];
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub const fn name(self) -> &'static str {
       match self {
          Self::Cc => "cc",
@@ -175,8 +175,8 @@ impl Outcome {
       Self::Miss,
    ];
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub const fn name(self) -> &'static str {
       match self {
          Self::Query => "query",
@@ -201,8 +201,8 @@ impl Outcome {
    }
 
    /// Answered from the cache, the compiler never ran.
-   #[must_use]
    #[inline]
+   #[must_use]
    pub const fn is_cached(self) -> bool {
       matches!(
          self,
@@ -211,8 +211,8 @@ impl Outcome {
    }
 
    /// The compiler ran because the cache had no answer.
-   #[must_use]
    #[inline]
+   #[must_use]
    pub const fn is_compiled(self) -> bool {
       matches!(
          self,
@@ -313,11 +313,11 @@ pub fn log_uncached(outcome: Outcome, args: &[String]) {
 }
 
 impl RunResult {
-   #[must_use]
-   #[inline]
    /// The compiler exited by itself and placed an error at a source line,
    /// `file:line[:column]: error:`. Anything else, a full disk or a crash, is
    /// the machine and not the source.
+   #[inline]
+   #[must_use]
    pub fn reported_error(&self) -> bool {
       self.status < 128
          && String::from_utf8_lossy(&self.stderr).lines().any(|line| {
@@ -338,8 +338,8 @@ impl RunResult {
    }
 }
 
-#[must_use]
 #[inline]
+#[must_use]
 pub fn status_code(status: ExitStatus) -> i32 {
    status
       .code()

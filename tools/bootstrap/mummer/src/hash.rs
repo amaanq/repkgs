@@ -86,8 +86,8 @@ impl Digest {
       Ok(Self { algorithm, bytes })
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn sha256(contents: &[u8]) -> Self {
       Self {
          algorithm: Algorithm::Sha256,
@@ -114,14 +114,14 @@ impl Digest {
       Self::new(algorithm, bytes).map_err(|_length| invalid())
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub const fn algorithm(&self) -> Algorithm {
       self.algorithm
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub fn hex(&self) -> String {
       self
          .bytes
@@ -194,8 +194,8 @@ pub struct OutputHash {
 }
 
 impl OutputHash {
-   #[must_use]
    #[inline]
+   #[must_use]
    pub const fn sri(digest: Digest) -> Self {
       Self {
          digest,
@@ -225,14 +225,14 @@ impl OutputHash {
       })
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub const fn digest(&self) -> &Digest {
       &self.digest
    }
 
-   #[must_use]
    #[inline]
+   #[must_use]
    pub const fn spelling(&self) -> Spelling {
       self.spelling
    }

@@ -58,8 +58,8 @@ pub struct Segment {
    pub size:    usize,
 }
 
-#[must_use]
 #[inline]
+#[must_use]
 pub fn is_elf(image: &Image) -> bool {
    image.bytes.starts_with(b"\x7fELF\x02\x01")
 }
@@ -243,14 +243,14 @@ pub fn segments(image: &Image) -> io::Result<Vec<Segment>> {
    Ok(segments)
 }
 
-#[must_use]
 #[inline]
+#[must_use]
 pub fn has_segment(segments: &[Segment], kind: u32) -> bool {
    segments.iter().any(|segment| segment.kind == kind)
 }
 
-#[must_use]
 #[inline]
+#[must_use]
 pub fn file_offset(segments: &[Segment], address: u64) -> Option<usize> {
    segments
       .iter()
@@ -376,8 +376,8 @@ pub fn interpreter(image: &Image, segments: &[Segment]) -> io::Result<Option<Tex
       .transpose()
 }
 
-#[must_use]
 #[inline]
+#[must_use]
 pub fn relative_from(directory: &Path, target: &Path) -> PathBuf {
    let base = normalize(directory);
    let destination = normalize(target);
@@ -402,8 +402,8 @@ pub fn relative_from(directory: &Path, target: &Path) -> PathBuf {
 }
 
 /// `relative_from`, spelled from `prefix`, as `$ORIGIN` or `@loader_path`.
-#[must_use]
 #[inline]
+#[must_use]
 pub fn prefixed_relative(prefix: &str, from: &Path, to: &Path) -> String {
    let relative = relative_from(from, to);
    if relative == Path::new(".") {
@@ -415,8 +415,8 @@ pub fn prefixed_relative(prefix: &str, from: &Path, to: &Path) -> String {
 
 pub const RUNPATH_SLACK: usize = 48;
 
-#[must_use]
 #[inline]
+#[must_use]
 pub fn shared_library(name: &str) -> bool {
    if Path::new(name)
       .extension()
