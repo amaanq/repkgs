@@ -156,14 +156,14 @@ struct Passed<'ctx> {
 
 pub fn tests() -> io::Result<()> {
    let ctx = Ctx::load(&build_top()?)?;
-   let result = var("PKGS_RESULT").map_err(|_unset| io::Error::other("PKGS_RESULT is not set"))?;
-   create_dir_all(&result)?;
+   let result = ctx.dest.as_path();
+   create_dir_all(result)?;
    let mut rendered = serde_json::to_vec_pretty(&Passed {
       package: utf8(&ctx.out)?,
       passed:  true,
    })?;
    rendered.push(b'\n');
-   File::create(Path::new(&result).join("result.json"))?.write_all(&rendered)?;
+   File::create(result.join("result.json"))?.write_all(&rendered)?;
    note("tests", "passed");
    Ok(())
 }
