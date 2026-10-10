@@ -491,7 +491,7 @@ impl Invocation {
 
    /// Keeps a Fortran compile cacheable only with its prescanned source.
    fn prescan(&mut self, language: Language, compiler: &str) -> io::Result<()> {
-      if language != Language::Fortran {
+      if language != Language::Fortran || self.source.is_none() {
          return Ok(());
       }
       let scanned = if self.refused.is_none() && self.action == Action::Compile {
