@@ -4,7 +4,7 @@ fetch   = { archive = true }
 with    = [ "make" ]
 deps    = [ "erlang", "coreutils", "sed", "curl", "bash" ]
 exports = false
-patches = [ "async-stream-timeout-margin.patch" ]
+patches = [ "async-stream-timeout-margin.patch", "format-exit-call-race.patch" ]
 
 [test]
 bin = [ "elixir", "elixirc", "mix", "iex" ]
