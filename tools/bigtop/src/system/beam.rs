@@ -1,5 +1,6 @@
 use std::{
    collections::BTreeMap,
+   env::var,
    fs::{
       copy,
       create_dir_all,
@@ -301,7 +302,7 @@ fn checkout_name(tar: &str) -> &str {
 /// `Hex.SCM.lock_status` accepts. Compiled deps round-trip through mummerd.
 fn setup(tool: Tool, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<Env> {
    let (options, _escripts) = options(tool, ctx)?;
-   let vars = env(tool, ctx, attrs)?;
+   let mut vars = env(tool, ctx, attrs)?;
    let packages = format!("{}/packages/hexpm", options.deps);
    let (compiled, kind) = match tool {
       Tool::Rebar3 => {
@@ -342,6 +343,8 @@ fn setup(tool: Tool, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<Env>
       run("mix", &["deps.compile", "--skip-umbrella-children"], &env)?;
       probe::store_dir(&key, Path::new(compiled), socket)?;
    }
+   // the build phase runs under this env, which the key hashes
+   vars.push(("PKGS_DEPS_KEY", key.to_string()));
    Ok(Env::from(
       vars
          .into_iter()
@@ -357,11 +360,10 @@ fn phase(tool: Tool, ctx: &Ctx, verb: &str, socket: &Path) -> io::Result<()> {
          let mut args = vec!["compile"];
          args.extend(strs(&options.flags));
          run("rebar3", &args, &[])?;
-         probe::store_dir(
-            &deps_key(tool, &options)?,
-            Path::new("_build/default/checkouts"),
-            socket,
-         )
+         let key = var("PKGS_DEPS_KEY")
+            .map_err(|error| io::Error::other(format!("rebar3 setup left no deps key, {error}")))?
+            .parse()?;
+         probe::store_dir(&key, Path::new("_build/default/checkouts"), socket)
       },
       (Tool::Rebar3, "test") => run("rebar3", &["eunit"], &[]),
       (Tool::Rebar3, "install") => {
