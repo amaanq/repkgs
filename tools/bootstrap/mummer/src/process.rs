@@ -245,6 +245,7 @@ pub struct Logged<'log> {
    pub tool:    Tool,
    pub outcome: Outcome,
    pub subject: &'log str,
+   pub millis:  u64,
 }
 
 /// The invocations a log recorded, less queries and lines it cannot read.
@@ -259,6 +260,10 @@ pub fn logged(text: &str) -> impl Iterator<Item = Logged<'_>> {
             tool,
             outcome,
             subject: fields.next().unwrap_or_default(),
+            millis: fields
+               .next()
+               .and_then(|field| field.trim().parse().ok())
+               .unwrap_or(0),
          }
       })
    })
