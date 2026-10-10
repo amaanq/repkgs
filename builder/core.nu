@@ -108,6 +108,7 @@ export def --env cache-configures [key: string]: nothing -> nothing {
    $env.PKGS_CONFIGURES_KEY = $key
    mkdir $dir
    let restored = (try { ^bigtop probe restore-dir $key $dir; true } catch { false })
+   if $restored { configure-resolve $dir }
    note configure-caches (if $restored { "restored" } else { "cold" })
    configure-sums $dir | to json | save -f $"($dir).sums"
    let quote = {|text| "'" + ($text | str replace --all "'" "'\\''") + "'" }
@@ -117,7 +118,7 @@ export def --env cache-configures [key: string]: nothing -> nothing {
       $"CONFIG_SITE=(do $quote ($sites | str join ' '))"
       'if [ "$cache_file" = /dev/null ]; then'
       ('  pkgs_cache_base=' + (do $quote $dir) + '/$(pwd | tr / _)')
-      '  pkgs_cache_env=$(for pkgs_var in $ac_precious_vars; do eval "printf %s=%s\\\\n \"\$pkgs_var\" \"\${$pkgs_var}\""; done | cksum | cut -d" " -f1)'
+      '  pkgs_cache_env=$(for pkgs_var in $ac_precious_vars; do eval "printf %s=%s\\\\n \"\$pkgs_var\" \"\${$pkgs_var}\""; done | sed "s|/nix/store/[0-9a-z]\{32\}-|/nix/store/*-|g" | cksum | cut -d" " -f1)'
       '  for pkgs_stale in "$pkgs_cache_base"-*.cache "$pkgs_cache_base"-*.dir; do'
       '    case $pkgs_stale in "$pkgs_cache_base-$pkgs_cache_env".*) ;; *) rm -f "$pkgs_stale" ;; esac'
       '  done'
@@ -128,6 +129,23 @@ export def --env cache-configures [key: string]: nothing -> nothing {
    ] | str join "\n"
    $site | save -f $"($dir).site"
    $env.CONFIG_SITE = $"($dir).site"
+}
+
+# autoconf aborts when a cached precious variable differs from this run's, and CC names the cc
+# toolchain, whose store path moves with every mummer change while probe keys cover what it does
+def configure-resolve [dir: string]: nothing -> nothing {
+   let roots = ((ctx).roots | append ($env.PKGS_CC? | default "{}" | from json | columns))
+   for cache in (files $"($dir)/*.cache") {
+      let text = ($roots | reduce --fold (open --raw $cache) {|root, text|
+         let name = ($root | path basename | str substring 33.. | str replace --all --regex '([^A-Za-z0-9_-])' '\$1')
+         $text | str replace --all --regex $"/nix/store/\\*-($name)\(?![A-Za-z0-9._+?=-]\)" $root
+      })
+      if ($text | str contains "/nix/store/*-") {
+         rm --force $cache ($cache | str replace --regex '[.]cache$' '.dir')
+      } else {
+         $text | save --force --raw $cache
+      }
+   }
 }
 
 def configure-sums [dir: string]: nothing -> record {
@@ -158,6 +176,10 @@ export def store-configures []: nothing -> nothing {
          note configure-caches $"($entry.name) answers change what configure writes, not cached"
          rm --force $cache ($cache | str replace --regex '[.]cache$' '.dir')
       }
+   }
+   for cache in (files $"($dir)/*.cache") {
+      let masked = (open --raw $cache | str replace --all --regex '/nix/store/[0-9a-z]{32}-' '/nix/store/*-')
+      $masked | save --force --raw $cache
    }
    ^bigtop probe store-dir $env.PKGS_CONFIGURES_KEY $dir
 }
