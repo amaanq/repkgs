@@ -95,10 +95,6 @@ pub fn prepare(source: Source<'_>) -> io::Result<Prepared> {
    let deps = closure(&attrs.dependencies)?;
    let cache = socket().try_exists()?;
    let mut env = compute(&attrs, &spec, &deps, Path::new(&out), cache)?;
-   env.insert(
-      "PKGS_RESULT".to_owned(),
-      Value::String(attrs.outputs.out.clone()),
-   );
    let platform = resolve_platform(&attrs.platform, &top, &mut env)?;
    let src = format!("{top}/source");
    let build = format!("{top}/build");
