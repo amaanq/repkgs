@@ -386,6 +386,11 @@ pub fn run_ghc(args: &[String], socket: &Path) -> io::Result<i32> {
    };
    let started = Instant::now();
    let store = Store::new();
+   if arguments.iter().any(|argument| argument == "-M")
+      && let Some(status) = served_scan(compiler, arguments, socket, started)?
+   {
+      return Ok(status);
+   }
    let (outcome, label) = match Invocation::parse(arguments) {
       Ok(invocation) => {
          match prepare(&store, compiler, arguments, &invocation, socket) {
@@ -408,6 +413,151 @@ pub fn run_ghc(args: &[String], socket: &Path) -> io::Result<i32> {
    let result = run_slotted(OsStr::new(compiler), arguments, Some(socket))?;
    uncached(Tool::Ghc, outcome, label, arguments, started);
    Ok(result.status)
+}
+
+/// A `-M` run, as hadrian's per-way dependency scan of a package, whose one
+/// output is the makefile and whose inputs are the files that makefile
+/// lists.
+struct Scan<'call> {
+   compiler:  &'call str,
+   arguments: &'call [String],
+   makefile:  String,
+   store:     Store,
+}
+
+impl Wrapper for Scan<'_> {
+   const TOOL: Tool = Tool::Ghc;
+   type Compiled = ();
+
+   fn manifests(&mut self) -> &mut Store {
+      &mut self.store
+   }
+
+   fn replay(&mut self, cache: &mut Client, result: &Digest) -> Result<i32, Miss> {
+      let record = Record::get(cache, result)?;
+      let Some(artifact) = record.artifacts.first() else {
+         return Err(Miss::Failed(io::Error::other(
+            "cached scan has no makefile",
+         )));
+      };
+      let text = String::from_utf8(artifact.bytes.clone()).map_err(io::Error::other)?;
+      write_file(
+         Path::new(&self.makefile),
+         self.store.replayed_text(text)?.as_bytes(),
+         None,
+      )?;
+      io::stderr().lock().write_all(&record.diagnostics)?;
+      Ok(0_i32)
+   }
+
+   fn compile(&mut self, cache: &mut Client) -> io::Result<(RunResult, ())> {
+      let result = run(
+         OsStr::new(self.compiler),
+         self.arguments,
+         Slot::acquire(cache).ok().flatten(),
+         &[],
+      )?;
+      Ok((result, ()))
+   }
+
+   fn store(
+      &mut self,
+      cache: &mut Client,
+      request: &Key,
+      result: &RunResult,
+      (): (),
+   ) -> io::Result<bool> {
+      if result.status != 0_i32 {
+         return Ok(false);
+      }
+      let text = read_to_string(&self.makefile)?;
+      let mut inputs = text
+         .replace("\\\n", " ")
+         .lines()
+         .filter(|line| !line.starts_with('#'))
+         .filter_map(|line| line.split_once(':').map(|rule| rule.1))
+         .flat_map(str::split_whitespace)
+         .filter(|path| Path::new(path).is_file())
+         .map(str::to_owned)
+         .collect::<Vec<String>>();
+      inputs.extend(scanned_sources(self.arguments).map(str::to_owned));
+      inputs.sort_unstable();
+      inputs.dedup();
+      let manifest = Manifest::build(cache, &mut self.store, &inputs, &[], &[])?;
+      let key = manifest.result_key(request)?;
+      Record {
+         status:      0,
+         diagnostics: result.stderr.clone(),
+         depfile:     None,
+         link_deps:   None,
+         artifacts:   vec![Artifact {
+            name:   "makefile".to_owned(),
+            mode:   None,
+            bytes:  self.store.stored_text(&text)?.into_bytes(),
+            settle: false,
+         }],
+      }
+      .put(cache, &key)?;
+      manifest.publish(cache, request)?;
+      Ok(true)
+   }
+}
+
+fn scanned_sources(arguments: &[String]) -> impl Iterator<Item = &str> {
+   arguments
+      .iter()
+      .filter(|argument| {
+         !argument.starts_with('-') && SOURCES.iter().any(|suffix| argument.ends_with(suffix))
+      })
+      .map(String::as_str)
+}
+
+fn served_scan(
+   compiler: &str,
+   arguments: &[String],
+   socket: &Path,
+   started: Instant,
+) -> io::Result<Option<i32>> {
+   let Ok(mut client) = Client::connect(socket) else {
+      return Ok(None);
+   };
+   let makefile = arguments
+      .windows(2)
+      .find(|pair| pair[0] == "-dep-makefile")
+      .map_or_else(|| "Makefile".to_owned(), |pair| pair[1].clone());
+   let mut store = Store::new();
+   store.learn_random(arguments);
+   let info = Command::new(compiler).arg("--info").output()?;
+   if !info.status.success() {
+      return Ok(None);
+   }
+   let mut hasher = Hasher::new();
+   field(&mut hasher, "scan");
+   field(&mut hasher, store.tool_identity(&mut client, compiler)?);
+   field(
+      &mut hasher,
+      store.key(&String::from_utf8(info.stdout).map_err(io::Error::other)?),
+   );
+   field(&mut hasher, store.key(utf8(&current_dir()?)?));
+   for argument in arguments {
+      field(&mut hasher, store.key(argument));
+   }
+   for name in ["GHC_PACKAGE_PATH", "GHC_ENVIRONMENT", "LANG", "LC_ALL"] {
+      field(&mut hasher, name);
+      field(&mut hasher, var(name).unwrap_or_default());
+   }
+   for source in scanned_sources(arguments) {
+      field(&mut hasher, store.key(source));
+      field(&mut hasher, read(source)?);
+   }
+   let request = Key::digest(Namespace::Haskell, &Digest::from(hasher.finalize()));
+   let mut scan = Scan {
+      compiler,
+      arguments,
+      makefile,
+      store,
+   };
+   serve(&mut scan, &mut client, &request, "dependency scan", started).map(Some)
 }
 
 /// The daemon, request key and dependency list, or None after saying why
