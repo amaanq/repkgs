@@ -2,7 +2,7 @@ with    = [  ]
 deps    = [  ]
 tools   = [  ]
 extras  = "python"
-patches = [ "relocatable.patch", "upstream-darwin-cross-xopen.patch" ]
+patches = [ "relocatable.patch", "upstream-darwin-cross-xopen.patch", "cached-no-as-needed.patch" ]
 
 [track]
 from  = "github:python/cpython"
