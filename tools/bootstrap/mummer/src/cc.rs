@@ -290,19 +290,13 @@ impl Invocation {
                   sources += 1_i32;
                   positions.push(index);
                   header |= precompiles;
-               } else if !arg.starts_with('-') && {
-                  // a value the driver hands the linker after its option, as
-                  // `-rpath <dir>` or `-z noexecstack`, is no input file
-                  let option = index
-                     .checked_sub(1)
-                     .map(|before| invocation.args[before].as_str())
-                     .filter(|before| before.starts_with('-') && !before.contains('='));
-                  linked.iter().enumerate().any(|(position, token)| {
-                     **token == arg
-                        && !(position > 0
-                           && option.is_some_and(|before| linked[position - 1].as_str() == before))
-                  })
-               } {
+               } else if !arg.starts_with('-')
+                  && Path::new(&arg).is_file()
+                  && linked.iter().any(|token| **token == arg)
+               {
+                  // an existing file the linker gets, whatever option comes
+                  // before it, while values like `-rpath <dir>` or
+                  // `-z noexecstack` name no file
                   invocation.inputs.push(arg.clone());
                   objects = true;
                }
