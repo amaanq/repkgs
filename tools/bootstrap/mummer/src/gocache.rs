@@ -28,13 +28,19 @@ use base64::{
    Engine as _,
    engine::general_purpose::STANDARD,
 };
+use blake3::Hasher;
 use mummer::{
+   config::package_flags,
    files::write_file,
    process::{
       Outcome,
       Tool,
       diagnostic,
       log,
+   },
+   store::{
+      Store,
+      field,
    },
 };
 use serde::{
@@ -50,6 +56,8 @@ use tightrope::{
       Namespace,
    },
 };
+
+use crate::driver::Driver;
 
 #[derive(Deserialize)]
 struct Request {
@@ -186,15 +194,24 @@ struct Session {
    cache:     Option<Client>,
    directory: PathBuf,
    missed:    HashSet<[u8; 32]>,
+   context:   [u8; 32],
 }
 
 impl Session {
+   fn action_key(&self, action: GoId) -> Key {
+      let mut hasher = Hasher::new();
+      hasher.update(&self.context);
+      hasher.update(&action.0);
+      Key::hex(Namespace::GoAction, hasher.finalize().as_bytes())
+   }
+
    fn get(&mut self, action: GoId, started: Instant) -> io::Result<ResponseBody> {
+      let action_key = self.action_key(action);
       let found = self
          .cache
          .as_mut()
          .map(|client| -> io::Result<_> {
-            let Some(output_bytes) = client.get(&Key::hex(Namespace::GoAction, &action.0))? else {
+            let Some(output_bytes) = client.get(&action_key)? else {
                return Ok(None);
             };
             let output = GoId::try_from(output_bytes.as_slice())?;
@@ -234,12 +251,13 @@ impl Session {
       bytes: &[u8],
       started: Instant,
    ) -> io::Result<ResponseBody> {
+      let action_key = self.action_key(action);
       let path = self.directory.join(output.to_string());
       write_file(&path, bytes, None)?;
       if let Some(client) = self.cache.as_mut()
          && let Err(error) = client
             .put(&Key::hex(Namespace::GoOutput, &output.0), bytes)
-            .and_then(|()| client.put(&Key::hex(Namespace::GoAction, &action.0), &output.0))
+            .and_then(|()| client.put(&action_key, &output.0))
       {
          diagnostic(format_args!("mummer Go cache upload failed, {error}"));
          self.cache = None;
@@ -274,8 +292,27 @@ fn body(input: &mut impl BufRead, size: usize) -> io::Result<Vec<u8>> {
    }
 }
 
+/// Go's action ids name the C compiler by its version line alone, not the
+/// sysroot it builds against or the include and library flags the wrapper
+/// adds for the package's dependencies, so cgo output keys on those too.
+fn cgo_context(cache: Option<&mut Client>) -> io::Result<[u8; 32]> {
+   let mut hasher = Hasher::new();
+   if let Ok(driver) = Driver::load() {
+      let compiler = match cache {
+         Some(client) => Store::new().tool_identity(client, driver.cc())?,
+         None => driver.cc().to_owned(),
+      };
+      field(&mut hasher, compiler);
+      field(&mut hasher, driver.libc().unwrap_or_default());
+   }
+   for flags in package_flags()?.values() {
+      field(&mut hasher, serde_json::to_vec(flags)?);
+   }
+   Ok(*hasher.finalize().as_bytes())
+}
+
 pub fn run(socket: &Path) -> io::Result<()> {
-   let cache = match Client::connect(socket) {
+   let mut cache = match Client::connect(socket) {
       Ok(client) => Some(client),
       Err(error) => {
          diagnostic(format_args!("mummer Go cache daemon unavailable, {error}"));
@@ -292,6 +329,7 @@ pub fn run(socket: &Path) -> io::Result<()> {
    );
    create_dir_all(&directory)?;
    let mut session = Session {
+      context: cgo_context(cache.as_mut())?,
       cache,
       directory,
       missed: HashSet::new(),

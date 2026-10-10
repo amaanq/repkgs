@@ -16,7 +16,6 @@ use std::{
 };
 
 use mummer::{
-   files::utf8,
    config::{
       BinaryFormat,
       Config,
@@ -30,6 +29,7 @@ use mummer::{
       runpath_text,
       segments,
    },
+   files::utf8,
    image::Image,
    store::{
       Store,
@@ -106,6 +106,11 @@ impl Driver {
          Self::Bare(_) => None,
          Self::Configured(ref toolchain) => Some(toolchain),
       }
+   }
+
+   /// The libc a configured ELF toolchain builds against, its sysroot.
+   pub fn libc(&self) -> Option<&str> {
+      Some(self.toolchain()?.config.policy.as_ref()?.libc.as_str())
    }
 
    pub fn ldflags(&self) -> &[String] {
