@@ -850,7 +850,7 @@ impl Wrapper for Compile<'_> {
       if missing_allowed {
          inputs.retain(|path| Path::new(path).exists());
       }
-      let link_text = if invocation.links() {
+      let link_text = if invocation.links() && result.status == 0_i32 {
          let text = read_to_string(&compiled.link_file)?;
          if text.is_empty() {
             return Ok(false);
@@ -867,8 +867,7 @@ impl Wrapper for Compile<'_> {
          None
       };
       if result.status != 0_i32
-         && (invocation.links()
-            || inputs.is_empty()
+         && (inputs.is_empty()
             || (absent.is_empty()
                && String::from_utf8_lossy(&result.stderr).contains("file not found"))
             || !result.reported_error())
@@ -951,8 +950,8 @@ impl Compile<'_> {
          None if result.status == 0_i32 => Ok(Some((String::new(), false))),
          // clang writes no dependency file for a failed compile, and only a
          // compiler that logs its absent lookups shows a missing header
-         // appearing later
-         None if unlogged || invocation.links() => Ok(None),
+         // appearing later. A located error means the linker never ran
+         None if unlogged || !result.reported_error() => Ok(None),
          None => Ok(failed_dependencies(self.compiler, &invocation.args)?.map(|text| (text, true))),
       }
    }
