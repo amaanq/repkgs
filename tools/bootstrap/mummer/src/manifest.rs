@@ -8,7 +8,10 @@ use std::{
    },
    io,
    mem::take,
-   path::Path,
+   path::{
+      Path,
+      PathBuf,
+   },
 };
 
 use blake3::Hasher;
@@ -130,22 +133,41 @@ impl Manifest {
          paths.push(path);
       }
       prefetch(cache, store, &paths)?;
-      for (input, path) in self.inputs.iter().zip(paths) {
-         match store.input_id(&path) {
+      for (input, path) in self.inputs.iter().zip(&paths) {
+         match store.input_id(path) {
             Ok(identity) if identity == input.identity => {},
-            Ok(_) => return Err(Miss::InputsChanged(path)),
+            Ok(_) => return Err(Miss::InputsChanged(path.clone())),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-               return Err(Miss::InputsChanged(path));
+               return Err(Miss::InputsChanged(path.clone()));
             },
             Err(error) => return Err(Miss::Failed(error)),
          }
       }
-      for absent in &self.absent {
-         if store
-            .resolve(absent)
-            .is_some_and(|path| Path::new(&path).exists())
-         {
-            return Err(Miss::Appeared(absent.clone()));
+      let absent = self
+         .absent
+         .iter()
+         .filter_map(|absent| Some((absent, store.resolve(absent)?)))
+         .collect::<Vec<_>>();
+      for &(masked, ref path) in &absent {
+         let found = Path::new(path);
+         if !found.exists() {
+            continue;
+         }
+         // a search dir that appeared changes nothing unless it holds a name
+         // an include was spelled as, the tail of an input or of a failed
+         // lookup elsewhere
+         let looked_up = paths.iter().chain(absent.iter().map(|pair| &pair.1));
+         let shadows = !found.is_dir()
+            || looked_up.into_iter().any(|seen| {
+               let parts = Path::new(seen).components().collect::<Vec<_>>();
+               (1..parts.len()).any(|skip| {
+                  found
+                     .join(parts[skip..].iter().collect::<PathBuf>())
+                     .exists()
+               })
+            });
+         if shadows {
+            return Err(Miss::Appeared(masked.clone()));
          }
       }
 
