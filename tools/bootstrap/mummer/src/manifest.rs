@@ -99,6 +99,20 @@ impl Manifest {
       })
    }
 
+   /// Library files a link would have taken, kept in store directories too,
+   /// since a dependency rebuilt with one moves to a path this build's roots
+   /// resolve the masked one to.
+   #[must_use]
+   pub fn with_absent_libraries(mut self, store: &Store, paths: &[String]) -> Self {
+      for path in paths.iter().filter(|path| !Path::new(path).exists()) {
+         let masked = store.key(path);
+         if !self.absent.contains(&masked) {
+            self.absent.push(masked);
+         }
+      }
+      self
+   }
+
    pub fn result_key(&self, request: &Key) -> io::Result<Digest> {
       let mut hasher = Hasher::new();
       field(&mut hasher, request.as_str());
