@@ -1,0 +1,17 @@
+Subject: [PATCH] tests: let format_exit nested call wait for the outer call
+
+The outer process ran its gen_event call as soon as it was spawned,
+so when the test process was descheduled it died before
+:gen_server.call monitored it and the reason was :noproc.
+---
+--- a/lib/elixir/test/elixir/exception_test.exs
++++ b/lib/elixir/test/elixir/exception_test.exs
+@@ -420,7 +420,7 @@
+       outer_pid =
+         spawn_link(fn ->
+           Process.flag(:trap_exit, true)
+-          :gen_event.call(spawn_link(exit_fun), :handler, :hello)
++          receive do: (_ -> :gen_event.call(spawn_link(exit_fun), :handler, :hello))
+         end)
+ 
+       reason =
