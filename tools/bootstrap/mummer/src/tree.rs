@@ -40,6 +40,7 @@ use std::{
    },
 };
 
+use memchr::memmem;
 use serde::{
    Serialize,
    Serializer,
@@ -434,12 +435,10 @@ fn rewrite_shebang(line: &[u8], first: bool) -> Option<Vec<u8>> {
 #[inline]
 #[must_use]
 pub fn find(text: &[u8], needle: &[u8]) -> Option<usize> {
-   if needle.is_empty() || text.len() < needle.len() {
+   if needle.is_empty() {
       return None;
    }
-   text
-      .windows(needle.len())
-      .position(|window| window == needle)
+   memmem::find(text, needle)
 }
 
 fn remove_tree_if_exists(path: &Path) -> io::Result<()> {
