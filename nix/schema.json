@@ -1633,6 +1633,32 @@
           "default": [],
           "doc": "extra arguments for go build and go test",
           "system": "go"
+        },
+        {
+          "name": "modulePatches",
+          "type": {
+            "kind": "map",
+            "value": {
+              "kind": "list",
+              "element": {
+                "kind": "union",
+                "variants": [
+                  {
+                    "kind": "string"
+                  },
+                  {
+                    "kind": "path"
+                  },
+                  {
+                    "kind": "package"
+                  }
+                ]
+              }
+            }
+          },
+          "default": {},
+          "doc": "module path -> patches applied to a copy of it (-p1 inside the module), swapped in with a go.mod replace",
+          "system": "go"
         }
       ]
     },
