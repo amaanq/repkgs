@@ -30,6 +30,7 @@ use mummer::{
    },
    store::normalize,
    tree::{
+      copy_tree,
       note,
       shebangs,
    },
@@ -266,17 +267,11 @@ fn build_machine_tools(
    ])
 }
 
-// cp -p keeps the store's uniform mtimes so generated files stay newer than
-// their inputs for make, patch -F0 refuses a hunk whose context moved
+// the copy keeps the store's uniform mtimes so generated files stay newer
+// than their inputs for make, patch -F0 refuses a hunk whose context moved
 fn unpack(attrs: &Attrs, src: &str) -> io::Result<()> {
    note("unpack", &attrs.src);
-   succeed(
-      Command::new("cp")
-         .arg("-rp")
-         .arg(format!("{}/.", attrs.src))
-         .arg(src),
-   )?;
-   succeed(Command::new("chmod").arg("-R").arg("u+w").arg(src))?;
+   copy_tree(Path::new(&attrs.src), Path::new(src))?;
    for patch in &attrs.patches {
       note("patch", patch);
       succeed(

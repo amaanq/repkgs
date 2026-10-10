@@ -9,6 +9,7 @@ use std::{
    fs::{
       DirEntry,
       File,
+      copy,
       create_dir_all,
       metadata,
       read,
@@ -23,6 +24,7 @@ use std::{
       self,
       Write as _,
    },
+   num::NonZero,
    os::unix::fs::{
       PermissionsExt,
       symlink,
@@ -188,6 +190,57 @@ fn extension_is(rel: &str, extension: &str) -> bool {
 
 fn precompiled(rel: &str) -> bool {
    extension_is(rel, "pch") || extension_is(rel, "gch")
+}
+
+/// A tree copied with its files in parallel, writable by its owner and
+/// keeping the source's mtimes, as `cp -rp` and `chmod -R u+w` leave it.
+#[inline]
+pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
+   let entries = walk(from)?;
+   create_dir_all(to)?;
+   for entry in entries.iter().filter(|entry| entry.kind == EntryKind::Dir) {
+      create_dir_all(to.join(&entry.rel))?;
+   }
+   let workers = available_parallelism().map_or(4, NonZero::get);
+   parallel_with(&entries, workers, |entry| {
+      let placed = to.join(&entry.rel);
+      match entry.kind {
+         EntryKind::File => {
+            copy(&entry.path, &placed)?;
+            let meta = metadata(&entry.path)?;
+            set_permissions(
+               &placed,
+               PermissionsExt::from_mode(meta.permissions().mode() | 0o200),
+            )?;
+            File::options()
+               .write(true)
+               .open(&placed)?
+               .set_modified(meta.modified()?)
+         },
+         EntryKind::Link => symlink(&entry.target, &placed),
+         EntryKind::Dir => Ok(()),
+      }
+   })?;
+   // a directory's mtime last, since filling it moved it
+   for entry in entries
+      .iter()
+      .rev()
+      .filter(|entry| entry.kind == EntryKind::Dir)
+   {
+      let meta = metadata(&entry.path)?;
+      let placed = to.join(&entry.rel);
+      set_permissions(
+         &placed,
+         PermissionsExt::from_mode(meta.permissions().mode() | 0o700),
+      )?;
+      File::open(&placed)?.set_modified(meta.modified()?)?;
+   }
+   let meta = metadata(from)?;
+   set_permissions(
+      to,
+      PermissionsExt::from_mode(meta.permissions().mode() | 0o700),
+   )?;
+   File::open(to)?.set_modified(meta.modified()?)
 }
 
 #[inline]
