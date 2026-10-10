@@ -348,16 +348,17 @@ impl Invocation {
                invocation.source.as_deref().unwrap_or_default()
             ));
          } else if invocation.output.as_os_str().is_empty() {
-            invocation.output = Path::new(invocation.source.as_deref().unwrap_or_default())
+            // y.tab.c becomes y.tab.o, which set_extension would make y.o
+            let stem = Path::new(invocation.source.as_deref().unwrap_or_default())
                .file_stem()
-               .map_or_else(|| PathBuf::from("output"), PathBuf::from);
-            invocation
-               .output
-               .set_extension(if invocation.action == Action::Assembly {
-                  "s"
-               } else {
-                  "o"
-               });
+               .and_then(|stem| stem.to_str())
+               .unwrap_or("output");
+            let extension = if invocation.action == Action::Assembly {
+               "s"
+            } else {
+               "o"
+            };
+            invocation.output = PathBuf::from(format!("{stem}.{extension}"));
          }
       } else {
          invocation.action = match (objects, sources) {
