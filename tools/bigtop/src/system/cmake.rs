@@ -12,6 +12,7 @@ use mummer::{
       utf8,
       write_file,
    },
+   store::mask_hashes,
    tree::{
       EntryKind,
       note,
@@ -56,7 +57,7 @@ options! {
 
 #[derive(Serialize)]
 struct Extra<'options> {
-   defs:      BTreeMap<&'options str, &'options Def>,
+   defs:      BTreeMap<&'options str, Def>,
    generator: &'options str,
    flags:     &'options [String],
 }
@@ -215,7 +216,12 @@ impl Cmake {
          Some(&Extra {
             defs:      defs
                .iter()
-               .map(|entry| (entry.0.as_str(), &entry.1))
+               .map(|entry| {
+                  (entry.0.as_str(), match entry.1 {
+                     Def::Text(ref text) => Def::Text(mask_hashes(text)),
+                     ref other @ (Def::Flag(_) | Def::Number(_)) => other.clone(),
+                  })
+               })
                .collect(),
             generator: &options.generator,
             flags:     &options.flags,
