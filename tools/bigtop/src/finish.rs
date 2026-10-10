@@ -1,4 +1,5 @@
 use std::{
+   collections::BTreeMap,
    env::{
       set_current_dir,
       var,
@@ -623,6 +624,27 @@ fn cache_summary() -> io::Result<()> {
    }
    if !parts.is_empty() {
       note("mummer", &parts.join(", "));
+   }
+   let mut spent = BTreeMap::<(String, &str), (u64, usize)>::new();
+   for run in &runs {
+      let entry = spent
+         .entry((run.tool.to_string(), run.outcome.name()))
+         .or_insert((0, 0));
+      entry.0 += run.millis;
+      entry.1 += 1;
+   }
+   if !spent.is_empty() {
+      let shown = spent
+         .iter()
+         .map(|(&(ref tool, outcome), &(millis, count))| {
+            format!(
+               "{tool} {outcome} {}.{}s/{count}",
+               millis / 1000,
+               millis % 1000 / 100
+            )
+         })
+         .collect::<Vec<String>>();
+      note("mummer-time", &shown.join(", "));
    }
    for tool in &tools {
       miss_notes(tool.name, &runs);
