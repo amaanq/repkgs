@@ -28,6 +28,7 @@ use mummer::{
       utf8,
       write_file,
    },
+   store::mask_hashes,
    tree::{
       EntryKind,
       note,
@@ -294,7 +295,12 @@ impl Cabal {
          &options.project,
          &ctx.platform,
       ))?;
-      format!("probe/cabal-dist/{}", blake3::hash(&record).to_hex()).parse()
+      let masked = mask_hashes(str::from_utf8(&record).map_err(io::Error::other)?);
+      format!(
+         "probe/cabal-dist/{}",
+         blake3::hash(masked.as_bytes()).to_hex()
+      )
+      .parse()
    }
 
    fn plan() -> io::Result<Vec<Unit>> {
