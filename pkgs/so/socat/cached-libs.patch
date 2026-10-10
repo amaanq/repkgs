@@ -1,0 +1,39 @@
+Subject: [PATCH] configure: keep the libraries cached library checks add
+
+The libssl and libcrypto checks add to LIBS inside AC_CACHE_VAL, so a
+run answered from config.cache linked without them.
+---
+--- a/configure
++++ b/configure
+@@ -7115,6 +7115,7 @@
+   if test ${sc_cv_have_libssl+y}
+ then :
+   printf %s "(cached) " >&6
++  LIBS=${sc_cv_libssl_libs-$LIBS}
+ else $as_nop
+    LIBS0="$LIBS"
+       if test -n "$OPENSSL_BASE"; then
+@@ -7166,6 +7167,7 @@
+       if test "$sc_cv_have_libssl" != 'yes'; then
+ 	LIBS="$LIBS0"
+       fi
++      sc_cv_libssl_libs=$LIBS
+ 
+ 
+ fi
+@@ -7436,6 +7438,7 @@
+   if test ${sc_cv_have_libcrypto+y}
+ then :
+   printf %s "(cached) " >&6
++  LIBS=${sc_cv_libcrypto_libs-$LIBS}
+ else $as_nop
+    LIBS0="$LIBS"
+       echo $LIBS | grep -q "\-lcrypto"
+@@ -7471,6 +7474,7 @@
+       if test "$sc_cv_have_libcrypto" != 'yes'; then
+         LIBS="$LIBS0"
+       fi
++      sc_cv_libcrypto_libs=$LIBS
+ 
+ 
+ fi
