@@ -5,6 +5,9 @@ with  = [ "cargo" ]
 deps  = [ "nix" ]
 tools = [ "capnproto" ]
 
+[steps.before]
+"cargo.test" = [ "evix.test-store" ]
+
 [on.linux]
 tools = [ "wild" ]
 
