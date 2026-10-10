@@ -1,13 +1,23 @@
 use std::{
+   collections::BTreeMap,
    fs::{
       copy,
       create_dir_all,
    },
    io,
-   path::Path,
+   path::{
+      Path,
+      PathBuf,
+   },
+   process::Command,
 };
 
-use mummer::syslibs::Ecosystem;
+use mummer::{
+   process::Checked as _,
+   syslibs::Ecosystem,
+   tree::note,
+};
+use serde::Deserialize;
 
 use crate::{
    attrs::{
@@ -50,7 +60,15 @@ options! {
          => "CGO_ENABLED and external linking",
       flags ("flags"): Vec<String> = Vec::new()
          => "extra arguments for go build and go test",
+      module_patches ("modulePatches"): BTreeMap<String, Vec<PathBuf>> = BTreeMap::new()
+         => "module path -> patches applied to a copy of it (-p1 inside the module), swapped in with a go.mod replace",
    }
+}
+
+#[derive(Deserialize)]
+struct Download {
+   #[serde(rename = "Dir")]
+   dir: String,
 }
 
 pub struct Go;
@@ -72,7 +90,7 @@ impl System for Go {
          || ("vendor", "off".to_owned()),
          |deps| ("mod", format!("file://{deps}")),
       );
-      Ok([
+      let vars = [
          ("GOCACHE", format!("{}/go-cache", ctx.build.display())),
          ("GOPATH", format!("{}/go", ctx.build.display())),
          ("GOSUMDB", "off".to_owned()),
@@ -91,8 +109,16 @@ impl System for Go {
          ),
          ("GOOS", platform.os_names.go),
          ("GOARCH", platform.names.go),
-      ]
-      .into())
+      ];
+      if !options.module_patches.is_empty() {
+         if options.deps.is_none() {
+            return Err(io::Error::other(
+               "go.modulePatches needs go.deps, a vendor/ tree takes no replace",
+            ));
+         }
+         Self::patch_modules(ctx, &vars, &options.module_patches)?;
+      }
+      Ok(vars.into())
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
@@ -129,6 +155,61 @@ impl System for Go {
 }
 
 impl Go {
+   /// each patched module is copied out of the module cache and replaced by
+   /// directory, since go.sum would reject a patched copy served by the proxy.
+   fn patch_modules(
+      ctx: &Ctx,
+      vars: &[(&str, String)],
+      patches: &BTreeMap<String, Vec<PathBuf>>,
+   ) -> io::Result<()> {
+      let go = |args: &[&str]| -> io::Result<String> {
+         let output = Command::new("go")
+            .args(args)
+            .envs(vars.iter().map(|&(name, ref value)| (name, value)))
+            .checked_output()?;
+         String::from_utf8(output).map_err(io::Error::other)
+      };
+      for (module, files) in patches {
+         let listed = go(&["list", "-m", "-f", "{{.Version}}", module])?;
+         let version = listed.trim();
+         let download = serde_json::from_str::<Download>(&go(&[
+            "mod",
+            "download",
+            "-json",
+            &format!("{module}@{version}"),
+         ])?)?;
+         let placed = ctx
+            .build
+            .join("go-patched")
+            .join(format!("{}@{version}", module.replace('/', "_")));
+         create_dir_all(ctx.build.join("go-patched"))?;
+         Command::new("cp")
+            .arg("-r")
+            .arg(&download.dir)
+            .arg(&placed)
+            .checked()?;
+         Command::new("chmod")
+            .arg("-R")
+            .arg("u+w")
+            .arg(&placed)
+            .checked()?;
+         for file in files {
+            note("patch", &format!("{module}: {}", file.display()));
+            Command::new("patch")
+               .arg("-d")
+               .arg(&placed)
+               .args(["-p1", "-F0", "-i"])
+               .arg(file)
+               .checked()?;
+         }
+         let target = placed
+            .to_str()
+            .ok_or_else(|| io::Error::other("patched module path is not UTF-8"))?;
+         go(&["mod", "edit", &format!("-replace={module}={target}")])?;
+      }
+      Ok(())
+   }
+
    /// cgo builds link through cc so the RUNPATH and interp policy apply, and
    /// gobuildid gives finish a GNU build-id for the debug split.
    fn common_args(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<Vec<String>> {
