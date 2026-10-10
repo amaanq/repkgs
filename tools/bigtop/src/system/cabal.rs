@@ -29,6 +29,7 @@ use mummer::{
       write_file,
    },
    store::mask_hashes,
+   store_path::StorePath,
    tree::{
       EntryKind,
       note,
@@ -338,7 +339,7 @@ impl Cabal {
          write_file(Path::new(&tar), &bytes, None)?;
          succeed(Command::new("bsdtar").args(["-xf", &tar, "-C", &units]))?;
          remove_file(&tar)?;
-         Ok(true)
+         Self::current_unit(ctx, &units, id)
       })?;
       Self::recache(&units)?;
       note(
@@ -350,6 +351,34 @@ impl Cabal {
          ),
       );
       Ok(())
+   }
+
+   /// A unit's id hashes its C dependencies by name and version only, so a
+   /// restored unit whose conf names another build of a dependency this one
+   /// has, at the same version, is dropped for Cabal to build again.
+   fn current_unit(ctx: &Ctx, units: &str, id: &str) -> io::Result<bool> {
+      let conf = Path::new(units).join(format!("package.db/{id}.conf"));
+      let text = match read_to_string(&conf) {
+         Ok(text) => text,
+         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(true),
+         Err(error) => return Err(error),
+      };
+      let current = ctx
+         .roots
+         .iter()
+         .filter_map(|root| StorePath::containing(root))
+         .collect::<Vec<StorePath>>();
+      let stale = text
+         .split(|character: char| character.is_whitespace() || matches!(character, '"' | ','))
+         .filter_map(StorePath::containing)
+         .any(|used| {
+            !current.contains(&used) && current.iter().any(|root| root.name() == used.name())
+         });
+      if stale {
+         remove_dir_all(Path::new(units).join(id))?;
+         remove_file(&conf)?;
+      }
+      Ok(!stale)
    }
 
    /// executable units (alex, happy, build tools of other packages) have no
