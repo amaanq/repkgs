@@ -65,6 +65,7 @@ use crate::{
       write as write_launcher,
    },
    system::{
+      cabal::ordered_ghc_pkg,
       dispatch,
       msbuild,
    },
@@ -73,6 +74,13 @@ use crate::{
 fn dispatch() -> Result<i32> {
    let arguments = args_os().collect::<Vec<_>>();
    let text = text_arguments(arguments.get(1..).unwrap_or_default())?;
+   if arguments
+      .first()
+      .and_then(|program| Path::new(program).file_name())
+      .is_some_and(|name| name == "ghc-pkg")
+   {
+      return Ok(ordered_ghc_pkg(&text)?);
+   }
    let mode = Mode::try_parse_from(text.iter().map(String::as_str))?;
    run(mode, &socket())
 }

@@ -1,13 +1,18 @@
 use std::{
-   env::var,
+   env::{
+      current_exe,
+      var,
+   },
    fs::{
       File,
       copy,
       create_dir_all,
       read,
+      read_dir,
       read_to_string,
       remove_dir_all,
       remove_file,
+      write,
    },
    io::{
       self,
@@ -177,6 +182,9 @@ impl System for Cabal {
       create_dir_all(&cabal_dir)?;
       create_dir_all(format!("{units}/package.db"))?;
       Self::recache(&units)?;
+      let ghc_pkg = ctx.build.join("ghc-pkg/ghc-pkg");
+      create_dir_all(ctx.build.join("ghc-pkg"))?;
+      symlink(current_exe()?, &ghc_pkg)?;
       let ghc = ctx.build.join("ghc");
       write_file(
          &ghc,
@@ -197,7 +205,7 @@ impl System for Cabal {
             repo.display(),
             ctx.njobs,
             ghc.display(),
-            tool("ghc-pkg")?.display()
+            ghc_pkg.display()
          )
          .as_bytes(),
          None,
@@ -221,6 +229,7 @@ impl System for Cabal {
          ("CABAL_DIR", utf8(&cabal_dir)?.to_owned()),
          ("CABAL_UNITS", units),
          ("CABAL_UNIT_KEY", unit_key),
+         ("CABAL_GHC_PKG", utf8(&ghc_pkg)?.to_owned()),
       ]
       .into())
    }
@@ -539,4 +548,108 @@ impl Cabal {
       }
       Ok(())
    }
+}
+
+const DATABASE_CHANGES: [&str; 8] = [
+   "register",
+   "update",
+   "unregister",
+   "recache",
+   "expose",
+   "hide",
+   "trust",
+   "distrust",
+];
+
+pub fn ordered_ghc_pkg(args: &[String]) -> io::Result<i32> {
+   let own = current_exe()?;
+   let real = var("PATH")
+      .unwrap_or_default()
+      .split(':')
+      .map(|directory| Path::new(directory).join("ghc-pkg"))
+      .find(|candidate| candidate.canonicalize().is_ok_and(|found| found != own))
+      .ok_or_else(|| io::Error::other("no ghc-pkg on PATH besides bigtop"))?;
+   if !args
+      .iter()
+      .any(|arg| DATABASE_CHANGES.contains(&arg.as_str()))
+   {
+      return Ok(Command::new(&real).args(args).status()?.code().unwrap_or(1));
+   }
+   let databases = package_dbs(args);
+   let top = var("NIX_BUILD_TOP").map_err(|_unset| io::Error::other("NIX_BUILD_TOP is not set"))?;
+   let locks = databases
+      .iter()
+      .map(|db| {
+         let lock = File::create(format!(
+            "{top}/.ghc-pkg-{}.lock",
+            blake3::hash(db.as_bytes())
+         ))?;
+         lock.lock()?;
+         Ok(lock)
+      })
+      .collect::<io::Result<Vec<File>>>()?;
+   for db in &databases {
+      in_name_order(Path::new(db))?;
+   }
+   let status = Command::new(&real).args(args).status()?;
+   if status.success() {
+      for db in &databases {
+         in_name_order(Path::new(db))?;
+         succeed(
+            Command::new(&real)
+               .arg("recache")
+               .arg(format!("--package-db={db}")),
+         )?;
+      }
+   }
+   drop(locks);
+   Ok(status.code().unwrap_or(1))
+}
+
+fn package_dbs(args: &[String]) -> Vec<String> {
+   let mut databases = Vec::new();
+   let mut rest = args.iter();
+   while let Some(arg) = rest.next() {
+      let given = if matches!(arg.as_str(), "--package-db" | "--package-conf" | "-f") {
+         rest.next().cloned()
+      } else {
+         ["--package-db=", "--package-conf=", "-f"]
+            .iter()
+            .find_map(|flag| arg.strip_prefix(flag))
+            .map(str::to_owned)
+      };
+      if let Some(db) = given
+         && Path::new(&db).is_dir()
+         && !databases.contains(&db)
+      {
+         databases.push(db);
+      }
+   }
+   databases
+}
+
+fn in_name_order(db: &Path) -> io::Result<()> {
+   let mut confs = read_dir(db)?
+      .map(|entry| Ok(entry?.path()))
+      .collect::<io::Result<Vec<_>>>()?;
+   confs.retain(|path| {
+      path
+         .extension()
+         .is_some_and(|extension| extension == "conf")
+   });
+   confs.sort();
+   let saved = confs
+      .into_iter()
+      .map(|path| {
+         let bytes = read(&path)?;
+         Ok((path, bytes))
+      })
+      .collect::<io::Result<Vec<_>>>()?;
+   for conf in &saved {
+      remove_file(&conf.0)?;
+   }
+   for conf in &saved {
+      write(&conf.0, &conf.1)?;
+   }
+   Ok(())
 }

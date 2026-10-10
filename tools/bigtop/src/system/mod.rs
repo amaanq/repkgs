@@ -1,7 +1,7 @@
 mod autotools;
 mod beam;
 mod bundler;
-mod cabal;
+pub mod cabal;
 mod cargo;
 mod cmake;
 pub mod command;

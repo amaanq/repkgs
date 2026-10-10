@@ -7,6 +7,7 @@ patches = [
   "upstream-hadrian-autoreconf-exec.patch",
   "hadrian-ghc-wrapper.patch",
   "cpp-macros-sorted.patch",
+  "ghc-pkg-sorted.patch",
 ]
 
 [track]

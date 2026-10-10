@@ -24,7 +24,7 @@ export def --env configure []: nothing -> nothing {
    cd $c.src
    let libraries = [(linked ffi libffi include) (linked gmp gmp include) (linked curses ncurses include/ncursesw)] | flatten
    # autoreconf would run aclocal, which needs automake, and AC_PATH_PROG keeps only absolute presets
-   x sh ./configure $"--prefix=($c.out)" --with-system-libffi ...$libraries GHC=ghc $"AutoreconfCmd=(tool autoconf)" ...(^bigtop system ghc-toolchain | lines)
+   x sh ./configure $"--prefix=($c.out)" --with-system-libffi ...$libraries GHC=ghc $"fp_cv_matching_ghc_pkg=($env.CABAL_GHC_PKG)" $"AutoreconfCmd=(tool autoconf)" ...(^bigtop system ghc-toolchain | lines)
 }
 
 export def build []: nothing -> nothing {
