@@ -843,7 +843,10 @@ impl Wrapper for Compile<'_> {
       } else {
          link(&arguments)?
       };
-      if invocation.links() && result.status != 0_i32 && only_undefined(&result.stderr) {
+      if invocation.links()
+         && result.status != 0_i32
+         && failed_on_symbols_or_libraries(&result.stderr)
+      {
          written.traced = traced_inputs(self.compiler, &arguments, &result)?;
       }
       if invocation.stdout {
@@ -863,7 +866,7 @@ impl Wrapper for Compile<'_> {
    ) -> io::Result<bool> {
       let invocation = &self.invocation;
       let store = &self.store;
-      let mut absent = read_to_string(compiled.absent_log.path())?
+      let absent = read_to_string(compiled.absent_log.path())?
          .lines()
          .map(str::to_owned)
          .collect::<Vec<_>>();
@@ -909,12 +912,12 @@ impl Wrapper for Compile<'_> {
       inputs.extend_from_slice(&invocation.inputs);
       inputs.sort_unstable();
       inputs.dedup();
-      if invocation.links()
-         && let Some(job) = invocation.jobs.last()
-      {
-         absent.extend(absent_libraries(job)?);
-      }
-      let manifest = Manifest::build(cache, &mut self.manifests, &inputs, &[], &absent)?;
+      let libraries = match invocation.jobs.last() {
+         Some(job) if invocation.links() => absent_libraries(job)?,
+         _ => Vec::new(),
+      };
+      let manifest = Manifest::build(cache, &mut self.manifests, &inputs, &[], &absent)?
+         .with_absent_libraries(&self.manifests, &libraries);
       let key = manifest.result_key(request)?;
       let mut diagnostics = result.stderr.clone();
       store.mask_output(&mut diagnostics, false);
@@ -1684,26 +1687,30 @@ fn absent_libraries(job: &[String]) -> io::Result<Vec<String>> {
    Ok(absent)
 }
 
-/// A link that failed only on undefined symbols found every library it
-/// asked for, so what it read decides the failure as fully as a success.
-fn only_undefined(stderr: &[u8]) -> bool {
+/// A link that failed only on undefined symbols or libraries it could not
+/// find, which what it read and the library files it looked for decide as
+/// fully as they decide a success.
+fn failed_on_symbols_or_libraries(stderr: &[u8]) -> bool {
    let text = String::from_utf8_lossy(stderr);
    let errors = text
       .lines()
       .filter(|line| line.contains("error:"))
       .collect::<Vec<&str>>();
-   errors
-      .iter()
-      .any(|line| line.to_lowercase().contains("undefined symbol"))
-      && errors.iter().all(|line| {
-         let lowered = line.to_lowercase();
-         lowered.contains("undefined symbol") || lowered.contains("linker command failed")
-      })
+   let settled = |line: &&str| {
+      let lowered = line.to_lowercase();
+      lowered.contains("undefined symbol") || lowered.contains("unable to find library")
+   };
+   errors.iter().any(settled)
+      && errors
+         .iter()
+         .all(|line| settled(line) || line.contains("linker command failed"))
 }
 
 /// lld writes no dependency file when a link fails, so the link runs once
 /// more with `--trace` to name the files it read, the compiler's own
-/// scratch objects left out as the dependency file leaves them.
+/// scratch objects left out as the dependency file leaves them. A missing
+/// library stops lld before it reads anything, which leaves the library
+/// files it looked for to decide the failure alone.
 fn traced_inputs(
    compiler: &str,
    arguments: &[String],
@@ -1714,7 +1721,8 @@ fn traced_inputs(
       .arg("-Wl,--trace")
       .stdin(Stdio::null())
       .output()?;
-   if status_code(output.status) != failed.status || !only_undefined(&output.stderr) {
+   if status_code(output.status) != failed.status || !failed_on_symbols_or_libraries(&output.stderr)
+   {
       return Ok(None);
    }
    let temporary = var("TMPDIR").unwrap_or_else(|_| "/tmp".to_owned());
@@ -1731,7 +1739,10 @@ fn traced_inputs(
       .filter(|path| !path.is_empty() && Path::new(path).is_file())
       .filter(|path| !path.starts_with(&prefix) || path[prefix.len()..].contains('/'))
       .collect::<BTreeSet<String>>();
-   Ok((!paths.is_empty()).then(|| paths.into_iter().collect()))
+   let unread = String::from_utf8_lossy(&output.stderr)
+      .lines()
+      .all(|line| !line.contains("undefined symbol"));
+   Ok((!paths.is_empty() || unread).then(|| paths.into_iter().collect()))
 }
 
 /// Links, then settles the output's RUNPATH from what the linker opened,
