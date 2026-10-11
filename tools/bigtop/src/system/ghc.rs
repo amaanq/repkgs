@@ -3,8 +3,11 @@
 
 use std::{
    fs::{
+      Permissions,
+      copy,
       create_dir_all,
       read_to_string,
+      set_permissions,
       symlink_metadata,
       write,
    },
@@ -12,6 +15,7 @@ use std::{
       self,
       Write as _,
    },
+   os::unix::fs::PermissionsExt as _,
    path::{
       Path,
       PathBuf,
@@ -25,6 +29,11 @@ use mummer::{
       utf8,
    },
    store::on_path,
+   tree::{
+      EntryKind,
+      parallel,
+      walk,
+   },
 };
 
 use crate::{
@@ -34,7 +43,13 @@ use crate::{
       text,
    },
    implant,
-   system::command::run,
+   system::{
+      cabal::in_name_order,
+      command::{
+         capture,
+         run,
+      },
+   },
 };
 
 /// One shell line the bin/ wrappers start with, so they can derive the
@@ -187,6 +202,7 @@ fn close_db(ctx: &Ctx, db: &Path) -> io::Result<()> {
       }
    }
 
+   in_name_order(db)?;
    run(
       &format!("{}/bin/ghc-pkg", ctx.out.display()),
       &["recache"],
@@ -256,6 +272,45 @@ fn wrappers(ctx: &Ctx, pairs: &[(&str, &str)]) -> io::Result<()> {
    Ok(())
 }
 
+/// A make variable as the bindist's `show` target prints it, `NAME="value"`.
+fn make_value(name: &str) -> io::Result<String> {
+   let printed = capture("make", &["-s", "show", &format!("VALUE={name}")])?;
+   printed
+      .trim()
+      .strip_prefix(&format!("{name}=\""))
+      .and_then(|rest| rest.strip_suffix('"'))
+      .map(str::to_owned)
+      .ok_or_else(|| io::Error::other(format!("make show printed {printed:?} for {name}")))
+}
+
+/// What one of the bindist's `find . -type f` install loops does to the tree
+/// `from`, every regular file placed under `to` with the mode `mode` picks.
+fn install_files(
+   from: &str,
+   to: &Path,
+   mode: impl Fn(&str) -> u32 + Sync,
+) -> io::Result<Vec<PathBuf>> {
+   if !Path::new(from).is_dir() {
+      return Ok(Vec::new());
+   }
+
+   let files = walk(Path::new(from))?
+      .into_iter()
+      .filter(|entry| entry.kind == EntryKind::File)
+      .collect::<Vec<_>>();
+
+   create_dir_all(to)?;
+   parallel(&files, |entry| {
+      let placed = to.join(&entry.rel);
+      if let Some(parent) = placed.parent() {
+         create_dir_all(parent)?;
+      }
+      copy(&entry.path, &placed)?;
+      set_permissions(&placed, Permissions::from_mode(mode(&entry.rel)))?;
+      Ok(placed)
+   })
+}
+
 /// from the unpacked bindist in the working directory.
 pub fn install(ctx: &Ctx) -> io::Result<()> {
    let prefix = format!("--prefix={}", ctx.out.display());
@@ -263,7 +318,46 @@ pub fn install(ctx: &Ctx) -> io::Result<()> {
    let mut configure = vec!["./configure", prefix.as_str()];
    configure.extend(settings.iter().map(String::as_str));
    run("sh", &configure, &[])?;
-   run("make", &["install"], &[])?;
+
+   run("make", &["lib/settings"], &[])?;
+   let placed = install_files("lib", Path::new(&make_value("ActualLibsDir")?), |rel| {
+      if [".so", ".dylib", ".dll", ".mjs"]
+         .iter()
+         .any(|suffix| rel.ends_with(suffix))
+      {
+         0o755
+      } else {
+         0o644
+      }
+   })?;
+   for (suffix, variable) in [(".a", "RANLIB_CMD"), (".dll", "STRIP_CMD")] {
+      let matched = placed
+         .iter()
+         .map(|path| utf8(path))
+         .filter(|path| path.as_ref().map_or(true, |text| text.ends_with(suffix)))
+         .collect::<io::Result<Vec<&str>>>()?;
+      if matched.is_empty() {
+         continue;
+      }
+
+      let command = make_value(variable)?;
+      let mut words = command.split_whitespace();
+      let program = words
+         .next()
+         .ok_or_else(|| io::Error::other(format!("the bindist's {variable} is empty")))?;
+      run(program, &words.chain(matched).collect::<Vec<_>>(), &[])?;
+   }
+   install_files("doc", Path::new(&make_value("docdir")?), |_| 0o644)?;
+   install_files("share", Path::new(&make_value("datadir")?), |_| 0o644)?;
+
+   let skipped = ["install_lib", "install_docs", "install_data"];
+   run("make", &[&skipped[..], &["FIND=true"]].concat(), &[])?;
+   let rest = skipped
+      .iter()
+      .flat_map(|&target| ["-o", target])
+      .chain(["install"])
+      .collect::<Vec<_>>();
+   run("make", &rest, &[])?;
 
    wrappers(ctx, &[("#!/bin/sh", LOCATE_TOP), (utf8(&ctx.out)?, "$top")])?;
    let db = matching(
