@@ -93,10 +93,18 @@ pub enum Tool {
    Ghc,
    Go,
    Header,
+   Tablegen,
 }
 
 impl Tool {
-   const ALL: [Self; 5] = [Self::Cc, Self::Rustc, Self::Ghc, Self::Go, Self::Header];
+   const ALL: [Self; 6] = [
+      Self::Cc,
+      Self::Rustc,
+      Self::Ghc,
+      Self::Go,
+      Self::Header,
+      Self::Tablegen,
+   ];
 
    #[inline]
    #[must_use]
@@ -107,6 +115,7 @@ impl Tool {
          Self::Ghc => "ghc",
          Self::Go => "go",
          Self::Header => "header",
+         Self::Tablegen => "tblgen",
       }
    }
 }

@@ -27,6 +27,8 @@ pub enum Namespace {
    HeaderProbe,
    GoAction,
    GoOutput,
+   /// A tablegen run, an LLVM `*-tblgen` reading .td files into its outputs.
+   Tablegen,
    /// A file's identity by its stat stamp, which only this machine can use.
    Stamp,
    Loaded,
@@ -44,6 +46,7 @@ impl Namespace {
          Self::HeaderProbe => "probe/header/",
          Self::GoAction => "go/a/",
          Self::GoOutput => "go/o/",
+         Self::Tablegen => "tablegen/",
          Self::Stamp => "i/",
          Self::Loaded => "i/loaded/",
       }
