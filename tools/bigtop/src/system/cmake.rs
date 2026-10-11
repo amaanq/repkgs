@@ -12,7 +12,10 @@ use mummer::{
       utf8,
       write_file,
    },
-   store::mask_hashes,
+   store::{
+      mask_hashes,
+      on_path,
+   },
    tree::{
       EntryKind,
       note,
@@ -159,7 +162,9 @@ impl Cmake {
          ),
          (
             "CMAKE_PROJECT_TOP_LEVEL_INCLUDES".to_owned(),
-            Def::Text(format!("{tree}/systems/sysroot-libs.cmake")),
+            Def::Text(format!(
+               "{tree}/systems/sysroot-libs.cmake;{tree}/systems/custom-launch.cmake"
+            )),
          ),
          (
             "PKGS_SYSROOT".to_owned(),
@@ -168,6 +173,13 @@ impl Cmake {
          ("BUILD_SHARED_LIBS".to_owned(), Def::Flag(true)),
          ("BUILD_TESTING".to_owned(), Def::Flag(ctx.tests_run)),
       ];
+      let mummer = on_path("mummer");
+      if mummer.is_absolute() {
+         defs.push((
+            "PKGS_CUSTOM_LAUNCHER".to_owned(),
+            Def::Text(format!("{} tblgenwrap", utf8(&mummer)?)),
+         ));
+      }
       if platform.cross {
          upsert(
             &mut defs,

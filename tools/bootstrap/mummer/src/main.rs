@@ -10,6 +10,7 @@ mod manifest;
 mod nix_store;
 mod record;
 mod rustc;
+mod tblgen;
 mod wrapper;
 
 use std::{
@@ -96,6 +97,7 @@ fn run(mode: Mode, args: &[OsString], socket: &Path) -> Result<i32> {
       },
       Mode::Rustcwrap => return Ok(rustc::run_rustc(&text_arguments(args)?, socket)?),
       Mode::Ghcwrap => return Ok(ghc::run_ghc(&text_arguments(args)?, socket)?),
+      Mode::Tblgenwrap => return Ok(tblgen::run_tblgen(&text_arguments(args)?, socket)?),
       Mode::Cache {
          operation,
          key,

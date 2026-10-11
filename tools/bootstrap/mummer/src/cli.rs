@@ -49,6 +49,9 @@ pub enum Mode {
    Rustcwrap,
    /// ghc with the module cache in front, `mummer ghcwrap <ghc> <args...>`.
    Ghcwrap,
+   /// a custom build command, cached when it is a tablegen run, `mummer
+   /// tblgenwrap <program> <args...>`.
+   Tblgenwrap,
    /// one object or directory tree in the cache, exit 1 on a miss and 2 without
    /// a daemon.
    Cache {
@@ -107,6 +110,7 @@ impl Mode {
          },
          "rustcwrap" => return Ok(Self::Rustcwrap),
          "ghcwrap" => return Ok(Self::Ghcwrap),
+         "tblgenwrap" => return Ok(Self::Tblgenwrap),
          "slot" => return Ok(Self::Slot),
          "header-key" => return Ok(Self::HeaderKey),
          _ => {},
