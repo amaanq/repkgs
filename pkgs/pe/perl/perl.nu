@@ -50,8 +50,19 @@ export def configure []: nothing -> nothing {
       "-Dstartperl=#!/usr/bin/env perl" -Dperlpath=perl
       $"-Dman1dir=($out)/share/man/man1" $"-Dman3dir=($out)/share/man/man3" "-Accflags=-D_GNU_SOURCE -fno-strict-aliasing"
    ]
+   # Configure -S extracts the .SH files from config.sh without rerunning its 800 serial probes. The
+   # -D flags stay off it, they would undo what -Duserelocatableinc rewrote to .../..
    if not $c.platform.cross {
-      x $env.CONFIG_SHELL ./Configure -des ...$flags
+      let key      = (^bigtop probe key perl-configure config.over cpan/Compress-Raw-Zlib/config.in --extra ($flags | to json -r))
+      let restored = (try { ^bigtop probe restore $key config.sh; true } catch { false })
+      note perl-configure (if $restored { "restored" } else { "cold" })
+      if $restored {
+         x $env.CONFIG_SHELL ./Configure -S
+         x make depend
+      } else {
+         x $env.CONFIG_SHELL ./Configure -des ...$flags
+         ^bigtop probe store $key config.sh
+      }
       return
    }
 
