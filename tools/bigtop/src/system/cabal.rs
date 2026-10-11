@@ -628,7 +628,7 @@ fn package_dbs(args: &[String]) -> Vec<String> {
    databases
 }
 
-fn in_name_order(db: &Path) -> io::Result<()> {
+pub fn in_name_order(db: &Path) -> io::Result<()> {
    let mut confs = read_dir(db)?
       .map(|entry| Ok(entry?.path()))
       .collect::<io::Result<Vec<_>>>()?;
