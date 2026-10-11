@@ -39,14 +39,16 @@ use std::{
 };
 
 use misstep::Result;
-use mummer::process::{
-   run_main,
-   text_arguments,
+use mummer::{
+   files::utf8,
+   process::{
+      run_main,
+      text_arguments,
+   },
 };
 use pound::Parse;
 use serde_json::Value;
 
-use mummer::files::utf8;
 use crate::{
    locks::Used,
    pipeline::{
@@ -106,6 +108,7 @@ enum Mode {
       dir:   PathBuf,
       /// pkg:github/owner/repo, pkg:pypi/name, pkg:gnu/name,
       /// pkg:generic/name?url=…
+      #[pound(validate = |purl: &String| purl.parse::<Purl>().map(drop))]
       purl:  String,
       /// source template with {version} {version_} {major} {minor} {tag}.
       url:   String,
@@ -124,13 +127,20 @@ enum Mode {
    /// rewrite locks/<eco>.toml files in normal form, the treefmt entry point.
    Normalize { files: Vec<PathBuf> },
    /// the candidates a purl's datasource lists, as JSON, for update.nu hooks.
-   Versions { purl: String },
+   Versions {
+      #[pound(parse = str::parse::<Purl>)]
+      purl: Purl,
+   },
    /// a cached GET as JSON {status, body}, for update.nu hooks.
    Get {
       url:     String,
       /// serve from the cache without revalidating, "10min", "1day".
-      #[pound(long)]
-      max_age: Option<String>,
+      #[pound(
+         long,
+         parse = |text: &str| pipeline::duration(text).ok_or("not a duration"),
+         default = "10min"
+      )]
+      max_age: Duration,
    },
 }
 
@@ -529,7 +539,6 @@ fn check_patches(package: &Package, vendored: &BTreeMap<String, String>) -> io::
 }
 
 fn init(dir: &PathBuf, purl: &str, url: &str, allow: Option<&str>) -> io::Result<()> {
-   purl.parse::<Purl>()?;
    let file = dir.join("act.toml");
    if file.exists() {
       return Err(io::Error::other(format!("{} exists", file.display())));
@@ -567,14 +576,8 @@ fn init(dir: &PathBuf, purl: &str, url: &str, allow: Option<&str>) -> io::Result
    Ok(())
 }
 
-fn get(url: &str, max_age: Option<&str>) -> io::Result<()> {
-   let window = max_age
-      .map(|text| {
-         pipeline::duration(text).ok_or_else(|| io::Error::other(format!("not a duration: {text}")))
-      })
-      .transpose()?
-      .unwrap_or(Duration::from_secs(600));
-   let response = http::cached(url, window)?;
+fn get(url: &str, max_age: Duration) -> io::Result<()> {
+   let response = http::cached(url, max_age)?;
    let body = serde_json::from_str::<Value>(&response.body).unwrap_or(Value::String(response.body));
    print_json(&serde_json::json!({ "status": response.status, "body": body }))
 }
@@ -609,9 +612,9 @@ fn run(mode: Mode) -> io::Result<i32> {
          }
       },
       Mode::Versions { purl } => {
-         print_json(&datasource::versions(&purl.parse()?)?)?;
+         print_json(&datasource::versions(&purl)?)?;
       },
-      Mode::Get { url, max_age } => get(&url, max_age.as_deref())?,
+      Mode::Get { url, max_age } => get(&url, max_age)?,
    }
    Ok(0)
 }

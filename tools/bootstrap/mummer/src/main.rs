@@ -102,7 +102,7 @@ fn run(mode: Mode, args: &[OsString], socket: &Path) -> Result<i32> {
          operation,
          key,
          path,
-      } => return cache_mode(operation, &key.parse()?, &path, socket),
+      } => return cache_mode(operation, &key, &path, socket),
       Mode::Slot => return slot_mode(args, socket),
       Mode::Gocacheprog => gocache::run(socket)?,
       Mode::HeaderKey => return header::lookup(&text_arguments(args)?, socket),
