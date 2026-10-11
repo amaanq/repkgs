@@ -66,6 +66,7 @@ use crate::{
       Manifest,
       Miss,
       parse_depfile,
+      remember_written,
    },
    record::{
       Artifact,
@@ -641,6 +642,7 @@ fn replay(cache: &mut Client, store: &Store, key: &Digest) -> Result<(), Miss> {
    for mut artifact in record.artifacts {
       store.mask_output(&mut artifact.bytes, true);
       write_file(Path::new(&artifact.name), &artifact.bytes, artifact.mode)?;
+      remember_written(cache, store, Path::new(&artifact.name), artifact.bytes)?;
    }
    io::stderr().lock().write_all(&record.diagnostics)?;
    Ok(())

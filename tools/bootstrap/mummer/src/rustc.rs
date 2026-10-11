@@ -71,6 +71,7 @@ use crate::{
       Miss,
       parse_depfile,
       prefetch,
+      remember_written,
    },
    record::{
       Artifact,
@@ -761,13 +762,11 @@ fn replay(
       } else {
          artifact.bytes
       };
-      write_file(
-         &invocation
-            .out_dir
-            .join(stem(&artifact.name, "@", &invocation.suffix)),
-         &bytes,
-         artifact.mode,
-      )?;
+      let path = invocation
+         .out_dir
+         .join(stem(&artifact.name, "@", &invocation.suffix));
+      write_file(&path, &bytes, artifact.mode)?;
+      remember_written(cache, store, &path, bytes)?;
    }
    io::stderr().lock().write_all(&record.diagnostics)?;
    Ok(0_i32)
