@@ -1,0 +1,15 @@
+Give the e2e atuin processes the harness's own 30 second patience.
+atuin's sqlite pool gives up after local_timeout, 2 seconds by default,
+which a loaded machine exceeds while shell hooks write the same history
+database.
+
+--- a/crates/atuin/tests/common/mod.rs
++++ b/crates/atuin/tests/common/mod.rs
+@@ -52,6 +52,7 @@
+             ("TERM".into(), "xterm-256color".into()),
+             ("ATUIN_UPDATE_CHECK".into(), "false".into()),
+             ("ATUIN_AUTO_SYNC".into(), "false".into()),
++            ("ATUIN_LOCAL_TIMEOUT".into(), TIMEOUT.as_secs().to_string()),
+             ("ATUIN_DAEMON__SOCKET_PATH".into(), self.socket().display().to_string()),
+             // ble.sh requires a user name.
+             ("USER".into(), std::env::var("USER").unwrap_or_else(|_| "e2e".into())),
