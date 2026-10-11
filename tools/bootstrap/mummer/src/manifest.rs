@@ -15,11 +15,14 @@ use std::{
 };
 
 use blake3::Hasher;
-use mummer::store::{
-   InputId,
-   Store,
-   field,
-   is_store_path,
+use mummer::{
+   files::utf8,
+   store::{
+      InputId,
+      Store,
+      field,
+      is_store_path,
+   },
 };
 use serde::{
    Deserialize,
@@ -261,21 +264,27 @@ pub fn prefetch(cache: &mut Client, store: &mut Store, paths: &[String]) -> io::
       }
    }
 
+   // a file changed in the last two seconds has a memo only when
+   // `remember_written` left one, and gets none from here
    let mut stamped = Vec::new();
    let mut keys = Vec::new();
    for path in paths {
-      if let Some(stamp) = store.stamp_key(path) {
-         stamped.push(path);
+      let settled = store.stamp_key(path);
+      if let Some(stamp) = settled.or_else(|| store.written_stamp_key(path)) {
+         stamped.push((path, settled.is_some()));
          keys.push(Key::digest(Namespace::Stamp, &stamp));
       }
    }
    let found = cache.get_many(&keys)?;
-   for ((path, key), cached) in stamped.into_iter().zip(&keys).zip(found) {
+   for (((path, settled), key), cached) in stamped.into_iter().zip(&keys).zip(found) {
       if let Some(identity) = cached
          .and_then(|bytes| String::from_utf8(bytes).ok())
          .and_then(|text| text.parse().ok())
       {
          store.remember(path.to_owned(), identity);
+         continue;
+      }
+      if !settled {
          continue;
       }
       let Ok(identity) = store.input_id(path) else {
@@ -285,6 +294,25 @@ pub fn prefetch(cache: &mut Client, store: &mut Store, paths: &[String]) -> io::
       store.remember(path.to_owned(), identity);
    }
    Ok(())
+}
+
+/// The identity of a file this process just wrote, which `stamp_key` refuses
+/// for two seconds, so every compile reading it then would hash it again.
+pub fn remember_written(
+   cache: &mut Client,
+   store: &Store,
+   path: &Path,
+   bytes: Vec<u8>,
+) -> io::Result<()> {
+   let text = utf8(path)?;
+   let Some(stamp) = store.written_stamp_key(text) else {
+      return Ok(());
+   };
+   let identity = store.content_id(text, bytes);
+   cache.put(
+      &Key::digest(Namespace::Stamp, &stamp),
+      identity.to_string().as_bytes(),
+   )
 }
 
 pub fn parse_depfile(text: &str) -> Vec<String> {

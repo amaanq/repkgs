@@ -94,6 +94,7 @@ use crate::{
       lookup,
       parse_depfile,
       prefetch,
+      remember_written,
    },
    record::{
       Artifact,
@@ -1838,10 +1839,12 @@ fn cached(
          io::stdout().lock().write_all(&bytes)?;
       } else {
          write_file(&invocation.output, &bytes, object.mode)?;
+         remember_written(cache, store, &invocation.output, bytes)?;
       }
       for module in written {
          let replayed = replayed_link(store, module.bytes, None)?;
          write_file(Path::new(&module.name), &replayed, module.mode)?;
+         remember_written(cache, store, Path::new(&module.name), replayed)?;
       }
       if let (Some(path), Some(text)) = (invocation.depfile.as_ref(), dep_text.as_ref()) {
          write_file(path, text.as_bytes(), None)?;

@@ -478,6 +478,22 @@ impl Store {
       {
          return None;
       }
+      Some(self.stamp_of(path, &meta))
+   }
+
+   /// The stamp of a file this process just wrote, whose bytes it holds, so
+   /// no recent change can hide behind an unchanged stat.
+   #[inline]
+   #[must_use]
+   pub fn written_stamp_key(&self, path: &str) -> Option<Digest> {
+      if (is_store_path(path) && !self.content) || self.identities.contains_key(path) {
+         return None;
+      }
+      let meta = metadata(path).ok().filter(Metadata::is_file)?;
+      Some(self.stamp_of(path, &meta))
+   }
+
+   fn stamp_of(&self, path: &str, meta: &Metadata) -> Digest {
       let mut hasher = Hasher::new();
       for part in [
          path.to_owned(),
@@ -490,7 +506,7 @@ impl Store {
       ] {
          field(&mut hasher, part);
       }
-      Some(Digest::from(hasher.finalize()))
+      Digest::from(hasher.finalize())
    }
 
    #[inline]
@@ -501,14 +517,20 @@ impl Store {
       if let Some(identity) = self.identities.get(path) {
          return Ok(identity.clone());
       }
-      let mut bytes = read(path)?;
+      Ok(self.content_id(path, read(path)?))
+   }
+
+   /// What `input_id` makes of `path` holding `bytes`.
+   #[inline]
+   #[must_use]
+   pub fn content_id(&self, path: &str, mut bytes: Vec<u8>) -> InputId {
       if !is_store_path(path) {
          self.mask_output(&mut bytes, false);
          if let Some(ref temporary) = *TEMPORARY {
             bytes = mask_scratch_bytes(&bytes, temporary);
          }
       }
-      Ok(InputId::Content(Identity::of(&bytes)))
+      InputId::Content(Identity::of(&bytes))
    }
 
    /// A program as the code it runs, itself and the libraries it loads
