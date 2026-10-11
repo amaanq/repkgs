@@ -49,6 +49,10 @@ options! {
 pub struct Luarocks;
 
 impl System for Luarocks {
+   fn module(&self) -> &'static str {
+      module_path!()
+   }
+
    fn name(&self) -> &'static str {
       "luarocks"
    }

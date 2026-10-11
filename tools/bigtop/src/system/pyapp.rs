@@ -174,6 +174,10 @@ fn site_packages(ctx: &Ctx) -> io::Result<String> {
 pub struct Pyapp;
 
 impl System for Pyapp {
+   fn module(&self) -> &'static str {
+      module_path!()
+   }
+
    fn name(&self) -> &'static str {
       "pyapp"
    }

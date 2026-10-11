@@ -127,6 +127,10 @@ const STORE: &str = "/build/cabal-store";
 pub struct Cabal;
 
 impl System for Cabal {
+   fn module(&self) -> &'static str {
+      module_path!()
+   }
+
    fn name(&self) -> &'static str {
       "cabal"
    }

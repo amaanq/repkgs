@@ -51,6 +51,10 @@ options! {
 pub struct Deno;
 
 impl System for Deno {
+   fn module(&self) -> &'static str {
+      module_path!()
+   }
+
    fn name(&self) -> &'static str {
       "deno"
    }

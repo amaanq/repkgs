@@ -71,6 +71,10 @@ macro_rules! tools {
          pub struct $name;
 
          impl System for $name {
+            fn module(&self) -> &'static str {
+               module_path!()
+            }
+
             fn name(&self) -> &'static str {
                $tool.name()
             }

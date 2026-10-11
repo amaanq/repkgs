@@ -71,6 +71,10 @@ struct Propagate<'deps> {
 pub struct Python;
 
 impl System for Python {
+   fn module(&self) -> &'static str {
+      module_path!()
+   }
+
    fn name(&self) -> &'static str {
       "python"
    }
