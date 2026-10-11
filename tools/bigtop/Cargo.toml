@@ -16,7 +16,7 @@ memchr     = "2.8.3"
 misstep    = { workspace = true }
 glob       = "0.3"
 mummer     = { workspace = true }
-pound      = "0.1.7"
+pound      = "0.3.0"
 roxmltree  = "0.20"
 serde      = { features = [ "derive" ], version = "1" }
 serde_json = "1"
