@@ -12,9 +12,11 @@ use std::{
 };
 
 use mummer::{
-   files::utf8,
    attrs::load,
-   files::write_file,
+   files::{
+      utf8,
+      write_file,
+   },
 };
 use serde::Deserialize;
 
