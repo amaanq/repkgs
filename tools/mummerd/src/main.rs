@@ -20,6 +20,7 @@ use std::{
       Write as _,
    },
    net::Shutdown,
+   num::NonZeroUsize,
    os::unix::{
       fs::{
          FileTypeExt as _,
@@ -55,7 +56,6 @@ use std::{
 use misstep::{
    Result,
    ResultExt as _,
-   bail,
    report,
 };
 use pound::Parse;
@@ -116,7 +116,7 @@ struct Options {
    cold_size:       u64,
    /// Concurrent compiler slots, default the number of CPUs.
    #[pound(long, env = "MUMMERD_SLOTS")]
-   slots:           Option<usize>,
+   slots:           Option<NonZeroUsize>,
    /// A REAPI cache asked on a local miss, `grpc://host:port/instance` or
    /// `grpcs://` for TLS, such as `NativeLink`.
    #[pound(long, env = "MUMMERD_REMOTE")]
@@ -220,11 +220,9 @@ fn main() -> Result<()> {
    }
    let limit = match options.slots {
       Some(slots) => slots,
-      None => available_parallelism()?.get(),
-   };
-   if limit == 0 {
-      bail!("--slots must be positive");
+      None => available_parallelism()?,
    }
+   .get();
 
    // every pack and hint stays open beside one descriptor per client, which
    // outgrows the usual soft limit of 1024 long before the hard one

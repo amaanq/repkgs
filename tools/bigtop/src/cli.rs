@@ -1,6 +1,12 @@
-use std::path::PathBuf;
+use std::{
+   collections::BTreeMap,
+   path::PathBuf,
+};
 
+use mummer::syslibs::Ecosystem;
 use pound::Parse;
+use serde_json::Value;
+use tightrope::key::Key;
 
 /// the build script executor for motley, everything between the structured
 /// attrs and the finished output tree.
@@ -117,8 +123,8 @@ pub enum Mode {
       name:    String,
       program: String,
       args:    Vec<String>,
-      #[pound(long)]
-      env:     Option<String>,
+      #[pound(long, parse = serde_json::from_str::<BTreeMap<String, String>>, default = "{}")]
+      env:     BTreeMap<String, String>,
    },
    /// the package on the structured attrs as one self-contained tree, for
    /// the bundle derivation.
@@ -141,7 +147,7 @@ pub enum SyslibsOperation {
    },
    /// the same for one ecosystem's locked names.
    WantedFor {
-      ecosystem: String,
+      ecosystem: Ecosystem,
       names:     Vec<String>,
       #[pound(long)]
       tables:    Option<PathBuf>,
@@ -161,17 +167,33 @@ pub enum ProbeOperation {
    Key {
       kind:    String,
       scripts: Vec<String>,
-      #[pound(long)]
-      extra:   Option<String>,
+      #[pound(long, parse = serde_json::from_str::<Value>)]
+      extra:   Option<Value>,
    },
    /// fetch a stored file, exit 1 when there is none.
-   Restore { key: String, file: PathBuf },
+   Restore {
+      #[pound(parse = str::parse::<Key>)]
+      key:  Key,
+      file: PathBuf,
+   },
    /// store a file for the next build with the same key.
-   Store { key: String, file: PathBuf },
+   Store {
+      #[pound(parse = str::parse::<Key>)]
+      key:  Key,
+      file: PathBuf,
+   },
    /// fetch a stored directory tree, exit 1 when there is none.
-   RestoreDir { key: String, dir: PathBuf },
+   RestoreDir {
+      #[pound(parse = str::parse::<Key>)]
+      key: Key,
+      dir: PathBuf,
+   },
    /// store a directory tree.
-   StoreDir { key: String, dir: PathBuf },
+   StoreDir {
+      #[pound(parse = str::parse::<Key>)]
+      key: Key,
+      dir: PathBuf,
+   },
    /// a CMakeCache.txt's probe results as a -C init script.
    CmakeInit { cache: PathBuf },
 }
@@ -179,7 +201,7 @@ pub enum ProbeOperation {
 #[derive(Parse)]
 pub enum SystemOperation {
    SysEnv {
-      ecosystem: String,
+      ecosystem: Ecosystem,
    },
    /// the environment for the phases, as JSON, after creating the working
    /// directory.

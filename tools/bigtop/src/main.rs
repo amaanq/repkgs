@@ -22,7 +22,6 @@ mod system;
 mod targets;
 
 use std::{
-   collections::BTreeMap,
    env::args_os,
    io::{
       self,
@@ -93,21 +92,17 @@ fn probe_mode(operation: ProbeOperation, socket: &Path) -> Result<i32> {
          scripts,
          extra,
       } => {
-         let parsed = extra
-            .as_deref()
-            .map(serde_json::from_str::<serde_json::Value>)
-            .transpose()?;
-         let key = probe::key(&kind, &scripts, parsed.as_ref())?;
+         let key = probe::key(&kind, &scripts, extra.as_ref())?;
          writeln!(io::stdout().lock(), "{key}")?;
       },
       ProbeOperation::Restore { key, file } => {
-         return Ok(i32::from(!probe::restore(&key.parse()?, &file, socket)?));
+         return Ok(i32::from(!probe::restore(&key, &file, socket)?));
       },
-      ProbeOperation::Store { key, file } => probe::store(&key.parse()?, &file, socket)?,
+      ProbeOperation::Store { key, file } => probe::store(&key, &file, socket)?,
       ProbeOperation::RestoreDir { key, dir } => {
-         return Ok(i32::from(!probe::restore_dir(&key.parse()?, &dir, socket)?));
+         return Ok(i32::from(!probe::restore_dir(&key, &dir, socket)?));
       },
-      ProbeOperation::StoreDir { key, dir } => probe::store_dir(&key.parse()?, &dir, socket)?,
+      ProbeOperation::StoreDir { key, dir } => probe::store_dir(&key, &dir, socket)?,
       ProbeOperation::CmakeInit { cache } => {
          writeln!(io::stdout().lock(), "{}", probe::cmake_init(&cache)?)?;
       },
@@ -132,7 +127,7 @@ fn syslibs_mode(operation: SyslibsOperation) -> io::Result<()> {
          ecosystem,
          names,
          tables,
-      } => wanted_for(&lock_tables(tables.as_deref())?, ecosystem.parse()?, &names),
+      } => wanted_for(&lock_tables(tables.as_deref())?, ecosystem, &names),
    };
    let mut stdout = io::stdout().lock();
    serde_json::to_writer(&mut stdout, &found)?;
@@ -176,13 +171,8 @@ fn run(mode: Mode, socket: &Path) -> Result<i32> {
          args,
          env,
       } => {
-         let vars = env
-            .as_deref()
-            .map(serde_json::from_str::<BTreeMap<String, String>>)
-            .transpose()?
-            .unwrap_or_default();
          let ctx = Ctx::load(&build_top()?)?;
-         write_launcher(&ctx, &name, &program, &args, &vars)?;
+         write_launcher(&ctx, &name, &program, &args, &env)?;
       },
       Mode::Bundle => bundle::run()?,
       Mode::Syslibs { operation } => syslibs_mode(operation)?,

@@ -10,11 +10,6 @@ use std::{
       BTreeSet,
       HashMap,
    },
-   fmt::{
-      Display,
-      Formatter,
-      Result as FmtResult,
-   },
    fs::{
       canonicalize,
       read_dir,
@@ -26,9 +21,12 @@ use std::{
       PathBuf,
    },
    process::Command,
-   str::FromStr,
 };
 
+use pound::{
+   ArgValue as _,
+   ValueEnum,
+};
 use serde::{
    Deserialize,
    Serialize,
@@ -99,7 +97,7 @@ impl From<Spelled> for Binding {
 }
 
 /// The package ecosystems a binding can name.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum Ecosystem {
@@ -123,43 +121,6 @@ impl Ecosystem {
          Self::Gems => Some("Gemfile.lock"),
          Self::Hackage => None,
       }
-   }
-
-   const ALL: [Self; 5] = [
-      Self::Cargo,
-      Self::Go,
-      Self::Python,
-      Self::Gems,
-      Self::Hackage,
-   ];
-}
-
-impl Display for Ecosystem {
-   #[inline]
-   #[expect(
-      clippy::renamed_function_params,
-      reason = "formatter describes the argument"
-   )]
-   fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
-      formatter.write_str(match *self {
-         Self::Cargo => "cargo",
-         Self::Go => "go",
-         Self::Python => "python",
-         Self::Gems => "gems",
-         Self::Hackage => "hackage",
-      })
-   }
-}
-
-impl FromStr for Ecosystem {
-   type Err = io::Error;
-
-   #[inline]
-   fn from_str(text: &str) -> io::Result<Self> {
-      Self::ALL
-         .into_iter()
-         .find(|ecosystem| ecosystem.to_string() == text)
-         .ok_or_else(|| io::Error::other(format!("no ecosystem {text}")))
    }
 }
 
@@ -261,7 +222,7 @@ pub fn wanted_for(tables: &Tables, ecosystem: Ecosystem, names: &[String]) -> Ve
 #[inline]
 pub fn wanted(tables: &Tables, dir: &Path, cargo: Option<&CargoBuild>) -> io::Result<Vec<String>> {
    let mut found = BTreeSet::new();
-   for ecosystem in Ecosystem::ALL {
+   for ecosystem in Ecosystem::ALL.iter().copied() {
       let Some(file) = ecosystem.lock_file() else {
          continue;
       };

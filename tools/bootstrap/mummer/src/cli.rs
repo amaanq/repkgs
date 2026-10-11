@@ -10,6 +10,7 @@ use pound::{
    Parse,
    ValueEnum,
 };
+use tightrope::key::Key;
 
 /// compiler wrapper, compile cache client and relocation tool for motley.
 #[derive(Parse)]
@@ -56,7 +57,8 @@ pub enum Mode {
    /// a daemon.
    Cache {
       operation: CacheOperation,
-      key:       String,
+      #[pound(parse = str::parse::<Key>)]
+      key:       Key,
       path:      PathBuf,
    },
    /// run a program under a compiler slot, `mummer slot <program> [args...]`.
