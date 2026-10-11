@@ -22,8 +22,8 @@ use std::{
 use mummer::{
    attrs,
    files::{
-      utf8,
       sorted_entries,
+      utf8,
       write_file,
    },
    process::Checked as _,

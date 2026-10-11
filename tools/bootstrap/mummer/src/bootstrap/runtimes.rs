@@ -18,8 +18,8 @@ use std::{
 use mummer::{
    config::BinaryFormat,
    files::{
-      utf8,
       remove_if_exists,
+      utf8,
       write_file,
    },
 };

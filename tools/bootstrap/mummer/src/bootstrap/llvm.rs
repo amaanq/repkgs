@@ -16,9 +16,11 @@ use std::{
 };
 
 use mummer::{
-   files::utf8,
    attrs::load,
-   files::remove_if_exists,
+   files::{
+      remove_if_exists,
+      utf8,
+   },
 };
 use serde::Deserialize;
 
@@ -91,13 +93,11 @@ impl Llvm {
                   .file_name()
                   .ok_or_else(|| io::Error::other("compression source has no filename"))?;
                Ok(Item {
-                  obj:   prefix
-                     .join("obj")
-                     .join({
-                        let mut object = name.to_owned();
-                        object.push(".o");
-                        object
-                     }),
+                  obj:   prefix.join("obj").join({
+                     let mut object = name.to_owned();
+                     object.push(".o");
+                     object
+                  }),
                   src:   source,
                   flags: Vec::new(),
                })
