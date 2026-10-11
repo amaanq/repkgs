@@ -96,6 +96,10 @@ struct Extra<'options> {
 pub struct Autotools;
 
 impl System for Autotools {
+   fn module(&self) -> &'static str {
+      module_path!()
+   }
+
    fn name(&self) -> &'static str {
       "autotools"
    }

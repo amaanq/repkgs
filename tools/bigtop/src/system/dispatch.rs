@@ -21,6 +21,7 @@ use crate::{
       build_top,
    },
    cli::SystemOperation,
+   output::used,
    schema::{
       Descriptor,
       Field,
@@ -60,6 +61,10 @@ use crate::{
 /// environment every later phase loads and the phases run in the workdir.
 pub trait System: Sync {
    fn name(&self) -> &'static str;
+
+   /// `module_path!()` of the implementation, which output cache entries
+   /// record when a build dispatches into it.
+   fn module(&self) -> &'static str;
 
    fn options(&self) -> io::Result<Vec<Field>>;
 
@@ -117,11 +122,13 @@ pub fn schemas() -> io::Result<BTreeMap<String, Descriptor>> {
 }
 
 fn system(name: &str) -> io::Result<&'static dyn System> {
-   SYSTEMS
+   let found = SYSTEMS
       .iter()
       .copied()
       .find(|system| system.name() == name)
-      .ok_or_else(|| io::Error::other(format!("{name} is not a build system mummer knows")))
+      .ok_or_else(|| io::Error::other(format!("{name} is not a build system mummer knows")))?;
+   used(found.module())?;
+   Ok(found)
 }
 
 /// the working directory created and entered, the setup environment back.
@@ -167,8 +174,12 @@ pub fn mode(operation: SystemOperation, socket: &Path) -> io::Result<()> {
       SystemOperation::Phase { system: name, verb } => {
          phase(&name, &verb, &ctx, &Attrs::load()?, socket)
       },
-      SystemOperation::GhcToolchain => ghc::print_toolchain(&ctx),
+      SystemOperation::GhcToolchain => {
+         used(ghc::MODULE)?;
+         ghc::print_toolchain(&ctx)
+      },
       SystemOperation::GhcInstall { deb } => {
+         used(ghc::MODULE)?;
          if deb {
             ghc::install_deb(&ctx, &Attrs::load()?)
          } else {

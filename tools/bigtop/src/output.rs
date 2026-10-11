@@ -1,18 +1,26 @@
 //! Whole package outputs kept in mummerd, keyed on everything that decides
 //! them except the mummer and plumbing binaries, so a change to how builds
-//! are cached does not rebuild every package.
+//! are cached does not rebuild every package. Of bigtop the key holds the
+//! code every build runs, and each entry records the build-system modules
+//! its build dispatched into, so an edit to one system rebuilds only the
+//! packages that use it.
 
 use std::{
-   env::{
-      current_exe,
-      var,
+   collections::{
+      BTreeMap,
+      BTreeSet,
    },
+   env::var,
    fs::{
-      read,
+      OpenOptions,
       read_to_string,
       remove_dir_all,
    },
-   io,
+   io::{
+      self,
+      ErrorKind,
+      Write as _,
+   },
    path::Path,
 };
 
@@ -26,7 +34,10 @@ use mummer::{
    store::STORE_DIR,
    tree::note,
 };
-use serde::Serialize;
+use serde::{
+   Deserialize,
+   Serialize,
+};
 use tightrope::{
    client::Client,
    key::Key,
@@ -40,11 +51,76 @@ use crate::{
    probe::toolchain,
 };
 
+include!(concat!(env!("OUT_DIR"), "/fingerprints.rs"));
+
+const LEDGER: &str = ".bigtop-modules";
+const VARIANTS: usize = 4;
+
 #[derive(Serialize)]
 struct Record<'inputs> {
    attrs:      &'inputs str,
    toolchains: Vec<String>,
-   bigtop:     String,
+   shared:     &'static str,
+}
+
+/// The build-system modules one build dispatched into, by fingerprint.
+#[derive(Deserialize, Serialize, PartialEq, Eq)]
+struct Variant {
+   modules: BTreeMap<String, String>,
+}
+
+impl Variant {
+   fn changed(&self) -> Vec<&str> {
+      self
+         .modules
+         .iter()
+         .filter(|&(name, hash)| fingerprint(name) != Some(hash.as_str()))
+         .map(|(name, _)| name.as_str())
+         .collect()
+   }
+
+   fn id(&self, digest: &str) -> io::Result<String> {
+      let mut hasher = blake3::Hasher::new();
+      hasher.update(digest.as_bytes());
+      hasher.update(&serde_json::to_vec(&self.modules)?);
+      Ok(hasher.finalize().to_hex().to_string())
+   }
+}
+
+fn fingerprint(name: &str) -> Option<&'static str> {
+   MODULES
+      .iter()
+      .find(|entry| entry.0 == name)
+      .map(|entry| entry.1)
+}
+
+/// Notes that this build dispatched into the build-system module at `path`.
+pub fn used(path: &str) -> io::Result<()> {
+   let name = path.rsplit("::").next().unwrap_or(path);
+   let ledger = Path::new(&build_top()?).join(LEDGER);
+   let mut file = OpenOptions::new().create(true).append(true).open(ledger)?;
+   writeln!(file, "{name}")
+}
+
+fn recorded() -> io::Result<Variant> {
+   let ledger = Path::new(&build_top()?).join(LEDGER);
+   let text = match read_to_string(ledger) {
+      Ok(text) => text,
+      Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
+      Err(error) => return Err(error),
+   };
+   let modules = text
+      .lines()
+      .collect::<BTreeSet<_>>()
+      .into_iter()
+      .map(|name| {
+         let hash = fingerprint(name).ok_or_else(|| {
+            io::Error::other(format!("bigtop has no fingerprint for the {name} module"))
+         })?;
+         Ok((name.to_owned(), hash.to_owned()))
+      })
+      .collect::<io::Result<_>>()?;
+   Ok(Variant { modules })
 }
 
 /// An output's path and the stand-in for its hash while stored, the same
@@ -118,15 +194,24 @@ fn key(attrs: &Attrs, outputs: &[Output]) -> io::Result<String> {
    let record = Record {
       attrs: &text,
       toolchains,
-      bigtop: blake3::hash(&read(current_exe()?)?).to_hex().to_string(),
+      shared: SHARED,
    };
    Ok(blake3::hash(&serde_json::to_vec(&record)?)
       .to_hex()
       .to_string())
 }
 
-fn entry(attrs: &Attrs, digest: &str, output: &Output) -> io::Result<Key> {
-   format!("output/{}/{digest}/{}", attrs.spec()?.name, output.name).parse()
+fn variants(attrs: &Attrs, digest: &str) -> io::Result<Key> {
+   format!("output/{}/{digest}", attrs.spec()?.name).parse()
+}
+
+fn entry(attrs: &Attrs, digest: &str, id: &str, output: &Output) -> io::Result<Key> {
+   format!(
+      "output/{}/{digest}/{id}/{}",
+      attrs.spec()?.name,
+      output.name
+   )
+   .parse()
 }
 
 /// The outputs a build with these inputs stored, false when any is missing,
@@ -137,6 +222,20 @@ pub fn restore(attrs: &Attrs) -> io::Result<bool> {
    };
    let outputs = outputs(attrs);
    let digest = key(attrs, &outputs)?;
+   let Some(listed) = client.get(&variants(attrs, &digest)?)? else {
+      return Ok(false);
+   };
+   let known = serde_json::from_slice::<Vec<Variant>>(&listed)?;
+   let Some(variant) = known.iter().find(|variant| variant.changed().is_empty()) else {
+      if let Some(newest) = known.first() {
+         note(
+            "output-cache",
+            &format!("cold, {} changed", newest.changed().join(" ")),
+         );
+      }
+      return Ok(false);
+   };
+   let id = variant.id(&digest)?;
    let pairs = outputs
       .iter()
       .map(|output| (output.token.clone(), hash_part(&output.path).to_owned()))
@@ -144,7 +243,7 @@ pub fn restore(attrs: &Attrs) -> io::Result<bool> {
    for (index, output) in outputs.iter().enumerate() {
       let restored = get_tree(
          &mut client,
-         &entry(attrs, &digest, output)?,
+         &entry(attrs, &digest, &id, output)?,
          Path::new(&output.path),
          |data| swap(data, &pairs),
          |target| swap_text(target, &pairs),
@@ -169,6 +268,8 @@ pub fn store(attrs: &Attrs) -> io::Result<()> {
    };
    let outputs = outputs(attrs);
    let digest = key(attrs, &outputs)?;
+   let variant = recorded()?;
+   let id = variant.id(&digest)?;
    let pairs = outputs
       .iter()
       .map(|output| (hash_part(&output.path).to_owned(), output.token.clone()))
@@ -179,11 +280,20 @@ pub fn store(attrs: &Attrs) -> io::Result<()> {
       }
       put_tree(
          &mut client,
-         &entry(attrs, &digest, output)?,
+         &entry(attrs, &digest, &id, output)?,
          Path::new(&output.path),
          |data| swap(data, &pairs),
          |target| swap_text(target, &pairs),
       )?;
    }
-   Ok(())
+
+   let listing = variants(attrs, &digest)?;
+   let mut known = match client.get(&listing)? {
+      Some(bytes) => serde_json::from_slice::<Vec<Variant>>(&bytes)?,
+      None => Vec::new(),
+   };
+   known.retain(|other| *other != variant);
+   known.insert(0, variant);
+   known.truncate(VARIANTS);
+   client.put(&listing, &serde_json::to_vec(&known)?)
 }

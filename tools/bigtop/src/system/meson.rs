@@ -86,6 +86,10 @@ impl Display for Literal {
 pub struct Meson;
 
 impl System for Meson {
+   fn module(&self) -> &'static str {
+      module_path!()
+   }
+
    fn name(&self) -> &'static str {
       "meson"
    }

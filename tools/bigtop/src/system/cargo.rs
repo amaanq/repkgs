@@ -82,6 +82,10 @@ options! {
 pub struct Cargo;
 
 impl System for Cargo {
+   fn module(&self) -> &'static str {
+      module_path!()
+   }
+
    fn name(&self) -> &'static str {
       "cargo"
    }

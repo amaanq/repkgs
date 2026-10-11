@@ -160,6 +160,10 @@ struct Project {
 pub struct Vcxproj;
 
 impl System for Vcxproj {
+   fn module(&self) -> &'static str {
+      module_path!()
+   }
+
    fn name(&self) -> &'static str {
       "vcxproj"
    }

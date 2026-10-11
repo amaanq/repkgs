@@ -52,6 +52,8 @@ use crate::{
    },
 };
 
+pub const MODULE: &str = module_path!();
+
 /// One shell line the bin/ wrappers start with, so they can derive the
 /// prefix from their own location, sh builtins only since PATH may be empty.
 const LOCATE_TOP: &str = "#!/bin/sh\ntop=$(cd \"${0%/*}/..\" && pwd)";

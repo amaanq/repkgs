@@ -128,6 +128,10 @@ macro_rules! managers {
          pub struct $name;
 
          impl System for $name {
+            fn module(&self) -> &'static str {
+               module_path!()
+            }
+
             fn name(&self) -> &'static str {
                $manager.name()
             }

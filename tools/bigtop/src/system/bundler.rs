@@ -74,6 +74,10 @@ fn app_dir(ctx: &Ctx) -> io::Result<String> {
 pub struct Bundler;
 
 impl System for Bundler {
+   fn module(&self) -> &'static str {
+      module_path!()
+   }
+
    fn name(&self) -> &'static str {
       "bundler"
    }
