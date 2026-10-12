@@ -300,7 +300,8 @@ impl Tests for Cargo {
 
 impl Cargo {
    fn test(extra: &[String], selectors: &[String], harness: &[String]) -> io::Result<()> {
-      let mut args = vec!["test", "--release", "--offline", "--workspace"];
+      let mut args = vec!["test", "--release", "--offline"];
+      args.extend(Self::scope(extra));
       args.extend(strs(extra));
       args.extend(strs(selectors));
       args.extend(strs(harness));
@@ -314,10 +315,10 @@ impl Cargo {
          "test",
          "--release",
          "--offline",
-         "--workspace",
          "--no-run",
          "--message-format=json-render-diagnostics",
       ];
+      args.extend(Self::scope(extra));
       args.extend(strs(extra));
       let output = Command::new("cargo")
          .args(&args)
@@ -356,6 +357,15 @@ impl Cargo {
          Path::new(&build_top()?).join(TARGETS),
          serde_json::to_vec(&targets)?,
       )
+   }
+
+   /// Every member unless the flags pick packages, since `--workspace`
+   /// overrides `-p`.
+   fn scope(extra: &[String]) -> Option<&'static str> {
+      let picks = extra
+         .iter()
+         .any(|arg| arg == "--package" || arg.starts_with("--package=") || arg.starts_with("-p"));
+      (!picks).then_some("--workspace")
    }
 
    fn build(options: &Options, home: Option<PathBuf>) -> CargoBuild {
