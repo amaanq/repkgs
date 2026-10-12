@@ -76,6 +76,7 @@ export def mummerd-socket []: nothing -> any {
 export def cache-args []: nothing -> list<string> {
    let socket = (mummerd-socket)
    if $socket == null { fail "no mummerd socket, start the cache with `motley cache start`" }
+   if $socket == $SANDBOX_SOCKET { return [--builders ""] }
    [--option extra-sandbox-paths $"($SANDBOX_SOCKET)=($socket)" --builders ""]
 }
 
