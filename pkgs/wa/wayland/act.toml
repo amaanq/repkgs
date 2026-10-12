@@ -1,0 +1,24 @@
+fetch = { url = "https://gitlab.freedesktop.org/wayland/wayland/-/releases/{version}/downloads/wayland-{version}.tar.xz" }
+with  = [ "meson" ]
+deps  = [ "libffi", "expat", "libxml2" ]
+
+[track]
+from = "generic:wayland"
+
+# x.y.9z tags are release candidates
+[track.watch]
+url   = "https://gitlab.freedesktop.org/api/v4/projects/wayland%2Fwayland/repository/tags?per_page=100"
+regex = '"name":"([0-9]+\.[0-9]+\.[0-8]?[0-9])"'
+
+[only]
+os = [ "linux" ]
+
+[test]
+bin = [ "wayland-scanner" ]
+
+[meson.defs]
+documentation  = false
+dtd_validation = true
+icon_directory = "~/.local/share/icons"
+scanner        = true
+tests          = true
