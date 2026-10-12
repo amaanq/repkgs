@@ -8,6 +8,7 @@ patches = [
   "hadrian-ghc-wrapper.patch",
   "cpp-macros-sorted.patch",
   "ghc-pkg-sorted.patch",
+  "hadrian-stamp-atomic.patch",
 ]
 
 [track]
