@@ -1,0 +1,264 @@
+Tests start PAM with their own config dir, the sandbox has no /etc/pam.d.
+
+--- a/tests/tst-pam_end.c
++++ b/tests/tst-pam_end.c
+@@ -34,6 +34,7 @@
+ #include <config.h>
+ 
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <unistd.h>
+ 
+ #include <security/pam_appl.h>
+@@ -42,7 +43,7 @@
+ int
+ main (void)
+ {
+-  const char *service = "dummy";
++  const char *service = "confdir";
+   const char *user = "root";
+   struct pam_conv conv = { NULL, NULL };
+   pam_handle_t *pamh;
+@@ -50,7 +51,7 @@
+ 
+   /* 1: close valid pam handle */
+   /* create valid pam handle */
+-  retval = pam_start (service, user, &conv, &pamh);
++  retval = pam_start_confdir (service, user, &conv, getenv ("srcdir"), &pamh);
+   if (retval != PAM_SUCCESS)
+     {
+       fprintf (stderr, "pam_start (%s, %s, &conv, &pamh) returned %d\n",
+--- a/tests/tst-pam_fail_delay.c
++++ b/tests/tst-pam_fail_delay.c
+@@ -34,6 +34,7 @@
+ #include <config.h>
+ 
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <unistd.h>
+ 
+ #include <security/pam_appl.h>
+@@ -42,7 +43,7 @@
+ int
+ main (void)
+ {
+-  const char *service = "dummy";
++  const char *service = "confdir";
+   const char *user = "root";
+   struct pam_conv conv = { NULL, NULL };
+   pam_handle_t *pamh;
+@@ -50,7 +51,7 @@
+ 
+   /* 1: set valid delay */
+   /* create valid pam handle */
+-  retval = pam_start (service, user, &conv, &pamh);
++  retval = pam_start_confdir (service, user, &conv, getenv ("srcdir"), &pamh);
+   if (retval != PAM_SUCCESS)
+     {
+       fprintf (stderr, "pam_start (%s, %s, &conv, &pamh) returned %d\n",
+--- a/tests/tst-pam_get_data.c
++++ b/tests/tst-pam_get_data.c
+@@ -34,6 +34,7 @@
+ #include "test_assert.h"
+ 
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <unistd.h>
+ #include <string.h>
+ 
+@@ -54,7 +55,7 @@
+ int
+ main(void)
+ {
+-	const char *service = "dummy";
++	const char *service = "confdir";
+ 	const char *user = "root";
+ 	struct pam_conv conv = { NULL, NULL };
+ 	pam_handle_t *pamh;
+@@ -66,7 +67,7 @@
+ 		  pam_get_data(NULL, "tst-pam_get_data-1", &constdataptr));
+ 
+ 	/* setup pam handle */
+-	ASSERT_EQ(PAM_SUCCESS, pam_start(service, user, &conv, &pamh));
++	ASSERT_EQ(PAM_SUCCESS, pam_start_confdir (service, user, &conv, getenv ("srcdir"), &pamh));
+ 
+ 	/* 2: check for call from application */
+ 	ASSERT_EQ(PAM_SYSTEM_ERR,
+--- a/tests/tst-pam_getenvlist.c
++++ b/tests/tst-pam_getenvlist.c
+@@ -44,7 +44,7 @@
+ int
+ main (void)
+ {
+-  const char *service = "dummy";
++  const char *service = "confdir";
+   const char *user = "root";
+   struct pam_conv conv = { NULL, NULL };
+   pam_handle_t *pamh;
+@@ -62,7 +62,7 @@
+     }
+ 
+   /* setup pam handle */
+-  retval = pam_start (service, user, &conv, &pamh);
++  retval = pam_start_confdir (service, user, &conv, getenv ("srcdir"), &pamh);
+   if (retval != PAM_SUCCESS)
+     {
+       fprintf (stderr, "pam_start (%s, %s, &conv, &pamh) returned %d\n",
+--- a/tests/tst-pam_get_item.c
++++ b/tests/tst-pam_get_item.c
+@@ -34,6 +34,7 @@
+ #include <config.h>
+ 
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <unistd.h>
+ 
+ #include <security/pam_appl.h>
+@@ -62,7 +63,7 @@
+ int
+ main (void)
+ {
+-  const char *service = "dummy";
++  const char *service = "confdir";
+   const char *user = "root";
+   struct pam_conv conv = { NULL, NULL };
+   pam_handle_t *pamh;
+@@ -79,7 +80,7 @@
+     }
+ 
+   /* setup pam handle */
+-  retval = pam_start (service, user, &conv, &pamh);
++  retval = pam_start_confdir (service, user, &conv, getenv ("srcdir"), &pamh);
+   if (retval != PAM_SUCCESS)
+     {
+       fprintf (stderr, "pam_start (%s, %s, &conv, &pamh) returned %d\n",
+--- a/tests/tst-pam_get_user.c
++++ b/tests/tst-pam_get_user.c
+@@ -86,7 +86,7 @@
+ int
+ main (void)
+ {
+-  const char *service = "dummy";
++  const char *service = "confdir";
+   const char *value;
+   struct pam_conv conv = { &login_conv, NULL};
+   pam_handle_t *pamh;
+@@ -102,7 +102,7 @@
+     }
+ 
+  /* setup pam handle */
+-  retval = pam_start (service, user, &conv, &pamh);
++  retval = pam_start_confdir (service, user, &conv, getenv ("srcdir"), &pamh);
+   if (retval != PAM_SUCCESS)
+     {
+       fprintf (stderr, "pam_start (%s, %s, &conv, &pamh) returned %d\n",
+@@ -140,7 +140,7 @@
+   pam_end (pamh, 0);
+ 
+  /* setup pam handle without user */
+-  retval = pam_start (service, NULL, &conv, &pamh);
++  retval = pam_start_confdir (service, NULL, &conv, getenv ("srcdir"), &pamh);
+   if (retval != PAM_SUCCESS)
+     {
+       fprintf (stderr, "pam_start (%s, %s, &conv, &pamh) returned %d\n",
+--- a/tests/tst-pam_set_data.c
++++ b/tests/tst-pam_set_data.c
+@@ -34,6 +34,7 @@
+ #include <pam_private.h>
+ 
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <unistd.h>
+ #include <string.h>
+ 
+@@ -270,7 +271,7 @@
+ int
+ main (void)
+ {
+-  const char *service = "dummy";
++  const char *service = "confdir";
+   const char *user = "root";
+   struct pam_conv conv = { NULL, NULL };
+   pam_handle_t *pamh;
+@@ -288,7 +289,7 @@
+   free (dataptr);
+ 
+   /* setup pam handle */
+-  retval = pam_start (service, user, &conv, &pamh);
++  retval = pam_start_confdir (service, user, &conv, getenv ("srcdir"), &pamh);
+   if (retval != PAM_SUCCESS)
+     {
+       fprintf (stderr, "pam_start (%s, %s, &conv, &pamh) returned %d\n",
+@@ -440,7 +441,7 @@
+ 
+   /* test if error code is delivered to cleanup function */
+   /* setup pam handle */
+-  retval = pam_start (service, user, &conv, &pamh);
++  retval = pam_start_confdir (service, user, &conv, getenv ("srcdir"), &pamh);
+   if (retval != PAM_SUCCESS)
+     {
+       fprintf (stderr, "pam_start (%s, %s, &conv, &pamh) returned %d\n",
+--- a/tests/tst-pam_set_item.c
++++ b/tests/tst-pam_set_item.c
+@@ -34,6 +34,7 @@
+ #include <config.h>
+ 
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <unistd.h>
+ #include <string.h>
+ 
+@@ -63,7 +64,7 @@
+ int
+ main (void)
+ {
+-  const char *service = "dummy";
++  const char *service = "confdir";
+   const char *user = "root";
+   struct pam_conv conv = { NULL, NULL };
+   pam_handle_t *pamh;
+@@ -79,7 +80,7 @@
+     }
+ 
+   /* setup pam handle */
+-  retval = pam_start (service, user, &conv, &pamh);
++  retval = pam_start_confdir (service, user, &conv, getenv ("srcdir"), &pamh);
+   if (retval != PAM_SUCCESS)
+     {
+       fprintf (stderr, "pam_start (%s, %s, &conv, &pamh) returned %d\n",
+--- a/tests/tst-pam_start.c
++++ b/tests/tst-pam_start.c
+@@ -34,6 +34,7 @@
+ #include <config.h>
+ 
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <unistd.h>
+ 
+ #include <security/pam_appl.h>
+@@ -42,14 +43,14 @@
+ int
+ main (void)
+ {
+-  const char *service = "dummy";
++  const char *service = "confdir";
+   const char *user = "root";
+   struct pam_conv conv = { NULL, NULL };
+   pam_handle_t *pamh;
+   int retval;
+ 
+   /* 1: check with valid arguments */
+-  retval = pam_start (service, user, &conv, &pamh);
++  retval = pam_start_confdir (service, user, &conv, getenv ("srcdir"), &pamh);
+   if (retval != PAM_SUCCESS)
+     {
+       fprintf (stderr, "pam_start (%s, %s, &conv, &pamh) returned %d\n",
+@@ -76,7 +77,7 @@
+     }
+ 
+   /* 3: check with NULL for user */
+-  retval = pam_start (service, NULL, &conv, &pamh);
++  retval = pam_start_confdir (service, NULL, &conv, getenv ("srcdir"), &pamh);
+   if (retval != PAM_SUCCESS)
+     {
+       fprintf (stderr, "pam_start (%s, NULL, &conv, &pamh) returned %d\n",
