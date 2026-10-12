@@ -4,7 +4,7 @@ fetch   = { asset = "Linux-PAM-{version}.tar.xz" }
 with    = [ "meson" ]
 deps    = [ "libxcrypt" ]
 tools   = [ "flex", "bison" ]
-patches = [ "helper-wrapper.patch" ]
+patches = [ "helper-wrapper.patch", "tests-confdir.patch" ]
 
 [only]
 os = [ "linux" ]
