@@ -157,4 +157,14 @@ in
   checkField =
     mode: name: value:
     check mode name recipe.${name}.type value;
+  # a record field's own fields, empty for any other kind
+  subfields =
+    name:
+    let
+      inherit (recipe.${name}) type;
+    in
+    if type.kind == "record" then type.fields else { };
+  checkSubfield =
+    mode: name: sub: value:
+    check mode "${name}.${sub}" recipe.${name}.type.fields.${sub} value;
 }
