@@ -332,23 +332,49 @@ fn entry(store: &Store, units: &[String], path: &Path, fact: Fact, readers: &Rea
    }
 }
 
-/// The listing of every directory under `top` as `names` gives it, taken
-/// before a step runs, since entries it deletes or replaces leave no trace
-/// to rebuild the listing from afterwards.
-fn snapshot(top: &Path) -> io::Result<BTreeMap<PathBuf, String>> {
-   let mut listings = BTreeMap::new();
-   let mut pending = vec![top.to_path_buf()];
-   while let Some(directory) = pending.pop() {
-      for listed in read_dir(&directory)? {
-         let entry = listed?;
-         if entry.file_type()?.is_dir() {
-            pending.push(entry.path());
+/// The tree under `root` before a step runs, each directory's listing as
+/// `names` gives it and every other path. Entries the step deletes or
+/// replaces leave no trace to rebuild a listing from afterwards, and a test
+/// can backdate what it makes past the mark, as GNU make's do.
+struct Snapshot {
+   root:     PathBuf,
+   listings: BTreeMap<PathBuf, String>,
+   files:    BTreeSet<PathBuf>,
+}
+
+impl Snapshot {
+   fn take(root: PathBuf) -> io::Result<Self> {
+      let mut listings = BTreeMap::new();
+      let mut files = BTreeSet::new();
+      let mut pending = vec![root.clone()];
+      while let Some(directory) = pending.pop() {
+         for listed in read_dir(&directory)? {
+            let entry = listed?;
+            if entry.file_type()?.is_dir() {
+               pending.push(entry.path());
+            } else {
+               files.insert(entry.path());
+            }
          }
+         let digest = names(&directory, &|_entry| true)?;
+         listings.insert(directory, digest);
       }
-      let digest = names(&directory, &|_entry| true)?;
-      listings.insert(directory, digest);
+      Ok(Self {
+         root,
+         listings,
+         files,
+      })
    }
-   Ok(listings)
+
+   /// Whether `path` predates the step. Anything outside the tree does.
+   fn had(&self, path: &Path) -> bool {
+      !path.starts_with(&self.root) || self.files.contains(path) || self.listings.contains_key(path)
+   }
+
+   /// Whether the step made `path`, which it now holds.
+   fn made(&self, path: &Path, mark: Mark) -> bool {
+      symlink_metadata(path).is_ok_and(|meta| mark.written(&meta) || !self.had(path))
+   }
 }
 
 /// The entry names of a directory as one digest, those `kept` admits, and
@@ -410,10 +436,11 @@ impl Manifest {
             || PSEUDO.iter().any(|root| path.starts_with(root))
             || tests.is_some_and(|harness| harness.state(path))
       };
-      let written = |path: &Path| symlink_metadata(path).is_ok_and(|meta| mark.written(&meta));
+      let written = |path: &Path| before.made(path, mark);
       let mut paths = accesses.paths;
       let listed = accesses.listed;
       let mut prior = accesses.prior;
+      prior.retain(|path, _bytes| before.had(path));
       let units = paths
          .values()
          .chain(listed.values())
@@ -479,7 +506,7 @@ impl Manifest {
             continue;
          }
          let names = if path.starts_with(&top) {
-            let Some(found) = before.remove(&path) else {
+            let Some(found) = before.listings.remove(&path) else {
                continue;
             };
             found
@@ -710,7 +737,7 @@ fn lineage(client: &mut Client, ctx: &Ctx, step: &Step, key: &Key) -> io::Result
 
 struct Traced {
    accesses: Accesses,
-   before:   BTreeMap<PathBuf, String>,
+   before:   Snapshot,
    mark:     Mark,
    tests:    Option<&'static dyn Tests>,
 }
@@ -734,7 +761,7 @@ fn attempt(
       }
       Ok(built)
    };
-   let before = snapshot(Path::new(&build_top()?))?;
+   let before = Snapshot::take(PathBuf::from(build_top()?))?;
    let mark = Mark::now();
    // a signal landing before the trace server takes a call still turns it
    // into EINTR, even for an open of a regular file, so a traced failure
