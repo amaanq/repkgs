@@ -80,6 +80,9 @@ pub enum Mode {
       /// the dynamic loader, whose directory's libraries stay found by name.
       #[pound(long)]
       loader:    Option<PathBuf>,
+      /// a dependency's library directory, where `@rpath/` names resolve.
+      #[pound(long)]
+      library:   Vec<PathBuf>,
    },
    /// builder RPC to the Nix daemon.
    NixStore {

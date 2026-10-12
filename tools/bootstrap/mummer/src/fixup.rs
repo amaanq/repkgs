@@ -62,6 +62,9 @@ pub struct Context {
    pub dest:        PathBuf,
    pub sdk:         Option<PathBuf>,
    pub directories: BTreeSet<PathBuf>,
+   /// dependencies' library directories, where `@rpath/` names resolve after
+   /// the package's own.
+   pub libraries:   Vec<PathBuf>,
    /// The dynamic loader's name and directory, the libc's.
    pub loader:      Option<(String, PathBuf)>,
 }
@@ -119,6 +122,7 @@ pub fn run(
    sdk: Option<&Path>,
    loader: Option<&Path>,
    denied_paths: &[String],
+   libraries: &[PathBuf],
 ) -> io::Result<()> {
    if let Some(path) = dest
       && !in_store(path)
@@ -133,6 +137,7 @@ pub fn run(
       dest:        normalize(dest.unwrap_or(prefix)),
       sdk:         sdk.map(normalize),
       directories: BTreeSet::new(),
+      libraries:   libraries.to_vec(),
       loader:      loader.map(loader_location).transpose()?,
    };
    let denied = denied_hashes(denied_paths)?;
