@@ -7,6 +7,8 @@ use std::{
    collections::{
       BTreeMap,
       BTreeSet,
+      HashMap,
+      hash_map::Entry as Slot,
    },
    env::{
       current_exe,
@@ -29,12 +31,21 @@ use std::{
       self,
       ErrorKind,
    },
+   mem::{
+      Discriminant,
+      discriminant,
+   },
+   ops::Not,
    os::unix::ffi::OsStrExt as _,
    path::{
       Path,
       PathBuf,
    },
-   process::Command,
+   process::{
+      Command,
+      ExitStatus,
+   },
+   str::FromStr,
 };
 
 use mummer::{
@@ -75,6 +86,8 @@ use crate::{
       Accesses,
       Mark,
       Outcome,
+      Readers,
+      Tests,
    },
 };
 
@@ -100,7 +113,7 @@ struct Request<'step> {
 
 /// A path as stored, its bytes when they are not UTF-8, as the names test
 /// suites make to exercise encodings are.
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(untagged)]
 enum Spelling {
    Text(String),
@@ -132,32 +145,60 @@ impl Display for Spelling {
    }
 }
 
-#[derive(Deserialize, Serialize)]
-struct Input {
-   path:     Spelling,
-   identity: InputId,
+/// What a path held when the step reached it.
+#[derive(Clone, Deserialize, Serialize)]
+enum Fact {
+   File(InputId),
+   /// Something other than a directory, whatever it holds, for a path the
+   /// harness only looked up.
+   Present,
+   Absent,
+   Directory,
+   /// The entry names, as `names` digests them.
+   Listing(String),
 }
 
-#[derive(Deserialize, Serialize)]
-struct Listing {
-   path:  Spelling,
-   names: String,
+/// A path the step reached and who reached it, tests by their index in
+/// `Manifest::units`.
+#[derive(Clone, Deserialize, Serialize)]
+struct Entry {
+   path:       Spelling,
+   fact:       Fact,
+   /// Reached by those tests alone, nothing outside a test reached it.
+   #[serde(default, skip_serializing_if = "<&bool as Not>::not")]
+   only_tests: bool,
+   #[serde(default, skip_serializing_if = "Vec::is_empty")]
+   units:      Vec<u32>,
 }
 
 #[derive(Deserialize, Serialize)]
 struct Manifest {
-   inputs:      Vec<Input>,
-   absent:      Vec<Spelling>,
-   directories: Vec<Spelling>,
-   listings:    Vec<Listing>,
+   /// The tests the run passed, none for a step not divided into tests.
+   #[serde(default, skip_serializing_if = "Vec::is_empty")]
+   units:   Vec<String>,
+   entries: Vec<Entry>,
 }
 
 enum Miss {
    NewKey,
    InputChanged(Spelling),
+   Vanished(Spelling),
    Appeared(Spelling),
    NotDirectory(Spelling),
    ListingChanged(Spelling),
+}
+
+impl Miss {
+   fn of(entry: &Entry) -> Self {
+      let path = entry.path.clone();
+      match entry.fact {
+         Fact::File(_) => Self::InputChanged(path),
+         Fact::Present => Self::Vanished(path),
+         Fact::Absent => Self::Appeared(path),
+         Fact::Directory => Self::NotDirectory(path),
+         Fact::Listing(_) => Self::ListingChanged(path),
+      }
+   }
 }
 
 impl Display for Miss {
@@ -165,11 +206,49 @@ impl Display for Miss {
       match *self {
          Self::NewKey => f.write_str("new-key"),
          Self::InputChanged(ref path) => write!(f, "inputs-changed:{path}"),
+         Self::Vanished(ref path) => write!(f, "vanished:{path}"),
          Self::Appeared(ref path) => write!(f, "appeared:{path}"),
          Self::NotDirectory(ref path) => write!(f, "not-a-directory:{path}"),
          Self::ListingChanged(ref path) => write!(f, "listing-changed:{path}"),
       }
    }
+}
+
+/// What a stored pass says of the tree as it is now.
+enum Verdict {
+   Hit,
+   /// Only these tests read something that changed.
+   Stale(BTreeSet<String>),
+   Miss(Miss),
+}
+
+enum Found {
+   Hit,
+   Stale(Manifest, BTreeSet<String>),
+   Miss(Miss),
+}
+
+/// The environment variable a test phase reads the tests to run from, one
+/// per line, when only some need to.
+const SELECTED: &str = "BIGTOP_TESTS";
+
+/// The tests a test phase should limit itself to, or none to run them all.
+pub fn selected<T>() -> io::Result<Option<Vec<T>>>
+where
+   T: FromStr<Err: Display>,
+{
+   let Ok(text) = var(SELECTED) else {
+      return Ok(None);
+   };
+   text
+      .lines()
+      .map(|line| {
+         line
+            .parse()
+            .map_err(|error| io::Error::other(format!("{line}: {error}")))
+      })
+      .collect::<io::Result<_>>()
+      .map(Some)
 }
 
 pub enum Ran {
@@ -184,10 +263,15 @@ fn request(ctx: &Ctx, step: &Step, module: Option<&'static str>) -> io::Result<K
             .ok_or_else(|| io::Error::other(format!("bigtop has no fingerprint for {path}")))
       })
       .transpose()?;
+   // a new release changes what the tests read, which the reads catch
+   let mut spec = ctx.spec.clone();
+   if let Some(fields) = spec.as_object_mut() {
+      fields.remove("version");
+   }
    let request = Request {
       step:        &step.name,
       kind:        &step.kind,
-      spec:        &ctx.spec,
+      spec:        &spec,
       environment: vars().filter(|entry| inherited(&entry.0)).collect(),
       shared:      SHARED,
       module:      fingerprinted,
@@ -215,11 +299,37 @@ fn spelled(store: &Store, path: &str) -> String {
 /// A file's identity as `Store::input_id` gives it, for a path that is not
 /// UTF-8 and so is neither masked nor known to the daemon.
 fn raw_identity(store: &Store, path: &Path) -> io::Result<InputId> {
-   let bytes = read(path)?;
-   if path.starts_with(STORE_DIR) {
-      return Ok(InputId::Content(Identity::of(&bytes)));
+   Ok(held(store, path, read(path)?))
+}
+
+/// What `Store::input_id` makes of `path` holding `bytes`.
+fn held(store: &Store, path: &Path, bytes: Vec<u8>) -> InputId {
+   match path.to_str() {
+      Some(text) => store.content_id(text, bytes),
+      None if path.starts_with(STORE_DIR) => InputId::Content(Identity::of(&bytes)),
+      None => store.content_id("", bytes),
    }
-   Ok(store.content_id("", bytes))
+}
+
+/// A file's identity now.
+fn identity(store: &Store, path: &Path) -> io::Result<InputId> {
+   path
+      .to_str()
+      .map_or_else(|| raw_identity(store, path), |text| store.input_id(text))
+}
+
+fn entry(store: &Store, units: &[String], path: &Path, fact: Fact, readers: &Readers) -> Entry {
+   Entry {
+      path: Spelling::of(store, path),
+      fact,
+      only_tests: !readers.shared,
+      units: readers
+         .units
+         .iter()
+         .filter_map(|name| units.binary_search(name).ok())
+         .filter_map(|at| u32::try_from(at).ok())
+         .collect(),
+   }
 }
 
 /// The listing of every directory under `top` as `names` gives it, taken
@@ -272,9 +382,12 @@ impl Manifest {
    /// What the step read and the build had made before it ran, or why the
    /// accesses cannot stand for that.
    fn build(
-      accesses: Accesses,
-      mut before: BTreeMap<PathBuf, String>,
-      mark: &Mark,
+      Traced {
+         accesses,
+         mut before,
+         mark,
+         tests,
+      }: Traced,
       client: &mut Client,
       store: &mut Store,
    ) -> io::Result<Result<Self, String>> {
@@ -293,50 +406,75 @@ impl Manifest {
             .filter_map(|name| var(name).ok().map(PathBuf::from)),
       );
       let ignored = |path: &Path| {
-         own.iter().any(|mine| mine == path) || PSEUDO.iter().any(|root| path.starts_with(root))
+         own.iter().any(|mine| mine == path)
+            || PSEUDO.iter().any(|root| path.starts_with(root))
+            || tests.is_some_and(|harness| harness.state(path))
       };
       let written = |path: &Path| symlink_metadata(path).is_ok_and(|meta| mark.written(&meta));
+      let mut paths = accesses.paths;
+      let listed = accesses.listed;
+      let mut prior = accesses.prior;
+      let units = paths
+         .values()
+         .chain(listed.values())
+         .flat_map(|readers| readers.units.iter().cloned())
+         .collect::<BTreeSet<_>>()
+         .into_iter()
+         .collect::<Vec<_>>();
+      let mut entries = Vec::new();
+      for path in accesses.looked_up {
+         if units.is_empty() {
+            paths.entry(path).or_default().shared = true;
+            continue;
+         }
+         if paths.contains_key(&path) || ignored(&path) || written(&path) {
+            continue;
+         }
+         if let Some(fact) = Self::presence(&path, &mark) {
+            entries.push(entry(store, &units, &path, fact, &Readers::outside()));
+         }
+      }
       let mut files = Vec::new();
-      let mut absent = Vec::new();
-      let mut directories = Vec::new();
-      for path in accesses.paths {
-         if ignored(&path) || written(&path) {
+      for (path, readers) in paths {
+         if ignored(&path) {
+            continue;
+         }
+         if let Some(bytes) = prior.remove(&path) {
+            let fact = Fact::File(held(store, &path, bytes));
+            entries.push(entry(store, &units, &path, fact, &readers));
+            continue;
+         }
+         if written(&path) {
             continue;
          }
          match metadata(&path) {
             Ok(meta) if mark.written(&meta) => {},
-            Ok(meta) if meta.is_dir() => directories.push(Spelling::of(store, &path)),
-            Ok(meta) if meta.is_file() => files.push(path),
+            Ok(meta) if meta.is_dir() => {
+               entries.push(entry(store, &units, &path, Fact::Directory, &readers));
+            },
+            Ok(meta) if meta.is_file() => files.push((path, readers)),
             Err(error) if error.kind() == ErrorKind::NotFound => {
-               absent.push(Spelling::of(store, &path));
+               entries.push(entry(store, &units, &path, Fact::Absent, &readers));
             },
             Ok(_) | Err(_) => {},
          }
       }
       let texts = files
          .iter()
-         .filter_map(|path| path.to_str().map(str::to_owned))
+         .filter_map(|pair| pair.0.to_str().map(str::to_owned))
          .collect::<Vec<_>>();
       prefetch(client, store, &texts)?;
-      let inputs = files
-         .iter()
-         .map(|path| {
-            let spelling = Spelling::of(store, path);
-            let identity = match (path.to_str(), spelling.clone()) {
-               (Some(text), Spelling::Text(spelled)) if is_store_path(text) && spelled == text => {
-                  InputId::Path(spelled)
-               },
-               (Some(text), _) => store.input_id(text)?,
-               (None, _) => raw_identity(store, path)?,
-            };
-            Ok(Input {
-               path: spelling,
-               identity,
-            })
-         })
-         .collect::<io::Result<_>>()?;
-      let mut listings = Vec::new();
-      for path in accesses.listed {
+      for (path, readers) in files {
+         let spelling = Spelling::of(store, &path);
+         let fact = match (path.to_str(), spelling) {
+            (Some(text), Spelling::Text(spelled)) if is_store_path(text) && spelled == text => {
+               Fact::File(InputId::Path(spelled))
+            },
+            _ => Fact::File(identity(store, &path)?),
+         };
+         entries.push(entry(store, &units, &path, fact, &readers));
+      }
+      for (path, readers) in listed {
          if ignored(&path) {
             continue;
          }
@@ -348,70 +486,132 @@ impl Manifest {
          } else {
             names(&path, &|_entry| true)?
          };
-         listings.push(Listing {
-            path: Spelling::of(store, &path),
-            names,
-         });
+         entries.push(entry(store, &units, &path, Fact::Listing(names), &readers));
       }
-      Ok(Ok(Self {
-         inputs,
-         absent,
-         directories,
-         listings,
-      }))
+      Ok(Ok(Self { units, entries }))
    }
 
-   fn matches(&self, client: &mut Client, store: &mut Store) -> io::Result<Result<(), Miss>> {
-      let mut paths = Vec::with_capacity(self.inputs.len());
-      for input in &self.inputs {
-         let Some(path) = input.path.resolve(store) else {
-            return Ok(Err(Miss::InputChanged(input.path.clone())));
-         };
-         paths.push(path);
+   /// Whether a path the harness only looked up exists and as what, none
+   /// when the run made it.
+   fn presence(path: &Path, mark: &Mark) -> Option<Fact> {
+      match metadata(path) {
+         Ok(meta) if mark.written(&meta) => None,
+         Ok(meta) if meta.is_dir() => Some(Fact::Directory),
+         Ok(_) => Some(Fact::Present),
+         Err(error) if error.kind() == ErrorKind::NotFound => Some(Fact::Absent),
+         Err(_) => None,
       }
-      let texts = paths
+   }
+
+   /// Whether `path` still holds `fact`.
+   fn holds(store: &Store, fact: &Fact, resolved: Option<&Path>) -> io::Result<bool> {
+      let Some(path) = resolved else {
+         return Ok(matches!(*fact, Fact::Absent));
+      };
+      Ok(match *fact {
+         Fact::File(InputId::Path(ref exact)) => Path::new(exact).exists(),
+         Fact::File(ref recorded) => {
+            match identity(store, path) {
+               Ok(found) => found == *recorded,
+               Err(error) if error.kind() == ErrorKind::NotFound => false,
+               Err(error) => return Err(error),
+            }
+         },
+         Fact::Present => path.exists() && !path.is_dir(),
+         Fact::Absent => !path.exists(),
+         Fact::Directory => path.is_dir(),
+         Fact::Listing(ref digest) => names(path, &|_entry| true)? == *digest,
+      })
+   }
+
+   fn matches(&self, client: &mut Client, store: &mut Store) -> io::Result<Verdict> {
+      let resolved = self
+         .entries
          .iter()
-         .filter_map(|path| path.to_str().map(str::to_owned))
+         .map(|entry| entry.path.resolve(store))
+         .collect::<Vec<_>>();
+      let texts = self
+         .entries
+         .iter()
+         .zip(&resolved)
+         .filter(|pair| matches!(pair.0.fact, Fact::File(_)))
+         .filter_map(|pair| pair.1.as_ref()?.to_str().map(str::to_owned))
          .collect::<Vec<_>>();
       prefetch(client, store, &texts)?;
-      for (input, path) in self.inputs.iter().zip(&paths) {
-         if let InputId::Path(ref exact) = input.identity {
-            if !Path::new(exact).exists() {
-               return Ok(Err(Miss::InputChanged(input.path.clone())));
-            }
+      let mut stale = BTreeSet::new();
+      for (entry, path) in self.entries.iter().zip(&resolved) {
+         if Self::holds(store, &entry.fact, path.as_deref())? {
             continue;
          }
-         let identity = path
-            .to_str()
-            .map_or_else(|| raw_identity(store, path), |text| store.input_id(text));
-         match identity {
-            Ok(found) if found == input.identity => {},
-            Ok(_) => return Ok(Err(Miss::InputChanged(input.path.clone()))),
-            Err(error) if error.kind() == ErrorKind::NotFound => {
-               return Ok(Err(Miss::InputChanged(input.path.clone())));
-            },
-            Err(error) => return Err(error),
+         if !entry.only_tests || self.units.is_empty() {
+            return Ok(Verdict::Miss(Miss::of(entry)));
+         }
+         stale.extend(
+            entry
+               .units
+               .iter()
+               .filter_map(|&at| self.units.get(usize::try_from(at).ok()?).cloned()),
+         );
+      }
+      Ok(if stale.is_empty() {
+         Verdict::Hit
+      } else {
+         Verdict::Stale(stale)
+      })
+   }
+
+   /// This pass with the tests `newer` ran taken from `newer`, what the rest
+   /// read kept as it was.
+   fn merge(&self, newer: &Self) -> Self {
+      let rerun = newer.units.iter().collect::<BTreeSet<_>>();
+      let units = self
+         .units
+         .iter()
+         .filter(|name| !rerun.contains(name))
+         .chain(&newer.units)
+         .cloned()
+         .collect::<BTreeSet<_>>()
+         .into_iter()
+         .collect::<Vec<_>>();
+      let mut merged = HashMap::<(Spelling, Discriminant<Fact>), Entry>::new();
+      for (manifest, renewed) in [(self, false), (newer, true)] {
+         for found in &manifest.entries {
+            let mut moved = found
+               .units
+               .iter()
+               .filter_map(|&at| manifest.units.get(usize::try_from(at).ok()?))
+               .filter(|name| renewed || !rerun.contains(name))
+               .filter_map(|name| units.binary_search(name).ok())
+               .filter_map(|at| u32::try_from(at).ok())
+               .collect::<Vec<_>>();
+            if found.only_tests && moved.is_empty() {
+               continue;
+            }
+            match merged.entry((found.path.clone(), discriminant(&found.fact))) {
+               Slot::Vacant(slot) => {
+                  slot.insert(Entry {
+                     path:       found.path.clone(),
+                     fact:       found.fact.clone(),
+                     only_tests: found.only_tests,
+                     units:      moved,
+                  });
+               },
+               Slot::Occupied(mut slot) => {
+                  let kept = slot.get_mut();
+                  kept.only_tests &= found.only_tests;
+                  kept.units.append(&mut moved);
+                  kept.units.sort_unstable();
+                  kept.units.dedup();
+                  if renewed {
+                     kept.fact = found.fact.clone();
+                  }
+               },
+            }
          }
       }
-      for spelling in &self.absent {
-         if spelling.resolve(store).is_some_and(|path| path.exists()) {
-            return Ok(Err(Miss::Appeared(spelling.clone())));
-         }
-      }
-      for spelling in &self.directories {
-         if !spelling.resolve(store).is_some_and(|path| path.is_dir()) {
-            return Ok(Err(Miss::NotDirectory(spelling.clone())));
-         }
-      }
-      for listing in &self.listings {
-         let Some(path) = listing.path.resolve(store) else {
-            return Ok(Err(Miss::ListingChanged(listing.path.clone())));
-         };
-         if names(&path, &|_entry| true)? != listing.names {
-            return Ok(Err(Miss::ListingChanged(listing.path.clone())));
-         }
-      }
-      Ok(Ok(()))
+      let mut entries = merged.into_values().collect::<Vec<_>>();
+      entries.sort_by(|left, right| left.path.cmp(&right.path));
+      Self { units, entries }
    }
 }
 
@@ -437,17 +637,26 @@ fn stored(client: &mut Client, key: &Key) -> io::Result<Vec<Manifest>> {
       .unwrap_or_default())
 }
 
-fn lookup(client: &mut Client, store: &mut Store, key: &Key) -> io::Result<Result<(), Miss>> {
+fn lookup(client: &mut Client, store: &mut Store, key: &Key) -> io::Result<Found> {
    let mut first = None;
+   let mut best: Option<(Manifest, BTreeSet<String>)> = None;
    for manifest in stored(client, key)? {
       match manifest.matches(client, store)? {
-         Ok(()) => return Ok(Ok(())),
-         Err(miss) => {
+         Verdict::Hit => return Ok(Found::Hit),
+         Verdict::Stale(names) => {
+            if best.as_ref().is_none_or(|pair| names.len() < pair.1.len()) {
+               best = Some((manifest, names));
+            }
+         },
+         Verdict::Miss(miss) => {
             first.get_or_insert(miss);
          },
       }
    }
-   Ok(Err(first.unwrap_or(Miss::NewKey)))
+   Ok(match best {
+      Some((manifest, names)) => Found::Stale(manifest, names),
+      None => Found::Miss(first.unwrap_or(Miss::NewKey)),
+   })
 }
 
 fn publish(client: &mut Client, key: &Key, manifest: Manifest) -> io::Result<()> {
@@ -499,67 +708,85 @@ fn lineage(client: &mut Client, ctx: &Ctx, step: &Step, key: &Key) -> io::Result
    client.put(&listing, &serde_json::to_vec(&keys)?)
 }
 
-/// A test step skipped when a stored pass matches, otherwise run traced from
-/// `command` and its pass stored. `module` is the build system's, for a step
-/// that dispatches into one. Cache trouble is noted, never a failure.
-pub fn run(
-   mut client: Client,
-   ctx: &Ctx,
-   step: &Step,
-   module: Option<&'static str>,
+struct Traced {
+   accesses: Accesses,
+   before:   BTreeMap<PathBuf, String>,
+   mark:     Mark,
+   tests:    Option<&'static dyn Tests>,
+}
+
+/// One run of the step from `command`, limited to the `selected` tests when
+/// given, traced when the filter installs.
+fn attempt(
    command: &dyn Fn() -> io::Result<Command>,
-) -> io::Result<Ran> {
-   let key = request(ctx, step, module)?;
-   let mut store = Store::new();
-   match lookup(&mut client, &mut store, &key) {
-      Ok(Ok(())) => {
-         note("test-cache", "passed before, skipped");
-         return Ok(Ran::Skipped);
-      },
-      Ok(Err(miss)) => note("test-cache", &format!("miss, {miss}")),
-      Err(error) => note("test-cache", &format!("lookup failed with {error}")),
-   }
+   tests: Option<&'static dyn Tests>,
+   selected: Option<&BTreeSet<String>>,
+) -> io::Result<(ExitStatus, Option<Traced>)> {
+   let make = || {
+      let mut built = command()?;
+      if let Some(names) = selected {
+         let list = names
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("\n");
+         built.env(SELECTED, list);
+      }
+      Ok(built)
+   };
    let before = snapshot(Path::new(&build_top()?))?;
    let mark = Mark::now();
    // a signal landing before the trace server takes a call still turns it
    // into EINTR, even for an open of a regular file, so a traced failure
    // may be the tracer's
-   let (status, traced) = match trace::run(command)? {
+   Ok(match trace::run(&make, tests, mark)? {
       Outcome::Traced(status, accesses) if status.success() || !accesses.interruptible => {
-         (status, Some(accesses))
+         let traced = Traced {
+            accesses,
+            before,
+            mark,
+            tests,
+         };
+         (status, Some(traced))
       },
       Outcome::Traced(status, _) => {
          note(
             "test-cache",
             &format!("traced run failed with {status}, rerunning untraced"),
          );
-         (command()?.status()?, None)
+         (make()?.status()?, None)
       },
       Outcome::Untraced(status, why) => {
          note("test-cache", &format!("untraced, {why}"));
          (status, None)
       },
+   })
+}
+
+/// Stores a passing run's reads under `key`, merged into the pass it reran
+/// some tests of when there is one. Cache trouble is noted, never a failure.
+fn keep(
+   client: &mut Client,
+   store: &mut Store,
+   (ctx, step, key): (&Ctx, &Step, &Key),
+   traced: Option<Traced>,
+   older: Option<Manifest>,
+) {
+   let Some(run) = traced else {
+      return;
    };
-   if !status.success() {
-      return Err(io::Error::other(format!(
-         "phase {} failed, {status}",
-         step.name
-      )));
-   }
-   let Some(accesses) = traced else {
-      return Ok(Ran::Passed);
-   };
-   match Manifest::build(accesses, before, &mark, &mut client, &mut store) {
-      Ok(Ok(manifest)) => {
+   match Manifest::build(run, client, store) {
+      Ok(Ok(built)) => {
+         let manifest = match older {
+            Some(previous) => previous.merge(&built),
+            None => built,
+         };
          let counts = format!(
-            "{} inputs, {} absent, {} listings",
-            manifest.inputs.len(),
-            manifest.absent.len(),
-            manifest.listings.len()
+            "{} paths, {} tests",
+            manifest.entries.len(),
+            manifest.units.len()
          );
-         match publish(&mut client, &key, manifest)
-            .and_then(|()| lineage(&mut client, ctx, step, &key))
-         {
+         match publish(client, key, manifest).and_then(|()| lineage(client, ctx, step, key)) {
             Ok(()) => note("test-cache", &format!("stored, {counts}")),
             Err(error) => note("test-cache", &format!("store failed with {error}")),
          }
@@ -567,5 +794,65 @@ pub fn run(
       Ok(Err(why)) => note("test-cache", &format!("not stored, {why}")),
       Err(error) => note("test-cache", &format!("not stored, {error}")),
    }
+}
+
+/// A test step skipped when a stored pass matches, otherwise run traced from
+/// `command` and its pass stored. `module` is the build system's, for a step
+/// that dispatches into one, and `tests` how its harness divides the step,
+/// so that a pass whose changed reads belong to some tests reruns only those.
+pub fn run(
+   mut client: Client,
+   ctx: &Ctx,
+   step: &Step,
+   module: Option<&'static str>,
+   tests: Option<&'static dyn Tests>,
+   command: &dyn Fn() -> io::Result<Command>,
+) -> io::Result<Ran> {
+   let key = request(ctx, step, module)?;
+   let mut store = Store::new();
+   let found = lookup(&mut client, &mut store, &key).unwrap_or_else(|error| {
+      note("test-cache", &format!("lookup failed with {error}"));
+      Found::Miss(Miss::NewKey)
+   });
+   match found {
+      Found::Hit => {
+         note("test-cache", "passed before, skipped");
+         return Ok(Ran::Skipped);
+      },
+      Found::Stale(manifest, names) => {
+         note(
+            "test-cache",
+            &format!(
+               "{} of {} tests read changed files, running those",
+               names.len(),
+               manifest.units.len()
+            ),
+         );
+         let (status, traced) = attempt(command, tests, Some(&names))?;
+         if status.success() {
+            keep(
+               &mut client,
+               &mut store,
+               (ctx, step, &key),
+               traced,
+               Some(manifest),
+            );
+            return Ok(Ran::Passed);
+         }
+         note(
+            "test-cache",
+            &format!("those failed with {status}, running every test"),
+         );
+      },
+      Found::Miss(miss) => note("test-cache", &format!("miss, {miss}")),
+   }
+   let (status, traced) = attempt(command, tests, None)?;
+   if !status.success() {
+      return Err(io::Error::other(format!(
+         "phase {} failed, {status}",
+         step.name
+      )));
+   }
+   keep(&mut client, &mut store, (ctx, step, &key), traced, None);
    Ok(Ran::Passed)
 }

@@ -55,6 +55,7 @@ use crate::{
       syslibs,
       vcxproj::Vcxproj,
    },
+   trace::Tests,
 };
 
 /// a build system as `builder/systems/<name>.nu` was, setup prints the
@@ -90,6 +91,11 @@ pub trait System: Sync {
    }
 
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()>;
+
+   /// How the test phase divides into tests run and cached one by one.
+   fn tests(&self) -> Option<&'static dyn Tests> {
+      None
+   }
 }
 
 #[derive(Deserialize)]
@@ -142,6 +148,10 @@ pub fn setup(name: &str, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<
 
 pub fn module(name: &str) -> io::Result<&'static str> {
    Ok(system(name)?.module())
+}
+
+pub fn tests(name: &str) -> io::Result<Option<&'static dyn Tests>> {
+   Ok(system(name)?.tests())
 }
 
 pub fn workdir(name: &str, ctx: &Ctx) -> io::Result<PathBuf> {

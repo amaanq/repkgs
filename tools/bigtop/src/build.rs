@@ -47,6 +47,7 @@ use crate::{
       self,
       Ran,
    },
+   trace::Tests,
 };
 
 /// the tail of every nu phase, so what the phase exported reaches the next
@@ -256,13 +257,23 @@ fn tested(
          ref system,
          ref verb,
       } => {
-         let command = || {
+         let phase = |action: &str| {
             let mut command = Command::new(current_exe()?);
-            command.args(["system", "phase", system, verb]);
-            Ok(command)
+            command.args(["system", "phase", system, action]);
+            io::Result::Ok(command)
          };
+         let tests = dispatch::tests(system)?;
+         if tests.is_some_and(Tests::prepares) {
+            let status = phase("test-prepare")?.status()?;
+            if !status.success() {
+               return Err(io::Error::other(format!(
+                  "phase {} failed building its tests, {status}",
+                  step.name
+               )));
+            }
+         }
          let module = dispatch::module(system)?;
-         test_cache::run(client, ctx, step, Some(module), &command)?;
+         test_cache::run(client, ctx, step, Some(module), tests, &|| phase(verb))?;
       },
       Kind::Nu { ref body } => {
          let command = || {
@@ -271,7 +282,7 @@ fn tested(
             Ok(command)
          };
          if matches!(
-            test_cache::run(client, ctx, step, None, &command)?,
+            test_cache::run(client, ctx, step, None, None, &command)?,
             Ran::Passed
          ) {
             handover(&top)?;

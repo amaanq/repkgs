@@ -1,13 +1,28 @@
 use std::{
-   collections::BTreeMap,
+   collections::{
+      BTreeMap,
+      BTreeSet,
+   },
+   convert::Infallible,
    env::var,
-   fmt::Write as _,
+   ffi::{
+      OsStr,
+      OsString,
+   },
+   fmt::{
+      Display,
+      Formatter,
+      Result as FormatResult,
+      Write as _,
+   },
    fs::{
       copy,
       create_dir_all,
+      read,
       read_dir,
       remove_file,
       symlink_metadata,
+      write,
    },
    io,
    os::unix::fs::symlink,
@@ -15,7 +30,11 @@ use std::{
       Path,
       PathBuf,
    },
-   process::Command,
+   process::{
+      Command,
+      Stdio,
+   },
+   str::FromStr,
 };
 
 use mummer::{
@@ -32,11 +51,16 @@ use mummer::{
    },
    tree::note,
 };
+use serde::{
+   Deserialize,
+   Serialize,
+};
 
 use crate::{
    attrs::{
       Attrs,
       Ctx,
+      build_top,
    },
    exports::exports_of,
    prepare::succeed,
@@ -56,6 +80,8 @@ use crate::{
       dispatch::System,
       syslibs,
    },
+   test_cache,
+   trace::Tests,
 };
 
 options! {
@@ -109,6 +135,10 @@ impl System for Cargo {
       Ok(env)
    }
 
+   fn tests(&self) -> Option<&'static dyn Tests> {
+      Some(&Self)
+   }
+
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
       let options = ctx.options::<Options>(self.name())?;
       let extra = Self::arguments(ctx, &options)?;
@@ -118,15 +148,42 @@ impl System for Cargo {
             args.extend(strs(&extra));
             run("cargo", &args, &[])
          },
+         "test-prepare" => Self::prepare_tests(&extra),
          "test" => {
             let threads = ctx.test_jobs()?.to_string();
-            let mut args = vec!["test", "--release", "--offline"];
-            args.extend(strs(&extra));
-            args.extend(["--", "--test-threads", &threads]);
+            let mut harness = vec!["--".to_owned(), "--test-threads".to_owned(), threads];
             for skipped in &options.skip_tests {
-               args.extend(["--skip", skipped]);
+               harness.extend(["--skip".to_owned(), skipped.clone()]);
             }
-            run("cargo", &args, &[])
+            let Some(selected) = test_cache::selected::<CargoTest>()? else {
+               return Self::test(&extra, &[], &harness);
+            };
+            let noted = read(Path::new(&build_top()?).join(TARGETS))?;
+            let targets = serde_json::from_slice::<BTreeMap<String, Target>>(&noted)?;
+            let mut chosen = BTreeSet::new();
+            let mut doc = false;
+            for test in selected {
+               match test {
+                  CargoTest::Doc(_) => doc = true,
+                  CargoTest::Binary(file) => {
+                     let target = targets.get(&file).ok_or_else(|| {
+                        io::Error::other(format!("{file} is no test binary cargo built"))
+                     })?;
+                     chosen.insert(target.selector());
+                  },
+               }
+            }
+            if !chosen.is_empty() {
+               Self::test(
+                  &extra,
+                  &chosen.into_iter().flatten().collect::<Vec<_>>(),
+                  &harness,
+               )?;
+            }
+            if doc {
+               Self::test(&extra, &["--doc".to_owned()], &harness)?;
+            }
+            Ok(())
          },
          "install" => Self::install(ctx),
          _ => Err(unknown(self.name(), verb)),
@@ -134,7 +191,172 @@ impl System for Cargo {
    }
 }
 
+/// Where `test-prepare` leaves the test binaries' targets, by file name.
+const TARGETS: &str = ".bigtop-cargo-tests.json";
+
+/// What `cargo test` runs as one test, a test binary by its file name or a
+/// crate's doctests.
+enum CargoTest {
+   Binary(String),
+   Doc(String),
+}
+
+impl Display for CargoTest {
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+      match *self {
+         Self::Binary(ref file) => f.write_str(file),
+         Self::Doc(ref name) => write!(f, "doc:{name}"),
+      }
+   }
+}
+
+impl FromStr for CargoTest {
+   type Err = Infallible;
+
+   fn from_str(text: &str) -> Result<Self, Self::Err> {
+      Ok(text.strip_prefix("doc:").map_or_else(
+         || Self::Binary(text.to_owned()),
+         |name| Self::Doc(name.to_owned()),
+      ))
+   }
+}
+
+/// A target a test binary was built from, as `cargo test` selects it.
+#[derive(Deserialize, Serialize)]
+enum Target {
+   /// Every library's unit tests, since naming one library takes `-p`,
+   /// which resolves features apart from the full run.
+   Lib,
+   Bin(String),
+   Test(String),
+   Bench(String),
+   Example(String),
+}
+
+impl Target {
+   fn selector(&self) -> Vec<String> {
+      match *self {
+         Self::Lib => vec!["--lib".to_owned()],
+         Self::Bin(ref name) => vec!["--bin".to_owned(), name.clone()],
+         Self::Test(ref name) => vec!["--test".to_owned(), name.clone()],
+         Self::Bench(ref name) => vec!["--bench".to_owned(), name.clone()],
+         Self::Example(ref name) => vec!["--example".to_owned(), name.clone()],
+      }
+   }
+}
+
+#[derive(Deserialize)]
+struct Built {
+   kind: Vec<String>,
+   name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "reason", rename_all = "kebab-case")]
+enum Message {
+   CompilerArtifact {
+      target:     Built,
+      executable: Option<PathBuf>,
+   },
+   #[serde(other)]
+   Other,
+}
+
+/// Test binaries are named for their target with a hash cargo keeps across
+/// source edits, and `rustdoc --test` runs a crate's doctests.
+impl Tests for Cargo {
+   fn unit(&self, exe: &Path, args: &[OsString], _cwd: &Path) -> Option<String> {
+      let test = if exe.parent()?.file_name()? == "deps" {
+         CargoTest::Binary(exe.file_name()?.to_str()?.to_owned())
+      } else if exe.file_name()? == "rustdoc" && args.iter().any(|arg| arg == "--test") {
+         let at = args.iter().position(|arg| arg == "--crate-name")?;
+         CargoTest::Doc(args.get(at + 1)?.to_str()?.to_owned())
+      } else {
+         return None;
+      };
+      Some(test.to_string())
+   }
+
+   fn prepares(&self) -> bool {
+      true
+   }
+
+   /// Bookkeeping every cargo invocation rewrites.
+   fn state(&self, path: &Path) -> bool {
+      let fingerprint = path
+         .components()
+         .any(|component| component.as_os_str() == ".fingerprint");
+      fingerprint
+         || path
+            .file_name()
+            .and_then(OsStr::to_str)
+            .is_some_and(|name| {
+               name.starts_with(".global-cache")
+                  || name.starts_with(".package-cache")
+                  || name == ".rustc_info.json"
+            })
+   }
+}
+
 impl Cargo {
+   fn test(extra: &[String], selectors: &[String], harness: &[String]) -> io::Result<()> {
+      let mut args = vec!["test", "--release", "--offline"];
+      args.extend(strs(extra));
+      args.extend(strs(selectors));
+      args.extend(strs(harness));
+      run("cargo", &args, &[])
+   }
+
+   /// Builds the test binaries and notes each one's target, so the traced
+   /// run compiles nothing and can be limited to some of them.
+   fn prepare_tests(extra: &[String]) -> io::Result<()> {
+      let mut args = vec![
+         "test",
+         "--release",
+         "--offline",
+         "--no-run",
+         "--message-format=json-render-diagnostics",
+      ];
+      args.extend(strs(extra));
+      let output = Command::new("cargo")
+         .args(&args)
+         .stderr(Stdio::inherit())
+         .output()?;
+      if !output.status.success() {
+         return Err(io::Error::other(format!(
+            "cargo test --no-run failed, {}",
+            output.status
+         )));
+      }
+      let mut targets = BTreeMap::new();
+      for line in output.stdout.split(|byte| *byte == b'\n') {
+         let Ok(Message::CompilerArtifact { target, executable }) =
+            serde_json::from_slice::<Message>(line)
+         else {
+            continue;
+         };
+         let kind = target.kind.first().map_or("", String::as_str);
+         let Some(file) = executable
+            .filter(|path| path.parent().and_then(Path::file_name) == Some(OsStr::new("deps")))
+            .and_then(|path| path.file_name()?.to_str().map(str::to_owned))
+         else {
+            continue;
+         };
+         let built = match kind {
+            "bin" => Target::Bin(target.name),
+            "test" => Target::Test(target.name),
+            "bench" => Target::Bench(target.name),
+            "example" => Target::Example(target.name),
+            _ => Target::Lib,
+         };
+         targets.insert(file, built);
+      }
+      write(
+         Path::new(&build_top()?).join(TARGETS),
+         serde_json::to_vec(&targets)?,
+      )
+   }
+
    fn build(options: &Options, home: Option<PathBuf>) -> CargoBuild {
       CargoBuild {
          features: options.features.clone(),

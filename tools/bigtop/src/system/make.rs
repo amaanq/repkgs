@@ -1,5 +1,11 @@
 use std::{
+   collections::BTreeMap,
    env::var,
+   fmt::{
+      Display,
+      Formatter,
+      Result as FormatResult,
+   },
    fs::{
       copy,
       read_to_string,
@@ -10,6 +16,7 @@ use std::{
       Path,
       PathBuf,
    },
+   str::FromStr,
 };
 
 use mummer::{
@@ -36,6 +43,7 @@ use crate::{
       },
       dispatch::System,
    },
+   test_cache,
 };
 
 options! {
@@ -198,12 +206,57 @@ pub fn build(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> 
    run("make", &args, &[])
 }
 
+/// A test automake's parallel harness ran, named by the directory its
+/// driver ran in and the name the driver was given.
+pub struct AutomakeTest {
+   pub directory: String,
+   pub name:      String,
+}
+
+impl Display for AutomakeTest {
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+      write!(f, "{}\t{}", self.directory, self.name)
+   }
+}
+
+impl FromStr for AutomakeTest {
+   type Err = String;
+
+   fn from_str(text: &str) -> Result<Self, Self::Err> {
+      let (directory, name) = text
+         .split_once('\t')
+         .ok_or_else(|| format!("{text} names no automake test"))?;
+      Ok(Self {
+         directory: directory.to_owned(),
+         name:      name.to_owned(),
+      })
+   }
+}
+
 pub fn test(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
    let jobs = format!("-j{}", ctx.test_jobs()?);
-   let mut args = vec![jobs.as_str(), "VERBOSE=1"];
-   args.extend(strs(targets));
-   args.extend(strs(flags));
-   run("make", &args, &[])
+   let Some(selected) = test_cache::selected::<AutomakeTest>()? else {
+      let mut args = vec![jobs.as_str(), "VERBOSE=1"];
+      args.extend(strs(targets));
+      args.extend(strs(flags));
+      return run("make", &args, &[]);
+   };
+   let mut directories = BTreeMap::<String, Vec<String>>::new();
+   for test in selected {
+      directories
+         .entry(test.directory)
+         .or_default()
+         .push(test.name);
+   }
+   for (directory, names) in directories {
+      let tests = format!("TESTS={}", names.join(" "));
+      let mut args = vec!["-C", directory.as_str(), jobs.as_str(), "VERBOSE=1"];
+      args.extend(strs(targets));
+      args.push(&tests);
+      args.extend(strs(flags));
+      run("make", &args, &[])?;
+   }
+   Ok(())
 }
 
 pub fn install(_ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
