@@ -1,0 +1,7 @@
+tag     = "v{version}"
+track   = "github:aristocratos/btop"
+fetch   = { archive = true }
+with    = [ "cmake" ]
+deps    = [ "googletest" ]
+tools   = [ "lowdown" ]
+patches = [ "input-signal-header.patch", "static-test-library.patch" ]
