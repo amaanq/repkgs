@@ -80,7 +80,7 @@ pub fn compute(
    let mut env = BTreeMap::<String, Value>::new();
    sandbox_dirs(&mut env, &top, &bins, out)?;
    reproducible(&mut env, attrs);
-   toolchain(&mut env, attrs, spec, deps, &top, &bins)?;
+   toolchain(&mut env, attrs, spec, deps, &top, &bins, out)?;
    let platform = Platform::deserialize(&attrs.platform)?;
    package_cc(&mut env, spec, &platform, deps, &bins)?;
    python_path(&mut env, &attrs.build_dependencies)?;
@@ -194,6 +194,7 @@ fn toolchain(
    deps: &[Exports],
    top: &str,
    bins: &[PathBuf],
+   out: &Path,
 ) -> io::Result<()> {
    let mut roots = deps
       .iter()
@@ -229,11 +230,10 @@ fn toolchain(
    set(env, "RANLIB", "llvm-ranlib");
    set(env, "NM", "llvm-nm");
    set(env, "STRIP", "llvm-strip");
-   set(
-      env,
-      "PKG_CONFIG_PATH",
-      dirs(deps, |dep| &dep.pkgconfig_dirs).join(":"),
-   );
+   let own = utf8(out)?;
+   let mut pkgconfig = dirs(deps, |dep| &dep.pkgconfig_dirs);
+   pkgconfig.extend(["lib/pkgconfig", "share/pkgconfig"].map(|rel| format!("{own}/{rel}")));
+   set(env, "PKG_CONFIG_PATH", pkgconfig.join(":"));
    set(
       env,
       "CMAKE_PREFIX_PATH",
