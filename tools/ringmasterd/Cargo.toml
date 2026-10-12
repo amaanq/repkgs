@@ -1,0 +1,28 @@
+[package]
+name                   = "ringmasterd"
+description            = "Kernel-side file access tracer for motley's test cache"
+license                = "EUPL-1.2"
+repository             = "https://github.com/manic-systems/motley"
+keywords               = [ "bpf", "trace", "nix", "test" ]
+categories             = [ "development-tools" ]
+version.workspace      = true
+edition.workspace      = true
+readme.workspace       = true
+rust-version.workspace = true
+
+[features]
+daemon = [ "dep:aya", "dep:misstep", "dep:pound", "rustix/event", "rustix/rand" ]
+
+[[bin]]
+name              = "ringmasterd"
+required-features = [ "daemon" ]
+
+[dependencies]
+aya     = { optional = true, version = "0.14.0" }
+libc    = "0.2.189"
+misstep = { optional = true, workspace = true }
+pound   = { optional = true, version = "0.3.0" }
+rustix  = { features = [ "net", "process" ], workspace = true }
+
+[lints]
+workspace = true

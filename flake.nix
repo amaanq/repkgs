@@ -48,6 +48,7 @@
       checks = each (system: import ./nix/checks.nix { inherit system nixpkgs; });
 
       nixosModules.mummerd = ./nix/module.nix;
+      nixosModules.ringmasterd = ./nix/ringmasterd.nix;
 
       formatter = each (system: import ./nix/format.nix { pkgs = nixpkgs.legacyPackages.${system}; });
 
@@ -63,6 +64,8 @@
             rom = rom.packages.${system}.default;
           };
           rust = pkgs.mkShell {
+            # the wrapped clang adds flags the bpf target rejects
+            RINGMASTERD_CLANG = pkgs.lib.getExe' pkgs.llvmPackages.clang-unwrapped "clang";
             packages =
               with pkgs;
               [
