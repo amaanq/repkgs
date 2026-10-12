@@ -18,6 +18,7 @@ let
     concatMap
     elem
     filter
+    isAttrs
     isList
     mapAttrs
     ;
@@ -62,12 +63,28 @@ in
     (misplaced "dependencies" platform.name (args.dependencies or [ ]))
     (misplaced "buildDependencies" platform.system (args.buildDependencies or [ ]))
   ];
-  # fully checked only where read, since an interpolated string forces its dependency
+  # fully checked only where read, since an interpolated string forces its dependency. A record
+  # field is checked field by field, as `tests.separate` shapes the package while a
+  # `tests.dependencies` entry may itself be built with the package
   valid = mapAttrs (
     field: value:
     let
+      declared = schema.subfields field;
       errors = schema.checkField "deep" field value;
     in
-    if !(elem field schema.recipeFields) || errors == [ ] then value else fail (lib.join "; " errors)
+    if !(elem field schema.recipeFields) then
+      value
+    else if declared != { } && isAttrs value then
+      mapAttrs (
+        sub: inner:
+        let
+          wrong = if declared ? ${sub} then schema.checkSubfield "deep" field sub inner else [ ];
+        in
+        if wrong == [ ] then inner else fail (lib.join "; " wrong)
+      ) value
+    else if errors == [ ] then
+      value
+    else
+      fail (lib.join "; " errors)
   ) args;
 }
