@@ -34,6 +34,7 @@ static long (*bpf_probe_read_kernel)(void *dst, __u32 size, const void *src) = (
 static long (*bpf_probe_read_kernel_str)(void *dst, __u32 size, const void *src) = (void *)115;
 static long (*bpf_ringbuf_output)(void *ringbuf, void *data, __u64 size, __u64 flags) = (void *)130;
 static struct task_struct *(*bpf_get_current_task_btf)(void) = (void *)158;
+static long (*bpf_loop)(__u32 count, void *callback, void *context, __u64 flags) = (void *)181;
 
 struct qstr {
    __u32 len;
@@ -246,6 +247,60 @@ INLINE struct mount *mount_of(struct vfsmount *vfsmount) {
                            __builtin_preserve_field_info(((struct mount *)0)->mnt, 0));
 }
 
+struct walking {
+   struct scratch *scratch;
+   struct dentry *dentry;
+   struct vfsmount *vfsmount;
+   struct dentry *root_dentry;
+   struct vfsmount *root_mount;
+   __u32 at;
+   /* Reached the task's root or the top of its mount tree. */
+   __u32 done;
+};
+
+/* One component of a walk, 1 to stop. A callback, so the verifier checks one
+ * step rather than every unrolled one. */
+static long step(__u32 index, struct walking *walking) {
+   struct dentry *dentry = walking->dentry;
+   struct vfsmount *vfsmount = walking->vfsmount;
+   if (dentry == walking->root_dentry && vfsmount == walking->root_mount) {
+      walking->done = 1;
+      return 1;
+   }
+   struct dentry *mount_root = 0;
+   struct dentry *parent = 0;
+   READ(mount_root, vfsmount->mnt_root);
+   READ(parent, dentry->d_parent);
+   if (dentry == mount_root || dentry == parent) {
+      struct mount *mount = mount_of(vfsmount);
+      struct mount *above = 0;
+      READ(above, mount->mnt_parent);
+      if (dentry != mount_root || above == mount) {
+         walking->done = 1;
+         return 1;
+      }
+      READ(walking->dentry, mount->mnt_mountpoint);
+      walking->vfsmount = (struct vfsmount *)((char *)above +
+                                              __builtin_preserve_field_info(((struct mount *)0)->mnt, 0));
+      return 0;
+   }
+   __u32 length = 0;
+   const unsigned char *name = 0;
+   READ(length, dentry->d_name.len);
+   READ(name, dentry->d_name.name);
+   length &= 255;
+   __u32 at = walking->at;
+   if (2 * FIELD - at + length + 1 >= FIELD)
+      return 1;
+   at -= length;
+   bpf_probe_read_kernel(&walking->scratch->walk[at & (2 * FIELD - 1)], length, name);
+   at -= 1;
+   walking->scratch->walk[at & (2 * FIELD - 1)] = '/';
+   walking->at = at;
+   walking->dentry = parent;
+   return 0;
+}
+
 /* Writes `where` as the task sees it, from its root down, into the field the
  * record's base starts at, returning its length or a negative number when it
  * does not fit. Components are laid down backwards into `walk` first, since
@@ -253,52 +308,25 @@ INLINE struct mount *mount_of(struct vfsmount *vfsmount) {
 INLINE long walk(struct scratch *scratch, struct dentry *dentry, struct vfsmount *vfsmount) {
    struct task_struct *task = bpf_get_current_task_btf();
    struct fs_struct *fs = 0;
-   struct dentry *root_dentry = 0;
-   struct vfsmount *root_mount = 0;
+   struct walking walking = {
+      .scratch = scratch,
+      .dentry = dentry,
+      .vfsmount = vfsmount,
+      .at = 2 * FIELD,
+   };
    READ(fs, task->fs);
    if (!fs)
       return -1;
-   READ(root_dentry, fs->root.dentry);
-   READ(root_mount, fs->root.mnt);
-
-   __u32 end = 2 * FIELD;
-   __u32 at = end;
-   for (int step = 0; step < DEPTH; step++) {
-      if (dentry == root_dentry && vfsmount == root_mount)
-         break;
-      struct dentry *mount_root = 0;
-      struct dentry *parent = 0;
-      READ(mount_root, vfsmount->mnt_root);
-      READ(parent, dentry->d_parent);
-      if (dentry == mount_root || dentry == parent) {
-         struct mount *mount = mount_of(vfsmount);
-         struct mount *above = 0;
-         READ(above, mount->mnt_parent);
-         if (dentry != mount_root || above == mount)
-            break;
-         READ(dentry, mount->mnt_mountpoint);
-         vfsmount = (struct vfsmount *)((char *)above +
-                                        __builtin_preserve_field_info(((struct mount *)0)->mnt, 0));
-         continue;
-      }
-      __u32 length = 0;
-      const unsigned char *name = 0;
-      READ(length, dentry->d_name.len);
-      READ(name, dentry->d_name.name);
-      length &= 255;
-      if (end - at + length + 1 >= FIELD)
-         return -1;
-      at -= length;
-      bpf_probe_read_kernel(&scratch->walk[at & (2 * FIELD - 1)], length, name);
-      at -= 1;
-      scratch->walk[at & (2 * FIELD - 1)] = '/';
-      dentry = parent;
-   }
-   if (at == end) {
+   READ(walking.root_dentry, fs->root.dentry);
+   READ(walking.root_mount, fs->root.mnt);
+   if (bpf_loop(DEPTH, step, &walking, 0) < 0 || !walking.done)
+      return -1;
+   __u32 at = walking.at;
+   if (at == 2 * FIELD) {
       at -= 1;
       scratch->walk[at & (2 * FIELD - 1)] = '/';
    }
-   __u32 length = end - at;
+   __u32 length = 2 * FIELD - at;
    bpf_probe_read_kernel(&scratch->data[0], length & MASK, &scratch->walk[at & (2 * FIELD - 1)]);
    return length & MASK;
 }
