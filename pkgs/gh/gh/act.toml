@@ -1,0 +1,18 @@
+tag     = "v{version}"
+fetch   = { archive = true }
+with    = [ "go" ]
+patches = [ "huh-prompter-term.patch" ]
+
+[test]
+deps = [ "git", "openssh" ]
+
+[track]
+from = "github:cli/cli"
+
+[track.locks]
+go = "."
+
+[go]
+packages     = [ "./cmd/gh" ]
+testPackages = [ "./..." ]
+ldflags      = [ "-X github.com/cli/cli/v2/internal/build.Version={version}" ]

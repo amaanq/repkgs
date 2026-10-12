@@ -1,0 +1,24 @@
+--- a/internal/prompter/huh_prompter_test.go
++++ b/internal/prompter/huh_prompter_test.go
+@@ -2,6 +2,7 @@
+ 
+ import (
+ 	"io"
++	"os"
+ 	"sync"
+ 	"testing"
+ 	"time"
+@@ -12,6 +13,13 @@
+ 	"github.com/stretchr/testify/require"
+ )
+ 
++// huh.NewForm turns every form accessible under TERM=dumb, which reads
++// lines instead of the keystrokes these tests send
++func TestMain(m *testing.M) {
++	os.Setenv("TERM", "xterm-256color")
++	os.Exit(m.Run())
++}
++
+ // --- Interaction helpers ---
+ // A set of helpers for simulating user input in huh form tests.
+ // Each helper (tab(), toggle(), typeKeys(), etc.) produces raw terminal
