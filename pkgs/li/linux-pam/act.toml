@@ -1,0 +1,28 @@
+tag     = "v{version}"
+track   = "github:linux-pam/linux-pam"
+fetch   = { asset = "Linux-PAM-{version}.tar.xz" }
+with    = [ "meson" ]
+deps    = [ "libxcrypt" ]
+tools   = [ "flex", "bison" ]
+patches = [ "helper-wrapper.patch" ]
+
+[only]
+os = [ "linux" ]
+
+[meson.defs]
+audit       = "disabled"
+docs        = "disabled"
+econf       = "disabled"
+elogind     = "disabled"
+examples    = false
+i18n        = "disabled"
+logind      = "disabled"
+nis         = "disabled"
+openssl     = "disabled"
+pam_lastlog = "enabled"
+pam_unix    = "enabled"
+pam_userdb  = "disabled"
+pwaccess    = "disabled"
+selinux     = "disabled"
+vendordir   = ""
+xtests      = false
