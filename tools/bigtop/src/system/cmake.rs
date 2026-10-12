@@ -1,10 +1,23 @@
 use std::{
    collections::BTreeMap,
+   ffi::OsString,
+   fmt::{
+      Display,
+      Formatter,
+      Result as FormatResult,
+   },
+   fs::read,
    io,
    path::{
       Path,
       PathBuf,
    },
+   process::{
+      Command,
+      Stdio,
+   },
+   str::FromStr,
+   sync::OnceLock,
 };
 
 use mummer::{
@@ -22,13 +35,18 @@ use mummer::{
       walk,
    },
 };
-use serde::Serialize;
+use serde::{
+   Deserialize,
+   Serialize,
+   de::IgnoredAny,
+};
 
 use crate::{
    attrs::{
       Attrs,
       Ctx,
       Def,
+      build_top,
    },
    probe,
    schema::Field,
@@ -41,6 +59,8 @@ use crate::{
       },
       dispatch::System,
    },
+   test_cache,
+   trace::Tests,
 };
 
 options! {
@@ -88,6 +108,10 @@ impl System for Cmake {
       Ok(ctx.build.clone())
    }
 
+   fn tests(&self) -> Option<&'static dyn Tests> {
+      Some(&Self)
+   }
+
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
       let options = ctx.options::<Options>(self.name())?;
       match verb {
@@ -96,6 +120,7 @@ impl System for Cmake {
             let jobs = format!("-j{}", ctx.njobs);
             run("cmake", &["--build", ".", &jobs], &[])
          },
+         "test-prepare" => Self::list_tests(&options),
          "test" => {
             let jobs = ctx.test_jobs()?.to_string();
             let skip = options.skip_tests.join("|");
@@ -103,6 +128,18 @@ impl System for Cmake {
             if !options.skip_tests.is_empty() {
                args.extend(["-E", &skip]);
             }
+            let Some(selected) = test_cache::selected::<CtestTest>()? else {
+               return run("ctest", &args, &[]);
+            };
+            let names = selected
+               .into_iter()
+               .flat_map(|test| test.names)
+               .collect::<Vec<_>>()
+               .join("\n");
+            let list = Path::new(&build_top()?).join(SELECTED);
+            write_file(&list, names.as_bytes(), None)?;
+            let file = utf8(&list)?;
+            args.extend(["--tests-from-file", file]);
             run("ctest", &args, &[])
          },
          "install" => run("cmake", &["--install", "."], &[]),
@@ -112,6 +149,30 @@ impl System for Cmake {
 }
 
 impl Cmake {
+   /// What ctest would run, written where the test phase's tracer reads it.
+   fn list_tests(options: &Options) -> io::Result<()> {
+      let skip = options.skip_tests.join("|");
+      let mut args = vec!["--show-only=json-v1"];
+      if !options.skip_tests.is_empty() {
+         args.extend(["-E", &skip]);
+      }
+      let output = Command::new("ctest")
+         .args(&args)
+         .stderr(Stdio::inherit())
+         .output()?;
+      if !output.status.success() {
+         return Err(io::Error::other(format!(
+            "ctest --show-only failed, {}",
+            output.status
+         )));
+      }
+      write_file(
+         &Path::new(&build_top()?).join(LISTING),
+         &output.stdout,
+         None,
+      )
+   }
+
    fn render(def: &Def) -> String {
       match *def {
          Def::Flag(true) => "ON".to_owned(),
@@ -267,5 +328,125 @@ impl Cmake {
          probe::store(&key, Path::new(&init), socket)?;
       }
       Ok(())
+   }
+}
+
+/// Where `test-prepare` leaves ctest's listing of its tests.
+const LISTING: &str = ".bigtop-ctest-tests.json";
+/// Where the test phase lists the tests ctest should limit itself to.
+const SELECTED: &str = ".bigtop-ctest-selected";
+
+#[derive(Deserialize)]
+struct Listing {
+   tests: Vec<Listed>,
+}
+
+#[derive(Deserialize)]
+struct Listed {
+   name:       String,
+   /// Empty for a test whose executable is not built.
+   #[serde(default)]
+   command:    Vec<String>,
+   #[serde(default)]
+   properties: Vec<Property>,
+}
+
+#[derive(Deserialize)]
+struct Property {
+   name:  String,
+   value: PropertyValue,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum PropertyValue {
+   Text(String),
+   Other(IgnoredAny),
+}
+
+/// The tests ctest starts with one command in one directory, which a process
+/// cannot tell apart, run and cached together.
+struct CtestTest {
+   names: Vec<String>,
+}
+
+impl Display for CtestTest {
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+      f.write_str(&self.names.join("\t"))
+   }
+}
+
+impl FromStr for CtestTest {
+   type Err = String;
+
+   fn from_str(text: &str) -> Result<Self, Self::Err> {
+      if text.is_empty() {
+         return Err("an empty ctest test".to_owned());
+      }
+      Ok(Self {
+         names: text.split('\t').map(str::to_owned).collect(),
+      })
+   }
+}
+
+/// Each test's command and working directory, from the listing.
+type Commands = BTreeMap<(Vec<String>, String), CtestTest>;
+
+fn commands() -> Option<&'static Commands> {
+   static COMMANDS: OnceLock<Option<Commands>> = OnceLock::new();
+   COMMANDS
+      .get_or_init(|| {
+         let bytes = read(Path::new(&build_top().ok()?).join(LISTING)).ok()?;
+         let listing = serde_json::from_slice::<Listing>(&bytes).ok()?;
+         let mut found = Commands::new();
+         for test in listing.tests {
+            let directory = test.properties.into_iter().find_map(|property| {
+               match (property.name.as_str(), property.value) {
+                  ("WORKING_DIRECTORY", PropertyValue::Text(path)) => Some(path),
+                  _ => None,
+               }
+            });
+            let Some(cwd) = directory.filter(|_path| !test.command.is_empty()) else {
+               continue;
+            };
+            found
+               .entry((test.command, cwd))
+               .or_insert_with(|| CtestTest { names: Vec::new() })
+               .names
+               .push(test.name);
+         }
+         Some(found)
+      })
+      .as_ref()
+}
+
+/// ctest execs a test's command as listed, so a test's process runs it, or
+/// runs its interpreter when the command is a script.
+impl Tests for Cmake {
+   fn unit(&self, _exe: &Path, args: &[OsString], cwd: &Path) -> Option<String> {
+      let directory = cwd.to_str()?;
+      commands()?
+         .iter()
+         .find(|entry| {
+            let (ref command, ref listed) = *entry.0;
+            listed == directory
+               && args.len() >= command.len()
+               && args[args.len() - command.len()..]
+                  .iter()
+                  .zip(command)
+                  .all(|pair| pair.0 == pair.1.as_str())
+         })
+         .map(|entry| entry.1.to_string())
+   }
+
+   fn prepares(&self) -> bool {
+      true
+   }
+
+   /// The logs and cost data every ctest run rewrites.
+   fn state(&self, path: &Path) -> bool {
+      path
+         .ancestors()
+         .any(|directory| directory.ends_with("Testing/Temporary"))
    }
 }
