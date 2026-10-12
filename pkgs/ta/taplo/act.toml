@@ -1,0 +1,11 @@
+tag   = "{version}"
+track = "github:tamasfe/taplo"
+fetch = { archive = true }
+with  = [ "cargo" ]
+
+[test]
+bin = [ "taplo" ]
+
+[cargo]
+features = [ "lsp" ]
+flags    = [ "-p", "taplo-cli" ]
