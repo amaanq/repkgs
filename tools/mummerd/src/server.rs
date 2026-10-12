@@ -7,6 +7,7 @@ use std::{
       Cursor,
       Write as _,
    },
+   iter::repeat_with,
    os::unix::net::UnixStream,
    path::Path,
    sync::{
@@ -52,8 +53,19 @@ const REMOTE_PARALLEL: usize = 16;
 
 type Uploads = SyncSender<(Key, Vec<u8>)>;
 
+/// When this machine drops entries clients no longer list.
+#[derive(Clone, Copy)]
+pub struct Forgetting {
+   /// Nanoseconds a key must sit unread before an expiry drops it, none to
+   /// keep every one.
+   pub idle:       Option<u64>,
+   /// Whether a key a client's newer value replaces is dropped at once.
+   pub superseded: bool,
+}
+
 pub struct Daemon {
    store:       Store,
+   forgetting:  Forgetting,
    slots:       Slots,
    identities:  Identities,
    gets:        AtomicU64,
@@ -93,6 +105,7 @@ impl Daemon {
 
    pub fn new(
       store: Store,
+      forgetting: Forgetting,
       limit: usize,
       store_dir: &Path,
       tier: Option<Remote>,
@@ -113,6 +126,7 @@ impl Daemon {
       };
       Ok(Self {
          store,
+         forgetting,
          slots: Slots::new(limit),
          identities: Identities::new(store_dir)?,
          gets: AtomicU64::new(0),
@@ -156,7 +170,7 @@ impl Daemon {
             self.remote_hits.fetch_add(1, Ordering::Relaxed);
             self
                .store
-               .put(&keys[position], &mut Cursor::new(&bytes), bytes.len())?;
+               .put(&keys[position], &mut Cursor::new(&bytes), bytes.len(), None)?;
             values[position] = self.store.get(&keys[position]);
          }
       }
@@ -234,11 +248,25 @@ impl Connection {
                   .writer
                   .write_all(if exists { b"1\n" } else { b"0\n" })?;
             },
-            Request::Put { key, length } => {
-               self.daemon.store.put(&key, &mut self.reader, length)?;
-               self.daemon.puts.fetch_add(1, Ordering::Relaxed);
-               self.daemon.upload(&key)?;
-               self.writer.write_all(b"OK\n")?;
+            Request::Put {
+               key,
+               length,
+               references,
+            } => self.put(&key, length, references)?,
+            Request::Forget(key) => {
+               let idle = if self.daemon.forgetting.superseded {
+                  Some(0)
+               } else {
+                  self.daemon.forgetting.idle
+               };
+               self.drop_unless_kept(&key, idle)?;
+            },
+            Request::Expire(key) => self.drop_unless_kept(&key, self.daemon.forgetting.idle)?,
+            Request::Age(key) => {
+               match self.daemon.store.age(&key) {
+                  Some(nanos) => writeln!(self.writer, "{nanos}")?,
+                  None => self.writer.write_all(b"MISS\n")?,
+               }
             },
             Request::Identities(count) => {
                for _ in 0..count {
@@ -287,6 +315,42 @@ impl Connection {
       Ok(())
    }
 
+   fn put(&mut self, key: &Key, length: usize, references: Option<usize>) -> io::Result<()> {
+      let listed = references
+         .map(|count| {
+            repeat_with(|| {
+               read_line(&mut self.reader)?
+                  .ok_or_else(|| {
+                     io::Error::new(io::ErrorKind::UnexpectedEof, "missing referenced key")
+                  })?
+                  .parse::<Key>()
+            })
+            .take(count)
+            .collect::<io::Result<Vec<Key>>>()
+         })
+         .transpose()?;
+      self
+         .daemon
+         .store
+         .put(key, &mut self.reader, length, listed.as_deref())?;
+      self.daemon.puts.fetch_add(1, Ordering::Relaxed);
+      self.daemon.upload(key)?;
+      self.writer.write_all(b"OK\n")
+   }
+
+   /// Drops a key unless it was read within `idle`, none keeping every key,
+   /// and answers whether the client may stop listing it.
+   fn drop_unless_kept(&mut self, key: &Key, idle: Option<u64>) -> io::Result<()> {
+      let dropped = match idle {
+         _ if self.daemon.store.age(key).is_none() => true,
+         Some(window) => self.daemon.store.forget(key, window)?,
+         None => false,
+      };
+      self
+         .writer
+         .write_all(if dropped { b"OK\n" } else { b"KEPT\n" })
+   }
+
    /// The next request when it is a GET the client already pipelined, so a
    /// batch reaches the remote together.
    fn buffered_get(&mut self) -> io::Result<Option<Key>> {
@@ -333,6 +397,7 @@ mod tests {
       server::{
          Connection,
          Daemon,
+         Forgetting,
       },
       store::{
          Store,
@@ -353,6 +418,10 @@ mod tests {
                budget:    1 << 30,
             }])
             .expect("open store"),
+            Forgetting {
+               idle:       None,
+               superseded: true,
+            },
             1,
             &directory,
             None,

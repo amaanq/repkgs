@@ -47,6 +47,16 @@ in
       default = false;
       description = "Upload this machine's results to the remote, which only a trusted builder should.";
     };
+    forgetIdle = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 14;
+      description = "Days a result no build lists any more must sit unread before it is dropped, 0 to keep every one.";
+    };
+    keepSuperseded = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Keep results a rebuild of the same package with only its own sources changed replaces, as a machine alternating between checkouts of one package wants.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -64,6 +74,7 @@ in
       environment = {
         XDG_CACHE_HOME = "/var/cache";
         MUMMERD_SIZE = toString cfg.size;
+        MUMMERD_FORGET_IDLE = toString cfg.forgetIdle;
       }
       // lib.optionalAttrs (cfg.remote != null) { MUMMERD_REMOTE = cfg.remote; }
       // lib.optionalAttrs (cfg.remoteCa != null) { MUMMERD_REMOTE_CA = cfg.remoteCa; }
@@ -71,7 +82,7 @@ in
         MUMMERD_REMOTE_IDENTITY = "%d/remote-identity";
       };
       serviceConfig = {
-        ExecStart = "${cfg.package}/bin/mummerd ${socket}${lib.optionalString cfg.remoteWrites " --remote-writes"}";
+        ExecStart = "${cfg.package}/bin/mummerd ${socket}${lib.optionalString cfg.remoteWrites " --remote-writes"}${lib.optionalString cfg.keepSuperseded " --keep-superseded"}";
         User = "mummerd";
         Group = "mummerd";
         CacheDirectory = "mummerd";
