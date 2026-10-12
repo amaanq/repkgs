@@ -140,6 +140,10 @@ pub fn setup(name: &str, ctx: &Ctx, attrs: &Attrs, socket: &Path) -> io::Result<
    system.setup(ctx, attrs, socket)
 }
 
+pub fn module(name: &str) -> io::Result<&'static str> {
+   Ok(system(name)?.module())
+}
+
 pub fn workdir(name: &str, ctx: &Ctx) -> io::Result<PathBuf> {
    system(name)?.workdir(ctx)
 }

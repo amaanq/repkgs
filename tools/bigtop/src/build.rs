@@ -1,6 +1,7 @@
 use std::{
    collections::BTreeMap,
    env::{
+      current_exe,
       set_current_dir,
       vars,
    },
@@ -20,6 +21,7 @@ use mummer::{
    },
 };
 use serde_json::Value;
+use tightrope::client::Client;
 
 use crate::{
    attrs::{
@@ -40,6 +42,10 @@ use crate::{
          export,
       },
       dispatch,
+   },
+   test_cache::{
+      self,
+      Ran,
    },
 };
 
@@ -83,6 +89,13 @@ fn apply(env: &BTreeMap<String, Value>) {
 /// an inline phase, run under nu with the builder tree on its include path
 /// and its environment taken back afterwards.
 fn nu_phase(attrs: &Attrs, index: usize, name: &str, body: &str, top: &str) -> io::Result<()> {
+   nu_command(attrs, index, body, top)?
+      .checked()
+      .map_err(|error| io::Error::other(format!("phase {name}, {error}")))?;
+   handover(top)
+}
+
+fn nu_command(attrs: &Attrs, index: usize, body: &str, top: &str) -> io::Result<Command> {
    let tree = attrs
       .probe_inputs
       .first()
@@ -93,15 +106,17 @@ fn nu_phase(attrs: &Attrs, index: usize, name: &str, body: &str, top: &str) -> i
       format!("{}\n{body}\n{HANDOVER}", attrs.plan.prelude).as_bytes(),
       None,
    )?;
-   Command::new("nu")
-      .args([
-         "--no-config-file",
-         &format!("--include-path={tree}"),
-         "--experimental-options=[cell-path-types]",
-         &script,
-      ])
-      .checked()
-      .map_err(|error| io::Error::other(format!("phase {name}, {error}")))?;
+   let mut command = Command::new("nu");
+   command.args([
+      "--no-config-file",
+      &format!("--include-path={tree}"),
+      "--experimental-options=[cell-path-types]",
+      &script,
+   ]);
+   Ok(command)
+}
+
+fn handover(top: &str) -> io::Result<()> {
    let handed = serde_json::from_str::<BTreeMap<String, String>>(&read_to_string(format!(
       "{top}/phase-env.json"
    ))?)?;
@@ -204,6 +219,12 @@ pub fn phase(attrs: &Attrs, ctx: &mut Ctx, index: usize, socket: &Path) -> io::R
       Some(system) => dispatch::workdir(system, ctx)?,
       None => ctx.src.clone(),
    };
+   if step.test
+      && ctx.cache
+      && let Ok(client) = Client::connect(socket)
+   {
+      return tested(attrs, ctx, index, &workdir, client);
+   }
    match step.kind {
       Kind::System {
          ref system,
@@ -217,4 +238,46 @@ pub fn phase(attrs: &Attrs, ctx: &mut Ctx, index: usize, socket: &Path) -> io::R
          Ok(())
       },
    }
+}
+
+/// A test step in a child process, which the test cache traces, nu's
+/// environment taken back only when it ran.
+fn tested(
+   attrs: &Attrs,
+   ctx: &mut Ctx,
+   index: usize,
+   workdir: &Path,
+   client: Client,
+) -> io::Result<()> {
+   let step = &attrs.plan.phases[index];
+   let top = build_top()?;
+   match step.kind {
+      Kind::System {
+         ref system,
+         ref verb,
+      } => {
+         let command = || {
+            let mut command = Command::new(current_exe()?);
+            command.args(["system", "phase", system, verb]);
+            Ok(command)
+         };
+         let module = dispatch::module(system)?;
+         test_cache::run(client, ctx, step, Some(module), &command)?;
+      },
+      Kind::Nu { ref body } => {
+         let command = || {
+            let mut command = nu_command(attrs, index, body, &top)?;
+            command.current_dir(workdir);
+            Ok(command)
+         };
+         if matches!(
+            test_cache::run(client, ctx, step, None, &command)?,
+            Ran::Passed
+         ) {
+            handover(&top)?;
+            *ctx = Ctx::load(&top)?;
+         }
+      },
+   }
+   Ok(())
 }

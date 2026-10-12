@@ -20,6 +20,8 @@ mod recipe;
 mod site;
 mod system;
 mod targets;
+mod test_cache;
+mod trace;
 
 use std::{
    env::args_os,

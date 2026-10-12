@@ -26,11 +26,13 @@ version = "1.0.0"
 dependencies = [
  "blake3",
  "glob",
+ "libc",
  "memchr",
  "misstep",
  "mummer",
  "pound",
  "roxmltree",
+ "rustix",
  "serde",
  "serde_json",
  "tightrope",

@@ -92,12 +92,7 @@ where
    // while bigtop's own store path stays out
    let environment = vars()
       .filter_map(|(name, value)| {
-         let kept = !nu_internal(&name)
-            && !matches!(
-               name.as_str(),
-               "NIX_LOG_FD" | "NIX_BUILD_CORES" | "TERM" | "SHLVL" | "_"
-            );
-         kept.then(|| {
+         inherited(&name).then(|| {
             let masked = mask_hashes(&value);
             (name, masked)
          })
@@ -112,6 +107,14 @@ where
       toolchains,
    };
    format!("probe/{kind}/{}", hex(&serde_json::to_vec(&record)?)).parse()
+}
+
+pub fn inherited(name: &str) -> bool {
+   !nu_internal(name)
+      && !matches!(
+         name,
+         "NIX_LOG_FD" | "NIX_BUILD_CORES" | "TERM" | "SHLVL" | "_"
+      )
 }
 
 /// The cc toolchain's files and a program it links, its own path masked and
