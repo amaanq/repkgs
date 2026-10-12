@@ -224,8 +224,8 @@ impl FromStr for CargoTest {
 /// A target a test binary was built from, as `cargo test` selects it.
 #[derive(Deserialize, Serialize)]
 enum Target {
-   /// Every library's unit tests, since naming one library takes `-p`,
-   /// which resolves features apart from the full run.
+   /// Every member library's unit tests, since naming one library takes
+   /// `-p`, which resolves features apart from the full run.
    Lib,
    Bin(String),
    Test(String),
@@ -300,7 +300,7 @@ impl Tests for Cargo {
 
 impl Cargo {
    fn test(extra: &[String], selectors: &[String], harness: &[String]) -> io::Result<()> {
-      let mut args = vec!["test", "--release", "--offline"];
+      let mut args = vec!["test", "--release", "--offline", "--workspace"];
       args.extend(strs(extra));
       args.extend(strs(selectors));
       args.extend(strs(harness));
@@ -314,6 +314,7 @@ impl Cargo {
          "test",
          "--release",
          "--offline",
+         "--workspace",
          "--no-run",
          "--message-format=json-render-diagnostics",
       ];
