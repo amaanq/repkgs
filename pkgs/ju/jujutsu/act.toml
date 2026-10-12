@@ -1,0 +1,11 @@
+tag   = "v{version}"
+track = "github:jj-vcs/jj"
+fetch = { archive = true }
+with  = [ "cargo" ]
+tools = [ "git" ]
+
+[test]
+bin = [ "jj" ]
+
+[cargo]
+flags = [ "-p", "jj-cli", "-p", "jj-lib" ]
