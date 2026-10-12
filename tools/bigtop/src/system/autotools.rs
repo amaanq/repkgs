@@ -1,6 +1,7 @@
 use std::{
    collections::HashSet,
    env::var,
+   ffi::OsString,
    fs::{
       File,
       copy,
@@ -58,9 +59,11 @@ use crate::{
       dispatch::System,
       make::{
          self,
+         AutomakeTest,
          shell,
       },
    },
+   trace::Tests,
 };
 
 options! {
@@ -132,6 +135,10 @@ impl System for Autotools {
       Ok(shell()?.into())
    }
 
+   fn tests(&self) -> Option<&'static dyn Tests> {
+      Some(&Self)
+   }
+
    fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
       let options = ctx.options::<Options>(self.name())?;
       match verb {
@@ -146,6 +153,19 @@ impl System for Autotools {
          },
          _ => Err(unknown(self.name(), verb)),
       }
+   }
+}
+
+/// automake's parallel harness runs every test under a driver given
+/// `--test-name`, which `make TESTS=` in the driver's directory runs alone.
+impl Tests for Autotools {
+   fn unit(&self, _exe: &Path, args: &[OsString], cwd: &Path) -> Option<String> {
+      let at = args.iter().position(|arg| arg == "--test-name")?;
+      let test = AutomakeTest {
+         directory: cwd.to_str()?.to_owned(),
+         name:      args.get(at + 1)?.to_str()?.to_owned(),
+      };
+      Some(test.to_string())
    }
 }
 

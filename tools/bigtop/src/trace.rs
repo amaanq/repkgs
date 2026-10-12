@@ -4,15 +4,22 @@
 
 use std::{
    collections::{
+      BTreeMap,
       BTreeSet,
       HashMap,
       hash_map::Entry,
    },
-   ffi::OsStr,
+   ffi::{
+      OsStr,
+      OsString,
+   },
    fs::{
       File,
       Metadata,
+      read,
       read_link,
+      read_to_string,
+      symlink_metadata,
    },
    io::{
       self,
@@ -46,6 +53,7 @@ use std::{
       Command,
       ExitStatus,
    },
+   str::FromStr,
    sync::{
       Arc,
       Mutex,
@@ -189,8 +197,16 @@ enum Call {
    /// Looks paths up, to read them or to change them, which also tells the
    /// caller whether they exist.
    Paths(&'static [Arg]),
+   /// Opens a path, for writing when the flags in argument `flags` ask to,
+   /// and always for creat, which has none.
+   Open { arg: Arg, flags: Option<usize> },
    /// openat2, whose `open_how` may root the lookup at the descriptor.
    Open2,
+   /// Loads a program.
+   Exec(Arg),
+   /// Takes away what the paths named before the call, unlinking,
+   /// truncating or renaming over them.
+   Clobbers(&'static [Arg]),
    /// A directory listing of the descriptor in argument `fd`.
    Listing { fd: usize },
    /// `rt_sigaction`, which may install a handler that does not restart calls.
@@ -201,10 +217,13 @@ enum Call {
 }
 
 const COMMON: &[(libc::c_long, Call)] = &[
-   (libc::SYS_openat, Call::Paths(AT)),
+   (libc::SYS_openat, Call::Open {
+      arg:   AT[0],
+      flags: Some(2),
+   }),
    (libc::SYS_openat2, Call::Open2),
-   (libc::SYS_execve, Call::Paths(FIRST)),
-   (libc::SYS_execveat, Call::Paths(AT)),
+   (libc::SYS_execve, Call::Exec(FIRST[0])),
+   (libc::SYS_execveat, Call::Exec(AT[0])),
    (libc::SYS_newfstatat, Call::Paths(AT)),
    (libc::SYS_statx, Call::Paths(AT)),
    (libc::SYS_faccessat, Call::Paths(AT)),
@@ -213,7 +232,7 @@ const COMMON: &[(libc::c_long, Call)] = &[
    (libc::SYS_name_to_handle_at, Call::Paths(AT)),
    (libc::SYS_chdir, Call::Paths(FIRST)),
    (libc::SYS_statfs, Call::Paths(FIRST)),
-   (libc::SYS_truncate, Call::Paths(FIRST)),
+   (libc::SYS_truncate, Call::Clobbers(FIRST)),
    (libc::SYS_getxattr, Call::Paths(FIRST)),
    (libc::SYS_lgetxattr, Call::Paths(FIRST)),
    (libc::SYS_listxattr, Call::Paths(FIRST)),
@@ -225,9 +244,9 @@ const COMMON: &[(libc::c_long, Call)] = &[
    (libc::SYS_inotify_add_watch, Call::Paths(SECOND)),
    (libc::SYS_mkdirat, Call::Paths(AT)),
    (libc::SYS_mknodat, Call::Paths(AT)),
-   (libc::SYS_unlinkat, Call::Paths(AT)),
-   (libc::SYS_renameat, Call::Paths(BOTH_AT)),
-   (libc::SYS_renameat2, Call::Paths(BOTH_AT)),
+   (libc::SYS_unlinkat, Call::Clobbers(AT)),
+   (libc::SYS_renameat, Call::Clobbers(BOTH_AT)),
+   (libc::SYS_renameat2, Call::Clobbers(BOTH_AT)),
    (libc::SYS_linkat, Call::Paths(BOTH_AT)),
    (libc::SYS_symlinkat, Call::Paths(LINK_AT)),
    (libc::SYS_fchmodat, Call::Paths(AT)),
@@ -257,17 +276,23 @@ const COMMON: &[(libc::c_long, Call)] = &[
 
 #[cfg(target_arch = "x86_64")]
 const LEGACY: &[(libc::c_long, Call)] = &[
-   (libc::SYS_open, Call::Paths(FIRST)),
-   (libc::SYS_creat, Call::Paths(FIRST)),
+   (libc::SYS_open, Call::Open {
+      arg:   FIRST[0],
+      flags: Some(1),
+   }),
+   (libc::SYS_creat, Call::Open {
+      arg:   FIRST[0],
+      flags: None,
+   }),
    (libc::SYS_stat, Call::Paths(FIRST)),
    (libc::SYS_lstat, Call::Paths(FIRST)),
    (libc::SYS_access, Call::Paths(FIRST)),
    (libc::SYS_readlink, Call::Paths(FIRST)),
    (libc::SYS_mkdir, Call::Paths(FIRST)),
    (libc::SYS_rmdir, Call::Paths(FIRST)),
-   (libc::SYS_unlink, Call::Paths(FIRST)),
+   (libc::SYS_unlink, Call::Clobbers(FIRST)),
    (libc::SYS_mknod, Call::Paths(FIRST)),
-   (libc::SYS_rename, Call::Paths(BOTH)),
+   (libc::SYS_rename, Call::Clobbers(BOTH)),
    (libc::SYS_link, Call::Paths(BOTH)),
    (libc::SYS_symlink, Call::Paths(SECOND)),
    (libc::SYS_chmod, Call::Paths(FIRST)),
@@ -288,12 +313,66 @@ fn calls() -> impl Iterator<Item = (u32, Call)> {
       .filter_map(|entry| Some((u32::try_from(entry.0).ok()?, entry.1)))
 }
 
+/// How a test step's processes divide into tests its harness can run alone,
+/// for a build system that has such a harness.
+pub trait Tests: Sync {
+   /// The test a process running `exe` as `args` in `cwd` is, when it is
+   /// one, and not merely run by one.
+   fn unit(&self, exe: &Path, args: &[OsString], cwd: &Path) -> Option<String>;
+
+   /// Whether a `test-prepare` phase builds the tests before the traced
+   /// run, so that compiling them is no test's reading.
+   fn prepares(&self) -> bool {
+      false
+   }
+
+   /// Whether the harness keeps its own state at `path`, rewritten on every
+   /// run and never something a test read.
+   fn state(&self, _path: &Path) -> bool {
+      false
+   }
+}
+
+/// Who reached a path, the tests and whether anything outside a test did.
+#[derive(Default)]
+pub struct Readers {
+   pub shared: bool,
+   pub units:  BTreeSet<String>,
+}
+
+impl Readers {
+   /// Reached by nothing but processes outside any test.
+   pub const fn outside() -> Self {
+      Self {
+         shared: true,
+         units:  BTreeSet::new(),
+      }
+   }
+
+   fn add(&mut self, unit: Option<&str>) {
+      match unit {
+         Some(name) => {
+            self.units.insert(name.to_owned());
+         },
+         None => self.shared = true,
+      }
+   }
+}
+
 /// What a traced run reached, the paths as the calls named them made
 /// absolute.
 #[derive(Default)]
 pub struct Accesses {
-   pub paths:         BTreeSet<PathBuf>,
-   pub listed:        BTreeSet<PathBuf>,
+   pub paths:         BTreeMap<PathBuf, Readers>,
+   pub listed:        BTreeMap<PathBuf, Readers>,
+   /// Paths only looked up outside any test, by a harness checking whether
+   /// to rebuild what the build already made, which count for whether they
+   /// exist and not what they hold, or every test would depend on every
+   /// source.
+   pub looked_up:     BTreeSet<PathBuf>,
+   /// Files the build made, as they were when the run first took them away
+   /// after reading them.
+   pub prior:         BTreeMap<PathBuf, Vec<u8>>,
    /// Why the paths may not be everything the run read.
    pub escaped:       Option<&'static str>,
    /// Whether a task installed a handler without `SA_RESTART`, the only kind
@@ -309,6 +388,7 @@ pub enum Outcome {
 
 /// A point on the clock file timestamps come from, later than every write
 /// made before it was taken and no later than any made after.
+#[derive(Clone, Copy)]
 pub struct Mark(Timespec);
 
 impl Mark {
@@ -524,48 +604,95 @@ fn resolve(reader: &mut Reader, request: &seccomp_notif, arg: Arg) -> Option<Pat
    Some(normalize(&base.join(named)))
 }
 
-fn note(reader: &mut Reader, request: &seccomp_notif, accesses: &mut Accesses) {
+/// What one call did to a path.
+enum Event {
+   /// Read it, or ran it.
+   Read(PathBuf),
+   /// Looked it up or changed it without reading it.
+   Looked(PathBuf),
+   /// Took away what it named, after which reading the path reads something
+   /// else.
+   Clobbered(PathBuf),
+   /// Listed the directory.
+   Listed(PathBuf),
+   /// Ran the program, which may itself be a test.
+   Exec(PathBuf),
+}
+
+/// Whether open flags ask for writing or truncation.
+fn writes(flags: u64) -> bool {
+   let access = flags & u64::try_from(libc::O_ACCMODE).unwrap_or_default();
+   access != u64::try_from(libc::O_RDONLY).unwrap_or_default()
+      || flags & u64::try_from(libc::O_TRUNC).unwrap_or_default() != 0
+}
+
+/// What the call did, or nothing for one the run need not record. An escape
+/// or a call from another ABI marks the run instead.
+fn note(reader: &mut Reader, request: &seccomp_notif, accesses: &mut Accesses) -> Vec<Event> {
    let data = request.data;
    if data.arch != AUDIT_ARCH {
       accesses.escaped.get_or_insert("foreign-arch call");
-      return;
+      return Vec::new();
    }
    let number = u32::from_ne_bytes(data.nr.to_ne_bytes());
    if X32_BIT != 0 && number & X32_BIT != 0 {
       accesses.escaped.get_or_insert("x32 call");
-      return;
+      return Vec::new();
    }
    let Some(call) = calls().find(|entry| entry.0 == number).map(|entry| entry.1) else {
-      return;
+      return Vec::new();
    };
+   let mut events = Vec::new();
    match call {
       Call::Paths(args) => {
-         for arg in args {
-            if let Some(found) = resolve(reader, request, *arg) {
-               accesses.paths.insert(found);
+         events.extend(
+            args
+               .iter()
+               .filter_map(|arg| resolve(reader, request, *arg))
+               .map(Event::Looked),
+         );
+      },
+      Call::Open { arg, flags } => {
+         if let Some(found) = resolve(reader, request, arg) {
+            if flags.is_none_or(|index| writes(data.args[index])) {
+               events.push(Event::Clobbered(found.clone()));
             }
+            events.push(Event::Read(found));
          }
       },
       Call::Open2 => {
          let mut how = [0_u8; 24];
-         let rooted = reader.fill(request.pid, data.args[2], &mut how).map(|()| {
+         let parsed = reader.fill(request.pid, data.args[2], &mut how).map(|()| {
+            let flags = u64::from_ne_bytes(how[..8].try_into().unwrap_or_default());
             let resolve = u64::from_ne_bytes(how[16..].try_into().unwrap_or_default());
-            resolve & RESOLVE_IN_ROOT != 0
+            (flags, resolve & RESOLVE_IN_ROOT != 0)
          });
-         if rooted != Some(false) {
+         let Some((flags, false)) = parsed else {
             accesses
                .escaped
                .get_or_insert("openat2 rooted at a descriptor");
-            return;
-         }
+            return Vec::new();
+         };
          if let Some(found) = resolve(reader, request, AT[0]) {
-            accesses.paths.insert(found);
+            if writes(flags) {
+               events.push(Event::Clobbered(found.clone()));
+            }
+            events.push(Event::Read(found));
          }
       },
+      Call::Exec(arg) => {
+         events.extend(resolve(reader, request, arg).map(Event::Exec));
+      },
+      Call::Clobbers(args) => {
+         events.extend(
+            args
+               .iter()
+               .filter_map(|arg| resolve(reader, request, *arg))
+               .map(Event::Clobbered),
+         );
+      },
       Call::Listing { fd } => {
-         if let Some(listed) = descriptor(request.pid, Some(data.args[fd])) {
-            accesses.listed.insert(listed);
-         }
+         events.extend(descriptor(request.pid, Some(data.args[fd])).map(Event::Listed));
       },
       Call::Handler => {
          // the kernel's sigaction opens with the handler then the flags on
@@ -576,7 +703,7 @@ fn note(reader: &mut Reader, request: &seccomp_notif, accesses: &mut Accesses) {
             .is_none()
          {
             accesses.interruptible |= data.args[1] != 0;
-            return;
+            return events;
          }
          let handler = u64::from_ne_bytes(action[..8].try_into().unwrap_or_default());
          let flags = u64::from_ne_bytes(action[8..].try_into().unwrap_or_default());
@@ -590,15 +717,117 @@ fn note(reader: &mut Reader, request: &seccomp_notif, accesses: &mut Accesses) {
          accesses.escaped.get_or_insert(why);
       },
    }
+   events
+}
+
+/// The fields of `/proc/<task>/stat` a lineage needs.
+struct Stat {
+   parent: u32,
+   start:  u64,
+}
+
+impl FromStr for Stat {
+   type Err = String;
+
+   /// The command name in parentheses may hold anything, so the fields are
+   /// counted from the last parenthesis.
+   fn from_str(line: &str) -> Result<Self, Self::Err> {
+      let fields = line
+         .rsplit_once(')')
+         .ok_or_else(|| format!("{line} has no command name"))?
+         .1
+         .split_whitespace()
+         .collect::<Vec<_>>();
+      let field = |at: usize| {
+         fields
+            .get(at)
+            .ok_or_else(|| format!("{line} has no field {at}"))
+      };
+      Ok(Self {
+         parent: field(1)?
+            .parse()
+            .map_err(|error| format!("{line}: {error}"))?,
+         start:  field(19)?
+            .parse()
+            .map_err(|error| format!("{line}: {error}"))?,
+      })
+   }
+}
+
+/// The test each traced task belongs to, its own or the nearest ancestor's,
+/// remembered per task and start time since ids are reused.
+#[derive(Default)]
+struct Lineage {
+   known: HashMap<(u32, u64), Option<String>>,
+}
+
+impl Lineage {
+   fn own(tests: &dyn Tests, task: u32) -> Option<String> {
+      let exe = read_link(format!("/proc/{task}/exe")).ok()?;
+      let cwd = read_link(format!("/proc/{task}/cwd")).ok()?;
+      let line = read(format!("/proc/{task}/cmdline")).ok()?;
+      let args = line
+         .split(|byte| *byte == 0)
+         .filter(|arg| !arg.is_empty())
+         .map(|arg| OsStr::from_bytes(arg).to_owned())
+         .collect::<Vec<_>>();
+      tests.unit(&exe, &args, &cwd)
+   }
+
+   fn unit(&mut self, tests: &dyn Tests, task: u32) -> Option<String> {
+      let Stat { parent, start } = read_to_string(format!("/proc/{task}/stat"))
+         .ok()?
+         .parse()
+         .ok()?;
+      if let Some(found) = self.known.get(&(task, start)) {
+         return found.clone();
+      }
+      let found = Self::own(tests, task)
+         .or_else(|| (parent > 1).then(|| self.unit(tests, parent)).flatten());
+      self.known.insert((task, start), found.clone());
+      found
+   }
+}
+
+/// Records what a call did as `unit` doing it, keeping a file the build made
+/// as it was before the call takes it away, when the run read it already.
+fn record(accesses: &mut Accesses, event: Event, unit: Option<&str>, traced: bool, mark: Mark) {
+   match event {
+      Event::Looked(path) if unit.is_none() && traced => {
+         accesses.looked_up.insert(path);
+      },
+      Event::Read(path) | Event::Exec(path) | Event::Looked(path) => {
+         accesses.paths.entry(path).or_default().add(unit);
+      },
+      Event::Clobbered(path) => {
+         let made =
+            symlink_metadata(&path).is_ok_and(|meta| meta.is_file() && !mark.written(&meta));
+         if made
+            && accesses.paths.contains_key(&path)
+            && !accesses.prior.contains_key(&path)
+            && let Ok(bytes) = read(&path)
+         {
+            accesses.prior.insert(path.clone(), bytes);
+         }
+         record(accesses, Event::Looked(path), unit, traced, mark);
+      },
+      Event::Listed(path) => accesses.listed.entry(path).or_default().add(unit),
+   }
 }
 
 /// Notes each call while the run is recorded, then keeps letting calls
 /// through for whatever it left running, until no traced task remains.
-fn serve(socket: &OwnedFd, recorded: &Mutex<Option<Accesses>>) {
+fn serve(
+   socket: &OwnedFd,
+   recorded: &Mutex<Option<Accesses>>,
+   tests: Option<&dyn Tests>,
+   mark: Mark,
+) {
    let Some(listener) = receive(socket) else {
       return;
    };
    let mut reader = Reader::default();
+   let mut lineage = Lineage::default();
    loop {
       let mut polled = [PollFd::new(&listener, PollFlags::IN)];
       match poll(&mut polled, None) {
@@ -631,7 +860,21 @@ fn serve(socket: &OwnedFd, recorded: &Mutex<Option<Accesses>>) {
       if let Ok(mut guard) = recorded.lock()
          && let Some(accesses) = guard.as_mut()
       {
-         note(&mut reader, &request, accesses);
+         let done = note(&mut reader, &request, accesses);
+         let unit = match tests {
+            Some(harness) if !done.is_empty() => lineage.unit(harness, request.pid),
+            _ => None,
+         };
+         for event in done {
+            let exec = match event {
+               Event::Exec(ref path) => {
+                  tests.and_then(|harness| harness.unit(path, &[], Path::new("/")))
+               },
+               Event::Read(_) | Event::Looked(_) | Event::Clobbered(_) | Event::Listed(_) => None,
+            };
+            let ran = exec.or_else(|| unit.clone());
+            record(accesses, event, ran.as_deref(), tests.is_some(), mark);
+         }
       }
       let mut response = seccomp_notif_resp {
          id:    request.id,
@@ -654,7 +897,11 @@ fn serve(socket: &OwnedFd, recorded: &Mutex<Option<Accesses>>) {
 /// Runs a command from `make` traced, or untraced when the filter cannot be
 /// installed. A failed spawn is retried untraced, so an exec failure comes
 /// back as the untraced spawn's error.
-pub fn run(make: &dyn Fn() -> io::Result<Command>) -> io::Result<Outcome> {
+pub fn run(
+   make: &dyn Fn() -> io::Result<Command>,
+   tests: Option<&'static dyn Tests>,
+   mark: Mark,
+) -> io::Result<Outcome> {
    let traced = program().and_then(|filter| {
       let (ours, theirs) = socketpair(
          AddressFamily::UNIX,
@@ -670,7 +917,7 @@ pub fn run(make: &dyn Fn() -> io::Result<Command>) -> io::Result<Outcome> {
    };
    let recorded = Arc::new(Mutex::new(Some(Accesses::default())));
    let server = Arc::clone(&recorded);
-   spawn(move || serve(&ours, &server));
+   spawn(move || serve(&ours, &server, tests, mark));
    let raw = theirs.as_raw_fd();
    let mut command = make()?;
    // SAFETY: `install` makes only raw system calls and allocates nothing
