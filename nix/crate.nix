@@ -1,6 +1,11 @@
 # A workspace crate built by nixpkgs' rust for the development shell, nuff and the mummerd service,
 # so none of them start the package set.
-{ pkgs, crate }:
+{
+  pkgs,
+  crate,
+  features ? [ ],
+  env ? { },
+}:
 let
   workspace =
     if
@@ -23,7 +28,7 @@ pkgs.rustPlatform.buildRustPackage {
     filter =
       path: type:
       (type == "directory" && baseNameOf path != "target")
-      || builtins.match ".*\\.rs" path != null
+      || builtins.match ".*\\.(rs|c)" path != null
       || builtins.elem (baseNameOf path) [
         "Cargo.toml"
         "Cargo.lock"
@@ -34,7 +39,11 @@ pkgs.rustPlatform.buildRustPackage {
     "-p"
     crate
   ];
+  buildFeatures = features;
   auditable = false;
   doCheck = false;
-  env.MUMMER_STORE_DIR = builtins.storeDir;
+  env = {
+    MUMMER_STORE_DIR = builtins.storeDir;
+  }
+  // env;
 }

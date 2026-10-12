@@ -17,6 +17,7 @@ mod output;
 mod prepare;
 mod probe;
 mod recipe;
+mod ring;
 mod site;
 mod system;
 mod targets;

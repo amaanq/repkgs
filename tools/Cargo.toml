@@ -1,6 +1,6 @@
 [workspace]
 exclude  = [ "bootstrap" ]
-members  = [ "bigtop", "mummerd", "jape", "spieler" ]
+members  = [ "bigtop", "mummerd", "jape", "ringmasterd", "spieler" ]
 resolver = "3"
 
 [workspace.package]
@@ -14,8 +14,9 @@ blake3  = "1.8.7"
 misstep = { features = [ "pretty" ], version = "0.3.0" }
 rustix  = { features = [ "event", "fs", "net" ], version = "1.1.4" }
 
-mummer    = { path = "bootstrap/mummer" }
-tightrope = { path = "bootstrap/tightrope" }
+mummer      = { path = "bootstrap/mummer" }
+ringmasterd = { path = "ringmasterd" }
+tightrope   = { path = "bootstrap/tightrope" }
 
 [profile.release]
 lto   = "thin"

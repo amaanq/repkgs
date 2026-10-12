@@ -81,6 +81,7 @@ use crate::{
       fingerprint,
    },
    probe::inherited,
+   ring::Session,
    trace::{
       self,
       Accesses,
@@ -156,6 +157,9 @@ enum Fact {
    Directory,
    /// The entry names, as `names` digests them.
    Listing(String),
+   /// A file the build made that the step read and then replaced before the
+   /// tracer could keep what it held, so no tree matches it.
+   Replaced,
 }
 
 /// A path the step reached and who reached it, tests by their index in
@@ -177,6 +181,10 @@ struct Manifest {
    #[serde(default, skip_serializing_if = "Vec::is_empty")]
    units:   Vec<String>,
    entries: Vec<Entry>,
+   /// The step replaces files it read, so its runs must be traced by
+   /// seccomp, which sees each call before it happens.
+   #[serde(default, skip_serializing_if = "<&bool as Not>::not")]
+   seccomp: bool,
 }
 
 enum Miss {
@@ -186,6 +194,7 @@ enum Miss {
    Appeared(Spelling),
    NotDirectory(Spelling),
    ListingChanged(Spelling),
+   Replaced(Spelling),
 }
 
 impl Miss {
@@ -197,6 +206,7 @@ impl Miss {
          Fact::Absent => Self::Appeared(path),
          Fact::Directory => Self::NotDirectory(path),
          Fact::Listing(_) => Self::ListingChanged(path),
+         Fact::Replaced => Self::Replaced(path),
       }
    }
 }
@@ -210,6 +220,7 @@ impl Display for Miss {
          Self::Appeared(ref path) => write!(f, "appeared:{path}"),
          Self::NotDirectory(ref path) => write!(f, "not-a-directory:{path}"),
          Self::ListingChanged(ref path) => write!(f, "listing-changed:{path}"),
+         Self::Replaced(ref path) => write!(f, "replaced:{path}"),
       }
    }
 }
@@ -413,6 +424,7 @@ impl Manifest {
          mut before,
          mark,
          tests,
+         seccomp,
       }: Traced,
       client: &mut Client,
       store: &mut Store,
@@ -441,6 +453,9 @@ impl Manifest {
       let listed = accesses.listed;
       let mut prior = accesses.prior;
       prior.retain(|path, _bytes| before.had(path));
+      let mut replaced = accesses.replaced;
+      replaced.retain(|path| before.had(path) && !ignored(path));
+      let forced = seccomp || !replaced.is_empty();
       let units = paths
          .values()
          .chain(listed.values())
@@ -466,6 +481,10 @@ impl Manifest {
          if ignored(&path) {
             continue;
          }
+         if replaced.remove(&path) {
+            entries.push(entry(store, &units, &path, Fact::Replaced, &readers));
+            continue;
+         }
          if let Some(bytes) = prior.remove(&path) {
             let fact = Fact::File(held(store, &path, bytes));
             entries.push(entry(store, &units, &path, fact, &readers));
@@ -486,21 +505,7 @@ impl Manifest {
             Ok(_) | Err(_) => {},
          }
       }
-      let texts = files
-         .iter()
-         .filter_map(|pair| pair.0.to_str().map(str::to_owned))
-         .collect::<Vec<_>>();
-      prefetch(client, store, &texts)?;
-      for (path, readers) in files {
-         let spelling = Spelling::of(store, &path);
-         let fact = match (path.to_str(), spelling) {
-            (Some(text), Spelling::Text(spelled)) if is_store_path(text) && spelled == text => {
-               Fact::File(InputId::Path(spelled))
-            },
-            _ => Fact::File(identity(store, &path)?),
-         };
-         entries.push(entry(store, &units, &path, fact, &readers));
-      }
+      entries.extend(Self::contents(client, store, &units, files)?);
       for (path, readers) in listed {
          if ignored(&path) {
             continue;
@@ -515,7 +520,38 @@ impl Manifest {
          };
          entries.push(entry(store, &units, &path, Fact::Listing(names), &readers));
       }
-      Ok(Ok(Self { units, entries }))
+      Ok(Ok(Self {
+         units,
+         entries,
+         seccomp: forced,
+      }))
+   }
+
+   /// The entries of files the step read, their identities asked of the
+   /// daemon together.
+   fn contents(
+      client: &mut Client,
+      store: &mut Store,
+      units: &[String],
+      files: Vec<(PathBuf, Readers)>,
+   ) -> io::Result<Vec<Entry>> {
+      let texts = files
+         .iter()
+         .filter_map(|pair| pair.0.to_str().map(str::to_owned))
+         .collect::<Vec<_>>();
+      prefetch(client, store, &texts)?;
+      let mut entries = Vec::new();
+      for (path, readers) in files {
+         let spelling = Spelling::of(store, &path);
+         let fact = match (path.to_str(), spelling) {
+            (Some(text), Spelling::Text(spelled)) if is_store_path(text) && spelled == text => {
+               Fact::File(InputId::Path(spelled))
+            },
+            _ => Fact::File(identity(store, &path)?),
+         };
+         entries.push(entry(store, units, &path, fact, &readers));
+      }
+      Ok(entries)
    }
 
    /// Whether a path the harness only looked up exists and as what, none
@@ -548,6 +584,7 @@ impl Manifest {
          Fact::Absent => !path.exists(),
          Fact::Directory => path.is_dir(),
          Fact::Listing(ref digest) => names(path, &|_entry| true)? == *digest,
+         Fact::Replaced => false,
       })
    }
 
@@ -638,7 +675,11 @@ impl Manifest {
       }
       let mut entries = merged.into_values().collect::<Vec<_>>();
       entries.sort_by(|left, right| left.path.cmp(&right.path));
-      Self { units, entries }
+      Self {
+         units,
+         entries,
+         seccomp: self.seccomp || newer.seccomp,
+      }
    }
 }
 
@@ -664,12 +705,15 @@ fn stored(client: &mut Client, key: &Key) -> io::Result<Vec<Manifest>> {
       .unwrap_or_default())
 }
 
-fn lookup(client: &mut Client, store: &mut Store, key: &Key) -> io::Result<Found> {
+/// The best stored pass, and whether any says the step needs seccomp.
+fn lookup(client: &mut Client, store: &mut Store, key: &Key) -> io::Result<(Found, bool)> {
+   let manifests = stored(client, key)?;
+   let seccomp = manifests.iter().any(|manifest| manifest.seccomp);
    let mut first = None;
    let mut best: Option<(Manifest, BTreeSet<String>)> = None;
-   for manifest in stored(client, key)? {
+   for manifest in manifests {
       match manifest.matches(client, store)? {
-         Verdict::Hit => return Ok(Found::Hit),
+         Verdict::Hit => return Ok((Found::Hit, seccomp)),
          Verdict::Stale(names) => {
             if best.as_ref().is_none_or(|pair| names.len() < pair.1.len()) {
                best = Some((manifest, names));
@@ -680,10 +724,11 @@ fn lookup(client: &mut Client, store: &mut Store, key: &Key) -> io::Result<Found
          },
       }
    }
-   Ok(match best {
+   let found = match best {
       Some((manifest, names)) => Found::Stale(manifest, names),
       None => Found::Miss(first.unwrap_or(Miss::NewKey)),
-   })
+   };
+   Ok((found, seccomp))
 }
 
 fn publish(client: &mut Client, key: &Key, manifest: Manifest) -> io::Result<()> {
@@ -740,14 +785,18 @@ struct Traced {
    before:   Snapshot,
    mark:     Mark,
    tests:    Option<&'static dyn Tests>,
+   /// The step needs seccomp, as a stored pass said.
+   seccomp:  bool,
 }
 
 /// One run of the step from `command`, limited to the `selected` tests when
-/// given, traced when the filter installs.
+/// given, traced by ringmasterd when it is mapped in and the step does not
+/// need `seccomp`, otherwise by seccomp when the filter installs.
 fn attempt(
    command: &dyn Fn() -> io::Result<Command>,
    tests: Option<&'static dyn Tests>,
    selected: Option<&BTreeSet<String>>,
+   seccomp: bool,
 ) -> io::Result<(ExitStatus, Option<Traced>)> {
    let make = || {
       let mut built = command()?;
@@ -763,16 +812,33 @@ fn attempt(
    };
    let before = Snapshot::take(PathBuf::from(build_top()?))?;
    let mark = Mark::now();
+   let session = if seccomp {
+      None
+   } else {
+      match Session::open() {
+         Ok(opened) => Some(opened),
+         Err(error) if error.kind() == ErrorKind::NotFound => None,
+         Err(error) => {
+            note("test-cache", &format!("ringmasterd unusable, {error}"));
+            None
+         },
+      }
+   };
+   let outcome = match session {
+      Some(opened) => opened.run(&make, tests, mark)?,
+      None => trace::run(&make, tests, mark)?,
+   };
    // a signal landing before the trace server takes a call still turns it
    // into EINTR, even for an open of a regular file, so a traced failure
    // may be the tracer's
-   Ok(match trace::run(&make, tests, mark)? {
+   Ok(match outcome {
       Outcome::Traced(status, accesses) if status.success() || !accesses.interruptible => {
          let traced = Traced {
             accesses,
             before,
             mark,
             tests,
+            seccomp,
          };
          (status, Some(traced))
       },
@@ -837,9 +903,9 @@ pub fn run(
 ) -> io::Result<Ran> {
    let key = request(ctx, step, module)?;
    let mut store = Store::new();
-   let found = lookup(&mut client, &mut store, &key).unwrap_or_else(|error| {
+   let (found, seccomp) = lookup(&mut client, &mut store, &key).unwrap_or_else(|error| {
       note("test-cache", &format!("lookup failed with {error}"));
-      Found::Miss(Miss::NewKey)
+      (Found::Miss(Miss::NewKey), false)
    });
    match found {
       Found::Hit => {
@@ -855,7 +921,7 @@ pub fn run(
                manifest.units.len()
             ),
          );
-         let (status, traced) = attempt(command, tests, Some(&names))?;
+         let (status, traced) = attempt(command, tests, Some(&names), seccomp)?;
          if status.success() {
             keep(
                &mut client,
@@ -873,7 +939,7 @@ pub fn run(
       },
       Found::Miss(miss) => note("test-cache", &format!("miss, {miss}")),
    }
-   let (status, traced) = attempt(command, tests, None)?;
+   let (status, traced) = attempt(command, tests, None, seccomp)?;
    if !status.success() {
       return Err(io::Error::other(format!(
          "phase {} failed, {status}",

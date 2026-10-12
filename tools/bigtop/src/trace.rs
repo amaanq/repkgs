@@ -381,6 +381,9 @@ pub struct Accesses {
    /// Files the build made, as they were when the run first took them away
    /// after reading them.
    pub prior:         BTreeMap<PathBuf, Vec<u8>>,
+   /// Files the run read and then took away, which a tracer that learns of
+   /// calls only after they return could not keep as they were.
+   pub replaced:      BTreeSet<PathBuf>,
    /// Why the paths may not be everything the run read.
    pub escaped:       Option<&'static str>,
    /// Whether a task installed a handler without `SA_RESTART`, the only kind
@@ -613,7 +616,7 @@ fn resolve(reader: &mut Reader, request: &seccomp_notif, arg: Arg) -> Option<Pat
 }
 
 /// What one call did to a path.
-enum Event {
+pub enum Event {
    /// Read it, or ran it.
    Read(PathBuf),
    /// Looked it up or changed it without reading it.
@@ -628,7 +631,7 @@ enum Event {
 }
 
 /// Whether open flags ask for writing or truncation.
-fn writes(flags: u64) -> bool {
+pub fn writes(flags: u64) -> bool {
    let access = flags & u64::try_from(libc::O_ACCMODE).unwrap_or_default();
    access != u64::try_from(libc::O_RDONLY).unwrap_or_default()
       || flags & u64::try_from(libc::O_TRUNC).unwrap_or_default() != 0
@@ -799,7 +802,7 @@ impl Lineage {
 
 /// Records what a call did as `unit` doing it, keeping a file the build made
 /// as it was before the call takes it away, when the run read it already.
-fn record(accesses: &mut Accesses, event: Event, unit: Option<&str>, traced: bool, mark: Mark) {
+pub fn record(accesses: &mut Accesses, event: Event, unit: Option<&str>, traced: bool, mark: Mark) {
    match event {
       Event::Looked(path) if unit.is_none() && traced => {
          accesses.looked_up.insert(path);
