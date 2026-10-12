@@ -30,6 +30,7 @@ def "main test" [
    --for: string # platform
    --peanut: path
    --rust-toolchain: path
+   --rebuild # run tests nix already built again
    ...attrs: string
 ]: nothing -> nothing {
    if ($attrs | is-empty) {
@@ -40,6 +41,13 @@ def "main test" [
       let separate = (eval $"(pkg-expr $attr $for $peanut $rust_toolchain) ? tests")
       if $separate { $"($attr).tests" } else { $attr }
    })
+   built $targets $for $peanut $rust_toolchain
+   if not $rebuild { return }
+   # nix's --rebuild checks the unresolved derivation, which never has valid
+   # outputs of its own when it is content-addressed
+   let args = [...$FEATURES --file (root) ...(platform-arg $for) ...(peanut-arg $peanut) ...(rust-toolchain-arg $rust_toolchain)]
+   let outputs = ($targets | each {|target| ^nix path-info ...$args $"($target)^out" | str trim })
+   ^nix store delete ...$FEATURES ...$outputs
    built $targets $for $peanut $rust_toolchain
 }
 
