@@ -1,0 +1,28 @@
+fetch   = { url = "https://www.sudo.ws/dist/sudo-{version}.tar.gz" }
+with    = [ "autotools" ]
+deps    = [ "libxcrypt", "linux-pam" ]
+patches = [ "no-setuid.patch" ]
+
+[track]
+from = "generic:sudo"
+
+[track.watch]
+url   = "https://www.sudo.ws/dist/"
+regex = 'sudo-([0-9.]+(?:p[0-9]+)?)\.tar\.gz'
+
+[only]
+os = [ "linux" ]
+
+[test]
+bin = [ "sudo" ]
+
+[autotools]
+flags = [
+  "--with-env-editor",
+  "--with-rundir=/run/sudo",
+  "--with-vardir=/var/db/sudo",
+  "--with-logpath=/var/log/sudo.log",
+  "--with-iologdir=/var/log/sudo-io",
+  "--enable-tmpfiles.d=no",
+]
+installFlags = [ "INSTALL_OWNER=", "rundir=$(TMPDIR)/dummy", "vardir=$(TMPDIR)/dummy" ]
