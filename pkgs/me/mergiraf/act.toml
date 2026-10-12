@@ -1,0 +1,7 @@
+track = "cargo:mergiraf"
+fetch = { url = "https://codeberg.org/mergiraf/mergiraf/archive/v{version}.tar.gz" }
+with  = [ "cargo" ]
+tools = [ "git", "jujutsu" ]
+
+[test]
+bin = [ "mergiraf" ]
