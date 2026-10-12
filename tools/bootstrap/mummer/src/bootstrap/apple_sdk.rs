@@ -2,7 +2,6 @@ use std::{
    fs::{
       create_dir_all,
       remove_dir_all,
-      rename,
    },
    io,
    process::{
@@ -11,7 +10,10 @@ use std::{
    },
 };
 
-use mummer::files::write_file;
+use mummer::{
+   files::write_file,
+   tree::copy_tree,
+};
 
 use crate::bootstrap::{
    dispatch::Recipe,
@@ -101,7 +103,8 @@ impl Recipe for AppleSdk {
             remove_dir_all(path)?;
          }
       }
-      rename(&sdk, &stage.out)?;
+      // /build and the store are separate filesystems
+      copy_tree(&sdk, &stage.out)?;
       cc_facts(&stage.out, &[
          ("include-dirs", &["usr/include"]),
          ("flags", &FLAGS),
