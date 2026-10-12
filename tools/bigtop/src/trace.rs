@@ -341,6 +341,63 @@ pub trait Tests: Sync {
    }
 }
 
+/// Tests a harness starts as listed commands in listed directories. Tests
+/// sharing both are one unit, since no process tells them apart.
+#[derive(Default)]
+pub struct Commands {
+   tests: BTreeMap<(Vec<String>, String), Vec<String>>,
+}
+
+impl Commands {
+   pub fn add(&mut self, name: String, command: Vec<String>, directory: String) {
+      if !command.is_empty() {
+         self
+            .tests
+            .entry((command, directory))
+            .or_default()
+            .push(name);
+      }
+   }
+
+   /// The tests a process running `args` in `cwd` is, one running a listed
+   /// command in its directory, or its interpreter when the command is a
+   /// script, as `TestNames` spells them.
+   pub fn unit(&self, args: &[OsString], cwd: &Path) -> Option<String> {
+      let directory = cwd.to_str()?;
+      self
+         .tests
+         .iter()
+         .find(|entry| {
+            let (ref command, ref listed) = *entry.0;
+            listed == directory
+               && args.len() >= command.len()
+               && args[args.len() - command.len()..]
+                  .iter()
+                  .zip(command)
+                  .all(|pair| pair.0 == pair.1.as_str())
+         })
+         .map(|entry| entry.1.join("\t"))
+   }
+}
+
+/// The names of the tests one unit of `Commands` runs.
+pub struct TestNames {
+   pub names: Vec<String>,
+}
+
+impl FromStr for TestNames {
+   type Err = String;
+
+   fn from_str(text: &str) -> Result<Self, Self::Err> {
+      if text.is_empty() {
+         return Err("a unit of no tests".to_owned());
+      }
+      Ok(Self {
+         names: text.split('\t').map(str::to_owned).collect(),
+      })
+   }
+}
+
 /// Who reached a path, the tests and whether anything outside a test did.
 #[derive(Default)]
 pub struct Readers {

@@ -1,18 +1,21 @@
 use std::{
    collections::BTreeMap,
    env::var,
+   ffi::OsString,
    fmt::{
       Display,
       Formatter,
       Result as FormatResult,
       Write as _,
    },
+   fs::read,
    io,
    path::{
       Path,
       PathBuf,
    },
    process::Command,
+   sync::OnceLock,
 };
 
 use mummer::{
@@ -23,6 +26,10 @@ use mummer::{
    process::Checked as _,
    tree::note,
 };
+use serde::{
+   Deserialize,
+   Serialize,
+};
 
 use crate::{
    attrs::{
@@ -30,6 +37,7 @@ use crate::{
       Ctx,
       Def,
       Platform,
+      build_top,
    },
    schema::Field,
    system::{
@@ -40,6 +48,12 @@ use crate::{
          upsert,
       },
       dispatch::System,
+   },
+   test_cache,
+   trace::{
+      Commands,
+      TestNames,
+      Tests,
    },
 };
 
@@ -106,11 +120,16 @@ impl System for Meson {
       Ok(ctx.build.clone())
    }
 
+   fn tests(&self) -> Option<&'static dyn Tests> {
+      Some(&Self)
+   }
+
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
       let options = ctx.options::<Options>(self.name())?;
       match verb {
          "configure" => Self::configure(ctx, &options),
          "build" => run("ninja", &[&format!("-j{}", ctx.njobs)], &[]),
+         "test-prepare" => Self::list_tests(ctx),
          "test" => Self::test(ctx, &options),
          "install" => run("meson", &["install", "--no-rebuild"], &[]),
          _ => Err(unknown(self.name(), verb)),
@@ -261,6 +280,30 @@ impl Meson {
       run("meson", &args, &[])
    }
 
+   /// Each test's command and working directory, a test without one running
+   /// in the build directory, written where the test phase's tracer reads it.
+   fn list_tests(ctx: &Ctx) -> io::Result<()> {
+      let output = Command::new("meson")
+         .args(["introspect", "--tests"])
+         .checked_output()?;
+      let root = utf8(&ctx.build)?;
+      let listed = serde_json::from_slice::<Vec<Introspected>>(&output)?
+         .into_iter()
+         .map(|test| {
+            Listed {
+               cwd:  test.workdir.unwrap_or_else(|| root.to_owned()),
+               name: test.name,
+               cmd:  test.cmd,
+            }
+         })
+         .collect::<Vec<_>>();
+      write_file(
+         &Path::new(&build_top()?).join(LISTING),
+         &serde_json::to_vec(&listed)?,
+         None,
+      )
+   }
+
    fn test(ctx: &Ctx, options: &Options) -> io::Result<()> {
       let jobs = ctx.test_jobs()?.to_string();
       let mut args = vec![
@@ -271,7 +314,9 @@ impl Meson {
          &jobs,
       ];
       let mut kept = Vec::new();
-      if !options.skip_tests.is_empty() {
+      if let Some(selected) = test_cache::selected::<TestNames>()? {
+         kept.extend(selected.into_iter().flat_map(|unit| unit.names));
+      } else if !options.skip_tests.is_empty() {
          let listed = Command::new("meson")
             .args(["test", "--list"])
             .checked_output()?;
@@ -288,5 +333,55 @@ impl Meson {
       }
       args.extend(strs(&kept));
       run("meson", &args, &[])
+   }
+}
+
+/// Where `test-prepare` leaves meson's tests.
+const LISTING: &str = ".bigtop-meson-tests.json";
+
+#[derive(Deserialize)]
+struct Introspected {
+   name:    String,
+   cmd:     Vec<String>,
+   workdir: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct Listed {
+   name: String,
+   cmd:  Vec<String>,
+   cwd:  String,
+}
+
+fn commands() -> Option<&'static Commands> {
+   static COMMANDS: OnceLock<Option<Commands>> = OnceLock::new();
+   COMMANDS
+      .get_or_init(|| {
+         let bytes = read(Path::new(&build_top().ok()?).join(LISTING)).ok()?;
+         let mut found = Commands::default();
+         for test in serde_json::from_slice::<Vec<Listed>>(&bytes).ok()? {
+            found.add(test.name, test.cmd, test.cwd);
+         }
+         Some(found)
+      })
+      .as_ref()
+}
+
+/// meson execs a test's command as introspected, so a test's process runs
+/// it, or runs its interpreter when the command is a script.
+impl Tests for Meson {
+   fn unit(&self, _exe: &Path, args: &[OsString], cwd: &Path) -> Option<String> {
+      commands()?.unit(args, cwd)
+   }
+
+   fn prepares(&self) -> bool {
+      true
+   }
+
+   /// The logs every meson test run rewrites.
+   fn state(&self, path: &Path) -> bool {
+      path
+         .ancestors()
+         .any(|directory| directory.ends_with("meson-logs"))
    }
 }
