@@ -1,0 +1,10 @@
+tag   = "cargo-nextest-{version}"
+track = "github:nextest-rs/nextest"
+fetch = { archive = true }
+with  = [ "cargo" ]
+
+[test]
+bin = [ "cargo-nextest" ]
+
+[cargo]
+flags = [ "-p", "cargo-nextest" ]
