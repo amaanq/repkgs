@@ -57,8 +57,13 @@ use std::{
    sync::{
       Arc,
       Mutex,
+      mpsc::{
+         Sender,
+         channel,
+      },
    },
    thread::{
+      scope,
       sleep,
       spawn,
    },
@@ -79,6 +84,7 @@ use libc::{
    SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV,
    SECCOMP_IOCTL_NOTIF_RECV,
    SECCOMP_IOCTL_NOTIF_SEND,
+   SECCOMP_IOCTL_NOTIF_SET_FLAGS,
    SECCOMP_RET_ALLOW,
    SECCOMP_RET_USER_NOTIF,
    SECCOMP_SET_MODE_FILTER,
@@ -133,6 +139,8 @@ const X32_BIT: u32 = 0;
 /// Within a page however large the pages are, so a read never crosses into
 /// one the tracee has not mapped.
 const CHUNK: u64 = 4096;
+/// `SECCOMP_USER_NOTIF_FD_SYNC_WAKE_UP` from linux/seccomp.h, which libc lacks.
+const SYNC_WAKE_UP: u64 = 1;
 const PATH_MAX: usize = 4096;
 
 /// A path argument, a relative one under the directory descriptor in
@@ -815,21 +823,13 @@ fn record(accesses: &mut Accesses, event: Event, unit: Option<&str>, traced: boo
    }
 }
 
-/// Notes each call while the run is recorded, then keeps letting calls
-/// through for whatever it left running, until no traced task remains.
-fn serve(
-   socket: &OwnedFd,
-   recorded: &Mutex<Option<Accesses>>,
-   tests: Option<&dyn Tests>,
-   mark: Mark,
-) {
-   let Some(listener) = receive(socket) else {
-      return;
-   };
-   let mut reader = Reader::default();
-   let mut lineage = Lineage::default();
+/// Takes each call off the listener as soon as it arrives. A task sleeps
+/// interruptibly until its call is received, and a signal then fails the call
+/// with EINTR under a handler without `SA_RESTART`, such as busybox ash's
+/// SIGCHLD one, where the call untraced would never be interrupted.
+fn take(listener: &OwnedFd, taken: &Sender<seccomp_notif>) {
    loop {
-      let mut polled = [PollFd::new(&listener, PollFlags::IN)];
+      let mut polled = [PollFd::new(listener, PollFlags::IN)];
       match poll(&mut polled, None) {
          Ok(_) => {},
          Err(Errno::INTR) => continue,
@@ -856,42 +856,77 @@ fn serve(
          continue;
       }
       // SAFETY: RECV succeeded, so it filled the whole struct
-      let request = unsafe { empty.assume_init() };
-      if let Ok(mut guard) = recorded.lock()
-         && let Some(accesses) = guard.as_mut()
-      {
-         let done = note(&mut reader, &request, accesses);
-         let unit = match tests {
-            Some(harness) if !done.is_empty() => lineage.unit(harness, request.pid),
-            _ => None,
-         };
-         for event in done {
-            let exec = match event {
-               Event::Exec(ref path) => {
-                  tests.and_then(|harness| harness.unit(path, &[], Path::new("/")))
-               },
-               Event::Read(_) | Event::Looked(_) | Event::Clobbered(_) | Event::Listed(_) => None,
-            };
-            let ran = exec.or_else(|| unit.clone());
-            record(accesses, event, ran.as_deref(), tests.is_some(), mark);
-         }
-      }
-      let mut response = seccomp_notif_resp {
-         id:    request.id,
-         val:   0,
-         error: 0,
-         flags: u32::try_from(SECCOMP_USER_NOTIF_FLAG_CONTINUE).unwrap_or_default(),
-      };
-      // SAFETY: SEND reads the `seccomp_notif_resp` it is given; a task that
-      // died meanwhile fails it with ENOENT, which leaves nothing to do
-      unsafe {
-         libc::ioctl(
-            listener.as_raw_fd(),
-            SECCOMP_IOCTL_NOTIF_SEND,
-            &raw mut response,
-         );
+      if taken.send(unsafe { empty.assume_init() }).is_err() {
+         return;
       }
    }
+}
+
+/// Notes each call while the run is recorded, then keeps letting calls
+/// through for whatever it left running, until no traced task remains.
+fn serve(
+   socket: &OwnedFd,
+   recorded: &Mutex<Option<Accesses>>,
+   tests: Option<&dyn Tests>,
+   mark: Mark,
+) {
+   let Some(listener) = receive(socket) else {
+      return;
+   };
+   // SAFETY: SET_FLAGS takes the flags by value, and a kernel without the
+   // flag refuses it, which only costs latency
+   let _: i32 = unsafe {
+      libc::ioctl(
+         listener.as_raw_fd(),
+         SECCOMP_IOCTL_NOTIF_SET_FLAGS,
+         SYNC_WAKE_UP,
+      )
+   };
+   let listening = &listener;
+   let (taken, requests) = channel();
+   scope(|threads| {
+      threads.spawn(move || take(listening, &taken));
+      let mut reader = Reader::default();
+      let mut lineage = Lineage::default();
+      for request in requests {
+         if let Ok(mut guard) = recorded.lock()
+            && let Some(accesses) = guard.as_mut()
+         {
+            let done = note(&mut reader, &request, accesses);
+            let unit = match tests {
+               Some(harness) if !done.is_empty() => lineage.unit(harness, request.pid),
+               _ => None,
+            };
+            for event in done {
+               let exec = match event {
+                  Event::Exec(ref path) => {
+                     tests.and_then(|harness| harness.unit(path, &[], Path::new("/")))
+                  },
+                  Event::Read(_) | Event::Looked(_) | Event::Clobbered(_) | Event::Listed(_) => {
+                     None
+                  },
+               };
+               let ran = exec.or_else(|| unit.clone());
+               record(accesses, event, ran.as_deref(), tests.is_some(), mark);
+            }
+         }
+         let mut response = seccomp_notif_resp {
+            id:    request.id,
+            val:   0,
+            error: 0,
+            flags: u32::try_from(SECCOMP_USER_NOTIF_FLAG_CONTINUE).unwrap_or_default(),
+         };
+         // SAFETY: SEND reads the `seccomp_notif_resp` it is given; a task that
+         // died meanwhile fails it with ENOENT, which leaves nothing to do
+         unsafe {
+            libc::ioctl(
+               listener.as_raw_fd(),
+               SECCOMP_IOCTL_NOTIF_SEND,
+               &raw mut response,
+            );
+         }
+      }
+   });
 }
 
 /// Runs a command from `make` traced, or untraced when the filter cannot be
