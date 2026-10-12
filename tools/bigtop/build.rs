@@ -53,14 +53,15 @@ fn digest(files: &BTreeSet<PathBuf>, root: &Path) -> io::Result<String> {
 }
 
 /// Whether `text` has a path through `module`, a `module::` not inside a
-/// longer name.
+/// longer name or opening a string, such as the `"cargo::rustc-link-search="`
+/// build-script directive syslibs reads.
 fn names(text: &str, module: &str) -> bool {
    let needle = format!("{module}::");
    text.match_indices(&needle).any(|(at, _)| {
       text[..at]
          .chars()
          .next_back()
-         .is_none_or(|before| !before.is_alphanumeric() && before != '_')
+         .is_none_or(|before| !before.is_alphanumeric() && !matches!(before, '_' | '"'))
    })
 }
 
