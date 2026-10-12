@@ -15,6 +15,7 @@ cflags = [ "-DOSSL_RELOCATABLE" ]
 
 [make]
 configureScript = "Configure"
+buildTarget     = [ "build_sw", "build_man_docs" ]
 installFlags    = [ "OPENSSLDIR=$(prefix)/etc/ssl" ]
 installTarget   = [ "install_sw", "install_ssldirs", "install_man_docs" ]
 
