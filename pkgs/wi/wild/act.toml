@@ -2,14 +2,17 @@ tag = "{version}"
 track = "github:wild-linker/wild"
 fetch = { archive = true }
 with = [ "cargo" ]
+tools = [ "taplo", "clang22" ]
 patches = [
   "package-metadata.patch",
   "linker-script-directory.patch",
   "relr-version-definition.patch",
 ]
 
+[test]
+bin = [ "wild" ]
+
 [cargo]
-flags = [ "-p", "wild-linker" ]
 # the integration suite diffs each case against GNU ld, gcc and gold, and our cc drivers link with lld
 # whatever -B names, so these cases test the reference toolchain instead of wild
 skipTests = [
