@@ -1,0 +1,10 @@
+fetch = { url = "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/{version}/downloads/wayland-protocols-{version}.tar.xz" }
+with  = [ "meson" ]
+deps  = [ "wayland" ]
+tools = [ "wayland" ]
+
+[track]
+from = "gitlab:wayland/wayland-protocols?repository_url=https://gitlab.freedesktop.org"
+
+[meson.defs]
+tests = true
