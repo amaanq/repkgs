@@ -1,5 +1,8 @@
 use std::{
-   collections::BTreeMap,
+   collections::{
+      BTreeMap,
+      HashMap,
+   },
    fmt::{
       Display,
       Formatter,
@@ -80,6 +83,12 @@ const HEADER_SIZE: u64 = 8;
 const SPOOL_MIN: u64 = 4 << 20;
 const TOUCH_EVERY: Duration = Duration::from_secs(60);
 
+/// A forgotten key's marker, its value the pack the key was forgotten from,
+/// so a reload drops the copies in that pack and older ones.
+const FORGOTTEN: &str = "forgotten/";
+/// The keys a value refers to, one per line, kept while the value lives.
+const REFERENCES: &str = "references/";
+
 pub struct Tier {
    pub directory: PathBuf,
    pub budget:    u64,
@@ -89,6 +98,9 @@ struct Location {
    pack:   u64,
    offset: u64,
    length: u32,
+   /// When a client last read it, at load the pack's last use, which is no
+   /// earlier.
+   read:   AtomicU64,
 }
 
 struct Pack {
@@ -167,11 +179,13 @@ impl Display for Stats {
 
 #[derive(Default)]
 struct State {
-   index:  BTreeMap<Key, Location>,
-   packs:  BTreeMap<u64, Pack>,
-   active: u64,
-   totals: Vec<u64>,
-   closed: bool,
+   index:      BTreeMap<Key, Location>,
+   packs:      BTreeMap<u64, Pack>,
+   active:     u64,
+   totals:     Vec<u64>,
+   closed:     bool,
+   /// How many live values refer to each key.
+   references: HashMap<Key, u32>,
 }
 
 impl State {
@@ -198,6 +212,102 @@ impl State {
             .live -= u64::from(previous.length);
       }
    }
+
+   fn remove(&mut self, key: &Key) -> Option<Location> {
+      let location = self.index.remove(key)?;
+      if let Some(pack) = self.packs.get_mut(&location.pack) {
+         pack.live -= u64::from(location.length);
+      }
+      Some(location)
+   }
+
+   fn value(&self, key: &Key) -> io::Result<Option<Vec<u8>>> {
+      let Some(location) = self.index.get(key) else {
+         return Ok(None);
+      };
+      let mut bytes = vec![0; usize::try_from(location.length).map_err(io::Error::other)?];
+      self.packs[&location.pack]
+         .file
+         .read_exact_at(&mut bytes, location.offset)?;
+      Ok(Some(bytes))
+   }
+
+   fn listed(&self, key: &Key) -> io::Result<Vec<Key>> {
+      let Some(bytes) = self.value(key)? else {
+         return Ok(Vec::new());
+      };
+      String::from_utf8(bytes)
+         .map_err(io::Error::other)?
+         .lines()
+         .map(str::parse)
+         .collect()
+   }
+}
+
+fn marker(prefix: &str, key: &Key) -> Option<Key> {
+   format!("{prefix}{key}").parse().ok()
+}
+
+/// Indexes a loaded pack's records in the order they were written, a
+/// forgotten marker dropping the copies of its key in this pack and older
+/// ones, a later copy in this pack dropping the marker.
+fn settle(
+   state: &mut State,
+   identifier: u64,
+   read: u64,
+   records: Vec<(Key, u64, u32)>,
+) -> io::Result<()> {
+   for (key, offset, length) in records {
+      let target = key
+         .as_str()
+         .strip_prefix(FORGOTTEN)
+         .and_then(|rest| rest.parse::<Key>().ok());
+      if target.is_none()
+         && let Some(forgotten) = marker(FORGOTTEN, &key)
+      {
+         state.remove(&forgotten);
+      }
+      state.insert(key.clone(), Location {
+         pack: identifier,
+         offset,
+         length,
+         read: AtomicU64::new(read),
+      });
+      let Some(forgotten) = target else {
+         continue;
+      };
+      let bytes = state.value(&key)?.unwrap_or_default();
+      let shadowed = u64::from_le_bytes(
+         bytes
+            .get(..8)
+            .and_then(|head| head.try_into().ok())
+            .ok_or_else(|| io::Error::other("short forgotten marker"))?,
+      );
+      if state
+         .index
+         .get(&forgotten)
+         .is_some_and(|location| location.pack <= shadowed)
+      {
+         state.remove(&forgotten);
+      }
+   }
+   Ok(())
+}
+
+/// The reference counts, from every live list of references.
+fn count(state: &mut State) -> io::Result<()> {
+   let lists = state
+      .index
+      .keys()
+      .filter(|key| key.as_str().starts_with(REFERENCES))
+      .cloned()
+      .collect::<Vec<Key>>();
+   for list in lists {
+      for referenced in state.listed(&list)? {
+         *state.references.entry(referenced).or_default() += 1;
+      }
+   }
+   Ok(())
 }
 
 #[derive(Default)]
@@ -312,13 +422,7 @@ impl Shared {
                records.push((key, offset, length));
             }
             state.packs.insert(identifier, pack);
-            for (key, offset, length) in records {
-               state.insert(key, Location {
-                  pack: identifier,
-                  offset,
-                  length,
-               });
-            }
+            settle(state, identifier, modified, records)?;
             state.totals[tier] += size;
          },
          Err(error) if error.kind() == io::ErrorKind::NotFound => {
@@ -350,13 +454,7 @@ impl Shared {
                offset = end;
             }
             state.packs.insert(identifier, pack);
-            for (key, value_offset, length) in records {
-               state.insert(key, Location {
-                  pack: identifier,
-                  offset: value_offset,
-                  length,
-               });
-            }
+            settle(state, identifier, modified, records)?;
             if offset != size {
                warn(format_args!(
                   "truncating unfinished pack {identifier} from {size} to {offset} bytes"
@@ -418,6 +516,219 @@ impl Shared {
          touched: AtomicU64::new(started),
       });
       state.active = identifier;
+      Ok(())
+   }
+
+   /// Writes one record to the active pack and indexes it.
+   #[expect(
+      clippy::expect_used,
+      reason = "the active pack must exist after rotation"
+   )]
+   fn append(
+      &self,
+      state: &mut State,
+      key: &Key,
+      body: &mut dyn Read,
+      size: u64,
+      read: u64,
+   ) -> io::Result<()> {
+      let key_length = u32::try_from(key.as_str().len()).map_err(io::Error::other)?;
+      let value_length = u32::try_from(size).map_err(io::Error::other)?;
+      check_lengths(key_length, value_length)?;
+      let record_size = HEADER_SIZE + u64::from(key_length) + size;
+      let active_size = state.packs[&state.active].size;
+      if active_size > 0 && active_size + record_size > PACK_LIMIT {
+         self.rotate(state)?;
+      }
+      let active = state.active;
+      let pack = state.packs.get_mut(&active).expect("missing active pack");
+      let mut header = Vec::with_capacity(8 + key.as_str().len());
+      header.extend_from_slice(&key_length.to_le_bytes());
+      header.extend_from_slice(&value_length.to_le_bytes());
+      header.extend_from_slice(key.as_str().as_bytes());
+      let header_length = u64::try_from(header.len()).map_err(io::Error::other)?;
+      let offset = pack.size + header_length;
+      let start = pack.size;
+      let written = (|| {
+         pack.file.write_all_at(&header, start)?;
+         let mut target = Positioned {
+            file: &pack.file,
+            offset,
+         };
+         if io::copy(&mut body.take(size), &mut target)? != size {
+            return Err(io::Error::new(
+               io::ErrorKind::UnexpectedEof,
+               "short cache object body",
+            ));
+         }
+         Ok(())
+      })();
+      if let Err(error) = written {
+         pack.file.set_len(start)?;
+         return Err(error);
+      }
+      pack.size += record_size;
+      state.totals[0] += record_size;
+      state.insert(key.clone(), Location {
+         pack: active,
+         offset,
+         length: value_length,
+         read: AtomicU64::new(read),
+      });
+      Ok(())
+   }
+
+   /// Drops a key, leaving a marker so a reload does not bring it back, and
+   /// with it whatever only it referred to.
+   fn forget(&self, state: &mut State, key: &Key) -> io::Result<bool> {
+      let Some(location) = state.remove(key) else {
+         return Ok(false);
+      };
+      if let Some(forgotten) = marker(FORGOTTEN, key) {
+         let shadowed = location.pack.to_le_bytes();
+         self.append(state, &forgotten, &mut shadowed.as_slice(), 8, now())?;
+      }
+      let Some(list) = marker(REFERENCES, key) else {
+         return Ok(true);
+      };
+      let referenced = state.listed(&list)?;
+      if referenced.is_empty() {
+         return Ok(true);
+      }
+      self.forget(state, &list)?;
+      self.release(state, referenced)?;
+      Ok(true)
+   }
+
+   fn release(&self, state: &mut State, referenced: Vec<Key>) -> io::Result<()> {
+      for key in referenced {
+         let Some(count) = state.references.get_mut(&key) else {
+            continue;
+         };
+         *count -= 1;
+         if *count == 0 {
+            state.references.remove(&key);
+            self.forget(state, &key)?;
+         }
+      }
+      Ok(())
+   }
+
+   /// Replaces the keys `key` refers to, counting the new ones before the
+   /// old ones are released, so a key in both stays.
+   fn refer(&self, state: &mut State, key: &Key, referenced: &[Key]) -> io::Result<()> {
+      let Some(list) = marker(REFERENCES, key) else {
+         return Ok(());
+      };
+      let previous = state.listed(&list)?;
+      for new in referenced {
+         *state.references.entry(new.clone()).or_default() += 1;
+      }
+      if referenced.is_empty() {
+         self.forget(state, &list)?;
+      } else {
+         let mut text = String::new();
+         for new in referenced {
+            text.push_str(new.as_str());
+            text.push('\n');
+         }
+         let size = u64::try_from(text.len()).map_err(io::Error::other)?;
+         self.append(state, &list, &mut text.as_bytes(), size, now())?;
+      }
+      self.release(state, previous)
+   }
+
+   /// A sealed hot pack mostly dead, which is cheaper to rewrite than keep.
+   fn compactable(state: &State) -> Option<u64> {
+      state
+         .packs
+         .iter()
+         .find(|&(&identifier, pack)| {
+            pack.tier == 0 && identifier != state.active && pack.size > 0 && pack.stale()
+         })
+         .map(|(&identifier, _)| identifier)
+   }
+
+   /// Copies a pack's live records into the active pack and deletes it.
+   /// Forgotten markers whose pack is gone are dropped instead of copied.
+   fn compact(&self, identifier: u64) -> io::Result<()> {
+      let (file, live, entries) = {
+         let state = self.read();
+         let pack = &state.packs[&identifier];
+         let (file, live) = (Arc::clone(&pack.file), pack.live);
+         let entries = state
+            .index
+            .iter()
+            .filter(|entry| entry.1.pack == identifier)
+            .map(|(key, location)| {
+               (
+                  key.clone(),
+                  location.offset,
+                  location.length,
+                  location.read.load(Ordering::Relaxed),
+               )
+            })
+            .collect::<Vec<_>>();
+         drop(state);
+         (file, live, entries)
+      };
+      for (key, offset, length, read) in entries {
+         let mut bytes = vec![0; usize::try_from(length).map_err(io::Error::other)?];
+         file.read_exact_at(&mut bytes, offset)?;
+         let mut state = self.write();
+         if state.closed {
+            return Err(io::Error::other("cache store is closed"));
+         }
+         let unmoved = state
+            .index
+            .get(&key)
+            .is_some_and(|location| location.pack == identifier && location.offset == offset);
+         if !unmoved {
+            continue;
+         }
+         if key.as_str().starts_with(FORGOTTEN) {
+            let shadowed = bytes
+               .get(..8)
+               .and_then(|head| head.try_into().ok())
+               .map(u64::from_le_bytes);
+            if shadowed.is_none_or(|pack| pack == identifier || !state.packs.contains_key(&pack)) {
+               state.remove(&key);
+               continue;
+            }
+         }
+         self.append(
+            &mut state,
+            &key,
+            &mut bytes.as_slice(),
+            u64::from(length),
+            read,
+         )?;
+         drop(state);
+      }
+      let mut state = self.write();
+      if state
+         .index
+         .values()
+         .any(|location| location.pack == identifier)
+      {
+         return Ok(());
+      }
+      let Some(removed) = state.packs.remove(&identifier) else {
+         return Ok(());
+      };
+      state.totals[removed.tier] -= removed.size;
+      drop(state);
+      remove_file(self.pack_path(removed.tier, identifier, "pack"))?;
+      drop(remove_file(self.pack_path(
+         removed.tier,
+         identifier,
+         "hint",
+      )));
+      note(format_args!(
+         "compacted pack {identifier:06}, {} MiB, {} MiB live",
+         removed.size >> 20_u32,
+         live >> 20_u32
+      ));
       Ok(())
    }
 
@@ -543,6 +854,16 @@ impl Shared {
                break;
             }
          }
+         loop {
+            let compactable = Self::compactable(&self.read());
+            let Some(identifier) = compactable else {
+               break;
+            };
+            if let Err(error) = self.compact(identifier) {
+               warn(format_args!("pack {identifier:06}: {error}"));
+               break;
+            }
+         }
       }
    }
 }
@@ -626,6 +947,7 @@ impl Store {
             }
          }
          state.active = last;
+         count(&mut state)?;
          shared.rotate(&mut state)?;
          drop(state);
       };
@@ -652,6 +974,7 @@ impl Store {
          let length = location.length;
          let touched = pack.touched.load(Ordering::Relaxed);
          pack.used.store(current, Ordering::Relaxed);
+         location.read.store(current, Ordering::Relaxed);
          let touch_interval = u64::try_from(TOUCH_EVERY.as_nanos()).unwrap_or(u64::MAX);
          let need_touch = current.saturating_sub(touched) > touch_interval
             && pack
@@ -671,11 +994,15 @@ impl Store {
       })
    }
 
-   #[expect(
-      clippy::expect_used,
-      reason = "the active pack must exist after rotation"
-   )]
-   pub fn put<Reader>(&self, key: &Key, body: &mut Reader, length: usize) -> io::Result<()>
+   /// Stores a value, and with `referenced` the keys it refers to, which
+   /// stay while it does.
+   pub fn put<Reader>(
+      &self,
+      key: &Key,
+      body: &mut Reader,
+      length: usize,
+      referenced: Option<&[Key]>,
+   ) -> io::Result<()>
    where
       Reader: Read,
    {
@@ -683,8 +1010,7 @@ impl Store {
       let value_length = u32::try_from(length).map_err(io::Error::other)?;
       check_lengths(key_length, value_length)?;
       let size = u64::from(value_length);
-      let record_size = HEADER_SIZE + u64::from(key_length) + size;
-      let staged: Box<dyn Read> = if size < SPOOL_MIN {
+      let mut staged: Box<dyn Read> = if size < SPOOL_MIN {
          let mut buffer = Vec::new();
          buffer.try_reserve_exact(length).map_err(io::Error::other)?;
          buffer.resize(length, 0);
@@ -706,44 +1032,15 @@ impl Store {
       if state.closed {
          return Err(io::Error::other("cache store is closed"));
       }
-      let active_size = state.packs[&state.active].size;
-      if active_size > 0 && active_size + record_size > PACK_LIMIT {
-         self.shared.rotate(&mut state)?;
+      self
+         .shared
+         .append(&mut state, key, &mut staged, size, now())?;
+      if let Some(forgotten) = marker(FORGOTTEN, key) {
+         state.remove(&forgotten);
       }
-      let active = state.active;
-      let pack = state.packs.get_mut(&active).expect("missing active pack");
-      let mut header = Vec::with_capacity(8 + key.as_str().len());
-      header.extend_from_slice(&key_length.to_le_bytes());
-      header.extend_from_slice(&value_length.to_le_bytes());
-      header.extend_from_slice(key.as_str().as_bytes());
-      let header_length = u64::try_from(header.len()).map_err(io::Error::other)?;
-      let offset = pack.size + header_length;
-      let start = pack.size;
-      let written = (|| {
-         pack.file.write_all_at(&header, start)?;
-         let mut target = Positioned {
-            file: &pack.file,
-            offset,
-         };
-         if io::copy(&mut staged.take(size), &mut target)? != size {
-            return Err(io::Error::new(
-               io::ErrorKind::UnexpectedEof,
-               "short cache object body",
-            ));
-         }
-         Ok(())
-      })();
-      if let Err(error) = written {
-         pack.file.set_len(start)?;
-         return Err(error);
+      if let Some(keys) = referenced {
+         self.shared.refer(&mut state, key, keys)?;
       }
-      pack.size += record_size;
-      state.totals[0] += record_size;
-      state.insert(key.clone(), Location {
-         pack: active,
-         offset,
-         length: value_length,
-      });
       let budget = self.shared.tiers[0].budget;
       let needs_kick = budget > 0 && state.totals[0] > budget;
       drop(state);
@@ -751,6 +1048,40 @@ impl Store {
          self.shared.kick();
       }
       Ok(())
+   }
+
+   /// Nanoseconds since a client last read the key, or since its pack was
+   /// last used when nothing read it since the daemon started.
+   pub fn age(&self, key: &Key) -> Option<u64> {
+      let read = self
+         .shared
+         .read()
+         .index
+         .get(key)?
+         .read
+         .load(Ordering::Relaxed);
+      Some(now().saturating_sub(read))
+   }
+
+   /// Drops a key and whatever only it referred to, unless it was read
+   /// within `idle` nanoseconds. True when it was dropped.
+   pub fn forget(&self, key: &Key, idle: u64) -> io::Result<bool> {
+      let mut state = self.shared.write();
+      if state.closed {
+         return Err(io::Error::other("cache store is closed"));
+      }
+      let recent = state.index.get(key).is_some_and(|location| {
+         now().saturating_sub(location.read.load(Ordering::Relaxed)) < idle
+      });
+      if recent {
+         return Ok(false);
+      }
+      let forgotten = self.shared.forget(&mut state, key)?;
+      drop(state);
+      if forgotten {
+         self.shared.kick();
+      }
+      Ok(forgotten)
    }
 
    pub fn stats(&self) -> Stats {
@@ -900,7 +1231,7 @@ mod tests {
    fn put(store: &Store, key: &str, value: &[u8]) {
       let length = value.len();
       store
-         .put(&key.parse().expect("valid key"), &mut &*value, length)
+         .put(&key.parse().expect("valid key"), &mut &*value, length, None)
          .expect("write value");
    }
 

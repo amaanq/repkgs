@@ -14,7 +14,21 @@ use crate::{
 pub enum Request {
    Get(Key),
    Has(Key),
-   Put { key: Key, length: usize },
+   /// A value, after `references` lines naming the keys it refers to when
+   /// the client sends them.
+   Put {
+      key:        Key,
+      length:     usize,
+      references: Option<usize>,
+   },
+   /// A key the client's newer value replaces, answered `OK` when dropped
+   /// and `KEPT` when the client should keep listing it.
+   Forget(Key),
+   /// A key the client lists past its limit, dropped unless read recently,
+   /// answered like a forget.
+   Expire(Key),
+   /// How long ago a key was last read.
+   Age(Key),
    Identities(usize),
    Acquire(String),
    Release(String),
@@ -30,16 +44,17 @@ impl FromStr for Request {
       match *fields.as_slice() {
          ["GET", key] => Ok(Self::Get(key.parse()?)),
          ["HAS", key] => Ok(Self::Has(key.parse()?)),
-         ["PUT", key, size] => {
-            let length = size.parse::<usize>().map_err(io::Error::other)?;
-            if length > MAX_OBJECT {
-               return Err(io::Error::other("cache object exceeds size limit"));
+         ["PUT", key, size] => put(key, size, None),
+         ["PUT", key, size, count] => {
+            let references = count.parse::<usize>().map_err(io::Error::other)?;
+            if references > 1 << 20 {
+               return Err(io::Error::other("reference list exceeds size limit"));
             }
-            Ok(Self::Put {
-               key: key.parse()?,
-               length,
-            })
+            put(key, size, Some(references))
          },
+         ["FORGET", key] => Ok(Self::Forget(key.parse()?)),
+         ["EXPIRE", key] => Ok(Self::Expire(key.parse()?)),
+         ["AGE", key] => Ok(Self::Age(key.parse()?)),
          ["IDS", count] => {
             let length = count.parse::<usize>().map_err(io::Error::other)?;
             if length > 1 << 20 {
@@ -59,4 +74,16 @@ impl FromStr for Request {
          _ => Err(io::Error::other("invalid cache request")),
       }
    }
+}
+
+fn put(key: &str, size: &str, references: Option<usize>) -> io::Result<Request> {
+   let length = size.parse::<usize>().map_err(io::Error::other)?;
+   if length > MAX_OBJECT {
+      return Err(io::Error::other("cache object exceeds size limit"));
+   }
+   Ok(Request::Put {
+      key: key.parse()?,
+      length,
+      references,
+   })
 }

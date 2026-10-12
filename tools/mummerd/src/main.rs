@@ -91,6 +91,7 @@ use crate::{
    server::{
       Connection,
       Daemon,
+      Forgetting,
    },
    store::{
       Store,
@@ -130,6 +131,14 @@ struct Options {
    /// Also write to the remote, which only a trusted builder should.
    #[pound(long)]
    remote_writes:   bool,
+   /// Days an entry no client lists must sit unread before it is dropped,
+   /// zero to keep every one.
+   #[pound(long, env = "MUMMERD_FORGET_IDLE", default = "14")]
+   forget_idle:     u64,
+   /// Keep entries a client's newer one replaces, as a machine building
+   /// several checkouts of one package wants.
+   #[pound(long)]
+   keep_superseded: bool,
 }
 
 struct Socket {
@@ -274,7 +283,13 @@ fn main() -> Result<()> {
          }
       ));
    }
-   let daemon = Arc::new(Daemon::new(store, limit, &store_dir, remote)?);
+   let forgetting = Forgetting {
+      idle:       (options.forget_idle > 0)
+         .then(|| options.forget_idle.checked_mul(86_400 * 1_000_000_000))
+         .flatten(),
+      superseded: !options.keep_superseded,
+   };
+   let daemon = Arc::new(Daemon::new(store, forgetting, limit, &store_dir, remote)?);
    let mut workers = Vec::<(JoinHandle<()>, UnixStream)>::new();
    let result = serve(&socket.listener, &daemon, &stopped, &mut workers);
    daemon.stop();
