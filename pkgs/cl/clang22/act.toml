@@ -15,7 +15,6 @@ root = "clang"
 [cmake.defs]
 BUILD_SHARED_LIBS                     = false
 CLANG_BUILD_EXAMPLES                  = false
-CLANG_BUILD_TOOLS                     = false
 CLANG_ENABLE_ARCMT                    = false
 CLANG_ENABLE_STATIC_ANALYZER          = false
 CLANG_INCLUDE_DOCS                    = false
