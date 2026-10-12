@@ -1,0 +1,5 @@
+version = "2.0.0-unstable-2026-10-12"
+date    = "2026-10-12"
+rev     = "a478764f6fdee3c0cde315ea33aa733b98e030f0"
+sys     = [ "clang" ]
+hash    = "sha256-0Ow8zeMu6Cgj2VnbA1wYNe2Tiut48CFIKrDNoNSCWUs="

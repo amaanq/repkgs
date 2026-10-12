@@ -1,0 +1,13 @@
+fetch = { url = "https://github.com/keystone-engine/keystone/archive/{rev}.tar.gz" }
+with  = [ "cmake", "cargo" ]
+tools = [ "pkgconf" ]
+
+[track]
+from = "github:keystone-engine/keystone?branch=v2"
+base = "2.0.0"
+
+[steps.replace]
+"cmake.test" = [  ]
+
+[steps.after]
+"cmake.install" = [ "cargo.test" ]
