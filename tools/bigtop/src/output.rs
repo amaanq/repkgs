@@ -38,6 +38,7 @@ use serde::{
    Deserialize,
    Serialize,
 };
+use serde_json::Value;
 use tightrope::{
    client::Client,
    key::Key,
@@ -55,12 +56,25 @@ include!(concat!(env!("OUT_DIR"), "/fingerprints.rs"));
 
 const LEDGER: &str = ".bigtop-modules";
 const VARIANTS: usize = 4;
+/// Builds of one package kept apart, other pins or platforms.
+const BUILDS: usize = 4;
+/// How many a list holds at most, when the cache keeps entries past the
+/// limit because they were read recently.
+const SPARE: usize = 4;
 
 #[derive(Serialize)]
 struct Record<'inputs> {
    attrs:      &'inputs str,
    toolchains: Vec<String>,
    shared:     &'static str,
+}
+
+/// A build of a package by its key, and by what decides it besides the
+/// package's own sources, so a build differing only in those replaces it.
+#[derive(Deserialize, Serialize)]
+struct Build {
+   digest:  String,
+   context: String,
 }
 
 /// The build-system modules one build dispatched into, by fingerprint.
@@ -174,6 +188,12 @@ fn swap_text(text: String, pairs: &[(String, String)]) -> String {
 }
 
 fn key(attrs: &Attrs, outputs: &[Output]) -> io::Result<String> {
+   identity(attrs, outputs).map(|found| found.0)
+}
+
+/// The output key's digest, and the digest of the same inputs without the
+/// package's sources, its version and its lock trees.
+fn identity(attrs: &Attrs, outputs: &[Output]) -> io::Result<(String, String)> {
    let file = var("NIX_ATTRS_JSON_FILE")
       .map_err(|_unset| io::Error::other("NIX_ATTRS_JSON_FILE is not set"))?;
    let mut text = read_to_string(file)?;
@@ -191,14 +211,29 @@ fn key(attrs: &Attrs, outputs: &[Output]) -> io::Result<String> {
          text = text.replace(root.as_str(), "<cc>");
       }
    }
-   let record = Record {
-      attrs: &text,
-      toolchains,
-      shared: SHARED,
+   let mut sourceless = serde_json::from_str::<Value>(&text)?;
+   if let Some(fields) = sourceless.as_object_mut() {
+      fields.remove("src");
+      fields.remove("patches");
+      if let Some(spec) = fields.get_mut("spec").and_then(Value::as_object_mut) {
+         spec.remove("version");
+      }
+   }
+   let mut context_text = serde_json::to_string(&sourceless)?;
+   for tree in attrs.spec()?.lock_trees() {
+      context_text = context_text.replace(tree, "<lock>");
+   }
+   let digest = |attrs_text: &str| -> io::Result<String> {
+      let record = Record {
+         attrs:      attrs_text,
+         toolchains: toolchains.clone(),
+         shared:     SHARED,
+      };
+      Ok(blake3::hash(&serde_json::to_vec(&record)?)
+         .to_hex()
+         .to_string())
    };
-   Ok(blake3::hash(&serde_json::to_vec(&record)?)
-      .to_hex()
-      .to_string())
+   Ok((digest(&text)?, digest(&context_text)?))
 }
 
 fn variants(attrs: &Attrs, digest: &str) -> io::Result<Key> {
@@ -206,12 +241,7 @@ fn variants(attrs: &Attrs, digest: &str) -> io::Result<Key> {
 }
 
 fn entry(attrs: &Attrs, digest: &str, id: &str, output: &Output) -> io::Result<Key> {
-   format!(
-      "output/{}/{digest}/{id}/{}",
-      attrs.spec()?.name,
-      output.name
-   )
-   .parse()
+   entry_key(attrs, digest, id, output.name)
 }
 
 /// The outputs a build with these inputs stored, false when any is missing,
@@ -267,7 +297,7 @@ pub fn store(attrs: &Attrs) -> io::Result<()> {
       return Ok(());
    };
    let outputs = outputs(attrs);
-   let digest = key(attrs, &outputs)?;
+   let (digest, context) = identity(attrs, &outputs)?;
    let variant = recorded()?;
    let id = variant.id(&digest)?;
    let pairs = outputs
@@ -293,7 +323,110 @@ pub fn store(attrs: &Attrs) -> io::Result<()> {
       None => Vec::new(),
    };
    known.retain(|other| *other != variant);
-   known.insert(0, variant);
-   known.truncate(VARIANTS);
-   client.put(&listing, &serde_json::to_vec(&known)?)
+   let mut kept = vec![variant];
+   if known.len() >= VARIANTS {
+      let firsts = known
+         .iter()
+         .map(|other| entry_key(attrs, &digest, &other.id(&digest)?, "out"))
+         .collect::<io::Result<Vec<_>>>()?;
+      let mut ranked = known
+         .into_iter()
+         .zip(client.ages(&firsts)?)
+         .filter_map(|(other, age)| Some((age?, other)))
+         .collect::<Vec<_>>();
+      ranked.sort_by_key(|pair| pair.0);
+      let overflow = ranked.split_off(ranked.len().min(VARIANTS - 1));
+      known = ranked.into_iter().map(|pair| pair.1).collect();
+      for (_, other) in overflow {
+         let entries = entry_keys(attrs, &digest, &other.id(&digest)?)?;
+         if client.expire(&entries)?.contains(&false) {
+            known.push(other);
+         }
+      }
+   }
+   kept.extend(known);
+   kept.truncate(VARIANTS * SPARE);
+   client.put(&listing, &serde_json::to_vec(&kept)?)?;
+   lineage(&mut client, attrs, digest, context)
+}
+
+fn entry_key(attrs: &Attrs, digest: &str, id: &str, name: &str) -> io::Result<Key> {
+   format!("output/{}/{digest}/{id}/{name}", attrs.spec()?.name).parse()
+}
+
+fn entry_keys(attrs: &Attrs, digest: &str, id: &str) -> io::Result<Vec<Key>> {
+   ["out", "debug", "tree"]
+      .into_iter()
+      .map(|name| entry_key(attrs, digest, id, name))
+      .collect()
+}
+
+/// Drops a build's outputs and then its variant list, true when all of it
+/// went, `forget` for a build this one replaces, else `expire`.
+fn drop_build(
+   client: &mut Client,
+   attrs: &Attrs,
+   digest: &str,
+   replaced: bool,
+) -> io::Result<bool> {
+   let listing = variants(attrs, digest)?;
+   let known = client
+      .get(&listing)?
+      .and_then(|bytes| serde_json::from_slice::<Vec<Variant>>(&bytes).ok())
+      .unwrap_or_default();
+   let mut keys = Vec::new();
+   for variant in &known {
+      keys.extend(entry_keys(attrs, digest, &variant.id(digest)?)?);
+   }
+   let mut drop_keys = |batch: &[Key]| {
+      if replaced {
+         client.forget(batch)
+      } else {
+         client.expire(batch)
+      }
+   };
+   if drop_keys(&keys)?.contains(&false) {
+      return Ok(false);
+   }
+   Ok(!drop_keys(&[listing])?.contains(&false))
+}
+
+/// The package's recent builds, newest first. A build whose inputs differ
+/// from this one only in the package's own sources is replaced and dropped,
+/// past `BUILDS` the least recently read go unless read lately.
+fn lineage(client: &mut Client, attrs: &Attrs, digest: String, context: String) -> io::Result<()> {
+   let key = format!("output/{}", attrs.spec()?.name).parse::<Key>()?;
+   let known = client
+      .get(&key)?
+      .and_then(|bytes| serde_json::from_slice::<Vec<Build>>(&bytes).ok())
+      .unwrap_or_default();
+   let mut kept = Vec::new();
+   for build in known.into_iter().filter(|build| build.digest != digest) {
+      if build.context != context || !drop_build(client, attrs, &build.digest, true)? {
+         kept.push(build);
+      }
+   }
+   if kept.len() >= BUILDS {
+      let listings = kept
+         .iter()
+         .map(|build| variants(attrs, &build.digest))
+         .collect::<io::Result<Vec<_>>>()?;
+      let mut ranked = kept
+         .into_iter()
+         .zip(client.ages(&listings)?)
+         .filter_map(|(build, age)| Some((age?, build)))
+         .collect::<Vec<_>>();
+      ranked.sort_by_key(|pair| pair.0);
+      let overflow = ranked.split_off(ranked.len().min(BUILDS - 1));
+      kept = ranked.into_iter().map(|pair| pair.1).collect();
+      for (_, build) in overflow {
+         if !drop_build(client, attrs, &build.digest, false)? {
+            kept.push(build);
+         }
+      }
+   }
+   let mut builds = vec![Build { digest, context }];
+   builds.extend(kept);
+   builds.truncate(BUILDS * SPARE);
+   client.put(&key, &serde_json::to_vec(&builds)?)
 }
