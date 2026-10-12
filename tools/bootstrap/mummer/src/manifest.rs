@@ -19,9 +19,11 @@ use mummer::{
    files::utf8,
    store::{
       InputId,
+      STORE_DIR,
       Store,
       field,
       is_store_path,
+      mask_hashes,
    },
 };
 use serde::{
@@ -38,14 +40,17 @@ use tightrope::{
 };
 
 const MANIFESTS: usize = 8;
+/// How many a list holds at most, when the cache keeps manifests past
+/// `MANIFESTS` because they were read recently.
+const LISTED: usize = MANIFESTS * 4;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, PartialEq, Eq)]
 struct Input {
    path:     String,
    identity: InputId,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, PartialEq, Eq)]
 struct Environment {
    name:  String,
    value: Option<String>,
@@ -56,6 +61,18 @@ pub struct Manifest {
    inputs:      Vec<Input>,
    environment: Vec<Environment>,
    absent:      Vec<String>,
+   /// The output of the build that stored it, its hash masked, which result
+   /// keys leave out so builds of other packages still share results.
+   #[serde(default, skip_serializing_if = "Option::is_none")]
+   owner:       Option<String>,
+}
+
+/// What a result key covers, the manifest without its owner.
+#[derive(Serialize)]
+struct Keyed<'manifest> {
+   inputs:      &'manifest [Input],
+   environment: &'manifest [Environment],
+   absent:      &'manifest [String],
 }
 
 impl Manifest {
@@ -99,6 +116,7 @@ impl Manifest {
          inputs,
          environment,
          absent,
+         owner: var("out").ok().map(|out| mask_hashes(&out)),
       })
    }
 
@@ -119,11 +137,43 @@ impl Manifest {
    pub fn result_key(&self, request: &Key) -> io::Result<Digest> {
       let mut hasher = Hasher::new();
       field(&mut hasher, request.as_str());
-      field(&mut hasher, serde_json::to_vec(self)?);
+      field(
+         &mut hasher,
+         serde_json::to_vec(&Keyed {
+            inputs:      &self.inputs,
+            environment: &self.environment,
+            absent:      &self.absent,
+         })?,
+      );
       Ok(Digest::from(hasher.finalize()))
    }
 
+   /// Whether this one replaces `older` for good, the same package built
+   /// with the same store inputs and environment, only its own sources
+   /// changed, as an edit or a version bump does. A store input that differs
+   /// could be another pin of the toolchain, which keeps the older one.
+   fn supersedes(&self, older: &Self) -> bool {
+      self.owner.is_some()
+         && self.owner == older.owner
+         && self.environment == older.environment
+         && self.store_inputs() == older.store_inputs()
+   }
+
+   fn store_inputs(&self) -> Vec<(&str, &InputId)> {
+      let mut found = self
+         .inputs
+         .iter()
+         .filter(|input| input.path.starts_with(STORE_DIR))
+         .map(|input| (input.path.as_str(), &input.identity))
+         .collect::<Vec<_>>();
+      found.sort_unstable_by_key(|entry| entry.0);
+      found
+   }
+
    /// llvm and llvm22 precompiles share request keys, so several sets stay.
+   /// The sets this one supersedes are dropped from the cache with their
+   /// results, and past `MANIFESTS` the least recently read go unless the
+   /// cache saw them read lately.
    pub fn publish(self, cache: &mut Client, request: &Key) -> io::Result<()> {
       let key = Key::of(Namespace::Manifest, request);
       let result = self.result_key(request)?;
@@ -131,13 +181,53 @@ impl Manifest {
          .get(&key)?
          .and_then(|bytes| serde_json::from_slice::<Vec<Self>>(&bytes).ok())
          .unwrap_or_default();
-      let mut manifests = vec![self];
+      let mut kept = Vec::new();
+      let mut superseded = Vec::new();
       for manifest in known {
-         if manifest.result_key(request)? != result {
-            manifests.push(manifest);
+         let digest = manifest.result_key(request)?;
+         if digest == result {
+            continue;
+         }
+         let record = Key::digest(Namespace::Record, &digest);
+         if self.supersedes(&manifest) {
+            superseded.push((manifest, record));
+         } else {
+            kept.push((manifest, record));
          }
       }
-      manifests.truncate(MANIFESTS);
+      let replaced = superseded
+         .iter()
+         .map(|entry| entry.1.clone())
+         .collect::<Vec<_>>();
+      for (entry, dropped) in superseded.into_iter().zip(cache.forget(&replaced)?) {
+         if !dropped {
+            kept.push(entry);
+         }
+      }
+      if kept.len() >= MANIFESTS {
+         let listed = kept.iter().map(|entry| entry.1.clone()).collect::<Vec<_>>();
+         let ages = cache.ages(&listed)?;
+         let mut ranked = kept
+            .into_iter()
+            .zip(ages)
+            .filter_map(|(entry, age)| Some((age?, entry)))
+            .collect::<Vec<_>>();
+         ranked.sort_by_key(|pair| pair.0);
+         let overflow = ranked.split_off(ranked.len().min(MANIFESTS - 1));
+         kept = ranked.into_iter().map(|pair| pair.1).collect();
+         let unlisted = overflow
+            .iter()
+            .map(|pair| pair.1.1.clone())
+            .collect::<Vec<_>>();
+         for ((_, entry), dropped) in overflow.into_iter().zip(cache.expire(&unlisted)?) {
+            if !dropped {
+               kept.push(entry);
+            }
+         }
+      }
+      let mut manifests = vec![self];
+      manifests.extend(kept.into_iter().map(|entry| entry.0));
+      manifests.truncate(LISTED);
       cache.put(&key, &serde_json::to_vec(&manifests)?)
    }
 

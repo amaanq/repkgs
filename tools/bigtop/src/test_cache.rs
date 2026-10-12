@@ -79,6 +79,11 @@ use crate::{
 };
 
 const MANIFESTS: usize = 8;
+/// Request keys of one step kept apart, other environments or options.
+const REQUESTS: usize = 4;
+/// How many a list holds at most, when the cache keeps entries past the
+/// limit because they were read recently.
+const SPARE: usize = 4;
 
 /// Kernel views and devices, never files a build wrote.
 const PSEUDO: [&str; 3] = ["/proc", "/sys", "/dev"];
@@ -452,6 +457,48 @@ fn publish(client: &mut Client, key: &Key, manifest: Manifest) -> io::Result<()>
    client.put(key, &serde_json::to_vec(&manifests)?)
 }
 
+/// The step's recent request keys, newest first. A request key changes with
+/// the environment, options or bigtop, never with sources alone, so past
+/// `REQUESTS` the least recently read go unless read lately.
+fn lineage(client: &mut Client, ctx: &Ctx, step: &Step, key: &Key) -> io::Result<()> {
+   let listing = format!("tests/{}/{}", ctx.spec()?.name, step.name).parse::<Key>()?;
+   let known = client
+      .get(&listing)?
+      .and_then(|bytes| serde_json::from_slice::<Vec<String>>(&bytes).ok())
+      .unwrap_or_default()
+      .into_iter()
+      .filter(|other| other != key.as_str())
+      .map(|other| other.parse::<Key>())
+      .collect::<io::Result<Vec<Key>>>()?;
+   let mut kept = Vec::new();
+   if known.len() >= REQUESTS {
+      let mut ranked = known
+         .iter()
+         .cloned()
+         .zip(client.ages(&known)?)
+         .filter_map(|(other, age)| Some((age?, other)))
+         .collect::<Vec<_>>();
+      ranked.sort_by_key(|pair| pair.0);
+      let overflow = ranked
+         .split_off(ranked.len().min(REQUESTS - 1))
+         .into_iter()
+         .map(|pair| pair.1)
+         .collect::<Vec<_>>();
+      kept.extend(ranked.into_iter().map(|pair| pair.1));
+      for (other, dropped) in overflow.iter().zip(client.expire(&overflow)?) {
+         if !dropped {
+            kept.push(other.clone());
+         }
+      }
+   } else {
+      kept = known;
+   }
+   let mut keys = vec![String::from(key.clone())];
+   keys.extend(kept.into_iter().map(String::from));
+   keys.truncate(REQUESTS * SPARE);
+   client.put(&listing, &serde_json::to_vec(&keys)?)
+}
+
 /// A test step skipped when a stored pass matches, otherwise run traced from
 /// `command` and its pass stored. `module` is the build system's, for a step
 /// that dispatches into one. Cache trouble is noted, never a failure.
@@ -510,7 +557,9 @@ pub fn run(
             manifest.absent.len(),
             manifest.listings.len()
          );
-         match publish(&mut client, &key, manifest) {
+         match publish(&mut client, &key, manifest)
+            .and_then(|()| lineage(&mut client, ctx, step, &key))
+         {
             Ok(()) => note("test-cache", &format!("stored, {counts}")),
             Err(error) => note("test-cache", &format!("store failed with {error}")),
          }

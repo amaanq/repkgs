@@ -107,6 +107,7 @@ where
    Link: Fn(String) -> String,
 {
    let mut listing = String::new();
+   let mut blobs = BTreeSet::new();
    let mut pending = vec![root.to_path_buf()];
    let mut files = 0_i32;
    let mut uploaded = 0_i32;
@@ -146,6 +147,7 @@ where
                cache.put(&blob_key, &data)?;
                uploaded += 1_i32;
             }
+            blobs.insert(blob_key);
             writeln!(
                listing,
                "f {:o} {hash}\t{name}",
@@ -161,7 +163,11 @@ where
          }
       }
    }
-   cache.put(key, listing.as_bytes())?;
+   cache.put_referring(
+      key,
+      listing.as_bytes(),
+      &blobs.into_iter().collect::<Vec<_>>(),
+   )?;
    diagnostic(format_args!(
       "mummer stored {key}, {files} files, {uploaded} new"
    ));

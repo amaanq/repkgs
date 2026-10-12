@@ -110,6 +110,7 @@ const fn is_false(value: &bool) -> bool {
 impl Record {
    pub fn put(self, cache: &mut Client, result: &Digest) -> io::Result<()> {
       let mut artifacts = Vec::with_capacity(self.artifacts.len());
+      let mut blobs = Vec::new();
       for artifact in self.artifacts {
          let content = if artifact.bytes.len() <= INLINE {
             Content::Inline(Bytes(artifact.bytes))
@@ -119,6 +120,7 @@ impl Record {
             if !cache.has_many(from_ref(&key))?[0] {
                cache.put(&key, &artifact.bytes)?;
             }
+            blobs.push(key);
             Content::Blob(hash)
          };
          artifacts.push(StoredArtifact {
@@ -135,9 +137,10 @@ impl Record {
          link_deps: self.link_deps,
          artifacts,
       };
-      cache.put(
+      cache.put_referring(
          &Key::digest(Namespace::Record, result),
          &serde_json::to_vec(&stored)?,
+         &blobs,
       )
    }
 
