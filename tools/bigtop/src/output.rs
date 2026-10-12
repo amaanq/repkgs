@@ -87,7 +87,7 @@ impl Variant {
    }
 }
 
-fn fingerprint(name: &str) -> Option<&'static str> {
+pub fn fingerprint(name: &str) -> Option<&'static str> {
    MODULES
       .iter()
       .find(|entry| entry.0 == name)

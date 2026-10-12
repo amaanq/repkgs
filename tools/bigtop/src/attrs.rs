@@ -98,7 +98,7 @@ pub struct Step {
    pub kind: Kind,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Kind {
    System { system: String, verb: String },
