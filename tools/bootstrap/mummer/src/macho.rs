@@ -27,6 +27,7 @@ use crate::{
       in_store,
       normalize,
    },
+   tree::find,
 };
 
 const MAGIC: u32 = 0xFEED_FACF;
@@ -147,7 +148,8 @@ fn read_commands(image: &Image, loads: &[Load]) -> io::Result<Vec<Command>> {
       .collect()
 }
 
-fn resign(image: &mut Image) -> io::Result<()> {
+/// Rehashes the code directory pages, true when any hash was stale.
+fn resign(image: &mut Image) -> io::Result<bool> {
    let mut signature = None;
    for load in load_commands(image)? {
       if load.kind == CODE_SIGNATURE {
@@ -155,8 +157,9 @@ fn resign(image: &mut Image) -> io::Result<()> {
       }
    }
    let Some(signature_offset) = signature else {
-      return Ok(());
+      return Ok(false);
    };
+   let mut stale = false;
    if image.big_long(signature_offset)? != 0xFADE_0CC0 {
       return Err(io::Error::other(
          "LC_CODE_SIGNATURE is no embedded signature blob",
@@ -198,13 +201,14 @@ fn resign(image: &mut Image) -> io::Result<()> {
             .get(begin..end)
             .ok_or_else(|| io::Error::other("code signature page lies outside the file"))?;
          let digest = Sha256::digest(region);
-         image.write(
-            advance(hashes, slot.checked_mul(hash_size).ok_or_else(overflow)?)?,
-            &digest,
-         )?;
+         let at = advance(hashes, slot.checked_mul(hash_size).ok_or_else(overflow)?)?;
+         if image.bytes.get(at..at + hash_size) != Some(digest.as_slice()) {
+            image.write(at, &digest)?;
+            stale = true;
+         }
       }
    }
-   Ok(())
+   Ok(stale)
 }
 
 fn loader_relative(from: &Path, target: &Path) -> String {
@@ -231,7 +235,7 @@ fn resolve(context: &Context, here: &Path, path: &str) -> io::Result<Option<Path
    let target = if let Some(name) = path.strip_prefix("@rpath/") {
       let mut found = None;
 
-      for directory in &context.directories {
+      for directory in context.directories.iter().chain(&context.libraries) {
          let candidate = directory.join(name);
 
          if candidate.try_exists()? {
@@ -260,8 +264,13 @@ fn resolve(context: &Context, here: &Path, path: &str) -> io::Result<Option<Path
 }
 
 fn new_spelling(context: &Context, file: &Path, command: &Command) -> io::Result<Option<String>> {
+   // Nix rewrites a content-addressed output's own path after the build, which
+   // would break the ad-hoc signature, so the id must not spell $out
    if command.kind == ID_DYLIB {
-      return Ok(Some(utf8(file)?.to_owned()));
+      let name = file
+         .file_name()
+         .ok_or_else(|| io::Error::other("Mach-O dylib has no file name"))?;
+      return Ok(Some(format!("@rpath/{}", utf8(Path::new(name))?)));
    }
 
    let path = command.path()?;
@@ -308,7 +317,10 @@ pub fn fix(context: &Context, path: &Path, image: &mut Image) -> io::Result<()> 
       }
    }
    if changed.is_empty() {
-      return Ok(());
+      if resign(image)? {
+         write_back(path, image)?;
+      }
+      return refuse_own_path(context, image);
    }
    let mut bytes = commands
       .iter()
@@ -332,5 +344,21 @@ pub fn fix(context: &Context, path: &Path, image: &mut Image) -> io::Result<()> 
       context.shown(path),
       changed.join("  ")
    )?;
+   refuse_own_path(context, image)
+}
+
+fn refuse_own_path(context: &Context, image: &Image) -> io::Result<()> {
+   let hash = context
+      .dest
+      .file_name()
+      .and_then(|name| name.to_str())
+      .and_then(|name| name.get(..32))
+      .ok_or_else(|| io::Error::other("the output path has no store hash"))?;
+   if find(&image.bytes, hash.as_bytes()).is_some() {
+      return Err(io::Error::other(format!(
+         "spells its own output path {}, which Nix rewrites after the ad-hoc signature",
+         context.dest.display()
+      )));
+   }
    Ok(())
 }

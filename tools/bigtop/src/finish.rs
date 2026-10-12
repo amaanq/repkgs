@@ -372,6 +372,16 @@ fn relocate(
       if let Some(path) = loader {
          shown.push(format!("--loader {}", path.display()));
       }
+      let mut libraries = Vec::new();
+      if sdk.is_some() {
+         for root in attrs.dependencies.iter().chain(&attrs.build_dependencies) {
+            let library = Path::new(root).join("lib");
+            if library.is_dir() {
+               shown.push(format!("--library {}", library.display()));
+               libraries.push(library);
+            }
+         }
+      }
 
       echo(&format!(
          "reloc-fixup {} --dest {} {}",
@@ -379,7 +389,14 @@ fn relocate(
          ctx.dest.display(),
          shown.join(" ")
       ));
-      fixup::run(out, Some(ctx.dest.as_path()), sdk, loader, &denied)?;
+      fixup::run(
+         out,
+         Some(ctx.dest.as_path()),
+         sdk,
+         loader,
+         &denied,
+         &libraries,
+      )?;
    }
    Ok(())
 }

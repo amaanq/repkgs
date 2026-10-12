@@ -112,6 +112,7 @@ fn run(mode: Mode, args: &[OsString], socket: &Path) -> Result<i32> {
          sdk,
          deny,
          loader,
+         library,
       } => {
          fixup::run(
             &directory,
@@ -119,6 +120,7 @@ fn run(mode: Mode, args: &[OsString], socket: &Path) -> Result<i32> {
             sdk.as_deref(),
             loader.as_deref(),
             &deny,
+            &library,
          )?;
       },
       Mode::NixStore { operation } => nix_store::run(&operation)?,
