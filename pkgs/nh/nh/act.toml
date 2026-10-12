@@ -2,12 +2,12 @@ tag   = "v{version}"
 track = "github:nix-community/nh"
 fetch = { archive = true }
 with  = [ "cargo" ]
+tools = [ "sudo" ]
 
 [test]
 bin = [ "nh" ]
 
 [cargo]
-flags = [ "-p", "nh" ]
 skipTests = [
   "test_get_build_image_variants_expression",
   "test_get_build_image_variants_file",
