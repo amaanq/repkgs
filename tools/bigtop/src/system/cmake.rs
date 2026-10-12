@@ -1,11 +1,6 @@
 use std::{
    collections::BTreeMap,
    ffi::OsString,
-   fmt::{
-      Display,
-      Formatter,
-      Result as FormatResult,
-   },
    fs::read,
    io,
    path::{
@@ -16,7 +11,6 @@ use std::{
       Command,
       Stdio,
    },
-   str::FromStr,
    sync::OnceLock,
 };
 
@@ -60,7 +54,11 @@ use crate::{
       dispatch::System,
    },
    test_cache,
-   trace::Tests,
+   trace::{
+      Commands,
+      TestNames,
+      Tests,
+   },
 };
 
 options! {
@@ -128,7 +126,7 @@ impl System for Cmake {
             if !options.skip_tests.is_empty() {
                args.extend(["-E", &skip]);
             }
-            let Some(selected) = test_cache::selected::<CtestTest>()? else {
+            let Some(selected) = test_cache::selected::<TestNames>()? else {
                return run("ctest", &args, &[]);
             };
             let names = selected
@@ -364,41 +362,13 @@ enum PropertyValue {
    Other(IgnoredAny),
 }
 
-/// The tests ctest starts with one command in one directory, which a process
-/// cannot tell apart, run and cached together.
-struct CtestTest {
-   names: Vec<String>,
-}
-
-impl Display for CtestTest {
-   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
-      f.write_str(&self.names.join("\t"))
-   }
-}
-
-impl FromStr for CtestTest {
-   type Err = String;
-
-   fn from_str(text: &str) -> Result<Self, Self::Err> {
-      if text.is_empty() {
-         return Err("an empty ctest test".to_owned());
-      }
-      Ok(Self {
-         names: text.split('\t').map(str::to_owned).collect(),
-      })
-   }
-}
-
-/// Each test's command and working directory, from the listing.
-type Commands = BTreeMap<(Vec<String>, String), CtestTest>;
-
 fn commands() -> Option<&'static Commands> {
    static COMMANDS: OnceLock<Option<Commands>> = OnceLock::new();
    COMMANDS
       .get_or_init(|| {
          let bytes = read(Path::new(&build_top().ok()?).join(LISTING)).ok()?;
          let listing = serde_json::from_slice::<Listing>(&bytes).ok()?;
-         let mut found = Commands::new();
+         let mut found = Commands::default();
          for test in listing.tests {
             let directory = test.properties.into_iter().find_map(|property| {
                match (property.name.as_str(), property.value) {
@@ -406,14 +376,9 @@ fn commands() -> Option<&'static Commands> {
                   _ => None,
                }
             });
-            let Some(cwd) = directory.filter(|_path| !test.command.is_empty()) else {
-               continue;
-            };
-            found
-               .entry((test.command, cwd))
-               .or_insert_with(|| CtestTest { names: Vec::new() })
-               .names
-               .push(test.name);
+            if let Some(cwd) = directory {
+               found.add(test.name, test.command, cwd);
+            }
          }
          Some(found)
       })
@@ -424,19 +389,7 @@ fn commands() -> Option<&'static Commands> {
 /// runs its interpreter when the command is a script.
 impl Tests for Cmake {
    fn unit(&self, _exe: &Path, args: &[OsString], cwd: &Path) -> Option<String> {
-      let directory = cwd.to_str()?;
-      commands()?
-         .iter()
-         .find(|entry| {
-            let (ref command, ref listed) = *entry.0;
-            listed == directory
-               && args.len() >= command.len()
-               && args[args.len() - command.len()..]
-                  .iter()
-                  .zip(command)
-                  .all(|pair| pair.0 == pair.1.as_str())
-         })
-         .map(|entry| entry.1.to_string())
+      commands()?.unit(args, cwd)
    }
 
    fn prepares(&self) -> bool {
