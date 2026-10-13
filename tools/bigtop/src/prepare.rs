@@ -26,6 +26,7 @@ use mummer::{
    files::utf8,
    process::{
       Checked as _,
+      loose,
       socket,
    },
    store::normalize,
@@ -201,7 +202,7 @@ fn resolve_platform(
                   "{} execution probe failed with {}\n{}",
                   facts.name,
                   output.status,
-                  String::from_utf8_lossy(&output.stderr)
+                  loose(&output.stderr)
                )));
             }
             true

@@ -24,7 +24,11 @@ use mummer::{
       sections,
    },
    image::Image,
-   process::Checked as _,
+   process::{
+      Checked as _,
+      loose,
+      strict,
+   },
    tree::{
       Entry,
       EntryKind,
@@ -184,7 +188,7 @@ fn macho_uuid(entry: &Entry) -> io::Result<Option<String>> {
       .arg(&entry.path)
       .output()?;
 
-   if !String::from_utf8_lossy(&symbols.stdout).contains(" OSO ") {
+   if !loose(&symbols.stdout).contains(" OSO ") {
       return Ok(None);
    }
 
@@ -200,7 +204,7 @@ fn macho_uuid(entry: &Entry) -> io::Result<Option<String>> {
       )));
    }
 
-   Ok(String::from_utf8_lossy(&headers.stdout)
+   Ok(strict(&headers.stdout, "llvm-objdump's output")?
       .lines()
       .filter_map(|line| line.trim().strip_prefix("uuid "))
       .find(|uuid| {
@@ -263,7 +267,7 @@ fn examine(entry: &Entry) -> io::Result<Option<Elf>> {
       rel:       entry.rel.clone(),
       id:        notes
          .iter()
-         .find(|found| found.owner == "GNU" && found.kind == BUILD_ID_NOTE)
+         .find(|found| found.owner == b"GNU" && found.kind == BUILD_ID_NOTE)
          .map(|found| Hex(&found.description).to_string()),
       ours:      notes.iter().any(|found| found.kind == PACKAGE_NOTE),
       dwarf:     names.iter().any(|name| name == ".debug_info"),

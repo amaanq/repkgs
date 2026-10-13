@@ -20,6 +20,7 @@ use mummer::{
       utf8,
       write_file,
    },
+   process::strict,
    tree::note,
 };
 
@@ -201,7 +202,7 @@ fn imports(path: &Path) -> io::Result<Vec<String>> {
    let mut imported = Vec::new();
    let mut regular = false;
 
-   for line in String::from_utf8_lossy(&result.stdout).lines() {
+   for line in strict(&result.stdout, "llvm-readobj's output")?.lines() {
       let text = line.trim();
 
       if regular {

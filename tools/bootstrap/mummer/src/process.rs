@@ -1,4 +1,5 @@
 use std::{
+   borrow::Cow,
    env::{
       args_os,
       var,
@@ -34,7 +35,10 @@ use std::{
       ExitStatus,
       Stdio,
    },
-   str::FromStr,
+   str::{
+      FromStr,
+      from_utf8,
+   },
    time::Instant,
 };
 
@@ -334,7 +338,7 @@ impl RunResult {
    #[must_use]
    pub fn reported_error(&self) -> bool {
       self.status < 128
-         && String::from_utf8_lossy(&self.stderr).lines().any(|line| {
+         && loose(&self.stderr).lines().any(|line| {
             let Some((place, _)) = line
                .split_once(": error:")
                .or_else(|| line.split_once(": fatal error:"))
@@ -582,4 +586,19 @@ pub fn expand_response_files(args: &[String]) -> io::Result<Vec<String>> {
       }
    }
    Ok(output)
+}
+
+/// Output to show in a message or to search for words, where a stray byte must
+/// not hide the rest of it.
+#[inline]
+#[must_use]
+#[expect(clippy::disallowed_methods, reason = "output is read loosely")]
+pub fn loose(bytes: &[u8]) -> Cow<'_, str> {
+   String::from_utf8_lossy(bytes)
+}
+
+/// Bytes read as a value, an error naming `what` when they are not UTF-8.
+#[inline]
+pub fn strict<'bytes>(bytes: &'bytes [u8], what: &str) -> io::Result<&'bytes str> {
+   from_utf8(bytes).map_err(|error| io::Error::other(format!("{what} is not UTF-8, {error}")))
 }

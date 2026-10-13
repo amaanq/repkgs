@@ -1,4 +1,5 @@
 use std::{
+   ffi::OsStr,
    fs::{
       OpenOptions,
       create_dir_all,
@@ -11,6 +12,7 @@ use std::{
       self,
       Write as _,
    },
+   os::unix::ffi::OsStrExt as _,
    path::{
       Path,
       PathBuf,
@@ -77,9 +79,9 @@ impl Glibc {
          if found.status.code().is_none_or(|code| code > 1_i32) {
             return Err(io::Error::other(format!("grep failed, {}", found.status)));
          }
-         for line in String::from_utf8_lossy(&found.stdout).lines() {
+         for line in found.stdout.split(|byte| *byte == b'\n') {
             if !line.is_empty() {
-               remove_file(src.join(line))?;
+               remove_file(src.join(OsStr::from_bytes(line)))?;
             }
          }
       }

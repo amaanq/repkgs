@@ -15,7 +15,10 @@ use std::{
       self,
       Write as _,
    },
-   os::unix::fs::PermissionsExt as _,
+   os::unix::{
+      ffi::OsStrExt as _,
+      fs::PermissionsExt as _,
+   },
    path::{
       Path,
       PathBuf,
@@ -39,6 +42,7 @@ use mummer::{
       Slot,
       Tool,
       diagnostic,
+      loose,
       run,
       run_slotted,
    },
@@ -557,12 +561,10 @@ fn target_libdir(compiler: &str, invocation: &Invocation) -> io::Result<PathBuf>
    if !output.status.success() {
       return Err(io::Error::other(format!(
          "rustc --print target-libdir failed: {}",
-         String::from_utf8_lossy(&output.stderr).trim()
+         loose(&output.stderr).trim()
       )));
    }
-   Ok(PathBuf::from(
-      String::from_utf8_lossy(&output.stdout).trim(),
-   ))
+   Ok(PathBuf::from(OsStr::from_bytes(output.stdout.trim_ascii())))
 }
 
 fn store_result(

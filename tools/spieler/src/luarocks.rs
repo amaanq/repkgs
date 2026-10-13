@@ -29,6 +29,11 @@ use std::{
    },
 };
 
+use mummer::process::{
+   loose,
+   strict,
+};
+
 use crate::{
    locks::Entries,
    nix,
@@ -99,11 +104,7 @@ fn solve(src: &Path) -> io::Result<Vec<Pick>> {
       .output()?;
    remove_dir_all(&work)?;
    if !made.status.success() {
-      let text = format!(
-         "{}{}",
-         String::from_utf8_lossy(&made.stdout),
-         String::from_utf8_lossy(&made.stderr)
-      );
+      let text = format!("{}{}", loose(&made.stdout), loose(&made.stderr));
       let lines = text.lines().collect::<Vec<&str>>();
       let kept = lines.len().saturating_sub(10);
       return Err(io::Error::other(format!(
@@ -111,7 +112,7 @@ fn solve(src: &Path) -> io::Result<Vec<Pick>> {
          lines[kept..].join("\n")
       )));
    }
-   Ok(String::from_utf8_lossy(&listed.stdout)
+   Ok(strict(&listed.stdout, "luarocks list")?
       .lines()
       .filter_map(|line| {
          let mut fields = line.split('\t');

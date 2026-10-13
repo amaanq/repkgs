@@ -47,7 +47,10 @@ use crate::{
    },
    image::Image,
    macho,
-   process::diagnostic,
+   process::{
+      diagnostic,
+      loose,
+   },
    store::{
       STORE_DIR,
       in_store,
@@ -270,7 +273,7 @@ fn refuse_denied(bytes: &[u8], denied: &[Vec<u8>]) -> io::Result<()> {
          .unwrap_or(shown.len());
       return Err(io::Error::other(format!(
          "refers to build platform {}",
-         String::from_utf8_lossy(&shown[..end])
+         loose(&shown[..end])
       )));
    }
    Ok(())

@@ -42,7 +42,11 @@ use mummer::{
       utf8,
       write_file,
    },
-   process::Checked as _,
+   process::{
+      Checked as _,
+      loose,
+      strict,
+   },
    store::on_path,
    syslibs::{
       CargoBuild,
@@ -422,7 +426,7 @@ impl Cargo {
          ("RUSTC".to_owned(), utf8(&rustc)?.to_owned()),
       ]);
       let version = Command::new(&rustc).arg("-vV").checked_output()?;
-      let host = String::from_utf8_lossy(&version)
+      let host = strict(&version, "rustc -vV")?
          .lines()
          .find_map(|line| line.strip_prefix("host: "))
          .ok_or_else(|| io::Error::other("rustc -vV names no host"))?
@@ -510,7 +514,7 @@ impl Cargo {
       let output = Command::new("c++")
          .args(["-###", "-x", "c++", "/dev/null"])
          .output()?;
-      let jobs = String::from_utf8_lossy(&output.stderr);
+      let jobs = loose(&output.stderr);
       Ok(jobs.split_whitespace().find_map(|word| {
          let library = word.trim_matches('"').strip_prefix("-l")?;
          ["c++", "stdc++"]

@@ -10,6 +10,8 @@ use std::{
    path::Path,
 };
 
+use mummer::process::strict;
+
 #[derive(Clone)]
 pub enum Cell {
    Text(Option<String>),
@@ -86,7 +88,7 @@ fn string_pool(dir: &Path) -> io::Result<Pool> {
       let bytes = data
          .get(offset..offset + length)
          .ok_or_else(|| io::Error::other("msi: a string runs past the string data"))?;
-      strings.push(Some(String::from_utf8_lossy(bytes).into_owned()));
+      strings.push(Some(strict(bytes, "an msi string")?.to_owned()));
       offset += length;
    }
    let reference = if int_at(&pool, 0, 4)? >= 0x8000_0000 {

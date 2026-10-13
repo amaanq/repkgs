@@ -16,6 +16,7 @@ use mummer::{
       sections,
    },
    image::Image,
+   process::loose,
    syslibs::Ecosystem,
    tree::{
       EntryKind,
@@ -165,7 +166,7 @@ fn searched_by_build_script(build: &Path, root: &str) -> io::Result<bool> {
       if !script_output {
          continue;
       }
-      let searched = String::from_utf8_lossy(&read(path)?).lines().any(|line| {
+      let searched = loose(&read(path)?).lines().any(|line| {
          line
             .strip_prefix("cargo::rustc-link-search=")
             .or_else(|| line.strip_prefix("cargo:rustc-link-search="))

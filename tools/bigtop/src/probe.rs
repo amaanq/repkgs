@@ -26,6 +26,10 @@ use mummer::{
       utf8,
       write_file,
    },
+   process::{
+      loose,
+      strict,
+   },
    store::{
       STORE_DIR,
       mask_hashes,
@@ -136,7 +140,7 @@ pub fn toolchain(root: &str, top: &str) -> io::Result<String> {
    if !linked.status.success() {
       return Err(io::Error::other(format!(
          "cc could not link the probe sample: {}",
-         String::from_utf8_lossy(&linked.stderr).trim()
+         loose(&linked.stderr).trim()
       )));
    }
    let mut hasher = blake3::Hasher::new();
@@ -182,7 +186,7 @@ pub fn restore(key: &Key, file: &Path, socket: &Path) -> io::Result<bool> {
    let Some(bytes) = client.get(key)? else {
       return Ok(false);
    };
-   let Some(text) = resolved(&ctx, &String::from_utf8_lossy(&bytes)) else {
+   let Some(text) = resolved(&ctx, strict(&bytes, "a stored probe result")?) else {
       note(
          "probe-cache",
          "stored results name a store path this build lacks",

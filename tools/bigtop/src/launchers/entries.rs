@@ -36,6 +36,7 @@ use mummer::{
    },
    files::utf8,
    image::Image,
+   process::strict,
    store::normalize,
    tree::{
       note,
@@ -308,11 +309,8 @@ fn script_interpreter(
    name: &str,
    head: &[u8],
 ) -> io::Result<Option<Interpreter>> {
-   let text = String::from_utf8_lossy(head);
-   let line = text
-      .lines()
-      .next()
-      .unwrap_or_default()
+   let shebang = head.split(|byte| *byte == b'\n').next().unwrap_or_default();
+   let line = strict(shebang, &format!("the #! line of {}", path.display()))?
       .get(2..)
       .unwrap_or_default()
       .split_whitespace()

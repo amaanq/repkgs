@@ -23,9 +23,12 @@ use std::{
    },
 };
 
+use mummer::{
+   files::utf8,
+   process::loose,
+};
 use serde::Serialize;
 use serde_json::Value;
-use mummer::files::utf8;
 
 const STAGES: [&str; 4] = ["resolve", "sources", "files", "verify"];
 
@@ -44,7 +47,7 @@ fn run_nu(code: &str, what: &str, arg: &str) -> io::Result<Value> {
       .env("PATH", path)
       .stdin(Stdio::null())
       .output()?;
-   let stderr = String::from_utf8_lossy(&output.stderr);
+   let stderr = loose(&output.stderr);
    if !output.status.success() {
       return Err(io::Error::other(format!("{what}: {}", stderr.trim())));
    }

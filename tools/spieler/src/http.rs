@@ -84,7 +84,12 @@ fn github_token() -> Option<String> {
    output
       .status
       .success()
-      .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+      .then(|| {
+         str::from_utf8(&output.stdout)
+            .ok()
+            .map(|token| token.trim().to_owned())
+      })
+      .flatten()
 }
 
 struct Header {

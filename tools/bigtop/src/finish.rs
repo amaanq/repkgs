@@ -39,6 +39,7 @@ use mummer::{
       Logged,
       Tool,
       logged,
+      loose,
    },
    store::normalize,
    tree::{
@@ -591,7 +592,7 @@ impl Probe<'_> {
             "version check: `{shown}` did not print {} (exit {})\n{}",
             self.want,
             output.status.code().unwrap_or(-1),
-            String::from_utf8_lossy(&printed)
+            loose(&printed)
          )));
       }
       let mut missed = Vec::<&str>::new();
