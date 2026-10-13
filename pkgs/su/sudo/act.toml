@@ -1,7 +1,7 @@
 fetch   = { url = "https://www.sudo.ws/dist/sudo-{version}.tar.gz" }
 with    = [ "autotools" ]
 deps    = [ "libxcrypt", "linux-pam" ]
-patches = [ "no-setuid.patch" ]
+patches = [ "no-setuid.patch", "mv-on-path.patch", "tests-sandbox-commands.patch", "relocatable.patch" ]
 
 [track]
 from = "generic:sudo"
@@ -14,7 +14,8 @@ regex = 'sudo-([0-9.]+(?:p[0-9]+)?)\.tar\.gz'
 os = [ "linux" ]
 
 [test]
-bin = [ "sudo" ]
+bin     = [ "sudo", "visudo" ]
+version = "visudo --version"
 
 [autotools]
 flags = [
@@ -25,4 +26,4 @@ flags = [
   "--with-iologdir=/var/log/sudo-io",
   "--enable-tmpfiles.d=no",
 ]
-installFlags = [ "INSTALL_OWNER=", "rundir=$(TMPDIR)/dummy", "vardir=$(TMPDIR)/dummy" ]
+installFlags = [ "INSTALL_OWNER=", "sysconfdir=$(prefix)/etc", "rundir=$(TMPDIR)/dummy", "vardir=$(TMPDIR)/dummy" ]

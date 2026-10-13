@@ -1,0 +1,60 @@
+--- a/plugins/sudoers/regress/testsudoers/test18.out.ok
++++ b/plugins/sudoers/regress/testsudoers/test18.out.ok
+@@ -2,7 +2,7 @@
+ 
+ Entries for user root:
+ 
+-ALL = ^/bin/ls$ ^-[lAt]$
++ALL = ^/bin/sh$ ^-[lAt]$
+ 	host  allowed
+ 	runas allowed
+ 	cmnd  allowed
+@@ -14,7 +14,7 @@
+ 
+ Entries for user root:
+ 
+-ALL = ^/bin/cat$ /var/log/*
++ALL = ^/bin/sh$ /var/log/*
+ 	host  allowed
+ 	runas allowed
+ 	cmnd  allowed
+@@ -38,7 +38,7 @@
+ 
+ Entries for user root:
+ 
+-ALL = /bin/*at ^/var/log/[^/]+$
++ALL = /bin/*h ^/var/log/[^/]+$
+ 	host  allowed
+ 	runas allowed
+ 	cmnd  allowed
+--- a/plugins/sudoers/regress/testsudoers/test18.sh
++++ b/plugins/sudoers/regress/testsudoers/test18.sh
+@@ -8,13 +8,13 @@
+ exec 2>&1
+ 
+ # Command and args: regex
+-$TESTSUDOERS root /bin/ls -l <<'EOF'
+-root ALL = ^/bin/ls$ ^-[lAt]$
++$TESTSUDOERS root /bin/sh -l <<'EOF'
++root ALL = ^/bin/sh$ ^-[lAt]$
+ EOF
+ 
+ # Command: regex, args: wildcard
+-$TESTSUDOERS root /bin/cat /var/log/syslog <<'EOF'
+-root ALL = ^/bin/cat$ /var/log/*
++$TESTSUDOERS root /bin/sh /var/log/syslog <<'EOF'
++root ALL = ^/bin/sh$ /var/log/*
+ EOF
+ 
+ # Command: path, args: regex
+@@ -23,8 +23,8 @@
+ EOF
+ 
+ # Command: wildcard, args: regex
+-$TESTSUDOERS root /bin/cat /var/log/mail <<'EOF'
+-root ALL = /bin/*at ^/var/log/[^/]+$
++$TESTSUDOERS root /bin/sh /var/log/mail <<'EOF'
++root ALL = /bin/*h ^/var/log/[^/]+$
+ EOF
+ 
+ # Command: path, args: args start with escaped ^
