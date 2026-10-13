@@ -1,0 +1,19 @@
+--- a/src/gpg-error.c
++++ b/src/gpg-error.c
+@@ -50,6 +50,7 @@
+ #endif
+ 
+ #include <gpg-error.h>
++#include "reloc.h"
+ 
+ 
+ #if HAVE_W32_SYSTEM
+@@ -451,7 +452,7 @@
+   if (!initialized)
+     {
+       initialized = 1;
+-      fp = fopen (PKGDATADIR "/errorref.txt", "r");
++      fp = fopen (RELOC ("../share/libgpg-error/errorref.txt"), "r");
+     }
+   if (!fp)
+     return;
