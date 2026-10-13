@@ -1,0 +1,81 @@
+--- a/libpam/pam_handlers.c
++++ b/libpam/pam_handlers.c
+@@ -8,6 +8,7 @@
+ 
+ #include "pam_private.h"
+ #include "pam_inline.h"
++#include "reloc.h"
+ 
+ #include <limits.h>
+ #include <stdlib.h>
+@@ -722,7 +723,7 @@
+ 	mod_path != NULL) {
+ 	if (mod_path[0] == '/') {
+ 	    mod = _pam_load_module(pamh, mod_path, handler_type);
+-	} else if ((mod_full_path = pam_asprintf("%s%s", DEFAULT_MODULE_PATH,
++	} else if ((mod_full_path = pam_asprintf("%s%s", RELOC("security/"),
+ 						 mod_path)) != NULL) {
+ 	    mod = _pam_load_module(pamh, mod_full_path, handler_type);
+ 	    _pam_drop(mod_full_path);
+--- a/meson.build
++++ b/meson.build
+@@ -83,8 +83,8 @@
+ 
+ vendordir = get_option('vendordir')
+ if get_option('vendordir') == ''
+-  vendor_sconfigdir = sconfigdir
+-  vendor_sysconfdir = sysconfdir
++  vendor_sconfigdir = datadir / 'pam' / 'security'
++  vendor_sysconfdir = datadir / 'pam'
+   stringparam_vendordir = []
+   stringparam_profileconditions = 'without_vendordir'
+ else
+--- a/modules/module-meson.build
++++ b/modules/module-meson.build
+@@ -38,7 +38,7 @@
+   pam_module_deps += [libaudit]
+ endif
+ if module == 'pam_mkhomedir'
+-  pam_module_c_args += ['-DMKHOMEDIR_HELPER="@0@"'.format(sbindir / 'mkhomedir_helper')]
++  pam_module_c_args += ['-DMKHOMEDIR_HELPER=RELOC("../../bin/mkhomedir_helper")']
+ endif
+ if module == 'pam_namespace'
+   if cdata.get('HAVE_UNSHARE', 0) == 0
+@@ -314,7 +314,7 @@
+     install_tag: 'config',
+   )
+   install_emptydir(
+-    limits_conf_dir,
++    vendor_sconfigdir / 'limits.d',
+     install_tag: 'config',
+   )
+ endif
+@@ -362,7 +362,7 @@
+     install_tag: 'config',
+   )
+   install_emptydir(
+-    sconfigdir / 'namespace.d',
++    vendor_sconfigdir / 'namespace.d',
+     install_tag: 'config',
+   )
+ endif
+--- a/modules/pam_mkhomedir/pam_mkhomedir.c
++++ b/modules/pam_mkhomedir/pam_mkhomedir.c
+@@ -52,6 +52,7 @@
+ #include "pam_cc_compat.h"
+ #include "pam_inline.h"
+ #include "pam_i18n.h"
++#include "reloc.h"
+ 
+ /* argument parsing */
+ #define MKHOMEDIR_DEBUG      020	/* be verbose about things */
+--- a/modules/pam_namespace/pam_namespace.service.in
++++ b/modules/pam_namespace/pam_namespace.service.in
+@@ -7,5 +7,6 @@
+ Documentation=man:pam_namespace(8)
+ 
+ [Service]
+-ExecStart=@sbindir@/pam_namespace_helper
++# by name: systemd >= 250 looks on ExecSearchPath=, set it in a drop-in
++ExecStart=pam_namespace_helper
+ Type=oneshot

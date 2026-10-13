@@ -4,7 +4,7 @@ fetch   = { asset = "Linux-PAM-{version}.tar.xz" }
 with    = [ "meson" ]
 deps    = [ "libxcrypt" ]
 tools   = [ "flex", "bison" ]
-patches = [ "helper-wrapper.patch", "tests-confdir.patch" ]
+patches = [ "helper-wrapper.patch", "tests-confdir.patch", "relocatable.patch" ]
 
 [only]
 os = [ "linux" ]
@@ -24,5 +24,6 @@ pam_unix    = "enabled"
 pam_userdb  = "disabled"
 pwaccess    = "disabled"
 selinux     = "disabled"
+sysconfdir  = "/etc"
 vendordir   = ""
 xtests      = false
