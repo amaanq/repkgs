@@ -1,0 +1,8 @@
+track = "pypi:attrs"
+fetch = { url = "https://files.pythonhosted.org/packages/source/a/attrs/attrs-{version}.tar.gz" }
+with  = [ "python" ]
+tools = [ "python-hatchling", "python-hatch-vcs", "python-hatch-fancy-pypi-readme" ]
+
+[python]
+backend = "hatchling"
+module  = "attrs"

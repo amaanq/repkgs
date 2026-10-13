@@ -1,0 +1,4 @@
+version = "26.1.0"
+date    = "2026-03-19"
+sys     = [ "libffi", "libyaml" ]
+hash    = "sha256-8j2KS5VNIbzSp6A02Ywyg22rM4rypuPLpexyrfXDbjA="

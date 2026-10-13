@@ -1,0 +1,8 @@
+track = "pypi:outcome"
+fetch = { url = "https://files.pythonhosted.org/packages/source/o/outcome/outcome-{version}.tar.gz" }
+with  = [ "python" ]
+deps  = [ "python-attrs" ]
+tools = [ "python-setuptools" ]
+
+[python]
+module = "outcome"
