@@ -1,0 +1,7 @@
+track = "pypi:idna"
+fetch = { url = "https://files.pythonhosted.org/packages/source/i/idna/idna-{version}.tar.gz" }
+with  = [ "python" ]
+
+[python]
+backend = "flit_core"
+module  = "idna"

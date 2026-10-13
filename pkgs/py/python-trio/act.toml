@@ -1,0 +1,8 @@
+track = "pypi:trio"
+fetch = { url = "https://files.pythonhosted.org/packages/source/t/trio/trio-{version}.tar.gz" }
+with  = [ "python" ]
+deps  = [ "python-attrs", "python-idna", "python-outcome", "python-sniffio", "python-sortedcontainers" ]
+tools = [ "python-setuptools" ]
+
+[python]
+module = "trio"
