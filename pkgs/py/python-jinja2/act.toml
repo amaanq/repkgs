@@ -3,6 +3,10 @@ fetch = { url = "https://files.pythonhosted.org/packages/source/j/jinja2/jinja2-
 with  = [ "python" ]
 deps  = [ "python-markupsafe" ]
 
+[test]
+deps = [ "python-pytest", "python-trio" ]
+
 [python]
 backend = "flit_core"
 module  = "jinja2"
+pytest  = true
