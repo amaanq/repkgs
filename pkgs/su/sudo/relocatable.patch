@@ -1,0 +1,126 @@
+--- a/examples/sudo.conf.in
++++ b/examples/sudo.conf.in
+@@ -4,7 +4,7 @@
+ # Sudo plugins:
+ #   Plugin plugin_name plugin_path plugin_options ...
+ #
+-# The plugin_path is relative to @plugindir@ unless
++# The plugin_path is relative to the plugin directory unless
+ #   fully qualified.
+ # The plugin_name corresponds to a global symbol in the plugin
+ #   that contains the plugin interface structure.
+@@ -51,7 +51,7 @@
+ # The compiled-in value is usually sufficient and should only be changed
+ # if you rename or move the sudo_intercept.so file.
+ #
+-#Path intercept @intercept_file@
++#Path intercept /path/to/sudo_intercept.so
+ 
+ #
+ # Sudo noexec:
+@@ -65,7 +65,7 @@
+ # The compiled-in value is usually sufficient and should only be changed
+ # if you rename or move the sudo_noexec.so file.
+ #
+-#Path noexec @noexec_file@
++#Path noexec /path/to/sudo_noexec.so
+ 
+ #
+ # Sudo plugin directory:
+@@ -74,7 +74,7 @@
+ # The default directory to use when searching for plugins that are
+ # specified without a fully-qualified path name.
+ #
+-#Path plugin_dir @plugindir@
++#Path plugin_dir /path/to/plugins
+ 
+ #
+ # Core dumps:
+--- a/lib/util/sudo_conf.c
++++ b/lib/util/sudo_conf.c
+@@ -55,12 +55,14 @@
+ #include <sudo_util.h>
+ #include <pathnames.h>
+ 
+-#ifndef _PATH_SUDO_INTERCEPT
+-# define _PATH_SUDO_INTERCEPT NULL
+-#endif
+-#ifndef _PATH_SUDO_NOEXEC
+-# define _PATH_SUDO_NOEXEC NULL
+-#endif
++#include "reloc.h"
++
++#undef _PATH_SUDO_INTERCEPT
++#define _PATH_SUDO_INTERCEPT NULL
++#undef _PATH_SUDO_NOEXEC
++#define _PATH_SUDO_NOEXEC NULL
++#undef _PATH_SUDO_PLUGIN_DIR
++#define _PATH_SUDO_PLUGIN_DIR NULL
+ 
+ struct sudo_conf_table {
+     const char *name;
+@@ -158,6 +160,22 @@
+     SUDO_CONF_PATH_INITIALIZER
+ };
+ 
++static void
++sudo_conf_reloc_paths(void)
++{
++    struct sudo_conf_path_table *table = sudo_conf_data.path_table;
++
++    table[SUDO_CONF_PATH_INTERCEPT].pval = RELOC("sudo_intercept.so");
++    table[SUDO_CONF_PATH_NOEXEC].pval = RELOC("sudo_noexec.so");
++    table[SUDO_CONF_PATH_PLUGIN_DIR].pval = RELOC("");
++}
++
++__attribute__((constructor)) static void
++sudo_conf_reloc_init(void)
++{
++    sudo_conf_reloc_paths();
++}
++
+ /*
+  * "Set variable_name value"
+  */
+@@ -609,6 +627,7 @@
+ 	sudo_conf_clear_paths();
+ 	memcpy(sudo_conf_data.path_table, path_table,
+ 	    sizeof(sudo_conf_data.path_table));
++	sudo_conf_reloc_paths();
+     }
+ 
+     /* Free and reset debug settings. */
+--- a/plugins/sudoers/group_plugin.c
++++ b/plugins/sudoers/group_plugin.c
+@@ -132,7 +132,8 @@
+ static int
+ group_plugin_load(const struct sudoers_context *ctx, const char *plugin_info)
+ {
+-    const char *plugin_dir = ctx->settings.plugin_dir;
++    const char *plugin_dir = ctx->settings.plugin_dir != NULL ?
++	ctx->settings.plugin_dir : sudo_conf_plugin_dir_path();
+     char *args, path[PATH_MAX];
+     char **argv = NULL;
+     int len, rc = -1;
+--- a/plugins/sudoers/sudoers.h
++++ b/plugins/sudoers/sudoers.h
+@@ -109,7 +109,7 @@
+     unsigned int flags;
+ };
+ #define SUDOERS_PLUGIN_SETTINGS_INITIALIZER {				\
+-    .plugin_dir = _PATH_SUDO_PLUGIN_DIR,				\
++    .plugin_dir = NULL,						\
+     .ldap_conf = _PATH_LDAP_CONF,					\
+     .ldap_secret = _PATH_LDAP_SECRET					\
+ }
+--- a/plugins/sudoers/sudoers.in
++++ b/plugins/sudoers/sudoers.in
+@@ -43,7 +43,7 @@
+ ##
+ ## Preserve editor environment variables for visudo.
+ ## To preserve these for all commands, remove the "!visudo" qualifier.
+-Defaults!@visudo@ env_keep += "SUDO_EDITOR EDITOR VISUAL"
++#Defaults!/path/to/visudo env_keep += "SUDO_EDITOR EDITOR VISUAL"
+ ##
+ ## Use a hard-coded PATH instead of the user's to find commands.
+ ## This also helps prevent poorly written scripts from running
