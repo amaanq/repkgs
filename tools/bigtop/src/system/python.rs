@@ -27,7 +27,10 @@ use mummer::{
       utf8,
       write_file,
    },
-   process::Checked as _,
+   process::{
+      Checked as _,
+      strict,
+   },
    tree::writable,
 };
 use serde::Serialize;
@@ -151,7 +154,7 @@ impl Python {
       let printed = Command::new("python3")
          .args(["-c", code])
          .checked_output()?;
-      Ok(String::from_utf8_lossy(&printed).trim().to_owned())
+      Ok(strict(&printed, "python3's output")?.trim().to_owned())
    }
 
    /// maturin's PEP 517 backend only shells out to `maturin`, so call it
@@ -305,23 +308,25 @@ impl Python {
          if !bytes.starts_with(b"#!") {
             continue;
          }
-         let text = String::from_utf8_lossy(&bytes);
-         let mut lines = text.lines();
-         let Some(first) = lines.next() else {
-            continue;
-         };
-         if !first.contains("python") {
+         let (first, rest) = bytes
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or((bytes.as_slice(), &[][..]), |end| {
+               (&bytes[..end], &bytes[end + 1..])
+            });
+         if !first.windows(6).any(|word| word == b"python") {
             continue;
          }
          let interp = if cross {
-            "#!/usr/bin/env python3"
+            b"#!/usr/bin/env python3"
          } else {
             first
          };
-         let mut fixed = vec![interp, boot];
-         fixed.extend(lines);
          writable(&script)?;
-         File::create(&script)?.write_all(fixed.join("\n").as_bytes())?;
+         let mut file = File::create(&script)?;
+         for part in [interp, b"\n", boot.as_bytes(), b"\n", rest] {
+            file.write_all(part)?;
+         }
       }
       Ok(())
    }

@@ -20,7 +20,10 @@ use mummer::{
       sorted_entries,
       utf8,
    },
-   process::Checked as _,
+   process::{
+      Checked as _,
+      strict,
+   },
    store::on_path,
 };
 use serde::Serialize;
@@ -158,7 +161,8 @@ pub fn run(program: &str, args: &[&str], env: &[(&str, &str)]) -> io::Result<()>
 
 pub fn capture(program: &str, args: &[&str]) -> io::Result<String> {
    echo(program, args);
-   Ok(String::from_utf8_lossy(&Command::new(program).args(args).checked_output()?).into_owned())
+   let output = Command::new(program).args(args).checked_output()?;
+   Ok(strict(&output, program)?.to_owned())
 }
 
 pub fn upsert<Value>(defs: &mut Vec<(String, Value)>, name: &str, value: Value) {

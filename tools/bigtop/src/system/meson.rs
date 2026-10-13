@@ -23,7 +23,10 @@ use mummer::{
       utf8,
       write_file,
    },
-   process::Checked as _,
+   process::{
+      Checked as _,
+      strict,
+   },
    tree::note,
 };
 use serde::{
@@ -321,7 +324,7 @@ impl Meson {
             .args(["test", "--list"])
             .checked_output()?;
          kept.extend(
-            String::from_utf8_lossy(&listed)
+            strict(&listed, "meson test --list")?
                .lines()
                .filter(|name| !options.skip_tests.iter().any(|skip| name.contains(skip)))
                .map(str::to_owned),

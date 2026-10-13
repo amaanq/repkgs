@@ -39,6 +39,7 @@ use std::{
 
 use mummer::{
    hackage::PackageId,
+   process::loose,
    tree::parallel,
 };
 use regex_lite::Regex;
@@ -151,7 +152,7 @@ fn solve(src: &Path, sub: &str, options: &Value, old: &Entries) -> io::Result<Ve
    };
    remove_dir_all(&top)?;
    if !output.status.success() {
-      let stderr = String::from_utf8_lossy(&output.stderr);
+      let stderr = loose(&output.stderr);
       let lines = stderr.lines().collect::<Vec<&str>>();
       let kept = lines.len().saturating_sub(8);
       return Err(io::Error::other(format!(

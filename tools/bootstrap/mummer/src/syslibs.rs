@@ -32,7 +32,10 @@ use serde::{
    Serialize,
 };
 
-use crate::files::utf8;
+use crate::{
+   files::utf8,
+   process::loose,
+};
 
 /// The locked packages of one ecosystem that link a package, written as a
 /// bare list when they need nothing beyond the names. A name with `flags`
@@ -312,7 +315,7 @@ fn metadata(dir: &Path, flags: &[String], build: &CargoBuild) -> io::Result<Meta
       return Err(io::Error::other(format!(
          "cargo metadata in {} failed: {}",
          dir.display(),
-         String::from_utf8_lossy(&output.stderr).trim()
+         loose(&output.stderr).trim()
       )));
    }
    Ok(serde_json::from_slice(&output.stdout)?)

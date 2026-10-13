@@ -33,6 +33,7 @@ use mummer::{
       utf8,
       write_file,
    },
+   process::strict,
    store::mask_hashes,
    store_path::StorePath,
    tree::{
@@ -167,7 +168,7 @@ impl System for Cabal {
       if !output.status.success() {
          return Err(io::Error::other("ghc --info failed"));
       }
-      let info = String::from_utf8_lossy(&output.stdout);
+      let info = strict(&output.stdout, "ghc --info")?;
       let unit_id = info
          .split("\"Project Unit Id\",\"")
          .nth(1)

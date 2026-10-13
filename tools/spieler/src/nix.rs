@@ -17,6 +17,10 @@ use base64::{
    Engine as _,
    engine::general_purpose::STANDARD,
 };
+use mummer::process::{
+   loose,
+   strict,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -33,14 +37,12 @@ where
    Arg: AsRef<OsStr>,
    Args: IntoIterator<Item = Arg>,
 {
-   let output = Command::new(program)
-      .args(args)
-      .stdin(Stdio::null())
-      .output()?;
+   let mut command = Command::new(program);
+   let output = command.args(args).stdin(Stdio::null()).output()?;
    Ok(Finished {
       status: output.status.code().unwrap_or(-1),
-      stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-      stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+      stdout: strict(&output.stdout, &command.get_program().display().to_string())?.to_owned(),
+      stderr: loose(&output.stderr).into_owned(),
    })
 }
 

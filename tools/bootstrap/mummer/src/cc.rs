@@ -55,9 +55,11 @@ use mummer::{
       diagnostic,
       expand_response_files,
       log,
+      loose,
       run,
       run_slotted,
       status_code,
+      strict,
    },
    store::{
       Store,
@@ -903,8 +905,7 @@ impl Wrapper for Compile<'_> {
       if result.status != 0_i32
          && traced.is_none()
          && (inputs.is_empty()
-            || (absent.is_empty()
-               && String::from_utf8_lossy(&result.stderr).contains("file not found"))
+            || (absent.is_empty() && loose(&result.stderr).contains("file not found"))
             || !result.reported_error())
       {
          return Ok(false);
@@ -1692,7 +1693,7 @@ fn absent_libraries(job: &[String]) -> io::Result<Vec<String>> {
 /// find, which what it read and the library files it looked for decide as
 /// fully as they decide a success.
 fn failed_on_symbols_or_libraries(stderr: &[u8]) -> bool {
-   let text = String::from_utf8_lossy(stderr);
+   let text = loose(stderr);
    let errors = text
       .lines()
       .filter(|line| line.contains("error:"))
@@ -1728,7 +1729,7 @@ fn traced_inputs(
    }
    let temporary = var("TMPDIR").unwrap_or_else(|_| "/tmp".to_owned());
    let prefix = format!("{}/", temporary.trim_end_matches('/'));
-   let paths = String::from_utf8_lossy(&output.stdout)
+   let paths = strict(&output.stdout, "the linker's --trace output")?
       .lines()
       .map(|line| {
          line
@@ -1740,7 +1741,7 @@ fn traced_inputs(
       .filter(|path| !path.is_empty() && Path::new(path).is_file())
       .filter(|path| !path.starts_with(&prefix) || path[prefix.len()..].contains('/'))
       .collect::<BTreeSet<String>>();
-   let unread = String::from_utf8_lossy(&output.stderr)
+   let unread = loose(&output.stderr)
       .lines()
       .all(|line| !line.contains("undefined symbol"));
    Ok((!paths.is_empty() || unread).then(|| paths.into_iter().collect()))

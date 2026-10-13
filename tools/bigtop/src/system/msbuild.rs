@@ -574,7 +574,10 @@ fn string_method(expression: &str, props: &BTreeMap<String, String>) -> io::Resu
          let end = if limit < 0 { length + limit } else { limit }.clamp(start, length);
          let lower = usize::try_from(start).map_err(io::Error::other)?;
          let upper = usize::try_from(end).map_err(io::Error::other)?;
-         Ok(String::from_utf8_lossy(&value.as_bytes()[lower..upper]).into_owned())
+         value
+            .get(lower..upper)
+            .map(str::to_owned)
+            .ok_or_else(invalid)
       },
       _ => Err(invalid()),
    }

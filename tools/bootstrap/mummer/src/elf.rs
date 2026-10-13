@@ -175,7 +175,7 @@ pub fn names(image: &Image, sections: &[Section]) -> io::Result<Vec<String>> {
 }
 
 pub struct Note {
-   pub owner:       String,
+   pub owner:       Vec<u8>,
    pub kind:        u32,
    pub description: Vec<u8>,
 }
@@ -199,7 +199,7 @@ pub fn notes(image: &Image, sections: &[Section]) -> io::Result<Vec<Note>> {
          let raw_owner = &image.bytes[owner_start..owner_start + owner_size];
          let owner = raw_owner.strip_suffix(b"\0").unwrap_or(raw_owner);
          notes.push(Note {
-            owner: String::from_utf8_lossy(owner).into_owned(),
+            owner: owner.to_vec(),
             kind,
             description: image.bytes[description_start..description_start + description_size]
                .to_vec(),

@@ -264,7 +264,7 @@ impl<'package> Planned<'package> {
          .as_deref()
          .and_then(|hash| hash.strip_prefix("sha256:"))
          .ok_or_else(|| io::Error::other(format!("pythonDeps: {name} artefact has no sha256")))?;
-      let file = percent_decode(basename(url_path(&url)));
+      let file = percent_decode(basename(url_path(&url)))?;
       let row = Row {
          file: file.clone(),
          url,
@@ -300,7 +300,7 @@ fn normalize(name: &str) -> String {
    normalized
 }
 
-fn percent_decode(text: &str) -> String {
+fn percent_decode(text: &str) -> io::Result<String> {
    let bytes = text.as_bytes();
    let mut decoded = Vec::with_capacity(bytes.len());
    let mut index = 0;
@@ -316,7 +316,8 @@ fn percent_decode(text: &str) -> String {
          index += 1;
       }
    }
-   String::from_utf8_lossy(&decoded).into_owned()
+   String::from_utf8(decoded)
+      .map_err(|error| io::Error::other(format!("{text} decodes to {error}")))
 }
 
 struct Platform {

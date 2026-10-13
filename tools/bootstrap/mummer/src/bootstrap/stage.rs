@@ -29,7 +29,10 @@ use mummer::{
       remove_if_exists,
       write_file,
    },
-   process::Checked as _,
+   process::{
+      Checked as _,
+      loose,
+   },
    store::on_path,
    tree::{
       note,
@@ -434,10 +437,7 @@ pub fn compile(compiler: &str, common: &[String], items: &[Item]) -> io::Result<
       if output.status.success() {
          return Ok(None);
       }
-      Ok(Some((
-         item.src.clone(),
-         String::from_utf8_lossy(&output.stderr).into_owned(),
-      )))
+      Ok(Some((item.src.clone(), loose(&output.stderr).into_owned())))
    })?;
    let failed = failures.iter().flatten().collect::<Vec<_>>();
    if !failed.is_empty() {

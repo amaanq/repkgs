@@ -2,4 +2,5 @@ allowed-duplicate-crates = [ "getrandom" ]
 disallowed-methods = [
   { path = "std::path::Path::to_string_lossy", reason = "show a path with display(), take its text with mummer::files::utf8" },
   { path = "std::ffi::OsStr::to_string_lossy", reason = "show it with display(), take its text with to_str and a checked error" },
+  { path = "std::string::String::from_utf8_lossy", reason = "show or search output with mummer::process::loose, read a value with mummer::process::strict" },
 ]

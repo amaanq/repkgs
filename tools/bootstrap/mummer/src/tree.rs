@@ -53,7 +53,10 @@ use crate::{
       write_file,
    },
    hash::Digest,
-   process::Checked as _,
+   process::{
+      Checked as _,
+      loose,
+   },
    store::{
       STORE_DIR,
       normalize,
@@ -705,7 +708,7 @@ fn leaks(inventory: &[Entry], prefix: &str) -> io::Result<()> {
          .split(|byte| !(byte.is_ascii_graphic() || *byte == b' ' || *byte == b'\t'))
          .filter(|run| run.len() >= needle.len() && find(run, needle).is_some())
       {
-         let masked = String::from_utf8_lossy(run)
+         let masked = loose(run)
             .replace(prefix, "$out")
             .chars()
             .take(120)
