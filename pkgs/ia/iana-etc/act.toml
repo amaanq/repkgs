@@ -1,0 +1,13 @@
+track = "github:Mic92/iana-etc"
+fetch = { url = "https://github.com/Mic92/iana-etc/releases/download/{version}/iana-etc-{version}.tar.gz" }
+
+[exports]
+libDirs = [  ]
+libs    = [  ]
+
+[exports.env]
+IANA_ETC = "{root}/etc"
+
+[install]
+"etc/services"  = "services"
+"etc/protocols" = "protocols"
