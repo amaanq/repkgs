@@ -254,7 +254,8 @@ pub enum Access {
    /// Listed the directory at this resolved path.
    Listing(Vec<u8>),
    /// Started a program with these NUL-separated arguments, in the working
-   /// directory that is the name's base.
+   /// directory that is the name's base. Arguments too long for a record
+   /// come as the last of them that fit whole.
    Exec {
       named: Named,
       args:  Vec<u8>,
@@ -276,6 +277,9 @@ pub struct Record {
 
 /// `struct record` in trace.bpf.c, padded out to its `u64`'s alignment.
 const HEADER: usize = 32;
+
+/// `EXEC_TAIL` in trace.bpf.c.
+const EXEC_TAIL: u32 = 1;
 
 impl TryFrom<&[u8]> for Record {
    type Error = io::Error;
@@ -317,9 +321,17 @@ impl TryFrom<&[u8]> for Record {
          3 => Access::Clobber(named()?),
          4 => Access::Listing(named()?.name),
          5 => {
+            let mut args = field(name_end..name_end + half(24))?;
+            if detail == EXEC_TAIL {
+               let whole = args
+                  .iter()
+                  .position(|byte| *byte == 0)
+                  .map_or(args.len(), |at| at + 1);
+               args.drain(..whole);
+            }
             Access::Exec {
                named: named()?,
-               args:  field(name_end..name_end + half(24))?,
+               args,
             }
          },
          6 => Access::Fork { child: detail },
