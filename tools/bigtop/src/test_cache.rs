@@ -451,9 +451,9 @@ impl Manifest {
       let mut paths = accesses.paths;
       let listed = accesses.listed;
       let mut prior = accesses.prior;
-      prior.retain(|path, _bytes| before.had(path));
+      prior.retain(|path, _bytes| before.files.contains(path));
       let mut replaced = accesses.replaced;
-      replaced.retain(|path| before.had(path) && !ignored(path));
+      replaced.retain(|path| before.files.contains(path) && !ignored(path));
       let forced = !replaced.is_empty() || !prior.is_empty();
       let units = paths
          .values()
