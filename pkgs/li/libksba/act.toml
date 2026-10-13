@@ -1,0 +1,4 @@
+track = "generic:libksba?url=https://gnupg.org/ftp/gcrypt/libksba/"
+fetch = { url = "https://gnupg.org/ftp/gcrypt/libksba/libksba-{version}.tar.bz2" }
+with  = [ "autotools" ]
+deps  = [ "libgpg-error" ]
