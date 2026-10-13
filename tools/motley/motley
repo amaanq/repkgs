@@ -46,9 +46,53 @@ def "main test" [
    # nix's --rebuild checks the unresolved derivation, which never has valid
    # outputs of its own when it is content-addressed
    let args = [...$FEATURES --file (root) ...(platform-arg $for) ...(peanut-arg $peanut) ...(rust-toolchain-arg $rust_toolchain)]
-   let outputs = ($targets | each {|target| ^nix path-info ...$args $"($target)^out" | str trim })
-   ^nix store delete ...$FEATURES ...$outputs
-   built $targets $for $peanut $rust_toolchain
+   let checked = ($targets | each {|target| $"(resolve (^nix path-info ...$args --derivation $target | str trim))^out" })
+   try { ^rom --platform nix build ...$checked -- ...$FEATURES --quiet --no-link --rebuild ...(cache-args) } catch {|failure| exit ($failure.exit_code? | default 1) }
+}
+
+# the derivation nix builds for a content-addressed one, as Derivation::tryResolve makes it
+def resolve [drv: string]: nothing -> string {
+   let shown = (^nix ...$FEATURES derivation show $drv | from json | get derivations | values | first)
+   let found = ($shown.inputs.drvs | transpose path spec | each {|input| realised $"/nix/store/($input.path)" $input.spec null } | flatten)
+   let text = ($found | reduce --fold ($shown | to json -r) {|pair, text| $text | str replace -a $pair.placeholder $pair.built })
+   let sources = ($shown.inputs.srcs | append ($found | get built | path basename) | uniq | sort)
+   $text | from json | upsert inputs {srcs: $sources, drvs: {}} | to json -r | ^nix ...$FEATURES derivation add | str trim
+}
+
+def realised [drv: string, spec: record, parent: any]: nothing -> list<record<placeholder: string, built: string>> {
+   let digest = {|output|
+      if $parent == null { upstream $drv $output } else { computed $parent $output }
+   }
+   let direct = ($spec.outputs | each {|output|
+      let path = (^nix ...$FEATURES path-info $"($drv)^($output)" | str trim)
+      {placeholder: $"/(nix32 sha256 (do $digest $output))", built: $path}
+   })
+   let dynamic = ($spec.dynamicOutputs | transpose output inner | each {|entry|
+      let inner = (^nix ...$FEATURES path-info $"($drv)^($entry.output)" | str trim)
+      realised $inner $entry.inner (do $digest $entry.output)
+   } | flatten)
+   $direct | append $dynamic
+}
+
+def nix32 [algo: string, hex: string]: nothing -> string {
+   ^nix ...$FEATURES hash convert --hash-algo $algo --to nix32 $hex | str trim
+}
+
+def upstream [drv: string, output: string]: nothing -> string {
+   let file = ($drv | path basename)
+   let name = ($file | str substring 33.. | str replace -r '\.drv$' '')
+   let named = (if $output == "out" { $name } else { $"($name)-($output)" })
+   $"nix-upstream-output:($file | str substring 0..31):($named)" | hash sha256
+}
+
+# nix's compressHash folds the parent digest to 20 bytes by xor
+def computed [parent: string, output: string]: nothing -> string {
+   let bytes = ($parent | decode hex)
+   let folded = (0..19 | each {|at|
+      [$at ($at + 20)] | where {|index| $index < 32 } | each {|index| $bytes | bytes at $index..$index | into int } | reduce {|byte, acc| $acc | bits xor $byte }
+   })
+   let hex = ($folded | each {|byte| $byte | format number | get lowerhex | str substring 2.. | fill -a r -c '0' -w 2 } | str join)
+   $"nix-computed-output:(nix32 sha1 $hex):($output)" | hash sha256
 }
 
 # print the build log of a package's derivation
