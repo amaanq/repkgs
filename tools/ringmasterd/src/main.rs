@@ -209,10 +209,57 @@ impl Kernel {
    }
 }
 
+/// How far a client may fall behind before its records are dropped and
+/// counted lost, rather than held for it.
+const BACKLOG: usize = 1 << 28;
+
 /// A connection, a session's stream once it opened one.
 struct Client {
    stream:  UnixStream,
    session: Option<u64>,
+   /// Bytes the client has not taken yet, from `sent` on.
+   queued:  Vec<u8>,
+   sent:    usize,
+   /// Records dropped because the client fell too far behind.
+   dropped: u64,
+   /// Answered for the last time, so closed once `queued` is sent.
+   ending:  bool,
+}
+
+impl Client {
+   const fn new(stream: UnixStream) -> Self {
+      Self {
+         stream,
+         session: None,
+         queued: Vec::new(),
+         sent: 0,
+         dropped: 0,
+         ending: false,
+      }
+   }
+
+   const fn waiting(&self) -> bool {
+      self.sent < self.queued.len()
+   }
+
+   /// Sends what the socket takes without blocking, false when the client
+   /// is gone.
+   fn flush(&mut self) -> bool {
+      while self.waiting() {
+         match self.stream.write(&self.queued[self.sent..]) {
+            Ok(0) => return false,
+            Ok(written) => self.sent += written,
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {},
+            Err(_) => return false,
+         }
+      }
+      if self.sent * 2 >= self.queued.len() {
+         self.queued.drain(..self.sent);
+         self.sent = 0;
+      }
+      true
+   }
 }
 
 struct Daemon {
@@ -232,8 +279,13 @@ impl Daemon {
          let Some(index) = session(raw).and_then(|token| self.sessions.get(&token).copied()) else {
             continue;
          };
-         // a client that stopped reading hangs up, which its next poll closes
-         drop(Reply::record(raw).and_then(|frame| self.clients[index].stream.write_all(&frame)));
+         let client = &mut self.clients[index];
+         match Reply::record(raw) {
+            Ok(frame) if client.queued.len() - client.sent + frame.len() <= BACKLOG => {
+               client.queued.extend_from_slice(&frame);
+            },
+            _ => client.dropped += 1,
+         }
       }
    }
 
@@ -241,10 +293,8 @@ impl Daemon {
       loop {
          match self.listener.accept() {
             Ok((stream, _)) => {
-               self.clients.push(Client {
-                  stream,
-                  session: None,
-               });
+               stream.set_nonblocking(true)?;
+               self.clients.push(Client::new(stream));
             },
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(()),
             Err(error) => return Err(error),
@@ -283,11 +333,10 @@ impl Daemon {
             }
             let opened = u64::from_ne_bytes(token);
             self.sessions.insert(opened, index);
-            self.clients[index].session = Some(opened);
-            self.clients[index]
-               .stream
-               .write_all(&Reply::opened(opened))
-               .is_ok()
+            let client = &mut self.clients[index];
+            client.session = Some(opened);
+            client.queued.extend_from_slice(&Reply::opened(opened));
+            true
          },
          (Request::Join(token), None) => {
             let (Some(pid), true) = (sender, self.sessions.contains_key(&token)) else {
@@ -299,16 +348,22 @@ impl Daemon {
             if self.kernel.traced.insert(tgid, token, 0).is_err() {
                return false;
             }
-            drop(self.clients[index].stream.write_all(&Reply::joined()));
-            false
+            let client = &mut self.clients[index];
+            client.queued.extend_from_slice(&Reply::joined());
+            client.ending = true;
+            true
          },
          (Request::End, Some(token)) => {
             self.drain();
             let lost = self.kernel.forget(token);
             self.sessions.remove(&token);
-            self.clients[index].session = None;
-            drop(self.clients[index].stream.write_all(&Reply::done(lost)));
-            false
+            let client = &mut self.clients[index];
+            client.session = None;
+            client
+               .queued
+               .extend_from_slice(&Reply::done(lost + client.dropped));
+            client.ending = true;
+            true
          },
          _ => false,
       }
@@ -332,19 +387,23 @@ impl Daemon {
             PollFd::new(&self.listener, PollFlags::IN),
             PollFd::new(&self.kernel.events, PollFlags::IN),
          ];
-         polled.extend(
-            self
-               .clients
-               .iter()
-               .map(|client| PollFd::new(&client.stream, PollFlags::IN)),
-         );
+         polled.extend(self.clients.iter().map(|client| {
+            let mut flags = PollFlags::empty();
+            flags.set(PollFlags::IN, !client.ending);
+            flags.set(PollFlags::OUT, client.waiting());
+            PollFd::new(&client.stream, flags)
+         }));
          match poll(&mut polled, None) {
             Ok(_) | Err(Errno::INTR) => {},
             Err(error) => return Err(error).context("poll failed"),
          }
          let ready = polled
             .iter()
-            .map(|entry| !entry.revents().is_empty())
+            .map(|entry| {
+               entry
+                  .revents()
+                  .intersects(PollFlags::IN | PollFlags::HUP | PollFlags::ERR)
+            })
             .collect::<Vec<_>>();
          drop(polled);
          if ready[1] {
@@ -354,7 +413,13 @@ impl Daemon {
             self.accept().context("could not accept a connection")?;
          }
          for index in (0..ready.len() - 2).rev() {
-            if ready[index + 2] && !self.serve(index) {
+            if ready[index + 2] && !self.clients[index].ending && !self.serve(index) {
+               self.close(index);
+            }
+         }
+         for index in (0..self.clients.len()).rev() {
+            let client = &mut self.clients[index];
+            if !client.flush() || (client.ending && !client.waiting()) {
                self.close(index);
             }
          }
