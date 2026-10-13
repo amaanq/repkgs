@@ -2,6 +2,11 @@ track = "pypi:pathspec"
 fetch = { url = "https://files.pythonhosted.org/packages/source/p/pathspec/pathspec-{version}.tar.gz" }
 with  = [ "python" ]
 
+[test]
+deps     = [ "python-pytest" ]
+separate = true
+
 [python]
 backend = "flit_core"
 module  = "pathspec"
+pytest  = true

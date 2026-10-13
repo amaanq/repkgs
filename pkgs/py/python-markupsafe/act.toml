@@ -3,5 +3,9 @@ fetch = { url = "https://files.pythonhosted.org/packages/source/m/markupsafe/mar
 with  = [ "python" ]
 tools = [ "python-setuptools" ]
 
+[test]
+deps = [ "python-pytest" ]
+
 [python]
 module = "markupsafe"
+pytest = true
