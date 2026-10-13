@@ -146,6 +146,9 @@ enum kind {
 #define ESCAPE_FOREIGN 0xFFFF0002U
 #define ESCAPE_UNRESOLVED 0xFFFF0003U
 
+/* An exec's detail when its arguments only fit from the back. */
+#define EXEC_TAIL 1U
+
 #define FIELD 4096
 #define MASK (FIELD - 1)
 #define DEPTH 128
@@ -619,12 +622,11 @@ int exec(__u64* context) {
       READ(stop, mm->arg_end);
    }
    if (stop > start) {
-      __u32 length = stop - start;
-      if (length >= FIELD) {
-         drop(scratch);
-         escape(*session, key, ESCAPE_UNRESOLVED);
-         return 0;
+      if (stop - start >= FIELD) {
+         start = stop - MASK;
+         scratch->head.detail = EXEC_TAIL;
       }
+      __u32 length = stop - start;
       __u32 at = (scratch->head.base + scratch->head.name) & (2 * FIELD - 1);
       if (!bpf_probe_read_user(&scratch->data[at], length & MASK, (void*)start)) {
          scratch->head.args = length & MASK;
