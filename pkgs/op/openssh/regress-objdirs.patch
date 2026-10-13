@@ -1,0 +1,18 @@
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -209,6 +209,7 @@
+ $(SSHDOBJS): Makefile.in config.h
+ 
+ .c.o:
++	@$(MKDIR_P) $(@D)
+ 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+ 
+ LIBCOMPAT=openbsd-compat/libopenbsd-compat.a
+@@ -766,6 +767,7 @@
+ SK_DUMMY_LIBRARY=@SK_DUMMY_LIBRARY@
+ 
+ .c.lo: Makefile.in config.h
++	@$(MKDIR_P) $(@D)
+ 	$(CC) $(CFLAGS_NOPIE) $(PICFLAG) $(CPPFLAGS) -c $< -o $@
+ 
+ regress/misc/sk-dummy/sk-dummy.so: $(SK_DUMMY_OBJS)

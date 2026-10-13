@@ -1,0 +1,103 @@
+--- a/defines.h
++++ b/defines.h
+@@ -443,7 +443,8 @@
+ # ifdef _PATH_STDPATH
+ #  undef _PATH_STDPATH
+ # endif
+-# define _PATH_STDPATH USER_PATH
++# define _PATH_STDPATH ssh_user_path()
++const char *ssh_user_path(void);
+ #endif
+ 
+ #ifndef _PATH_STDPATH
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -36,14 +36,14 @@
+ COMPATINCLUDES="$(BUILDDIR)/@COMPATINCLUDES@"
+ 
+ PATHS= -DSSHDIR=\"$(sysconfdir)\" \
+-	-D_PATH_SSH_PROGRAM=\"$(SSH_PROGRAM)\" \
+-	-D_PATH_SSH_ASKPASS_DEFAULT=\"$(ASKPASS_PROGRAM)\" \
+-	-D_PATH_SFTP_SERVER=\"$(SFTP_SERVER)\" \
+-	-D_PATH_SSH_KEY_SIGN=\"$(SSH_KEYSIGN)\" \
+-	-D_PATH_SSHD_SESSION=\"$(SSHD_SESSION)\" \
+-	-D_PATH_SSHD_AUTH=\"$(SSHD_AUTH)\" \
+-	-D_PATH_SSH_PKCS11_HELPER=\"$(SSH_PKCS11_HELPER)\" \
+-	-D_PATH_SSH_SK_HELPER=\"$(SSH_SK_HELPER)\" \
++	-D_PATH_SSH_PROGRAM='((char *)RELOC("../bin/ssh"))' \
++	-D_PATH_SSH_ASKPASS_DEFAULT='((char *)RELOC("../libexec/ssh-askpass"))' \
++	-D_PATH_SFTP_SERVER='((char *)RELOC("../libexec/sftp-server"))' \
++	-D_PATH_SSH_KEY_SIGN='((char *)RELOC("../libexec/ssh-keysign"))' \
++	-D_PATH_SSHD_SESSION='((char *)RELOC("../libexec/sshd-session"))' \
++	-D_PATH_SSHD_AUTH='((char *)RELOC("../libexec/sshd-auth"))' \
++	-D_PATH_SSH_PKCS11_HELPER='((char *)RELOC("../libexec/ssh-pkcs11-helper"))' \
++	-D_PATH_SSH_SK_HELPER='((char *)RELOC("../libexec/ssh-sk-helper"))' \
+ 	-D_PATH_SSH_PIDDIR=\"$(piddir)\" \
+ 	-D_PATH_PRIVSEP_CHROOT_DIR=\"$(PRIVSEP_PATH)\"
+ 
+@@ -184,6 +184,7 @@
+ 	-e 's|/etc/ssh/ssh_config|$(sysconfdir)/ssh_config|g' \
+ 	-e 's|/etc/ssh/ssh_known_hosts|$(sysconfdir)/ssh_known_hosts|g' \
+ 	-e 's|/etc/ssh/sshd_config|$(sysconfdir)/sshd_config|g' \
++	-e 's|/usr/libexec/sftp-server|internal-sftp|g' \
+ 	-e 's|/usr/libexec|$(libexecdir)|g' \
+ 	-e 's|/etc/shosts.equiv|$(sysconfdir)/shosts.equiv|g' \
+ 	-e 's|/etc/ssh/ssh_host_key|$(sysconfdir)/ssh_host_key|g' \
+--- a/misc.c
++++ b/misc.c
+@@ -58,6 +58,7 @@
+ #include <net/if.h>
+ #endif
+ 
++#include "reloc.h"
+ #include "xmalloc.h"
+ #include "misc.h"
+ #include "log.h"
+@@ -2412,6 +2413,16 @@
+ 	return safe_path(file, &st, pw->pw_dir, pw->pw_uid, err, errlen);
+ }
+ 
++const char *
++ssh_user_path(void)
++{
++	static char *path;
++
++	if (path == NULL)
++		xasprintf(&path, "%s:%s", USER_PATH, RELOC("../bin"));
++	return path;
++}
++
+ /*
+  * Sets the value of the given variable in the environment.  If the variable
+  * already exists, its value is overridden.
+--- a/pathnames.h
++++ b/pathnames.h
+@@ -12,6 +12,8 @@
+  * called by a name other than "ssh" or "Secure Shell".
+  */
+ 
++#include "reloc.h"
++
+ #define ETCDIR				"/etc"
+ 
+ #ifndef SSHDIR
+--- a/scp.c
++++ b/scp.c
+@@ -153,7 +153,7 @@
+ int sshport = -1;
+ 
+ /* This is the program to execute for the secure connection. ("ssh" or -S) */
+-char *ssh_program = _PATH_SSH_PROGRAM;
++char *ssh_program;
+ 
+ /* This is used to store the pid of ssh_program */
+ pid_t do_cmd_pid = -1;
+@@ -464,6 +464,8 @@
+ 
+ 	msetlocale();
+ 
++	ssh_program = _PATH_SSH_PROGRAM;
++
+ 	/* Copy argv, because we modify it */
+ 	argv0 = argv[0];
+ 	newargv = xcalloc(MAXIMUM(argc + 1, 1), sizeof(*newargv));

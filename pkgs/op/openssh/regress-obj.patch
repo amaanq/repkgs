@@ -1,0 +1,22 @@
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -827,6 +827,7 @@
+ 		OBJ="$(BUILDDIR)/regress" $@
+ 
+ TEST_SSH_SSHD="$(BUILDDIR)/sshd"
++REGRESS_OBJ=$(BUILDDIR)/regress
+ 
+ interop-tests t-exec file-tests extra-tests: regress-prep regress-binaries $(TARGETS)
+ 	cd $(srcdir)/regress || exit $$?; \
+@@ -835,9 +836,9 @@
+ 	OPENSSL_BIN='@OPENSSL_BIN@' \
+ 	$(MAKE) \
+ 		.CURDIR="$(abs_top_srcdir)/regress" \
+-		.OBJDIR="$(BUILDDIR)/regress" \
++		.OBJDIR="$(REGRESS_OBJ)" \
+ 		BUILDDIR="$(BUILDDIR)" \
+-		OBJ="$(BUILDDIR)/regress" \
++		OBJ="$(REGRESS_OBJ)" \
+ 		PATH="$(BUILDDIR):$${PATH}" \
+ 		TEST_ENV=MALLOC_OPTIONS="@TEST_MALLOC_OPTIONS@" \
+ 		TEST_MALLOC_OPTIONS="@TEST_MALLOC_OPTIONS@" \

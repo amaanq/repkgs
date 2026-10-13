@@ -1,0 +1,27 @@
+with    = [ "autotools" ]
+track   = "generic:openssh?url=https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/"
+fetch   = { url = "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-{version}.tar.gz" }
+deps    = [ "openssl", "zlib", "linux-pam" ]
+patches = [ "regress-objdirs.patch", "relocatable.patch", "install.patch", "regress-obj.patch" ]
+
+[test]
+bin     = [ "ssh", "ssh-keygen", "sshd" ]
+etc     = true
+version = "-V"
+
+[steps.replace]
+"autotools.test" = [ "openssh.login-shell", "openssh.test" ]
+
+[autotools]
+flags = [
+  "--sbindir=${exec_prefix}/bin",
+  "--sysconfdir=/etc/ssh",
+  "--localstatedir=/var",
+  "--with-pid-dir=/run",
+  "--with-mantype=doc",
+  "--disable-strip",
+  "--with-pam",
+  "--with-default-path=/usr/bin:/bin:/usr/sbin:/sbin",
+]
+installTarget = [ "install-nokeys" ]
+installFlags = [ "sysconfdir=$(prefix)/etc/ssh" ]
