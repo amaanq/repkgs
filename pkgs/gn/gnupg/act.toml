@@ -1,0 +1,28 @@
+track = "generic:gnupg?url=https://gnupg.org/ftp/gcrypt/gnupg/"
+fetch = { url = "https://gnupg.org/ftp/gcrypt/gnupg/gnupg-{version}.tar.bz2" }
+with = [ "autotools" ]
+patches = [ "relocatable.patch" ]
+deps = [
+  "libgpg-error",
+  "libgcrypt",
+  "libassuan",
+  "libksba",
+  "npth",
+  "sqlite",
+  "zlib",
+  "bzip2",
+  "readline",
+]
+
+[test]
+bin = [ "gpg", "gpgsm", "gpg-agent" ]
+
+[autotools]
+flags = [
+  "--sysconfdir=/etc",
+  "--enable-large-secmem",
+  "--disable-doc",
+  "--disable-ldap",
+  "--disable-gnutls",
+  "--disable-ntbtls",
+]

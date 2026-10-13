@@ -1,0 +1,56 @@
+--- a/common/homedir.c
++++ b/common/homedir.c
+@@ -68,6 +68,20 @@
+ #include "i18n.h"
+ #include "zb32.h"
+ 
++#ifndef HAVE_W32_SYSTEM
++#include "reloc.h"
++#undef GNUPG_BINDIR
++#define GNUPG_BINDIR RELOC ("../bin")
++#undef GNUPG_LIBEXECDIR
++#define GNUPG_LIBEXECDIR RELOC ("../libexec")
++#undef GNUPG_LIBDIR
++#define GNUPG_LIBDIR RELOC ("../lib/gnupg")
++#undef GNUPG_DATADIR
++#define GNUPG_DATADIR RELOC ("../share/gnupg")
++#undef LOCALEDIR
++#define LOCALEDIR RELOC ("../share/locale")
++#endif
++
+ /* The name of the symbolic link to the file from which the process
+  * text was read.  */
+ #if __linux__
+--- a/common/sysutils.c
++++ b/common/sysutils.c
+@@ -415,7 +415,7 @@
+       if(strchr(path,DIRSEP_C))
+ 	tmppath=make_filename(path,NULL);
+       else
+-	tmppath=make_filename(GNUPG_LIBDIR,path,NULL);
++	tmppath=make_filename(gnupg_libdir (),path,NULL);
+     }
+   else
+     tmppath=m_strdup(path);
+--- a/tools/Makefile.am
++++ b/tools/Makefile.am
+@@ -246,7 +246,7 @@
+ 	$(mkinstalldirs) $(DESTDIR)$(libexecdir)
+ 	(set -e ;\
+ 	 if [ "$(libexecdir)" != "$(bindir)" ]; then \
+-	   printf '#!/bin/sh\nexec "$(bindir)/gpg-wks-client" "$$@"\n' \
++	   printf '#!/bin/sh\nexec "$${0%%/*}/../bin/gpg-wks-client" "$$@"\n' \
+ 	          > $(DESTDIR)$(libexecdir)/gpg-wks-client ;\
+ 	   chmod +x $(DESTDIR)$(libexecdir)/gpg-wks-client ;\
+ 	 fi )
+--- a/tools/Makefile.in
++++ b/tools/Makefile.in
+@@ -1942,7 +1942,7 @@
+ 	$(mkinstalldirs) $(DESTDIR)$(libexecdir)
+ 	(set -e ;\
+ 	 if [ "$(libexecdir)" != "$(bindir)" ]; then \
+-	   printf '#!/bin/sh\nexec "$(bindir)/gpg-wks-client" "$$@"\n' \
++	   printf '#!/bin/sh\nexec "$${0%%/*}/../bin/gpg-wks-client" "$$@"\n' \
+ 	          > $(DESTDIR)$(libexecdir)/gpg-wks-client ;\
+ 	   chmod +x $(DESTDIR)$(libexecdir)/gpg-wks-client ;\
+ 	 fi )
