@@ -146,6 +146,10 @@ enum kind {
 #define ESCAPE_FOREIGN 0xFFFF0002U
 #define ESCAPE_UNRESOLVED 0xFFFF0003U
 
+/* base_of's answer for a descriptor the task does not have, which the kernel
+ * fails as EBADF before looking the name up. */
+#define NO_DIRECTORY -2
+
 /* An exec's detail when its arguments only fit from the back. */
 #define EXEC_TAIL 1U
 
@@ -384,7 +388,7 @@ INLINE long base_of(struct scratch* scratch, int dfd) {
       return walk_path(scratch, &fs->pwd);
    }
    if (dfd < 0) {
-      return -1;
+      return NO_DIRECTORY;
    }
    struct files_struct* files = 0;
    struct fdtable* table = 0;
@@ -398,12 +402,12 @@ INLINE long base_of(struct scratch* scratch, int dfd) {
    READ(table, files->fdt);
    READ(max, table->max_fds);
    if ((unsigned int)dfd >= max) {
-      return -1;
+      return NO_DIRECTORY;
    }
    READ(fds, table->fd);
    bpf_probe_read_kernel(&file, sizeof(file), &fds[dfd]);
    if (!file) {
-      return -1;
+      return NO_DIRECTORY;
    }
    return walk_path(scratch, &file->f_path);
 }
@@ -430,6 +434,10 @@ INLINE void named(__u32 kind, __u32 detail, int dfd, const void* filename) {
    }
    if (first != '/') {
       long base = base_of(scratch, dfd);
+      if (base == NO_DIRECTORY) {
+         drop(scratch);
+         return;
+      }
       if (base < 0) {
          drop(scratch);
          escape(*session, tgid, ESCAPE_UNRESOLVED);
