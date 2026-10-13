@@ -1,0 +1,15 @@
+with    = [ "cmake" ]
+track   = "generic:nss_wrapper?url=https://download.samba.org/pub/cwrap/"
+fetch   = { url = "https://download.samba.org/pub/cwrap/nss_wrapper-{version}.tar.gz" }
+deps    = [ "cmocka", "libxcrypt" ]
+patches = [ "gethostname-chk.patch" ]
+
+[test]
+deps = [ "iana-etc" ]
+etc  = true
+
+[steps.before]
+"cmake.test" = [ "nss-wrapper.services" ]
+
+[cmake.defs]
+UNIT_TESTING = true
