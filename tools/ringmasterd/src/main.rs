@@ -26,6 +26,7 @@ use std::{
       },
    },
    path::PathBuf,
+   result::Result as StdResult,
 };
 
 use aya::{
@@ -41,6 +42,7 @@ use aya::{
    programs::{
       BtfTracePoint,
       FEntry,
+      FExit,
       ProgramError,
    },
 };
@@ -88,18 +90,43 @@ struct Options {
 /// Each fentry program and the kernel functions it may attach to, newest
 /// name first, since the VFS renames them between releases.
 const ENTRIES: &[(&str, &[&str])] = &[
-   ("open", &["do_file_open", "do_filp_open"]),
    ("lookup", &["filename_lookup"]),
-   ("unlink", &["filename_unlinkat", "do_unlinkat"]),
    ("rmdir", &["filename_rmdir", "do_rmdir"]),
    ("mkdir", &["filename_mkdirat", "do_mkdirat"]),
    ("mknod", &["filename_mknodat", "do_mknodat"]),
    ("symlink", &["filename_symlinkat", "do_symlinkat"]),
    ("link", &["filename_linkat", "do_linkat"]),
-   ("rename", &["filename_renameat2", "do_renameat2"]),
-   ("truncate", &["vfs_truncate"]),
    ("listing", &["iterate_dir"]),
 ];
+
+/// The fexit programs, likewise. `do_unlinkat` and `do_renameat2` free the
+/// name before they return, so they are no candidates.
+const EXITS: &[(&str, &[&str])] = &[
+   ("open", &["do_file_open", "do_filp_open"]),
+   ("unlink", &["filename_unlinkat"]),
+   ("rename", &["filename_renameat2"]),
+   ("truncate", &["vfs_truncate"]),
+];
+
+/// Loads a program for the first of `candidates` the kernel has, its name.
+fn load_first<'name>(
+   program: &str,
+   candidates: &[&'name str],
+   mut load: impl FnMut(&str) -> StdResult<(), ProgramError>,
+) -> Result<&'name str> {
+   for &name in candidates {
+      match load(name) {
+         Ok(()) => return Ok(name),
+         Err(ProgramError::Btf(BtfError::UnknownBtfTypeName { .. })) => {},
+         Err(error) => {
+            return Err(error).with_context(|| format!("could not load {program} for {name}"));
+         },
+      }
+   }
+   Err(report!(
+      "this kernel has none of {candidates:?} for {program}"
+   ))
+}
 
 const TRACEPOINTS: &[(&str, &str)] = &[
    ("fork", "sched_process_fork"),
@@ -129,23 +156,18 @@ impl Kernel {
             .program_mut(program)
             .ok_or_else(|| report!("no program {program}"))?
             .try_into()?;
-         let mut target = None;
-         for &name in candidates {
-            match entry.load(name, &btf) {
-               Ok(()) => {
-                  target = Some(name);
-                  break;
-               },
-               Err(ProgramError::Btf(BtfError::UnknownBtfTypeName { .. })) => {},
-               Err(error) => {
-                  return Err(error)
-                     .with_context(|| format!("could not load {program} for {name}"));
-               },
-            }
-         }
-         let attached = target
-            .ok_or_else(|| report!("this kernel has none of {candidates:?} for {program}"))?;
+         let attached = load_first(program, candidates, |name| entry.load(name, &btf))?;
          entry
+            .attach()
+            .with_context(|| format!("could not attach {program} to {attached}"))?;
+      }
+      for &(program, candidates) in EXITS {
+         let exit: &mut FExit = object
+            .program_mut(program)
+            .ok_or_else(|| report!("no program {program}"))?
+            .try_into()?;
+         let attached = load_first(program, candidates, |name| exit.load(name, &btf))?;
+         exit
             .attach()
             .with_context(|| format!("could not attach {program} to {attached}"))?;
       }

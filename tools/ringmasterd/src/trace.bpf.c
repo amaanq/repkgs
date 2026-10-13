@@ -17,6 +17,9 @@ typedef long long __s64;
 #define __type(name, value) typeof(value)* name
 
 #define AT_FDCWD -100
+#define O_ACCMODE 3
+#define O_TRUNC 01000
+#define MAX_ERRNO 4095
 #define LOOKUP_IN_ROOT (1U << 28)
 
 enum {
@@ -475,9 +478,13 @@ INLINE void resolved(__u32 kind, struct path* path) {
    finish(scratch);
 }
 
-SEC("fentry/do_file_open")
+/* The calls that can take a path away run as fexit programs, so one that
+ * failed, as tests of error paths make them, counts only as the lookup it
+ * was. The names stay valid until the system call that passed them returns. */
+SEC("fexit/do_file_open")
 int open(__u64* context) {
    const struct open_flags* flags = (void*)context[2];
+   unsigned long file = context[3];
    int open_flag = 0;
    int lookup_flags = 0;
    READ(open_flag, flags->open_flag);
@@ -490,6 +497,9 @@ int open(__u64* context) {
       }
       return 0;
    }
+   if (file >= (unsigned long)-MAX_ERRNO) {
+      open_flag &= ~(O_ACCMODE | O_TRUNC);
+   }
    named(KIND_OPEN, open_flag, (int)context[0], (void*)context[1]);
    return 0;
 }
@@ -500,9 +510,10 @@ int lookup(__u64* context) {
    return 0;
 }
 
-SEC("fentry/filename_unlinkat")
+SEC("fexit/filename_unlinkat")
 int unlink(__u64* context) {
-   named(KIND_CLOBBER, 0, (int)context[0], (void*)context[1]);
+   __u32 kind = (int)context[2] ? KIND_LOOKUP : KIND_CLOBBER;
+   named(kind, 0, (int)context[0], (void*)context[1]);
    return 0;
 }
 
@@ -537,16 +548,17 @@ int link(__u64* context) {
    return 0;
 }
 
-SEC("fentry/filename_renameat2")
+SEC("fexit/filename_renameat2")
 int rename(__u64* context) {
-   named(KIND_CLOBBER, 0, (int)context[0], (void*)context[1]);
-   named(KIND_CLOBBER, 0, (int)context[2], (void*)context[3]);
+   __u32 kind = (int)context[5] ? KIND_LOOKUP : KIND_CLOBBER;
+   named(kind, 0, (int)context[0], (void*)context[1]);
+   named(kind, 0, (int)context[2], (void*)context[3]);
    return 0;
 }
 
-SEC("fentry/vfs_truncate")
+SEC("fexit/vfs_truncate")
 int truncate(__u64* context) {
-   resolved(KIND_CLOBBER, (struct path*)context[0]);
+   resolved((long)context[2] ? KIND_LOOKUP : KIND_CLOBBER, (struct path*)context[0]);
    return 0;
 }
 
