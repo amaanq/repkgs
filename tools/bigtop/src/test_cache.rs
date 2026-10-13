@@ -424,7 +424,6 @@ impl Manifest {
          mut before,
          mark,
          tests,
-         seccomp,
       }: Traced,
       client: &mut Client,
       store: &mut Store,
@@ -455,7 +454,7 @@ impl Manifest {
       prior.retain(|path, _bytes| before.had(path));
       let mut replaced = accesses.replaced;
       replaced.retain(|path| before.had(path) && !ignored(path));
-      let forced = seccomp || !replaced.is_empty();
+      let forced = !replaced.is_empty() || !prior.is_empty();
       let units = paths
          .values()
          .chain(listed.values())
@@ -785,8 +784,6 @@ struct Traced {
    before:   Snapshot,
    mark:     Mark,
    tests:    Option<&'static dyn Tests>,
-   /// The step needs seccomp, as a stored pass said.
-   seccomp:  bool,
 }
 
 /// One run of the step from `command`, limited to the `selected` tests when
@@ -838,7 +835,6 @@ fn attempt(
             before,
             mark,
             tests,
-            seccomp,
          };
          (status, Some(traced))
       },
@@ -855,7 +851,6 @@ fn attempt(
                      before,
                      mark,
                      tests,
-                     seccomp: false,
                   };
                   (ran, Some(traced))
                },
