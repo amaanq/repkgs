@@ -470,6 +470,9 @@
               "kind": "string"
             }
           },
+          "etc": {
+            "kind": "boolean"
+          },
           "parallel": {
             "kind": "boolean"
           },
@@ -497,7 +500,8 @@
           "parallel",
           "version",
           "dlopen",
-          "dependencies"
+          "dependencies",
+          "etc"
         ]
       },
       "default": null,

@@ -284,6 +284,7 @@ record! {
          version ("version"): VersionCheck,
          dlopen ("dlopen"): Vec<String>,
          dependencies ("dependencies"): Vec<PackagePath>,
+         etc ("etc"): bool,
       }
    }
 }

@@ -1,13 +1,32 @@
 use std::{
    collections::BTreeMap,
+   convert::Infallible,
    env::{
+      args_os,
       current_exe,
       set_current_dir,
+      var_os,
       vars,
    },
-   fs::read_to_string,
+   fs::{
+      Permissions,
+      create_dir_all,
+      read,
+      read_dir,
+      read_link,
+      read_to_string,
+      set_permissions,
+      write,
+   },
    io,
-   path::Path,
+   os::unix::{
+      fs::symlink,
+      process::CommandExt as _,
+   },
+   path::{
+      Path,
+      PathBuf,
+   },
    process::Command,
    time::Instant,
 };
@@ -20,6 +39,26 @@ use mummer::{
       set_phase,
    },
 };
+use rustix::{
+   mount::{
+      MountFlags,
+      mount,
+      mount_remount,
+   },
+   process::{
+      getgid,
+      getuid,
+   },
+   thread::{
+      CapabilitySet,
+      UnshareFlags,
+      capabilities,
+      clear_ambient_capability_set,
+      configure_capability_in_ambient_set,
+      set_capabilities,
+      unshare_unsafe,
+   },
+};
 use serde_json::Value;
 use tightrope::client::Client;
 
@@ -28,6 +67,7 @@ use crate::{
       Attrs,
       Ctx,
       Kind,
+      Step,
       build_top,
    },
    finish,
@@ -142,6 +182,15 @@ fn handover(top: &str) -> io::Result<()> {
 pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<()> {
    let attrs = Attrs::load()?;
    let spec = attrs.spec()?;
+   if spec.tests.etc == Some(true) {
+      if var_os(PRIVATE_ETC).is_none() {
+         match private_etc()? {}
+      }
+      let mut cleared = Env::default();
+      cleared.unset(PRIVATE_ETC);
+      cleared.apply();
+      clear_ambient_capability_set()?;
+   }
    let started = Instant::now();
    let cached = !tests && from_tree.is_none();
    if cached && output::restore(&attrs)? {
@@ -157,6 +206,7 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
       socket,
    )?;
    let mut timings = vec![format!("prepare {:.1}s", started.elapsed().as_secs_f64())];
+   let mut writable = false;
    for (index, step) in attrs.plan.phases.iter().enumerate() {
       let wanted = if tests {
          step.test
@@ -164,6 +214,11 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
          !step.test || (spec.tests.run.unwrap_or(true) && !attrs.plan.separate && ctx.tests_run)
       };
       if wanted {
+         let editing = spec.tests.etc == Some(true) && edits_etc(&attrs.plan.phases, index);
+         if editing != writable {
+            etc_access(editing)?;
+            writable = editing;
+         }
          let begun = Instant::now();
          phase(&attrs, &mut ctx, index, socket)?;
          timings.push(format!(
@@ -187,6 +242,97 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
       note("output-cache", &format!("store failed with {error}"));
    }
    Ok(())
+}
+
+enum Held {
+   Directory,
+   Link(PathBuf),
+   File(Vec<u8>, Permissions),
+}
+
+const PRIVATE_ETC: &str = "BIGTOP_PRIVATE_ETC";
+
+/// Moves the build into its own namespaces with a copy of /etc, then re-execs
+/// since /proc/self/exe no longer resolves there.
+fn private_etc() -> io::Result<Infallible> {
+   let exe = current_exe()?;
+   let etc = Path::new("/etc");
+   let mut entries = Vec::new();
+   let mut pending = vec![PathBuf::new()];
+   while let Some(relative) = pending.pop() {
+      for listed in read_dir(etc.join(&relative))? {
+         let entry = listed?;
+         let name = relative.join(entry.file_name());
+         let kind = entry.file_type()?;
+         if kind.is_dir() {
+            pending.push(name);
+         } else if kind.is_symlink() {
+            entries.push((name, Held::Link(read_link(entry.path())?)));
+         } else {
+            let held = Held::File(read(entry.path())?, entry.metadata()?.permissions());
+            entries.push((name, held));
+         }
+      }
+      if !relative.as_os_str().is_empty() {
+         entries.push((relative, Held::Directory));
+      }
+   }
+   entries.sort_by(|left, right| left.0.cmp(&right.0));
+
+   let (uid, gid) = (getuid().as_raw(), getgid().as_raw());
+   // SAFETY: without UnshareFlags::FILES every thread keeps the one descriptor
+   // table
+   unsafe { unshare_unsafe(UnshareFlags::NEWUSER | UnshareFlags::NEWNS) }?;
+   write("/proc/self/setgroups", "deny")?;
+   write("/proc/self/uid_map", format!("{uid} {uid} 1"))?;
+   write("/proc/self/gid_map", format!("{gid} {gid} 1"))?;
+   mount(
+      "tmpfs",
+      etc,
+      "tmpfs",
+      MountFlags::NOSUID | MountFlags::NODEV,
+      c"mode=0755",
+   )?;
+
+   for (name, held) in entries {
+      let path = etc.join(name);
+      match held {
+         Held::Directory => create_dir_all(&path)?,
+         Held::Link(target) => symlink(target, &path)?,
+         Held::File(bytes, permissions) => {
+            write(&path, bytes)?;
+            set_permissions(&path, permissions)?;
+         },
+      }
+   }
+   etc_access(false)?;
+   let mut sets = capabilities(None)?;
+   sets.inheritable |= CapabilitySet::SYS_ADMIN;
+   set_capabilities(None, sets)?;
+   configure_capability_in_ambient_set(CapabilitySet::SYS_ADMIN, true)?;
+   Err(
+      Command::new(exe)
+         .args(args_os().skip(1))
+         .env(PRIVATE_ETC, "1")
+         .exec(),
+   )
+}
+
+/// Whether the step is a test or a nu step just before one.
+fn edits_etc(phases: &[Step], index: usize) -> bool {
+   phases[index..]
+      .iter()
+      .find(|step| step.test || !matches!(step.kind, Kind::Nu { .. }))
+      .is_some_and(|step| step.test)
+}
+
+/// Remounts the private /etc writable or read-only.
+fn etc_access(writable: bool) -> io::Result<()> {
+   let mut flags = MountFlags::NOSUID | MountFlags::NODEV;
+   if !writable {
+      flags |= MountFlags::RDONLY;
+   }
+   Ok(mount_remount("/etc", flags, c"")?)
 }
 
 pub fn setup(attrs: &Attrs, source: Source<'_>, socket: &Path) -> io::Result<Ctx> {
