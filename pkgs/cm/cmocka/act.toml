@@ -1,0 +1,9 @@
+with  = [ "cmake" ]
+track = "generic:cmocka?url=https://cmocka.org/files/2.0/"
+fetch = { url = "https://cmocka.org/files/{major}.{minor}/cmocka-{version}.tar.xz" }
+
+[test]
+version = false
+
+[cmake.defs]
+UNIT_TESTING = true
