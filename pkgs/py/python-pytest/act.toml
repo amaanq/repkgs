@@ -1,0 +1,8 @@
+track = "pypi:pytest"
+fetch = { url = "https://files.pythonhosted.org/packages/source/p/pytest/pytest-{version}.tar.gz" }
+with  = [ "python" ]
+deps  = [ "python-iniconfig", "python-packaging", "python-pluggy", "python-pygments" ]
+tools = [ "python-setuptools", "python-setuptools-scm" ]
+
+[python]
+module = "pytest"
