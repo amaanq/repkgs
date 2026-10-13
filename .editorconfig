@@ -6,6 +6,10 @@ indent_size = 3
 max_line_length = 100
 rust_edition = 2024
 
-[{*.nu,tools/motley/motley,tools/target-test}]
+[*.nu]
+indent_style = space
+indent_size = 3
+
+[{tools/motley/motley,tools/target-test}]
 indent_style = space
 indent_size = 3
