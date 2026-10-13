@@ -34,6 +34,7 @@ use std::{
    process::ExitCode,
 };
 
+use libc::fork;
 use misstep::Result;
 use mummer::{
    process::{
@@ -51,6 +52,15 @@ use mummer::{
    tree,
 };
 use pound::Parse as _;
+use rustix::{
+   io::Errno,
+   process::{
+      Pid,
+      WaitOptions,
+      getpid,
+      wait,
+   },
+};
 
 use crate::{
    attrs::{
@@ -74,7 +84,33 @@ use crate::{
    },
 };
 
+/// As the sandbox's pid 1, forks the build off and reaps orphans.
+fn init() -> io::Result<Option<i32>> {
+   if getpid() != Pid::INIT {
+      return Ok(None);
+   }
+   // SAFETY: no thread has started yet
+   let build = match unsafe { fork() } {
+      -1_i32 => return Err(io::Error::last_os_error()),
+      0_i32 => return Ok(None),
+      pid => Pid::from_raw(pid),
+   };
+   loop {
+      match wait(WaitOptions::empty()) {
+         Ok(Some((pid, status))) if Some(pid) == build => {
+            let signalled = status.terminating_signal().map(|signal| 128_i32 + signal);
+            return Ok(Some(status.exit_status().or(signalled).unwrap_or(1_i32)));
+         },
+         Ok(_) | Err(Errno::INTR) => {},
+         Err(error) => return Err(error.into()),
+      }
+   }
+}
+
 fn dispatch() -> Result<i32> {
+   if let Some(code) = init()? {
+      return Ok(code);
+   }
    let arguments = args_os().collect::<Vec<_>>();
    let text = text_arguments(arguments.get(1..).unwrap_or_default())?;
    if arguments
