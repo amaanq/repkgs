@@ -21,7 +21,7 @@ required-features = [ "daemon" ]
 aya     = { optional = true, version = "0.14.0" }
 libc    = "0.2.189"
 misstep = { optional = true, workspace = true }
-pound   = { optional = true, version = "0.3.0" }
+pound   = { optional = true, version = "0.4.2" }
 rustix  = { features = [ "net", "process" ], workspace = true }
 
 [lints]

@@ -108,7 +108,7 @@ enum Mode {
       dir:   PathBuf,
       /// pkg:github/owner/repo, pkg:pypi/name, pkg:gnu/name,
       /// pkg:generic/name?url=…
-      #[pound(validate = |purl: &String| purl.parse::<Purl>().map(drop))]
+      #[pound(validate = |spelled: &String| spelled.parse::<Purl>().map(drop))]
       purl:  String,
       /// source template with {version} {version_} {major} {minor} {tag}.
       url:   String,

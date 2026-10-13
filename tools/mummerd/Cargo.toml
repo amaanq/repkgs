@@ -16,7 +16,7 @@ bytes          = "1"
 misstep        = { workspace = true }
 h2             = "0.4"
 http           = "1"
-pound          = "0.3.0"
+pound          = "0.4.2"
 quick-protobuf = { default-features = false, features = [ "std" ], version = "0.8" }
 rustix         = { features = [ "process" ], workspace = true }
 rustls         = { default-features = false, features = [ "ring", "std", "tls12" ], version = "0.23" }
