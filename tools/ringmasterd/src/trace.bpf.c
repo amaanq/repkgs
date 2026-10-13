@@ -13,8 +13,8 @@ typedef long long __s64;
 #define SEC(name) __attribute__((section(name), used))
 #define CORE __attribute__((preserve_access_index))
 #define INLINE static __attribute__((always_inline)) inline
-#define __uint(name, value) int(*name)[value]
-#define __type(name, value) typeof(value) *name
+#define __uint(name, value) int (*name)[value]
+#define __type(name, value) typeof(value)* name
 
 #define AT_FDCWD -100
 #define LOOKUP_IN_ROOT (1U << 28)
@@ -25,40 +25,41 @@ enum {
    BPF_MAP_TYPE_RINGBUF = 27,
 };
 
-static void *(*bpf_map_lookup_elem)(void *map, const void *key) = (void *)1;
-static long (*bpf_map_update_elem)(void *map, const void *key, const void *value, __u64 flags) = (void *)2;
-static long (*bpf_map_delete_elem)(void *map, const void *key) = (void *)3;
-static __u64 (*bpf_get_current_pid_tgid)(void) = (void *)14;
-static long (*bpf_probe_read_user)(void *dst, __u32 size, const void *src) = (void *)112;
-static long (*bpf_probe_read_kernel)(void *dst, __u32 size, const void *src) = (void *)113;
-static long (*bpf_probe_read_kernel_str)(void *dst, __u32 size, const void *src) = (void *)115;
-static long (*bpf_ringbuf_output)(void *ringbuf, void *data, __u64 size, __u64 flags) = (void *)130;
-static struct task_struct *(*bpf_get_current_task_btf)(void) = (void *)158;
-static long (*bpf_loop)(__u32 count, void *callback, void *context, __u64 flags) = (void *)181;
+static void* (*bpf_map_lookup_elem)(void* map, const void* key) = (void*)1;
+static long (*bpf_map_update_elem)(void* map, const void* key, const void* value,
+                                   __u64 flags) = (void*)2;
+static long (*bpf_map_delete_elem)(void* map, const void* key) = (void*)3;
+static __u64 (*bpf_get_current_pid_tgid)(void) = (void*)14;
+static long (*bpf_probe_read_user)(void* dst, __u32 size, const void* src) = (void*)112;
+static long (*bpf_probe_read_kernel)(void* dst, __u32 size, const void* src) = (void*)113;
+static long (*bpf_probe_read_kernel_str)(void* dst, __u32 size, const void* src) = (void*)115;
+static long (*bpf_ringbuf_output)(void* ringbuf, void* data, __u64 size, __u64 flags) = (void*)130;
+static struct task_struct* (*bpf_get_current_task_btf)(void) = (void*)158;
+static long (*bpf_loop)(__u32 count, void* callback, void* context, __u64 flags) = (void*)181;
 
 struct qstr {
    __u32 len;
-   const unsigned char *name;
+   const unsigned char* name;
 } CORE;
 
 struct dentry {
-   struct dentry *d_parent;
+   struct dentry* d_parent;
    struct qstr d_name;
 } CORE;
 
 struct vfsmount {
-   struct dentry *mnt_root;
+   struct dentry* mnt_root;
 } CORE;
 
 struct mount {
-   struct mount *mnt_parent;
-   struct dentry *mnt_mountpoint;
+   struct mount* mnt_parent;
+   struct dentry* mnt_mountpoint;
    struct vfsmount mnt;
 } CORE;
 
 struct path {
-   struct vfsmount *mnt;
-   struct dentry *dentry;
+   struct vfsmount* mnt;
+   struct dentry* dentry;
 } CORE;
 
 struct file {
@@ -72,11 +73,11 @@ struct fs_struct {
 
 struct fdtable {
    unsigned int max_fds;
-   struct file **fd;
+   struct file** fd;
 } CORE;
 
 struct files_struct {
-   struct fdtable *fdt;
+   struct fdtable* fdt;
 } CORE;
 
 struct mm_struct {
@@ -87,9 +88,9 @@ struct mm_struct {
 struct task_struct {
    int pid;
    int tgid;
-   struct mm_struct *mm;
-   struct fs_struct *fs;
-   struct files_struct *files;
+   struct mm_struct* mm;
+   struct fs_struct* fs;
+   struct files_struct* files;
 } CORE;
 
 struct open_flags {
@@ -98,7 +99,7 @@ struct open_flags {
 } CORE;
 
 struct linux_binprm {
-   const char *filename;
+   const char* filename;
 } CORE;
 
 #if defined(__TARGET_ARCH_x86)
@@ -107,7 +108,7 @@ struct pt_regs {
 } CORE;
 #define USER32_CS 0x23
 #define X32_BIT 0x40000000
-INLINE int foreign(struct pt_regs *regs, long id) {
+INLINE int foreign(struct pt_regs* regs, long id) {
    unsigned long cs = 0;
    bpf_probe_read_kernel(&cs, sizeof(cs), __builtin_preserve_access_index(&regs->cs));
    return cs == USER32_CS || (id & X32_BIT);
@@ -117,7 +118,7 @@ struct pt_regs {
    __u64 pstate;
 } CORE;
 #define PSR_MODE32_BIT 0x10
-INLINE int foreign(struct pt_regs *regs, long id) {
+INLINE int foreign(struct pt_regs* regs, long id) {
    __u64 pstate = 0;
    bpf_probe_read_kernel(&pstate, sizeof(pstate), __builtin_preserve_access_index(&regs->pstate));
    return (pstate & PSR_MODE32_BIT) != 0;
@@ -126,8 +127,9 @@ INLINE int foreign(struct pt_regs *regs, long id) {
 #error "ringmasterd knows x86 and arm64 compat calls only"
 #endif
 
-#define READ(destination, source)                                                                  \
-   bpf_probe_read_kernel(&(destination), sizeof(destination), __builtin_preserve_access_index(&(source)))
+#define READ(destination, source)                             \
+   bpf_probe_read_kernel(&(destination), sizeof(destination), \
+                         __builtin_preserve_access_index(&(source)))
 
 enum kind {
    KIND_OPEN = 1,
@@ -147,6 +149,7 @@ enum kind {
 #define FIELD 4096
 #define MASK (FIELD - 1)
 #define DEPTH 128
+#define SLOTS 8
 
 struct record {
    __u64 session;
@@ -163,6 +166,7 @@ struct scratch {
    struct record head;
    char data[3 * FIELD];
    char walk[3 * FIELD];
+   __u32 claimed;
 };
 
 struct {
@@ -191,20 +195,43 @@ struct {
    __uint(max_entries, 1 << 26);
 } events SEC(".maps");
 
+/* Several per CPU, since a trampoline only pins a program to its CPU, so on a
+ * preemptible kernel another task can start a record there before this one
+ * finishes. Task storage would allocate for every new process and fail under
+ * a burst of forks. */
 struct {
    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-   __uint(max_entries, 1);
+   __uint(max_entries, SLOTS);
    __type(key, __u32);
    __type(value, struct scratch);
 } scratches SEC(".maps");
 
-INLINE __u64 *session_of(__u32 tgid) { return bpf_map_lookup_elem(&traced, &tgid); }
+INLINE __u64* session_of(__u32 tgid) {
+   return bpf_map_lookup_elem(&traced, &tgid);
+}
 
-INLINE struct scratch *begin(__u64 session, __u32 kind, __u32 tgid, __u32 detail) {
-   __u32 zero = 0;
-   struct scratch *scratch = bpf_map_lookup_elem(&scratches, &zero);
-   if (!scratch)
+INLINE void count_lost(__u64 session) {
+   __u64 one = 1;
+   __u64* count = bpf_map_lookup_elem(&lost, &session);
+   if (count) {
+      __sync_fetch_and_add(count, 1);
+   } else {
+      bpf_map_update_elem(&lost, &session, &one, 0);
+   }
+}
+
+INLINE struct scratch* begin(__u64 session, __u32 kind, __u32 tgid, __u32 detail) {
+   struct scratch* scratch = 0;
+   for (__u32 slot = 0; slot < SLOTS && !scratch; slot++) {
+      struct scratch* candidate = bpf_map_lookup_elem(&scratches, &slot);
+      if (candidate && !__sync_val_compare_and_swap(&candidate->claimed, 0, 1)) {
+         scratch = candidate;
+      }
+   }
+   if (!scratch) {
+      count_lost(session);
       return 0;
+   }
    scratch->head.session = session;
    scratch->head.kind = kind;
    scratch->head.tgid = tgid;
@@ -216,43 +243,39 @@ INLINE struct scratch *begin(__u64 session, __u32 kind, __u32 tgid, __u32 detail
    return scratch;
 }
 
-INLINE void count_lost(__u64 session) {
-   __u64 one = 1;
-   __u64 *count = bpf_map_lookup_elem(&lost, &session);
-   if (count)
-      __sync_fetch_and_add(count, 1);
-   else
-      bpf_map_update_elem(&lost, &session, &one, 0);
+INLINE void drop(struct scratch* scratch) {
+   scratch->claimed = 0;
 }
 
-INLINE void finish(struct scratch *scratch) {
-   __u64 size = sizeof(struct record) + scratch->head.base + scratch->head.name + scratch->head.args;
-   if (size > sizeof(struct record) + sizeof(scratch->data)) {
+INLINE void finish(struct scratch* scratch) {
+   __u64 size =
+      sizeof(struct record) + scratch->head.base + scratch->head.name + scratch->head.args;
+   if (size > sizeof(struct record) + sizeof(scratch->data) ||
+       bpf_ringbuf_output(&events, scratch, size, 0)) {
       count_lost(scratch->head.session);
-      return;
    }
-   if (bpf_ringbuf_output(&events, scratch, size, 0))
-      count_lost(scratch->head.session);
+   drop(scratch);
 }
 
 INLINE void escape(__u64 session, __u32 tgid, __u32 why) {
-   struct scratch *scratch = begin(session, KIND_ESCAPE, tgid, why);
-   if (scratch)
+   struct scratch* scratch = begin(session, KIND_ESCAPE, tgid, why);
+   if (scratch) {
       finish(scratch);
+   }
 }
 
 /* The mount a vfsmount is embedded in. */
-INLINE struct mount *mount_of(struct vfsmount *vfsmount) {
-   return (struct mount *)((char *)vfsmount -
-                           __builtin_preserve_field_info(((struct mount *)0)->mnt, 0));
+INLINE struct mount* mount_of(struct vfsmount* vfsmount) {
+   return (struct mount*)((char*)vfsmount -
+                          __builtin_preserve_field_info(((struct mount*)0)->mnt, 0));
 }
 
 struct walking {
-   struct scratch *scratch;
-   struct dentry *dentry;
-   struct vfsmount *vfsmount;
-   struct dentry *root_dentry;
-   struct vfsmount *root_mount;
+   struct scratch* scratch;
+   struct dentry* dentry;
+   struct vfsmount* vfsmount;
+   struct dentry* root_dentry;
+   struct vfsmount* root_mount;
    __u32 at;
    /* Reached the task's root or the top of its mount tree. */
    __u32 done;
@@ -260,38 +283,39 @@ struct walking {
 
 /* One component of a walk, 1 to stop. A callback, so the verifier checks one
  * step rather than every unrolled one. */
-static long step(__u32 index, struct walking *walking) {
-   struct dentry *dentry = walking->dentry;
-   struct vfsmount *vfsmount = walking->vfsmount;
+static long step(__u32 index, struct walking* walking) {
+   struct dentry* dentry = walking->dentry;
+   struct vfsmount* vfsmount = walking->vfsmount;
    if (dentry == walking->root_dentry && vfsmount == walking->root_mount) {
       walking->done = 1;
       return 1;
    }
-   struct dentry *mount_root = 0;
-   struct dentry *parent = 0;
+   struct dentry* mount_root = 0;
+   struct dentry* parent = 0;
    READ(mount_root, vfsmount->mnt_root);
    READ(parent, dentry->d_parent);
    if (dentry == mount_root || dentry == parent) {
-      struct mount *mount = mount_of(vfsmount);
-      struct mount *above = 0;
+      struct mount* mount = mount_of(vfsmount);
+      struct mount* above = 0;
       READ(above, mount->mnt_parent);
       if (dentry != mount_root || above == mount) {
          walking->done = 1;
          return 1;
       }
       READ(walking->dentry, mount->mnt_mountpoint);
-      walking->vfsmount = (struct vfsmount *)((char *)above +
-                                              __builtin_preserve_field_info(((struct mount *)0)->mnt, 0));
+      walking->vfsmount = (struct vfsmount*)((char*)above + __builtin_preserve_field_info(
+                                                               ((struct mount*)0)->mnt, 0));
       return 0;
    }
    __u32 length = 0;
-   const unsigned char *name = 0;
+   const unsigned char* name = 0;
    READ(length, dentry->d_name.len);
    READ(name, dentry->d_name.name);
    length &= 255;
    __u32 at = walking->at;
-   if (2 * FIELD - at + length + 1 >= FIELD)
+   if (2 * FIELD - at + length + 1 >= FIELD) {
       return 1;
+   }
    at -= length;
    bpf_probe_read_kernel(&walking->scratch->walk[at & (2 * FIELD - 1)], length, name);
    at -= 1;
@@ -305,9 +329,9 @@ static long step(__u32 index, struct walking *walking) {
  * record's base starts at, returning its length or a negative number when it
  * does not fit. Components are laid down backwards into `walk` first, since
  * a walk only learns them from the leaf up. */
-INLINE long walk(struct scratch *scratch, struct dentry *dentry, struct vfsmount *vfsmount) {
-   struct task_struct *task = bpf_get_current_task_btf();
-   struct fs_struct *fs = 0;
+INLINE long walk(struct scratch* scratch, struct dentry* dentry, struct vfsmount* vfsmount) {
+   struct task_struct* task = bpf_get_current_task_btf();
+   struct fs_struct* fs = 0;
    struct walking walking = {
       .scratch = scratch,
       .dentry = dentry,
@@ -315,12 +339,14 @@ INLINE long walk(struct scratch *scratch, struct dentry *dentry, struct vfsmount
       .at = 2 * FIELD,
    };
    READ(fs, task->fs);
-   if (!fs)
+   if (!fs) {
       return -1;
+   }
    READ(walking.root_dentry, fs->root.dentry);
    READ(walking.root_mount, fs->root.mnt);
-   if (bpf_loop(DEPTH, step, &walking, 0) < 0 || !walking.done)
+   if (bpf_loop(DEPTH, step, &walking, 0) < 0 || !walking.done) {
       return -1;
+   }
    __u32 at = walking.at;
    if (at == 2 * FIELD) {
       at -= 1;
@@ -331,68 +357,78 @@ INLINE long walk(struct scratch *scratch, struct dentry *dentry, struct vfsmount
    return length & MASK;
 }
 
-INLINE long walk_path(struct scratch *scratch, struct path *path) {
-   struct dentry *dentry = 0;
-   struct vfsmount *vfsmount = 0;
+INLINE long walk_path(struct scratch* scratch, struct path* path) {
+   struct dentry* dentry = 0;
+   struct vfsmount* vfsmount = 0;
    READ(dentry, path->dentry);
    READ(vfsmount, path->mnt);
-   if (!dentry || !vfsmount)
+   if (!dentry || !vfsmount) {
       return -1;
+   }
    return walk(scratch, dentry, vfsmount);
 }
 
 /* The directory `dfd` names for the current task, its working directory for
  * AT_FDCWD, into the record's base. */
-INLINE long base_of(struct scratch *scratch, int dfd) {
-   struct task_struct *task = bpf_get_current_task_btf();
+INLINE long base_of(struct scratch* scratch, int dfd) {
+   struct task_struct* task = bpf_get_current_task_btf();
    if (dfd == AT_FDCWD) {
-      struct fs_struct *fs = 0;
+      struct fs_struct* fs = 0;
       READ(fs, task->fs);
-      if (!fs)
+      if (!fs) {
          return -1;
+      }
       return walk_path(scratch, &fs->pwd);
    }
-   if (dfd < 0)
+   if (dfd < 0) {
       return -1;
-   struct files_struct *files = 0;
-   struct fdtable *table = 0;
-   struct file **fds = 0;
-   struct file *file = 0;
+   }
+   struct files_struct* files = 0;
+   struct fdtable* table = 0;
+   struct file** fds = 0;
+   struct file* file = 0;
    unsigned int max = 0;
    READ(files, task->files);
-   if (!files)
+   if (!files) {
       return -1;
+   }
    READ(table, files->fdt);
    READ(max, table->max_fds);
-   if ((unsigned int)dfd >= max)
+   if ((unsigned int)dfd >= max) {
       return -1;
+   }
    READ(fds, table->fd);
    bpf_probe_read_kernel(&file, sizeof(file), &fds[dfd]);
-   if (!file)
+   if (!file) {
       return -1;
+   }
    return walk_path(scratch, &file->f_path);
 }
 
 /* A path as a call named it: `name` is the kernel's copy of it, whose string
  * pointer leads struct filename in every layout. A relative name brings the
  * directory it resolves against. */
-INLINE void named(__u32 kind, __u32 detail, int dfd, const void *filename) {
+INLINE void named(__u32 kind, __u32 detail, int dfd, const void* filename) {
    __u32 tgid = bpf_get_current_pid_tgid() >> 32;
-   __u64 *session = session_of(tgid);
-   if (!session || !filename)
+   __u64* session = session_of(tgid);
+   if (!session || !filename) {
       return;
-   const char *string = 0;
+   }
+   const char* string = 0;
    char first = 0;
    bpf_probe_read_kernel(&string, sizeof(string), filename);
-   if (!string)
+   if (!string) {
       return;
+   }
    bpf_probe_read_kernel(&first, 1, string);
-   struct scratch *scratch = begin(*session, kind, tgid, detail);
-   if (!scratch)
+   struct scratch* scratch = begin(*session, kind, tgid, detail);
+   if (!scratch) {
       return;
+   }
    if (first != '/') {
       long base = base_of(scratch, dfd);
       if (base < 0) {
+         drop(scratch);
          escape(*session, tgid, ESCAPE_UNRESOLVED);
          return;
       }
@@ -400,22 +436,27 @@ INLINE void named(__u32 kind, __u32 detail, int dfd, const void *filename) {
    }
    __u32 offset = scratch->head.base & MASK;
    long copied = bpf_probe_read_kernel_str(&scratch->data[offset], FIELD, string);
-   if (copied <= 0)
+   if (copied <= 0) {
+      drop(scratch);
       return;
+   }
    scratch->head.name = (copied - 1) & MASK;
    finish(scratch);
 }
 
-INLINE void resolved(__u32 kind, struct path *path) {
+INLINE void resolved(__u32 kind, struct path* path) {
    __u32 tgid = bpf_get_current_pid_tgid() >> 32;
-   __u64 *session = session_of(tgid);
-   if (!session)
+   __u64* session = session_of(tgid);
+   if (!session) {
       return;
-   struct scratch *scratch = begin(*session, kind, tgid, 0);
-   if (!scratch)
+   }
+   struct scratch* scratch = begin(*session, kind, tgid, 0);
+   if (!scratch) {
       return;
+   }
    long length = walk_path(scratch, path);
    if (length < 0) {
+      drop(scratch);
       escape(*session, tgid, ESCAPE_UNRESOLVED);
       return;
    }
@@ -424,90 +465,91 @@ INLINE void resolved(__u32 kind, struct path *path) {
 }
 
 SEC("fentry/do_file_open")
-int open(__u64 *context) {
-   const struct open_flags *flags = (void *)context[2];
+int open(__u64* context) {
+   const struct open_flags* flags = (void*)context[2];
    int open_flag = 0;
    int lookup_flags = 0;
    READ(open_flag, flags->open_flag);
    READ(lookup_flags, flags->lookup_flags);
    if (lookup_flags & LOOKUP_IN_ROOT) {
       __u32 tgid = bpf_get_current_pid_tgid() >> 32;
-      __u64 *session = session_of(tgid);
-      if (session)
+      __u64* session = session_of(tgid);
+      if (session) {
          escape(*session, tgid, ESCAPE_IN_ROOT);
+      }
       return 0;
    }
-   named(KIND_OPEN, open_flag, (int)context[0], (void *)context[1]);
+   named(KIND_OPEN, open_flag, (int)context[0], (void*)context[1]);
    return 0;
 }
 
 SEC("fentry/filename_lookup")
-int lookup(__u64 *context) {
-   named(KIND_LOOKUP, 0, (int)context[0], (void *)context[1]);
+int lookup(__u64* context) {
+   named(KIND_LOOKUP, 0, (int)context[0], (void*)context[1]);
    return 0;
 }
 
 SEC("fentry/filename_unlinkat")
-int unlink(__u64 *context) {
-   named(KIND_CLOBBER, 0, (int)context[0], (void *)context[1]);
+int unlink(__u64* context) {
+   named(KIND_CLOBBER, 0, (int)context[0], (void*)context[1]);
    return 0;
 }
 
 SEC("fentry/filename_rmdir")
-int rmdir(__u64 *context) {
-   named(KIND_LOOKUP, 0, (int)context[0], (void *)context[1]);
+int rmdir(__u64* context) {
+   named(KIND_LOOKUP, 0, (int)context[0], (void*)context[1]);
    return 0;
 }
 
 SEC("fentry/filename_mkdirat")
-int mkdir(__u64 *context) {
-   named(KIND_LOOKUP, 0, (int)context[0], (void *)context[1]);
+int mkdir(__u64* context) {
+   named(KIND_LOOKUP, 0, (int)context[0], (void*)context[1]);
    return 0;
 }
 
 SEC("fentry/filename_mknodat")
-int mknod(__u64 *context) {
-   named(KIND_LOOKUP, 0, (int)context[0], (void *)context[1]);
+int mknod(__u64* context) {
+   named(KIND_LOOKUP, 0, (int)context[0], (void*)context[1]);
    return 0;
 }
 
 SEC("fentry/filename_symlinkat")
-int symlink(__u64 *context) {
-   named(KIND_LOOKUP, 0, (int)context[1], (void *)context[2]);
+int symlink(__u64* context) {
+   named(KIND_LOOKUP, 0, (int)context[1], (void*)context[2]);
    return 0;
 }
 
 SEC("fentry/filename_linkat")
-int link(__u64 *context) {
-   named(KIND_LOOKUP, 0, (int)context[0], (void *)context[1]);
-   named(KIND_LOOKUP, 0, (int)context[2], (void *)context[3]);
+int link(__u64* context) {
+   named(KIND_LOOKUP, 0, (int)context[0], (void*)context[1]);
+   named(KIND_LOOKUP, 0, (int)context[2], (void*)context[3]);
    return 0;
 }
 
 SEC("fentry/filename_renameat2")
-int rename(__u64 *context) {
-   named(KIND_CLOBBER, 0, (int)context[0], (void *)context[1]);
-   named(KIND_CLOBBER, 0, (int)context[2], (void *)context[3]);
+int rename(__u64* context) {
+   named(KIND_CLOBBER, 0, (int)context[0], (void*)context[1]);
+   named(KIND_CLOBBER, 0, (int)context[2], (void*)context[3]);
    return 0;
 }
 
 SEC("fentry/vfs_truncate")
-int truncate(__u64 *context) {
-   resolved(KIND_CLOBBER, (struct path *)context[0]);
+int truncate(__u64* context) {
+   resolved(KIND_CLOBBER, (struct path*)context[0]);
    return 0;
 }
 
 SEC("fentry/iterate_dir")
-int listing(__u64 *context) {
-   struct file *file = (void *)context[0];
+int listing(__u64* context) {
+   struct file* file = (void*)context[0];
    resolved(KIND_LISTING, &file->f_path);
    return 0;
 }
 
 SEC("tp_btf/sched_process_fork")
-int fork(__u64 *context) {
-   struct task_struct *parent = (void *)context[0];
-   struct task_struct *child = (void *)context[1];
+int fork(__u64* context) {
+   struct task_struct* parent = (void*)context[0];
+   struct task_struct* child = (void*)context[1];
    int parent_tgid = 0;
    int child_pid = 0;
    int child_tgid = 0;
@@ -515,50 +557,60 @@ int fork(__u64 *context) {
    READ(child_pid, child->pid);
    READ(child_tgid, child->tgid);
    __u32 key = parent_tgid;
-   __u64 *session = session_of(key);
-   if (!session || child_pid != child_tgid)
+   __u64* session = session_of(key);
+   if (!session || child_pid != child_tgid) {
       return 0;
+   }
    __u64 value = *session;
    __u32 child_key = child_tgid;
    if (bpf_map_update_elem(&traced, &child_key, &value, 0)) {
       count_lost(value);
       return 0;
    }
-   struct scratch *scratch = begin(value, KIND_FORK, key, child_key);
-   if (scratch)
+   struct scratch* scratch = begin(value, KIND_FORK, key, child_key);
+   if (scratch) {
       finish(scratch);
+   }
    return 0;
 }
 
 SEC("tp_btf/sched_process_exec")
-int exec(__u64 *context) {
-   struct task_struct *task = (void *)context[0];
-   struct linux_binprm *program = (void *)context[2];
+int exec(__u64* context) {
+   struct task_struct* task = (void*)context[0];
+   struct linux_binprm* program = (void*)context[2];
    int tgid = 0;
    READ(tgid, task->tgid);
    __u32 key = tgid;
-   __u64 *session = session_of(key);
-   if (!session)
+   __u64* session = session_of(key);
+   if (!session) {
       return 0;
-   const char *filename = 0;
+   }
+   const char* filename = 0;
    READ(filename, program->filename);
-   struct scratch *scratch = begin(*session, KIND_EXEC, key, 0);
-   if (!scratch || !filename)
+   if (!filename) {
       return 0;
-   struct fs_struct *fs = 0;
+   }
+   struct scratch* scratch = begin(*session, KIND_EXEC, key, 0);
+   if (!scratch) {
+      return 0;
+   }
+   struct fs_struct* fs = 0;
    READ(fs, task->fs);
    long base = fs ? walk_path(scratch, &fs->pwd) : -1;
    if (base < 0) {
+      drop(scratch);
       escape(*session, key, ESCAPE_UNRESOLVED);
       return 0;
    }
    scratch->head.base = base;
    __u32 offset = base & MASK;
    long copied = bpf_probe_read_kernel_str(&scratch->data[offset], FIELD, filename);
-   if (copied <= 0)
+   if (copied <= 0) {
+      drop(scratch);
       return 0;
+   }
    scratch->head.name = (copied - 1) & MASK;
-   struct mm_struct *mm = 0;
+   struct mm_struct* mm = 0;
    unsigned long start = 0;
    unsigned long stop = 0;
    READ(mm, task->mm);
@@ -569,46 +621,51 @@ int exec(__u64 *context) {
    if (stop > start) {
       __u32 length = stop - start;
       if (length >= FIELD) {
+         drop(scratch);
          escape(*session, key, ESCAPE_UNRESOLVED);
          return 0;
       }
       __u32 at = (scratch->head.base + scratch->head.name) & (2 * FIELD - 1);
-      if (!bpf_probe_read_user(&scratch->data[at], length & MASK, (void *)start))
+      if (!bpf_probe_read_user(&scratch->data[at], length & MASK, (void*)start)) {
          scratch->head.args = length & MASK;
+      }
    }
    finish(scratch);
    return 0;
 }
 
 SEC("tp_btf/sched_process_free")
-int reaped(__u64 *context) {
-   struct task_struct *task = (void *)context[0];
+int reaped(__u64* context) {
+   struct task_struct* task = (void*)context[0];
    int pid = 0;
    int tgid = 0;
    READ(pid, task->pid);
    READ(tgid, task->tgid);
-   if (pid != tgid)
+   if (pid != tgid) {
       return 0;
+   }
    __u32 key = tgid;
    bpf_map_delete_elem(&traced, &key);
    return 0;
 }
 
 SEC("tp_btf/sys_enter")
-int syscall(__u64 *context) {
+int syscall(__u64* context) {
    __u32 tgid = bpf_get_current_pid_tgid() >> 32;
-   __u64 *session = session_of(tgid);
-   if (!session)
+   __u64* session = session_of(tgid);
+   if (!session) {
       return 0;
-   struct pt_regs *regs = (void *)context[0];
+   }
+   struct pt_regs* regs = (void*)context[0];
    long id = (long)context[1];
    if (foreign(regs, id)) {
       escape(*session, tgid, ESCAPE_FOREIGN);
       return 0;
    }
    __u32 number = id;
-   if (bpf_map_lookup_elem(&escapes, &number))
+   if (bpf_map_lookup_elem(&escapes, &number)) {
       escape(*session, tgid, number);
+   }
    return 0;
 }
 
