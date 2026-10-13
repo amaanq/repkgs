@@ -17,7 +17,7 @@ misstep     = { workspace = true }
 glob        = "0.3"
 libc        = "0.2.189"
 mummer      = { workspace = true }
-pound       = "0.3.0"
+pound       = "0.5.0"
 ringmasterd = { workspace = true }
 roxmltree   = "0.20"
 rustix      = { features = [ "event", "mount", "net", "process", "stdio", "thread", "time" ], workspace = true }

@@ -16,7 +16,7 @@ blake3           = { workspace = true }
 misstep          = { workspace = true }
 mummer           = { workspace = true }
 percent-encoding = "2"
-pound            = "0.3.0"
+pound            = "0.5.0"
 regex-lite       = "0.1"
 serde            = { features = [ "derive" ], version = "1" }
 serde_json       = { features = [ "preserve_order" ], version = "1" }
