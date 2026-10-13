@@ -381,10 +381,14 @@ impl Tests for Meson {
       true
    }
 
-   /// The logs every meson test run rewrites.
+   /// The logs every meson test run rewrites, ninja's too, since `meson test`
+   /// runs ninja first. What ninja rebuilds is read as itself.
    fn state(&self, path: &Path) -> bool {
       path
-         .ancestors()
-         .any(|directory| directory.ends_with("meson-logs"))
+         .file_name()
+         .is_some_and(|name| name == ".ninja_deps" || name == ".ninja_log")
+         || path
+            .ancestors()
+            .any(|directory| directory.ends_with("meson-logs"))
    }
 }
