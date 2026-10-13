@@ -6,9 +6,9 @@ use dev.nu *
 
 def main []: nothing -> nothing { help main }
 
-def built [attrs: list<string>, platform, peanut, toolchain, --file: string]: nothing -> nothing {
+def built [attrs: list<string>, platform, peanut, toolchain, --file: string, --keep-going]: nothing -> nothing {
    let targets = ($attrs | each {|attr| $"($attr)^out" })
-   let flags = [--quiet --no-link --print-out-paths ...(cache-args) ...(platform-arg $platform) ...(peanut-arg $peanut) ...(rust-toolchain-arg $toolchain)]
+   let flags = [--quiet --no-link --print-out-paths ...(if $keep_going { [--keep-going] } else { [] }) ...(cache-args) ...(platform-arg $platform) ...(peanut-arg $peanut) ...(rust-toolchain-arg $toolchain)]
    # a failed build exits with nix's status
    try { ^rom --platform nix build ...$targets -- --file ($file | default (root)) ...$FEATURES ...$flags } catch {|failure| exit ($failure.exit_code? | default 1) }
 }
@@ -18,10 +18,11 @@ def "main build" [
    --for: string # platform, aarch64-linux or x86_64-windows for instance
    --peanut: path
    --rust-toolchain: path
+   --keep-going (-k) # build the rest after a failure and report every failure at the end
    ...attrs: string # attributes, jq or jq.tests
 ]: nothing -> nothing {
    if ($attrs | is-empty) { fail "motley build <attr>…, or nix-build nix/checks.nix for everything" }
-   built $attrs $for $peanut $rust_toolchain
+   built $attrs $for $peanut $rust_toolchain --keep-going=$keep_going
 }
 
 # build <pkg>.tests for packages that test separately and the package for those that test in its
@@ -31,23 +32,25 @@ def "main test" [
    --peanut: path
    --rust-toolchain: path
    --rebuild # run tests nix already built again
+   --keep-going (-k) # test the rest after a failure and report every failure at the end
    ...attrs: string
 ]: nothing -> nothing {
    if ($attrs | is-empty) {
-      built [.] $for $peanut $rust_toolchain --file $"(root)/tests/builder"
+      built [.] $for $peanut $rust_toolchain --file $"(root)/tests/builder" --keep-going=$keep_going
       return
    }
-   let targets = ($attrs | each {|attr|
+   let targets = ($attrs | par-each --keep-order {|attr|
       let separate = (eval $"(pkg-expr $attr $for $peanut $rust_toolchain) ? tests")
       if $separate { $"($attr).tests" } else { $attr }
    })
-   built $targets $for $peanut $rust_toolchain
+   built $targets $for $peanut $rust_toolchain --keep-going=$keep_going
    if not $rebuild { return }
    # nix's --rebuild checks the unresolved derivation, which never has valid
    # outputs of its own when it is content-addressed
    let args = [...$FEATURES --file (root) ...(platform-arg $for) ...(peanut-arg $peanut) ...(rust-toolchain-arg $rust_toolchain)]
-   let checked = ($targets | each {|target| $"(resolve (^nix path-info ...$args --derivation $target | str trim))^out" })
-   try { ^rom --platform nix build ...$checked -- ...$FEATURES --quiet --no-link --rebuild ...(cache-args) } catch {|failure| exit ($failure.exit_code? | default 1) }
+   let checked = ($targets | par-each --keep-order {|target| $"(resolve (^nix path-info ...$args --derivation $target | str trim))^out" })
+   let going = (if $keep_going { [--keep-going] } else { [] })
+   try { ^rom --platform nix build ...$checked -- ...$FEATURES --quiet --no-link --rebuild ...$going ...(cache-args) } catch {|failure| exit ($failure.exit_code? | default 1) }
 }
 
 # the derivation nix builds for a content-addressed one, as Derivation::tryResolve makes it
