@@ -843,6 +843,28 @@ fn attempt(
          (status, Some(traced))
       },
       Outcome::Traced(status, _) => {
+         if seccomp && let Ok(opened) = Session::open() {
+            note(
+               "test-cache",
+               &format!("seccomp run failed with {status}, rerunning under ringmasterd"),
+            );
+            return Ok(match opened.run(&make, tests, mark)? {
+               Outcome::Traced(ran, accesses) => {
+                  let traced = Traced {
+                     accesses,
+                     before,
+                     mark,
+                     tests,
+                     seccomp: false,
+                  };
+                  (ran, Some(traced))
+               },
+               Outcome::Untraced(ran, why) => {
+                  note("test-cache", &format!("untraced, {why}"));
+                  (ran, None)
+               },
+            });
+         }
          note(
             "test-cache",
             &format!("traced run failed with {status}, rerunning untraced"),
