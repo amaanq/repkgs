@@ -20,3 +20,6 @@ testTarget = [
 
 [steps.before]
 "autotools.test" = [ "rsync.test-scripts" ]
+
+[steps.after]
+"autotools.test" = [ "rsync.test-tcp" ]
