@@ -1,0 +1,5 @@
+track = 'generic:libxcb?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=libxcb-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/lib/libxcb-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "libxau", "libxdmcp", "xcb-proto" ]
+tools = [ "xcb-proto", "cpython314" ]
