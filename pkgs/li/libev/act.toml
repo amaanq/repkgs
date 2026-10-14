@@ -1,0 +1,3 @@
+track = 'generic:libev?url=http://dist.schmorp.de/libev/&regex=libev-([0-9.]+)\.tar\.gz'
+fetch = { url = "https://dist.schmorp.de/libev/Attic/libev-{version}.tar.gz" }
+with  = [ "autotools" ]
