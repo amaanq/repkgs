@@ -1,0 +1,50 @@
+The tools exec their siblings by an absolute libexec path, resolve it from the running
+executable instead, which is bin/ for xkbcli and libexec/xkbcommon/ for the rest.
+
+--- a/meson.build
++++ b/meson.build
+@@ -638,6 +638,7 @@
+ 
+     # Tool: xkbcli
+     executable('xkbcli', 'tools/xkbcli.c',
++               c_args: ['-DLIBXKBCOMMON_TOOL_RELPATH="../' + get_option('libexecdir') + '/xkbcommon"'],
+                dependencies: tools_dep, install: true)
+     install_man('tools/xkbcli.1')
+ 
+--- a/tools/info.c
++++ b/tools/info.c
+@@ -65,7 +65,7 @@
+     printf("Version: \"%s\"\n", LIBXKBCOMMON_VERSION);
+     printf("Website: https://xkbcommon.org\n");
+ 
+-    printf("Tools path: \"%s\"\n", LIBXKBCOMMON_TOOL_PATH);
++    printf("Tools path: \"%s\"\n", RELOC(LIBXKBCOMMON_TOOL_RELPATH));
+ 
+     /* Features */
+     printf("Features:\n");
+--- a/tools/tools-common.c
++++ b/tools/tools-common.c
+@@ -702,7 +702,7 @@
+     command = real_argv[0];
+ 
+     rc = snprintf(executable, sizeof(executable),
+-                  "%s/%s-%s", LIBXKBCOMMON_TOOL_PATH, prefix, command);
++                  "%s/%s-%s", RELOC(LIBXKBCOMMON_TOOL_RELPATH), prefix, command);
+     if (rc < 0 || (size_t) rc >= sizeof(executable)) {
+         fprintf(stderr, "Failed to assemble command\n");
+         return EXIT_FAILURE;
+--- a/tools/tools-common.h
++++ b/tools/tools-common.h
+@@ -19,6 +19,12 @@
+ 
+ #define ARRAY_SIZE(arr) ((sizeof(arr) / sizeof(*(arr))))
+ 
++#include "reloc.h"
++
++#ifndef LIBXKBCOMMON_TOOL_RELPATH
++#define LIBXKBCOMMON_TOOL_RELPATH "."
++#endif
++
+ enum {
+     DEFAULT_KEYMAP_SERIALIZE_FLAGS = XKB_KEYMAP_SERIALIZE_PRETTY |
+                                      XKB_KEYMAP_SERIALIZE_KEEP_UNUSED

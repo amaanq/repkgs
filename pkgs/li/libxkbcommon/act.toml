@@ -1,0 +1,18 @@
+tag     = "xkbcommon-{version}"
+track   = "github:xkbcommon/libxkbcommon"
+fetch   = { archive = true }
+patches = [ "relocatable.patch" ]
+with    = [ "meson" ]
+deps    = [ "libxcb", "libxml2", "wayland", "wayland-protocols", "xkeyboard-config" ]
+tools   = [ "bison", "wayland", "cpython314", "python-jinja2" ]
+
+[only]
+os = [ "linux" ]
+
+[test]
+deps = [ "python-pytest", "setxkbmap", "xkbcomp", "xvfb" ]
+bin  = [ "xkbcli" ]
+
+[meson.defs]
+enable-docs           = false
+xkb-config-extra-path = "/etc/xkb"
