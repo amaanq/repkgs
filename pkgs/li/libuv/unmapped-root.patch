@@ -1,0 +1,34 @@
+Inside a user namespace that leaves uid and gid 0 unmapped, chown and setuid
+to 0 fail with EINVAL instead of EPERM.
+
+--- a/test/test-fs.c
++++ b/test/test-fs.c
+@@ -342,7 +342,7 @@
+      */
+     ASSERT(req->result == 0 || req->result == UV_EPERM);
+ #   else
+-    ASSERT_EQ(req->result, UV_EPERM);
++    ASSERT(req->result == UV_EPERM || req->result == UV_EINVAL);
+ #   endif
+ #endif
+   chown_cb_count++;
+--- a/test/test-spawn.c
++++ b/test/test-spawn.c
+@@ -1541,7 +1541,7 @@
+ #if defined(__CYGWIN__)
+   ASSERT_EQ(r, UV_EINVAL);
+ #else
+-  ASSERT_EQ(r, UV_EPERM);
++  ASSERT(r == UV_EPERM || r == UV_EINVAL);
+ #endif
+ 
+   r = uv_run(uv_default_loop(), UV_RUN_DEFAULT);
+@@ -1586,7 +1586,7 @@
+ #if defined(__CYGWIN__) || defined(__MVS__)
+   ASSERT_EQ(r, UV_EINVAL);
+ #else
+-  ASSERT_EQ(r, UV_EPERM);
++  ASSERT(r == UV_EPERM || r == UV_EINVAL);
+ #endif
+ 
+   r = uv_run(uv_default_loop(), UV_RUN_DEFAULT);

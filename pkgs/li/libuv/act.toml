@@ -1,13 +1,11 @@
-tag   = "v{version}"
-track = "github:libuv/libuv"
-fetch = { url = "https://dist.libuv.org/dist/v{version}/libuv-v{version}.tar.gz" }
-with  = [ "cmake" ]
+tag     = "v{version}"
+track   = "github:libuv/libuv"
+fetch   = { url = "https://dist.libuv.org/dist/v{version}/libuv-v{version}.tar.gz" }
+with    = [ "cmake" ]
+patches = [ "unmapped-root.patch", "parallel-ctest.patch" ]
 
 [cmake]
 tool = "cmake-bootstrap"
-
-[cmake.defs]
-LIBUV_BUILD_TESTS = false
 
 [on.msvc]
 remove = [ "lib/libuv.lib", "lib/pkgconfig/libuv-static.pc" ]

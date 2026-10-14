@@ -1,0 +1,122 @@
+Register each libuv test as its own ctest test, with its own working directory
+and ports, so ctest runs them in parallel instead of one serial uv_run_tests.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -715,13 +715,6 @@
+                              PRIVATE ${uv_defines} USING_UV_SHARED=1)
+   target_compile_options(uv_run_tests PRIVATE ${uv_cflags})
+   target_link_libraries(uv_run_tests uv ${uv_test_libraries})
+-  add_test(NAME uv_test
+-           COMMAND uv_run_tests
+-           WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+-  if(CMAKE_SYSTEM_NAME STREQUAL "OS390")
+-    set_tests_properties(uv_test PROPERTIES ENVIRONMENT
+-                         "LIBPATH=${CMAKE_BINARY_DIR}:$ENV{LIBPATH}")
+-  endif()
+   if(WIN32)
+     add_custom_command(TARGET uv_run_tests POST_BUILD
+                        COMMAND "${CMAKE_COMMAND}" -E copy
+@@ -736,9 +729,6 @@
+   else()
+     target_link_libraries(uv_run_tests_a uv_a ${uv_test_libraries})
+   endif()
+-  add_test(NAME uv_test_a
+-           COMMAND uv_run_tests_a
+-           WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+   if(CMAKE_SYSTEM_NAME STREQUAL "OS390")
+     set_target_properties(uv_run_benchmarks_a PROPERTIES LINKER_LANGUAGE CXX)
+     set_target_properties(uv_run_tests PROPERTIES LINKER_LANGUAGE CXX)
+@@ -751,6 +741,10 @@
+                        "$<TARGET_FILE_DIR:uv_run_tests_a>/uv_run_tests_a_no_ext")
+   endif()
+ 
++  configure_file(test/ctest-tests.cmake.in ctest-tests.cmake @ONLY)
++  set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
++               ${CMAKE_CURRENT_BINARY_DIR}/ctest-tests.cmake)
++
+   if(QNX)
+     install(TARGETS uv_run_tests uv_run_tests_a uv_run_benchmarks_a
+             DESTINATION ${CMAKE_INSTALL_BINDIR}/libuv_tests)
+--- a/test/task.h
++++ b/test/task.h
+@@ -45,9 +45,11 @@
+ # pragma GCC diagnostic ignored "-Wvariadic-macros"
+ #endif
+ 
+-#define TEST_PORT 9123
+-#define TEST_PORT_2 9124
+-#define TEST_PORT_3 9125
++int test_port(int offset);
++
++#define TEST_PORT test_port(0)
++#define TEST_PORT_2 test_port(1)
++#define TEST_PORT_3 test_port(2)
+ 
+ #ifdef _WIN32
+ # define TEST_PIPENAME "\\\\.\\pipe\\uv-test"
+--- a/test/runner.c
++++ b/test/runner.c
+@@ -65,6 +65,14 @@
+ }
+ 
+ 
++int test_port(int offset) {
++  const char* base;
++
++  base = getenv("UV_TEST_PORT");
++  return (base == NULL ? 9123 : atoi(base)) + offset;
++}
++
++
+ int run_tests(int benchmark_output) {
+   int actual;
+   int total;
+--- a/test/test-getsockname.c
++++ b/test/test-getsockname.c
+@@ -26,7 +26,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
+-static const int server_port = TEST_PORT;
++#define server_port TEST_PORT
+ /* Will be updated right after making the uv_connect_call */
+ static int connect_port = -1;
+ 
+--- a/test/test-udp-recvmsg-unreachable-error.c
++++ b/test/test-udp-recvmsg-unreachable-error.c
+@@ -25,8 +25,8 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
+-#define CLIENT_TEST_PORT 9123
+-#define SERVER_TEST_PORT 9124
++#define CLIENT_TEST_PORT TEST_PORT
++#define SERVER_TEST_PORT TEST_PORT_2
+ #define RECV_CB_MAX_CALL 3 /* ECONNREFUSED, EAGAIN/EWOULDBLOCK, ICMP delivery */
+ 
+ static int recv_cb_called = 0;
+--- a/test/ctest-tests.cmake.in
++++ b/test/ctest-tests.cmake.in
+@@ -0,0 +1,21 @@
++set(port 10000)
++foreach(runner uv_run_tests uv_run_tests_a)
++  execute_process(COMMAND @CMAKE_CURRENT_BINARY_DIR@/${runner} --list
++                  OUTPUT_VARIABLE listing
++                  COMMAND_ERROR_IS_FATAL ANY)
++  string(REGEX MATCHALL "(^|\n)[a-z0-9_]+" names "${listing}")
++
++  foreach(name IN LISTS names)
++    string(STRIP "${name}" name)
++    set(dir @CMAKE_CURRENT_BINARY_DIR@/uv_tests/${runner}/${name})
++    file(MAKE_DIRECTORY ${dir})
++    file(CREATE_LINK @CMAKE_CURRENT_SOURCE_DIR@/test ${dir}/test SYMBOLIC)
++
++    add_test(${runner}/${name} @CMAKE_CURRENT_BINARY_DIR@/${runner} ${name})
++    set_tests_properties(${runner}/${name} PROPERTIES
++                         SKIP_RETURN_CODE 7
++                         WORKING_DIRECTORY ${dir}
++                         ENVIRONMENT UV_TEST_PORT=${port})
++    math(EXPR port "${port} + 3")
++  endforeach()
++endforeach()
