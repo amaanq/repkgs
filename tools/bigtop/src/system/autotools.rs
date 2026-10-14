@@ -100,6 +100,8 @@ struct Extra<'options> {
 /// bindtextdomain, which glibc-bindtextdomain-origin.patch resolves, while
 /// `make install` keeps the configured localedir.
 const RELATIVE_LOCALEDIR: &str = "localedir=../share/locale";
+const GNULIB_PREFIX: &str = "--with-gnulib-prefix";
+const GNULIB_PREFIX_RELATIVE: &str = "--with-gnulib-prefix=..";
 
 pub struct Autotools;
 
@@ -237,6 +239,14 @@ impl Autotools {
          "--enable-shared",
       ];
       args.extend(strs(&host_flags));
+      // newer gnulib bakes its own catalog dir into config.h at configure time,
+      // where the localedir make is given never reaches
+      if read(&located)?
+         .windows(GNULIB_PREFIX.len())
+         .any(|window| window == GNULIB_PREFIX.as_bytes())
+      {
+         args.push(GNULIB_PREFIX_RELATIVE);
+      }
       args.extend(strs(&options.flags));
       let install = format!("{} -c", Self::install_tool(ctx).display());
       let config_site = site(ctx, Path::new(&script))?;
