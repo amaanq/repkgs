@@ -1,0 +1,14 @@
+track   = 'generic:seatd?url=https://git.sr.ht/~kennylevinsen/seatd/refs&regex=/refs/([0-9]+\.[0-9]+\.[0-9]+)'
+fetch   = { url = "https://git.sr.ht/~kennylevinsen/seatd/archive/{version}.tar.gz" }
+with    = [ "meson" ]
+patches = [ "relocatable.patch" ]
+
+[only]
+os = [ "linux" ]
+
+[test]
+bin     = [ "seatd" ]
+version = "-v"
+
+[meson.defs]
+libseat-logind = "disabled"

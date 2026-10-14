@@ -1,0 +1,22 @@
+--- a/meson.build
++++ b/meson.build
+@@ -33,7 +33,7 @@
+ 		'-D_NETBSD_SOURCE',
+ 		'-DSEATD_VERSION="@0@"'.format(meson.project_version()),
+ 		'-DSEATD_DEFAULTPATH="@0@"'.format(defaultpath),
+-		'-DSEATD_INSTALLPATH="@0@"'.format(seatdpath),
++		'-DSEATD_INSTALLPATH=RELOC("seatd")',
+ 	],
+ 	language: 'c',
+ )
+--- a/seatd-launch/seatd-launch.c
++++ b/seatd-launch/seatd-launch.c
+@@ -10,6 +10,8 @@
+ #include <sys/wait.h>
+ #include <unistd.h>
+ 
++#include "reloc.h"
++
+ int main(int argc, char *argv[]) {
+ 	const char *usage = "Usage: seatd-launch [options] [--] command\n"
+ 			    "\n"
