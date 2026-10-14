@@ -1,0 +1,11 @@
+track   = 'generic:scdoc?url=https://git.sr.ht/~sircmpwn/scdoc/refs&regex=archive/([0-9.]+)\.tar\.gz'
+fetch   = { url = "https://git.sr.ht/~sircmpwn/scdoc/archive/{version}.tar.gz" }
+with    = [ "make" ]
+patches = [ "relocatable.patch" ]
+
+[make]
+configureScript = "none"
+testTarget      = [ "check" ]
+
+[test]
+version = "-v"
