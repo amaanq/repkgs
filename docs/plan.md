@@ -103,7 +103,7 @@ for npm, pnpm and bun, and `spieler check` should warn when a lock names a libra
 - **debug through collectors**: a dynamic-derivation collector (cargo and cabal packages) forwards
   `out` only, so the inner build's `debug` output is lost.
 - **rust cross**: std for the target triple from our llvm, and cargo's linker per target.
-- `dep-root --optional` and a lint for dep-root names missing from dependencies, lock validation
+- `dep --optional` and a lint for dep names missing from dependencies, lock validation
   in spieler at update time, `motley fetch-plan` for what a build would download and `motley debug
   <pkg>` for gdb pointed at the package's debug output.
 

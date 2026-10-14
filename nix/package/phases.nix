@@ -88,7 +88,7 @@ let
         kind = "nu";
         inherit (phase) name;
         test = phase.name == "test";
-        body = "do --env {\nlet c = (ctx)\n${phase.run}\n}";
+        body = "do --env {\nlet c = (act)\n${phase.run}\n}";
       }
     else if parts == null then
       fail "phase '${phase}' is not <build system or module>.<phase>"

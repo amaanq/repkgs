@@ -1,7 +1,7 @@
-use core.nu [ctx cue files]
+use core.nu [act cue glob-files]
 
 export def build []: nothing -> nothing {
-   let c      = (ctx)
+   let c      = (act)
    let target = $"($c.platform.osNames.go)_($c.platform.names.go)"
    load-env {
       GOROOT_BOOTSTRAP: (which go | get 0.path | path dirname | path dirname)
@@ -22,10 +22,10 @@ export def build []: nothing -> nothing {
    rm -rf pkg/obj pkg/bootstrap
    if $c.platform.cross {
       rm -rf ...(ls bin pkg/tool | get name | where {|entry| ($entry | path basename) != $target })
-      mv ...(files --any $"bin/($target)/*") bin/
+      mv ...(glob-files --any $"bin/($target)/*") bin/
       rm -rf $"bin/($target)"
    }
    mkdir $c.out
    for entry in [bin pkg src lib misc go.env VERSION] { ^cp -r $entry $c.out }
-   for testdata in (files --any $"($c.out)/src/**/testdata") { rm -rf $testdata }
+   for testdata in (glob-files --any $"($c.out)/src/**/testdata") { rm -rf $testdata }
 }

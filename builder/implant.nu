@@ -6,10 +6,10 @@
 # A bindist that runs its binaries from the unpacked tree during install (ghc's `make install`
 # runs the new ghc-pkg) passes that tree as `dir`. It gets the interpreter and RUNPATH but no stub,
 # which works only once reloc-fixup has been over $out. A second pass writes the same bytes.
-use core.nu [attrs]
+use core.nu [drv]
 
 export def main [context: record, dir?: path]: nothing -> nothing {
    let target = ($dir | default $context.out)
    let stub   = if $target == $context.out { [--stub $context.platform.relocStub] } else { [] }
-   ^bigtop implant $target --interp $context.platform.interp ...$stub ...(attrs).dependencies
+   ^bigtop implant $target --interp $context.platform.interp ...$stub ...(drv).dependencies
 }

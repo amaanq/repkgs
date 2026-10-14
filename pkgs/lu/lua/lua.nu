@@ -1,9 +1,9 @@
-use core.nu [ctx cue]
+use core.nu [act cue]
 
 # the Makefile has no msvc target. etc/luavs.bat builds lua54.dll, lua.exe against it, and luac.exe
 # static because it reaches internals the dll does not export
 export def msvc []: nothing -> nothing {
-   cd $"((ctx).src)/src"
+   cd $"((act).src)/src"
    let library = (open --raw Makefile | parse -r '(?m)^(?:CORE_O|LIB_O)=\s*(.*)$' | get capture0 | split row -r '\s+' | where $it != "")
    for object in [...$library lua.o luac.o] {
       cue cc -O2 -DNDEBUG -DLUA_BUILD_AS_DLL -c ($object | str replace .o .c) -o $object
@@ -14,9 +14,9 @@ export def msvc []: nothing -> nothing {
 }
 
 export def pc []: nothing -> nothing {
-   let version = (ctx).spec.version
+   let version = (act).spec.version
    let short   = ($version | split row "." | first 2 | str join ".")
-   let dir     = $"((ctx).out)/lib/pkgconfig"
+   let dir     = $"((act).out)/lib/pkgconfig"
    let text    = [
       "prefix=${pcfiledir}/../.."
       "libdir=${prefix}/lib"

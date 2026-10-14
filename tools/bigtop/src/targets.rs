@@ -97,7 +97,7 @@ struct OsNames {
 }
 
 /// File name pieces per binary format. Versioned shared library names order
-/// differently per format, `shlib` and `linklib` in builder/core.nu.
+/// differently per format, `shared-name` and `link-name` in builder/core.nu.
 #[derive(Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Ext {

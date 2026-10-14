@@ -117,7 +117,7 @@ Bundler, Deno, Hex, Hackage and LuaRocks. go.sum, Hackage and LuaRocks record no
 When a build system's phases are not enough, `[steps]` edits its list with `before.<phase>`,
 `after.<phase>`, `replace.<phase>` (a phase or a list) and `skip` (a list), or `phases` spells the
 whole list out. A phase is a build system's or a function in a nu module beside the act, so
-`"rust.configure"` is `configure` in `rust.nu`. Its `ctx` holds the paths and facts of the build:
+`"rust.configure"` is `configure` in `rust.nu`. Its `act` holds the paths and facts of the build:
 
 ```toml
 [steps]

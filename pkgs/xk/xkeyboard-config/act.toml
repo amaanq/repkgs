@@ -9,7 +9,7 @@ bin     = [  ]
 version = false
 
 [steps.before]
-"meson.configure" = [ "xkeyboard-config.shebangs" ]
+"meson.configure" = [ "xkeyboard-config.script-shebangs" ]
 
 [meson.defs]
 nls = true

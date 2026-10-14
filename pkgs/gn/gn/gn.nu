@@ -1,7 +1,7 @@
-use core.nu [ctx cue]
+use core.nu [act cue]
 
 export def build []: nothing -> nothing {
-   let c = (ctx)
+   let c = (act)
    do {
       cd $c.src
       (cue python3 build/gen.py --no-last-commit-position --no-strip --no-static-libstdc++

@@ -1,4 +1,4 @@
-use core.nu [ctx dep-root tool-root tool cue edit files]
+use core.nu [act dep build-dep bin cue rewrite glob-files]
 
 # std for these is freestanding, so it ships with the compiler as nixpkgs does
 const freestanding = [wasm32-unknown-unknown wasm32v1-none bpfel-unknown-none bpfeb-unknown-none]
@@ -9,7 +9,7 @@ def machine []: nothing -> string {
 
 # shebang fixing edits vendored files, and cargo checks every file sum it finds
 def drop-file-sums []: nothing -> nothing {
-   for sums in (files vendor/*/.cargo-checksum.json) {
+   for sums in (glob-files vendor/*/.cargo-checksum.json) {
       let crate = (open $sums)
       $crate | merge {files: {}} | to json -r | save -f $sums
    }
@@ -18,13 +18,13 @@ def drop-file-sums []: nothing -> nothing {
 # stage tools and build scripts run on this machine, so a cross build names its compilers too
 def this-machine [c: record, extra?: closure]: nothing -> record {
    if not $c.platform.cross { return {} }
-   let cc = (tool $env.CC_FOR_BUILD)
-   {(machine): ({cc: $cc, cxx: (tool $env.CXX_FOR_BUILD), linker: $cc, ar: (tool llvm-ar)} | merge (if $extra == null { {} } else { do $extra }))}
+   let cc = (bin $env.CC_FOR_BUILD)
+   {(machine): ({cc: $cc, cxx: (bin $env.CXX_FOR_BUILD), linker: $cc, ar: (bin llvm-ar)} | merge (if $extra == null { {} } else { do $extra }))}
 }
 
 def write-config [c: record, build: record, rust: closure, rest: record]: nothing -> nothing {
    drop-file-sums
-   let stage0 = (tool rustc | path dirname -n 2)
+   let stage0 = (bin rustc | path dirname -n 2)
    let level  = if $c.spec.debug { 1 } else { 0 }
    {
       change-id: ignore
@@ -50,18 +50,18 @@ def write-config [c: record, build: record, rust: closure, rest: record]: nothin
 }
 
 export def --env configure []: nothing -> nothing {
-   let c = (ctx)
+   let c = (act)
    # targets such as wasm32-unknown-unknown name rustup's bundled rust-lld, which this build does not ship
-   for spec in (files compiler/rustc_target/src/spec/*/*.rs) { edit $spec { str replace --all '"rust-lld"' '"lld"' } }
+   for spec in (glob-files compiler/rustc_target/src/spec/*/*.rs) { rewrite $spec { str replace --all '"rust-lld"' '"lld"' } }
    load-env ({PKG_CONFIG_ALLOW_CROSS: "1"} | merge (^bigtop system sys-env cargo | from json))
    # x.py puts `-C linker=<cc>` in the bootstrap tool's RUSTFLAGS, and cargo leaves RUSTFLAGS out of
    # -C metadata only when one remaps a path, else every toolchain move renames every crate
    $env.RUSTFLAGS_BOOTSTRAP = $"--remap-path-prefix=($c.build)=/rustc/build"
    let triple = $c.platform.rustTriple
-   let llvm   = (dep-root llvm22 libLLVM)
+   let llvm   = (dep llvm22 libLLVM)
    # a cross llvm's bin/llvm-config is a target program, llvm puts one for this machine in host/
    let llvm_config = if $c.platform.cross { $"($llvm)/host/llvm-config" } else { $"($llvm)/bin/llvm-config" }
-   let own         = {cc: (tool cc), cxx: (tool c++), linker: (tool cc), ar: (tool ar), ranlib: (tool ranlib), llvm-config: $llvm_config, crt-static: false}
+   let own         = {cc: (bin cc), cxx: (bin c++), linker: (bin cc), ar: (bin ar), ranlib: (bin ranlib), llvm-config: $llvm_config, crt-static: false}
    # rust#132802, optimized wasm builtins need a wasm C compiler
    let bare = ($freestanding | each {|triple| {$triple: {optimized-compiler-builtins: false, profiler: false}} } | into record)
 
@@ -76,7 +76,7 @@ export def --env configure []: nothing -> nothing {
    } {
       # without use-libcxx rustc_llvm links -lstdc++, which this toolchain lacks
       llvm: {link-shared: true, download-ci-llvm: false, use-libcxx: true}
-      target: ({$triple: $own} | merge (this-machine $c {|| {llvm-config: $"(tool-root llvm22)/bin/llvm-config"} }) | merge $bare)
+      target: ({$triple: $own} | merge (this-machine $c {|| {llvm-config: $"(build-dep llvm22)/bin/llvm-config"} }) | merge $bare)
       dist: {include-mingw-linker: false}
    }
 }
@@ -84,14 +84,14 @@ export def --env configure []: nothing -> nothing {
 export def build []: nothing -> nothing { cue python3 x.py build --stage 2 }
 
 export def install []: nothing -> nothing {
-   let out = (ctx).out
+   let out = (act).out
    cue python3 x.py install
-   rm -f ...(files $"($out)/lib/rustlib/{install.log,uninstall.sh,manifest-*,components,rust-installer-version}")
+   rm -f ...(glob-files $"($out)/lib/rustlib/{install.log,uninstall.sh,manifest-*,components,rust-installer-version}")
 }
 
 export def std-configure []: nothing -> nothing {
-   let c   = (ctx)
-   let own = {cc: (tool cc), cxx: (tool c++), linker: (tool cc), ar: (tool llvm-ar), ranlib: (tool llvm-ranlib), crt-static: false}
+   let c   = (act)
+   let own = {cc: (bin cc), cxx: (bin c++), linker: (bin cc), ar: (bin llvm-ar), ranlib: (bin llvm-ranlib), crt-static: false}
 
    write-config $c {
       host: []
@@ -108,12 +108,12 @@ export def std-build []: nothing -> nothing { cue python3 x.py build --stage 0 l
 # x.py install has no stage 0 path, so std is copied out of the stage 0 build. bootstrap fills the
 # stage 0 sysroot from cargo's old target/deps layout only, which leaves just self-contained/ there
 export def std-install []: nothing -> nothing {
-   let c      = (ctx)
+   let c      = (act)
    let triple = $c.platform.rustTriple
    let stage0 = $"($c.build)/(machine)"
    let lib    = $"($c.out)/lib/rustlib/($triple)/lib"
    mkdir ($lib | path dirname)
    cp -r $"($stage0)/stage0-sysroot/lib/rustlib/($triple)/lib" $lib
-   for built in (files $"($stage0)/stage0-std/($triple)/dist/build/*/*/out/*.{rlib,rmeta,so}") { cp $built $"($lib)/" }
-   if (files $"($lib)/*.rlib" | is-empty) { error make {msg: $"rust.std-install: no ($triple) rlibs"} }
+   for built in (glob-files $"($stage0)/stage0-std/($triple)/dist/build/*/*/out/*.{rlib,rmeta,so}") { cp $built $"($lib)/" }
+   if (glob-files $"($lib)/*.rlib" | is-empty) { error make {msg: $"rust.std-install: no ($triple) rlibs"} }
 }

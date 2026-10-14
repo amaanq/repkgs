@@ -1,9 +1,9 @@
-use core.nu [ctx cue]
+use core.nu [act cue]
 
 # the fixture store names carry the ref fixtures.json pins, tag or branch, and the rest is what
 # xtask generate-fixtures and xtask test run, without xtask test's debug profile rebuild
 export def test []: nothing -> nothing {
-   let c        = (ctx)
+   let c        = (act)
    let grammars = $"($c.src)/test/fixtures/grammars"
    let given    = ($env.TREE_SITTER_FIXTURES | split row " " | each {|path| {path: $path, name: ($path | path basename | str substring 33..)} })
    let wanted   = (open $"($c.src)/test/fixtures/fixtures.json" | each {|entry| {grammar: $entry.0, name: $"tree-sitter-($entry.0)-($entry.2? | default $entry.1)"} })

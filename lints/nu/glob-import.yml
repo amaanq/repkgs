@@ -1,7 +1,7 @@
 id: glob-import
 language: nu
 severity: error
-message: "import the helpers by name, as in `use core.nu [ctx cue]`, not with `*`"
+message: "import the helpers by name, as in `use core.nu [act cue]`, not with `*`"
 rule:
   kind: wild_card
   inside: {kind: decl_use, stopBy: end}

@@ -47,7 +47,7 @@ let
     path = ../../builder;
     name = "build";
   };
-  prelude = "use ${tree}/core.nu [files note ctx attrs options dep-root tool-root tool cue shlib linklib install-bins edit tools-by-name write-launcher fix-shebangs test-locale cache-configures store-configures]\nuse ${tree}/implant.nu";
+  prelude = "use ${tree}/core.nu [glob-files emit act drv knobs dep build-dep bin cue shared-name link-name place-bins rewrite unstore launcher shebangs test-locale cache-configures store-configures]\nuse ${tree}/implant.nu";
 
   # the part of every derivation that is the same across the set: built once
   shared = {
@@ -185,7 +185,7 @@ let
       inherit prebuilt debug sys;
       phases = phases.list;
     }
-    # resolved values, for phases: `(ctx).spec.features.tls`
+    # resolved values, for phases: `(act).spec.features.tls`
     // (if features == { } then { } else { inherit features; });
   runsNu =
     any (step: step.kind == "nu") phases.steps

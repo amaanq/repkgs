@@ -1,7 +1,7 @@
-use core.nu [ctx cue]
+use core.nu [act cue]
 
 export def archive []: nothing -> nothing {
-   let c        = (ctx)
+   let c        = (act)
    let archives = $"($c.out)/lib/archives"
    load-env {MIX_ENV: "prod", MIX_HOME: $"($c.build)/mix-home", MIX_ARCHIVES: $archives}
    cue mix compile --no-deps-check

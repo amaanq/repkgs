@@ -742,7 +742,7 @@
         "kind": "boolean"
       },
       "default": null,
-      "doc": "a dev output, staged at (ctx).dev, for files only builds against the package read"
+      "doc": "a dev output, staged at (act).dev, for files only builds against the package read"
     },
     {
       "name": "install",

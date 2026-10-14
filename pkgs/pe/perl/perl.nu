@@ -1,4 +1,4 @@
-use core.nu [ctx dep-root cue edit tools-by-name files note]
+use core.nu [act dep cue rewrite unstore glob-files emit]
 
 def assignments [pairs: record, format: closure]: nothing -> string {
    $pairs | items {|key, value| do $format $key $value } | each {|line| $"($line)\n" } | str join
@@ -24,14 +24,14 @@ def borrow-cross-diffs [version: string]: nothing -> nothing {
 }
 
 export def configure []: nothing -> nothing {
-   let c   = (ctx)
+   let c   = (act)
    let out = $c.out
    cd $c.src
 
    assignments {osvers: gnulinux, myuname: pkgs, myhostname: pkgs, cf_by: pkgs, cf_time: "1970-01-01"} {|key, value| $"($key)=\"($value)\"" }
    | save -f config.over
 
-   let zlib = (dep-root zlib "Compress::Raw::Zlib links it")
+   let zlib = (dep zlib "Compress::Raw::Zlib links it")
    assignments {
       BUILD_ZLIB: False
       INCLUDE: $"($zlib)/include"
@@ -55,7 +55,7 @@ export def configure []: nothing -> nothing {
    if not $c.platform.cross {
       let key      = (^bigtop probe key perl-configure config.over cpan/Compress-Raw-Zlib/config.in --extra ($flags | to json -r))
       let restored = (try { ^bigtop probe restore $key config.sh; true } catch { false })
-      note perl-configure (if $restored { "restored" } else { "cold" })
+      emit perl-configure (if $restored { "restored" } else { "cold" })
       if $restored {
          cue $env.CONFIG_SHELL ./Configure -S
          cue make depend
@@ -76,11 +76,11 @@ export def configure []: nothing -> nothing {
 # Config.pm, Config_heavy.pl and config.h keep the build's tool paths, sysroot and dependency
 # dirs. Configure records -Dprefix even with -Duserelocatableinc, so ours becomes `.../..` too
 export def scrub []: nothing -> nothing {
-   let out       = (ctx).out
-   let arch      = (files $"($out)/lib/perl5/5.*/*/Config_heavy.pl" | first | path dirname)
+   let out       = (act).out
+   let arch      = (glob-files $"($out)/lib/perl5/5.*/*/Config_heavy.pl" | first | path dirname)
    let elsewhere = $"\(?:-I|-L|--sysroot=\)?/nix/store/\(?!($out | path basename)\)[^'\" ]+ ?"
    for record in [Config.pm Config_heavy.pl CORE/config.h] {
-      edit $"($arch)/($record)" { tools-by-name | str replace -ar $elsewhere "" | str replace -a $out ".../.." }
+      rewrite $"($arch)/($record)" { unstore | str replace -ar $elsewhere "" | str replace -a $out ".../.." }
    }
    let stale = (open --raw $"($arch)/Config_heavy.pl" | lines | where $it =~ '/nix/store/' and $it !~ $out)
    if ($stale | is-not-empty) { error make {msg: $"Config_heavy.pl still names foreign store paths: ($stale | first)"} }

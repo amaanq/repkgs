@@ -1,10 +1,10 @@
-use core.nu [ctx edit cue]
+use core.nu [act rewrite cue]
 
 # the sandbox's passwd has no shell or $HOME for the build user
 export def login-shell []: nothing -> nothing {
    let uid = (^id -u | str trim)
    let sh  = (which sh | first | get path)
-   edit /etc/passwd {
+   rewrite /etc/passwd {
       lines
       | each { split row ':' }
       | each {|user| if $user.2 == $uid { $user | update 5 $env.HOME | update 6 $sh } else { $user } }
@@ -15,21 +15,21 @@ export def login-shell []: nothing -> nothing {
    mkdir $"($env.HOME)/.ssh"
    $"PATH=($env.PATH | str join ':')\n" | save -f $"($env.HOME)/.ssh/environment"
 
-   let regress = $"((ctx).src)/regress"
+   let regress = $"((act).src)/regress"
    let bin     = (which --all ls | where type == external | first | get path | path dirname)
-   edit $"($regress)/test-exec.sh" { str replace 'cat << EOF > $OBJ/sshd_config' "cat << EOF > $OBJ/sshd_config\n\tPermitUserEnvironment yes" }
-   edit $"($regress)/sftp-cmds.sh" { str replace -a '/bin' $bin }
-   edit $"($regress)/forwarding.sh" { str replace -a '/bin' $bin | str replace 'base=33' 'base=$((PORT / 100))' }
-   edit $"($regress)/cfgmatch.sh" { str replace 'fwdport=3301' 'fwdport=$((PORT / 100))01' }
-   edit $"($regress)/cfgmatchlisten.sh" { str replace 'fwdport=3301' 'fwdport=$((PORT / 100))01' }
-   edit $"($regress)/multiplex.sh" { str replace 'P=3301' 'P=$((PORT / 100))01' }
-   edit $"($regress)/forward-control.sh" { str replace 'LFWD_PORT=3320' 'LFWD_PORT=$((PORT / 100))20' | str replace 'RFWD_PORT=3321' 'RFWD_PORT=$((PORT / 100))21' }
+   rewrite $"($regress)/test-exec.sh" { str replace 'cat << EOF > $OBJ/sshd_config' "cat << EOF > $OBJ/sshd_config\n\tPermitUserEnvironment yes" }
+   rewrite $"($regress)/sftp-cmds.sh" { str replace -a '/bin' $bin }
+   rewrite $"($regress)/forwarding.sh" { str replace -a '/bin' $bin | str replace 'base=33' 'base=$((PORT / 100))' }
+   rewrite $"($regress)/cfgmatch.sh" { str replace 'fwdport=3301' 'fwdport=$((PORT / 100))01' }
+   rewrite $"($regress)/cfgmatchlisten.sh" { str replace 'fwdport=3301' 'fwdport=$((PORT / 100))01' }
+   rewrite $"($regress)/multiplex.sh" { str replace 'P=3301' 'P=$((PORT / 100))01' }
+   rewrite $"($regress)/forward-control.sh" { str replace 'LFWD_PORT=3320' 'LFWD_PORT=$((PORT / 100))20' | str replace 'RFWD_PORT=3321' 'RFWD_PORT=$((PORT / 100))21' }
 }
 
 # each t-exec script gets its own $OBJ and 100 ports. The forwarding scripts use xx00 to xx72 of
 # them and connection-timeout uses $PORT to $PORT+4
 export def test []: nothing -> nothing {
-   let c       = (ctx)
+   let c       = (act)
    let regress = $"($c.build)/regress"
    cd $c.build
    cue make $"-j($c.njobs)" regress-binaries regress-unit-binaries

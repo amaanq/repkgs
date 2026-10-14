@@ -1,5 +1,5 @@
-use core.nu [ctx]
+use core.nu [act]
 
 export def drop-general4 []: nothing -> nothing {
-   rm $"((ctx).src)/tests/scripts/misc/general4"
+   rm $"((act).src)/tests/scripts/misc/general4"
 }

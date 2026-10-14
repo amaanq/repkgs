@@ -158,7 +158,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
          .ok_or_else(|| io::Error::other("no dev output"))?;
 
       if !staging.exists() {
-         return Err(io::Error::other("nothing was installed into (ctx).dev"));
+         return Err(io::Error::other("nothing was installed into (act).dev"));
       }
       prune(staging)?;
       shebangs(staging, true)?;

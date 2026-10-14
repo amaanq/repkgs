@@ -1,12 +1,12 @@
-use core.nu [ctx]
-use glob.nu [files]
+use core.nu [act]
+use glob.nu [glob-files]
 
 # upstream ships tests/ as lspci dumps without a runner
 export def test []: nothing -> nothing {
-   let src    = (ctx).src
-   let dumps  = (files $"($src)/tests/*")
+   let src    = (act).src
+   let dumps  = (glob-files $"($src)/tests/*")
    let modes  = [ [ "-vvvnn" ] [ "-t" ] [ "-mm" ] ]
-   let lib    = (files --no-symlink $"($src)/lib/libpci.so.*" | first)
+   let lib    = (glob-files --no-symlink $"($src)/lib/libpci.so.*" | first)
    let soname = (^llvm-readelf -d $lib | parse -r 'Library soname: \[(?<name>[^\]]+)\]' | get 0.name)
    let libs   = (mktemp -d)
    ^ln -s $lib $"($libs)/($soname)"

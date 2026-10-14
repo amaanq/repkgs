@@ -1,7 +1,7 @@
 # Paths matching a pattern, sorted, regular files unless --dirs (directories only) or --any.
 # lints/nu/bare-glob.yml keeps nu's own glob out of the tree because it lists in directory order,
 # which once became an archive's member order and made a content-addressed rebuild differ
-export def files [
+export def glob-files [
    pattern: string
    --dirs
    --any

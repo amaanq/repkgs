@@ -1,4 +1,4 @@
-use ../builder/glob.nu files
+use ../builder/glob.nu glob-files
 
 const bootstrap_dir = path self .
 
@@ -210,7 +210,7 @@ export def prepare [directory: string, through: string, --refresh]: nothing -> r
    if ($metadata | path join prepared.json | path exists) { return $plan }
    save-progress $directory {phase: preparing, target: $plan.derivation}
    let graph = ((open ($metadata | path join graph.json)).derivations | transpose path drv)
-   let historical = (files ($directory | path join history '*' graph.json)
+   let historical = (glob-files ($directory | path join history '*' graph.json)
       | each {|file| (open $file).derivations | transpose path drv } | flatten | uniq-by path)
    let prior_outputs = (if $metadata != $directory {
       (open ($directory | path join graph.json)).derivations | values | each {|drv|

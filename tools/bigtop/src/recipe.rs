@@ -162,7 +162,7 @@ fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 20] {
       (
          "dev",
          Type::Boolean,
-         "a dev output, staged at (ctx).dev, for files only builds against the package read",
+         "a dev output, staged at (act).dev, for files only builds against the package read",
       ),
    ]
 }

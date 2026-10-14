@@ -1,7 +1,7 @@
-use core.nu [ctx cue]
+use core.nu [act cue]
 
 export def build []: nothing -> nothing {
-   let c   = (ctx)
+   let c   = (act)
    let lib = $"($c.out)/lib"
    mkdir $lib
    (cue cc -shared -O2 -o $"($lib)/libgcc_s.so.1" $"($c.src)/gcc_s.c"

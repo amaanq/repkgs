@@ -3,7 +3,7 @@
 id: unsorted-glob
 language: nu
 severity: error
-message: "glob lists in directory order, `files` (builder/glob.nu) sorts"
+message: "glob lists in directory order, `glob-files` (builder/glob.nu) sorts"
 ignores:
   - builder/glob.nu
   - experiments/**

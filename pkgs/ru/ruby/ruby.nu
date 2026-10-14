@@ -1,9 +1,9 @@
-use core.nu [ctx dep-root fix-shebangs files]
+use core.nu [act dep shebangs glob-files]
 
 # rbconfig.rb records the build's shell and compiler banner, the latter with clang's install dir
 export def relocate-rbconfig []: nothing -> nothing {
-   let bash = $"(dep-root bash "rbconfig SHELL")/bin/bash"
-   for config in (files --any $"((ctx).out)/lib/ruby/*/*/rbconfig.rb") {
+   let bash = $"(dep bash "rbconfig SHELL")/bin/bash"
+   for config in (glob-files --any $"((act).out)/lib/ruby/*/*/rbconfig.rb") {
       let text = (open --raw $config
          | str replace -r '(CONFIG\["SHELL"\] = ")[^"]*' $"${1}($bash)"
          | str replace -r '(CONFIG\["CC_VERSION_MESSAGE"\] = "[^"]*?)\\nInstalledDir: [^"]*' '${1}')
@@ -12,5 +12,5 @@ export def relocate-rbconfig []: nothing -> nothing {
 }
 
 export def restore-shebangs []: nothing -> nothing {
-   fix-shebangs (ctx).src --undo
+   shebangs (act).src --undo
 }

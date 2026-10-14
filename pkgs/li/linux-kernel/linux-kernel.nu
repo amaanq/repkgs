@@ -1,7 +1,7 @@
-use core.nu [ctx cue]
+use core.nu [act cue]
 
 def kmake [...args: string]: nothing -> nothing {
-   cue make LLVM=1 $"HOSTCC=($env.CC_FOR_BUILD)" $"HOSTCXX=($env.CXX_FOR_BUILD)" $"-j((ctx).njobs)" ...$args
+   cue make LLVM=1 $"HOSTCC=($env.CC_FOR_BUILD)" $"HOSTCXX=($env.CXX_FOR_BUILD)" $"-j((act).njobs)" ...$args
 }
 
 export def configure []: nothing -> nothing { kmake defconfig }
@@ -9,7 +9,7 @@ export def configure []: nothing -> nothing { kmake defconfig }
 export def build     []: nothing -> nothing { kmake all }
 
 export def install   []: nothing -> nothing {
-   let c       = (ctx)
+   let c       = (act)
    let release = (^make -s LLVM=1 kernelrelease | str trim)
    let image   = (^make -s LLVM=1 image_name | str trim)
    let modules = $"($c.out)/lib/modules/($release)"

@@ -1,7 +1,7 @@
-use core.nu [ctx cue]
+use core.nu [act cue]
 
 export def build []: nothing -> nothing {
-   let c       = (ctx)
+   let c       = (act)
    let defines = [UNIX UIDGID_NOT_16BIT LARGE_FILE_SUPPORT UNICODE_SUPPORT HAVE_DIRENT_H HAVE_TERMIOS_H]
    let quiet   = [implicit-int implicit-function-declaration deprecated-non-prototype]
    let cflags  = ([-O2 -I. ...($defines | each {|d| $"-D($d)" }) -std=gnu89 ...($quiet | each {|w| $"-Wno-($w)" })] | str join " ")

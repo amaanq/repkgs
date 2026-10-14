@@ -6,7 +6,7 @@ version = "hello"
 
 [steps]
 phases = [
-  { name = "build", run = "mkdir $\"($c.out)/bin\" $\"($c.out)/lib\"\ncue cc -shared -fPIC lib.c -o $\"($c.out)/lib/libhello.so\"\ncue cc -c lib.c -o lib.o\ncue llvm-ar rc $\"($c.out)/lib/libhello.a\" lib.o\ncue cc main.c $\"-L($c.out)/lib\" -lhello -o $\"($c.out)/bin/hello\"\ncue cc -shared -fPIC -Wl,--package-metadata= lib.c -o $\"($c.out)/lib/upstream.so\"\n^ln -s $\"($c.out)/lib/libhello.so\" $\"($c.out)/lib/libabs.so\"\ntouch $\"($c.out)/lib/libhello.la\"\ncp (files $\"(dep-root zlib \"copy a finished library\")/lib/libz.so.*.*\" | first) $\"($c.out)/lib/libcopied.so\"\n" },
+  { name = "build", run = "mkdir $\"($c.out)/bin\" $\"($c.out)/lib\"\ncue cc -shared -fPIC lib.c -o $\"($c.out)/lib/libhello.so\"\ncue cc -c lib.c -o lib.o\ncue llvm-ar rc $\"($c.out)/lib/libhello.a\" lib.o\ncue cc main.c $\"-L($c.out)/lib\" -lhello -o $\"($c.out)/bin/hello\"\ncue cc -shared -fPIC -Wl,--package-metadata= lib.c -o $\"($c.out)/lib/upstream.so\"\n^ln -s $\"($c.out)/lib/libhello.so\" $\"($c.out)/lib/libabs.so\"\ntouch $\"($c.out)/lib/libhello.la\"\ncp (glob-files $\"(dep zlib \"copy a finished library\")/lib/libz.so.*.*\" | first) $\"($c.out)/lib/libcopied.so\"\n" },
 ]
 
 [install]

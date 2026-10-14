@@ -1,7 +1,7 @@
-use core.nu [ctx tool cue]
+use core.nu [act bin cue]
 
 export def configure []: nothing -> nothing {
-   let c = (ctx)
+   let c = (act)
    # the venv's tooling group installs qemu's own python package with setuptools, wheel and
    # pip, and only the functional tests use it
    let wanted = (open --raw pythondeps.toml | lines | where {|line| $line !~ '^"(qemu|setuptools|wheel|pip)" =' })
@@ -18,19 +18,19 @@ export def configure []: nothing -> nothing {
    cd $c.build
    # --prefix paths are templates that get_relocated_path() rebases on the binary
    with-env {PKG_CONFIG: "pkg-config"} {
-      (cue (tool sh) $"($c.src)/configure" --prefix=/usr --disable-download --without-default-features
+      (cue (bin sh) $"($c.src)/configure" --prefix=/usr --disable-download --without-default-features
          --enable-linux-user --disable-system --disable-tools --disable-docs --disable-werror
          $"--target-list=($targets)" $"--python=(which python3 | get 0.path)" ...$cross)
    }
 }
 
 export def build []: nothing -> nothing {
-   let c = (ctx)
+   let c = (act)
    cue ninja -C $c.build $"-j($c.njobs)"
 }
 
 export def install []: nothing -> nothing {
-   let c      = (ctx)
+   let c      = (act)
    let staged = $"($c.build)/dest"
    with-env {DESTDIR: $staged} { cue ninja -C $c.build install }
    ^cp -r $"($staged)/usr/." $c.out
