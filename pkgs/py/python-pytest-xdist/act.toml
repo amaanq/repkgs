@@ -10,7 +10,7 @@ patches = [
 ]
 
 [test]
-deps = [ "python-pytest", "python-filelock" ]
+deps = [ "python-pytest", "python-filelock", "python-pexpect", "python-psutil" ]
 
 [steps.after]
 "python.test" = [ "python-pytest-xdist.test" ]
