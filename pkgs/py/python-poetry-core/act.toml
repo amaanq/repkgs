@@ -1,0 +1,6 @@
+track = "pypi:poetry_core"
+fetch = { url = "https://files.pythonhosted.org/packages/source/p/poetry_core/poetry_core-{version}.tar.gz" }
+with  = [ "python" ]
+
+[python]
+module = "poetry.core"
