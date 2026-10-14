@@ -1,0 +1,27 @@
+tag     = "{version}"
+track   = "gitlab:pipewire/pipewire?repository_url=https://gitlab.freedesktop.org"
+fetch   = { url = "https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/{version}/pipewire-{version}.tar.gz" }
+with    = [ "meson" ]
+patches = [ "relocatable.patch" ]
+
+[only]
+os = [ "linux" ]
+
+[test]
+bin     = [ "pipewire" ]
+version = "--version"
+
+[meson.defs]
+dbus             = "disabled"
+examples         = "disabled"
+flatpak          = "disabled"
+legacy-rtkit     = false
+pipewire-jack    = "disabled"
+pipewire-v4l2    = "disabled"
+rlimits-install  = false
+session-managers = ""
+sysconfdir       = "/etc"
+tests            = "enabled"
+
+[bindings]
+cargo = [ "libspa-sys", "pipewire-sys" ]

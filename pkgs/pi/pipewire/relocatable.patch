@@ -1,0 +1,94 @@
+pipewire bakes its install prefix into the SPA plugin, module, config and locale paths that
+libpipewire reads. Resolve those relative to libpipewire, name the daemons in the shipped configs
+bare, and leave LADSPA plugins to the host's search path.
+
+--- a/meson.build
++++ b/meson.build
+@@ -241,8 +241,8 @@
+ 
+ cdata = configuration_data()
+ cdata.set_quoted('PREFIX', prefix)
+-cdata.set_quoted('PIPEWIRE_CONFDATADIR', pipewire_confdatadir)
+-cdata.set_quoted('LOCALEDIR', pipewire_localedir)
++cdata.set('PIPEWIRE_CONFDATADIR', 'RELOC("../share/pipewire")')
++cdata.set('LOCALEDIR', 'RELOC("../share/locale")')
+ cdata.set_quoted('LIBDIR', pipewire_libdir)
+ cdata.set_quoted('GETTEXT_PACKAGE', meson.project_name())
+ cdata.set_quoted('PACKAGE', 'pipewire')
+@@ -251,9 +251,9 @@
+ cdata.set_quoted('PACKAGE_TARNAME', 'pipewire')
+ cdata.set_quoted('PACKAGE_URL', 'https://pipewire.org')
+ cdata.set_quoted('PACKAGE_VERSION', pipewire_version)
+-cdata.set_quoted('MODULEDIR', modules_install_dir)
++cdata.set('MODULEDIR', 'RELOC("@0@")'.format(pipewire_name))
+ cdata.set_quoted('PIPEWIRE_CONFIG_DIR', pipewire_configdir)
+-cdata.set_quoted('PLUGINDIR', spa_plugindir)
++cdata.set('PLUGINDIR', 'RELOC("@0@")'.format(spa_name))
+ cdata.set_quoted('SPADATADIR', spa_datadir)
+ cdata.set_quoted('PA_ALSA_DATA_DIR', alsadatadir)
+ cdata.set('RTPRIO_SERVER', get_option('rtprio-server'))
+--- a/src/daemon/meson.build
++++ b/src/daemon/meson.build
+@@ -5,10 +5,10 @@
+ conf_config = configuration_data()
+ conf_config.set('VERSION', '"@0@"'.format(pipewire_version))
+ conf_config.set('PIPEWIRE_CONFIG_DIR', pipewire_configdir)
+-conf_config.set('session_manager_path', pipewire_bindir / 'pipewire-media-session')
++conf_config.set('session_manager_path', 'pipewire-media-session')
+ conf_config.set('session_manager_args', '')
+-conf_config.set('pipewire_path', pipewire_bindir / 'pipewire')
+-conf_config.set('pipewire_pulse_path', pipewire_bindir / 'pipewire-pulse')
++conf_config.set('pipewire_path', 'pipewire')
++conf_config.set('pipewire_pulse_path', 'pipewire-pulse')
+ conf_config.set('sm_comment', '#')
+ conf_config.set('pulse_comment', '#')
+ conf_config.set('rtprio_server', get_option('rtprio-server'))
+--- a/src/pipewire/conf.c
++++ b/src/pipewire/conf.c
+@@ -3,6 +3,7 @@
+ /* SPDX-License-Identifier: MIT */
+ 
+ #include "config.h"
++#include "reloc.h"
+ 
+ #include <signal.h>
+ #include <getopt.h>
+--- a/src/pipewire/impl-module.c
++++ b/src/pipewire/impl-module.c
+@@ -5,6 +5,7 @@
+ /* SPDX-License-Identifier: MIT */
+ 
+ #include "config.h"
++#include "reloc.h"
+ 
+ #include <stdio.h>
+ #include <dlfcn.h>
+--- a/src/pipewire/pipewire.c
++++ b/src/pipewire/pipewire.c
+@@ -3,6 +3,7 @@
+ /* SPDX-License-Identifier: MIT */
+ 
+ #include "config.h"
++#include "reloc.h"
+ 
+ #include <unistd.h>
+ #include <limits.h>
+--- a/spa/plugins/filter-graph/plugin_ladspa.c
++++ b/spa/plugins/filter-graph/plugin_ladspa.c
+@@ -243,7 +243,7 @@
+ 	}
+ 	*search_dirs = getenv("LADSPA_PATH");
+ 	if (!*search_dirs)
+-		*search_dirs = "/usr/lib64/ladspa:/usr/lib/ladspa:" LIBDIR;
++		*search_dirs = "/usr/lib64/ladspa:/usr/lib/ladspa";
+ }
+ 
+ static int load_ladspa_plugin(struct plugin *impl, const char *path, const char *search_dirs)
+--- a/spa/plugins/test/test-helper.h
++++ b/spa/plugins/test/test-helper.h
+@@ -1,4 +1,5 @@
+ #include <dlfcn.h>
++#include "reloc.h"
+ 
+ #include <spa/support/plugin.h>
+ #include <spa/utils/type.h>
