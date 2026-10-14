@@ -1,7 +1,11 @@
 use std::{
    collections::BTreeMap,
    ffi::OsString,
-   fs::read,
+   fs::{
+      create_dir_all,
+      read,
+      read_dir,
+   },
    io,
    path::{
       Path,
@@ -32,7 +36,10 @@ use mummer::{
 use serde::{
    Deserialize,
    Serialize,
-   de::IgnoredAny,
+   de::{
+      DeserializeOwned,
+      IgnoredAny,
+   },
 };
 
 use crate::{
@@ -118,7 +125,18 @@ impl System for Cmake {
             let jobs = format!("-j{}", ctx.njobs);
             run("cmake", &["--build", ".", &jobs], &[])
          },
-         "test-prepare" => Self::list_tests(&options),
+         "test-prepare" => {
+            let programs = Self::check_programs()?;
+
+            if !programs.is_empty() {
+               let jobs = format!("-j{}", ctx.njobs);
+               let mut args = vec!["--build", ".", &jobs, "--target"];
+               args.extend(strs(&programs));
+               run("cmake", &args, &[])?;
+            }
+
+            Self::list_tests(&options)
+         },
          "test" => {
             let jobs = ctx.test_jobs()?.to_string();
             let skip = options.skip_tests.join("|");
@@ -147,6 +165,37 @@ impl System for Cmake {
 }
 
 impl Cmake {
+   /// Test programs left out of the default build that `check` builds.
+   fn check_programs() -> io::Result<Vec<String>> {
+      let latest = read_dir(Path::new(API).join("reply"))?
+         .map(|entry| entry.map(|found| found.file_name()))
+         .collect::<io::Result<Vec<OsString>>>()?
+         .into_iter()
+         .filter(|name| name.as_encoded_bytes().starts_with(b"index-"))
+         .max()
+         .ok_or_else(|| io::Error::other("cmake left no file API reply index"))?;
+
+      let index = reply::<ApiIndex>(Path::new(&latest))?;
+      let model = reply::<Codemodel>(Path::new(&index.reply.codemodel.json_file))?;
+      let targets = model
+         .configurations
+         .into_iter()
+         .flat_map(|configuration| configuration.targets)
+         .collect::<Vec<TargetRef>>();
+
+      let Some(check) = targets.iter().find(|target| target.name == "check") else {
+         return Ok(Vec::new());
+      };
+
+      let depends = reply::<Target>(Path::new(&check.json_file))?.dependencies;
+
+      Ok(targets
+         .into_iter()
+         .filter(|target| depends.iter().any(|dependency| dependency.id == target.id))
+         .map(|target| target.name)
+         .collect())
+   }
+
    /// What ctest would run, written where the test phase's tracer reads it.
    fn list_tests(options: &Options) -> io::Result<()> {
       let skip = options.skip_tests.join("|");
@@ -310,6 +359,10 @@ impl Cmake {
          .iter()
          .map(|entry| format!("-D{}={}", entry.0, Self::render(&entry.1)))
          .collect::<Vec<String>>();
+      let query = Path::new(API).join("query");
+      create_dir_all(&query)?;
+      write_file(&query.join("codemodel-v2"), b"", None)?;
+
       let mut args = vec!["-S", &source, "-B", ".", "-G", &options.generator];
       if restored {
          args.extend(["-C", &init]);
@@ -329,10 +382,68 @@ impl Cmake {
    }
 }
 
+/// The cmake file API.
+const API: &str = ".cmake/api/v1";
 /// Where `test-prepare` leaves ctest's listing of its tests.
 const LISTING: &str = ".bigtop-ctest-tests.json";
 /// Where the test phase lists the tests ctest should limit itself to.
 const SELECTED: &str = ".bigtop-ctest-selected";
+
+fn reply<T>(name: &Path) -> io::Result<T>
+where
+   T: DeserializeOwned,
+{
+   let path = Path::new(API).join("reply").join(name);
+
+   serde_json::from_slice(&read(&path)?)
+      .map_err(|error| io::Error::other(format!("{}, {error}", path.display())))
+}
+
+#[derive(Deserialize)]
+struct ApiIndex {
+   reply: Replies,
+}
+
+#[derive(Deserialize)]
+struct Replies {
+   #[serde(rename = "codemodel-v2")]
+   codemodel: ReplyFile,
+}
+
+#[derive(Deserialize)]
+struct ReplyFile {
+   #[serde(rename = "jsonFile")]
+   json_file: String,
+}
+
+#[derive(Deserialize)]
+struct Codemodel {
+   configurations: Vec<Configuration>,
+}
+
+#[derive(Deserialize)]
+struct Configuration {
+   targets: Vec<TargetRef>,
+}
+
+#[derive(Deserialize)]
+struct TargetRef {
+   name:      String,
+   id:        String,
+   #[serde(rename = "jsonFile")]
+   json_file: String,
+}
+
+#[derive(Deserialize)]
+struct Target {
+   #[serde(default)]
+   dependencies: Vec<Dependency>,
+}
+
+#[derive(Deserialize)]
+struct Dependency {
+   id: String,
+}
 
 #[derive(Deserialize)]
 struct Listing {
