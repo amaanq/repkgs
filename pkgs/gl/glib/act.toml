@@ -14,6 +14,12 @@ regex = 'glib-([0-9]+\.[0-9]*[02468]\.[0-9]+)\.tar'
 bin = [ "glib-compile-resources", "gdbus" ]
 run = false
 
+[on.linux]
+tools = [ "gettext" ]
+
+[on.linux.meson.defs]
+nls = "enabled"
+
 [meson.defs]
 documentation = false
 dtrace        = "disabled"
