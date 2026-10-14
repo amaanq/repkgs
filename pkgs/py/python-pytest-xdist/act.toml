@@ -1,0 +1,19 @@
+track = "pypi:pytest_xdist"
+fetch = { url = "https://files.pythonhosted.org/packages/source/p/pytest_xdist/pytest_xdist-{version}.tar.gz" }
+with  = [ "python" ]
+deps  = [ "python-execnet", "python-pytest" ]
+tools = [ "python-setuptools", "python-setuptools-scm" ]
+# pytest 9 test fixes from after 3.8.0
+patches = [
+  "https://github.com/pytest-dev/pytest-xdist/commit/0c984478f39d7a01aa24c061f2581bdfd071cb6a.patch",
+  "https://github.com/pytest-dev/pytest-xdist/commit/44f4bea2652e06e7cd5d4a063aa2673b5ef701ee.patch",
+]
+
+[test]
+deps = [ "python-pytest", "python-filelock" ]
+
+[steps.after]
+"python.test" = [ "python-pytest-xdist.test" ]
+
+[python]
+module = "xdist"

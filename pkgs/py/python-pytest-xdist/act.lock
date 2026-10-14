@@ -1,0 +1,6 @@
+version = "3.8.0"
+hash    = "sha256-UUadWYixa5uteVNhxcZjaYM0neKCxJRIiZ8q0DHL3Z8="
+
+[patches]
+"https://github.com/pytest-dev/pytest-xdist/commit/0c984478f39d7a01aa24c061f2581bdfd071cb6a.patch" = "0c984478f39d.patch"
+"https://github.com/pytest-dev/pytest-xdist/commit/44f4bea2652e06e7cd5d4a063aa2673b5ef701ee.patch" = "44f4bea2652e.patch"
