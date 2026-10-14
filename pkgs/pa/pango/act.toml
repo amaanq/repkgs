@@ -1,0 +1,32 @@
+fetch   = { url = "https://download.gnome.org/sources/pango/{major}.{minor}/pango-{version}.tar.xz" }
+with    = [ "meson" ]
+deps    = [ "cairo", "fontconfig", "freetype", "fribidi", "glib", "harfbuzz" ]
+tools   = [ "glib", "cpython314" ]
+patches = [ "inherit-fontconfig-file.patch" ]
+
+[track]
+from = "generic:pango"
+
+[track.watch] # 1.90 starts the unstable pango 2 API
+url   = "https://download.gnome.org/sources/pango/cache.json"
+regex = 'pango-(1\.[1-8]?[02468]\.[0-9]+)\.tar'
+
+[test]
+bin      = [ "pango-view" ]
+separate = true
+
+[steps.before]
+"meson.test" = [ "pango.test-env" ]
+
+[meson.defs]
+build-examples  = false
+build-testsuite = true
+cairo           = "enabled"
+documentation   = false
+fontconfig      = "enabled"
+freetype        = "enabled"
+introspection   = "disabled"
+libthai         = "disabled"
+man-pages       = false
+sysprof         = "disabled"
+xft             = "disabled"
