@@ -222,6 +222,9 @@ enum Call {
    /// A call that reaches files the filter cannot see, or sees them through
    /// a different tree.
    Escape(&'static str),
+   /// A call answered with ENOSYS, as a kernel without it would, since the
+   /// files it reaches go past the filter and callers fall back without it.
+   Absent,
 }
 
 const COMMON: &[(libc::c_long, Call)] = &[
@@ -263,7 +266,7 @@ const COMMON: &[(libc::c_long, Call)] = &[
    (libc::SYS_utimensat, Call::Paths(AT)),
    (libc::SYS_getdents64, Call::Listing { fd: 0 }),
    (libc::SYS_rt_sigaction, Call::Handler),
-   (libc::SYS_io_uring_setup, Call::Escape("io_uring")),
+   (libc::SYS_io_uring_setup, Call::Absent),
    (
       libc::SYS_open_by_handle_at,
       Call::Escape("open_by_handle_at"),
@@ -446,6 +449,9 @@ pub struct Accesses {
    /// Whether a task installed a handler without `SA_RESTART`, the only kind
    /// that makes a call waiting on the trace server fail with EINTR.
    pub interruptible: bool,
+   /// Whether a call was answered with ENOSYS, so a failure may be the
+   /// refusal's.
+   pub refused:       bool,
 }
 
 pub enum Outcome {
@@ -784,8 +790,16 @@ fn note(reader: &mut Reader, request: &seccomp_notif, accesses: &mut Accesses) -
       Call::Escape(why) => {
          accesses.escaped.get_or_insert(why);
       },
+      Call::Absent => accesses.refused = true,
    }
    events
+}
+
+/// Whether the call is answered with ENOSYS rather than run.
+fn absent(request: &seccomp_notif) -> bool {
+   let number = u32::from_ne_bytes(request.data.nr.to_ne_bytes());
+   request.data.arch == AUDIT_ARCH
+      && calls().any(|entry| entry.0 == number && matches!(entry.1, Call::Absent))
 }
 
 /// The fields of `/proc/<task>/stat` a lineage needs.
@@ -970,11 +984,20 @@ fn serve(
                record(accesses, event, ran.as_deref(), tests.is_some(), mark);
             }
          }
-         let mut response = seccomp_notif_resp {
-            id:    request.id,
-            val:   0,
-            error: 0,
-            flags: u32::try_from(SECCOMP_USER_NOTIF_FLAG_CONTINUE).unwrap_or_default(),
+         let mut response = if absent(&request) {
+            seccomp_notif_resp {
+               id:    request.id,
+               val:   0,
+               error: -libc::ENOSYS,
+               flags: 0,
+            }
+         } else {
+            seccomp_notif_resp {
+               id:    request.id,
+               val:   0,
+               error: 0,
+               flags: u32::try_from(SECCOMP_USER_NOTIF_FLAG_CONTINUE).unwrap_or_default(),
+            }
          };
          // SAFETY: SEND reads the `seccomp_notif_resp` it is given; a task that
          // died meanwhile fails it with ENOENT, which leaves nothing to do

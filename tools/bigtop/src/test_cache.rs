@@ -829,7 +829,9 @@ fn attempt(
    // into EINTR, even for an open of a regular file, so a traced failure
    // may be the tracer's
    Ok(match outcome {
-      Outcome::Traced(status, accesses) if status.success() || !accesses.interruptible => {
+      Outcome::Traced(status, accesses)
+         if status.success() || !(accesses.interruptible || accesses.refused) =>
+      {
          let traced = Traced {
             accesses,
             before,
