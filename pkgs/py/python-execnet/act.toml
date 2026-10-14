@@ -1,0 +1,13 @@
+track = "pypi:execnet"
+fetch = { url = "https://files.pythonhosted.org/packages/source/e/execnet/execnet-{version}.tar.gz" }
+with  = [ "python" ]
+tools = [ "python-hatchling", "python-hatch-vcs" ]
+
+[test]
+deps = [ "python-pytest" ]
+
+[steps.after]
+"python.test" = [ "python-execnet.test" ]
+
+[python]
+module = "execnet"
