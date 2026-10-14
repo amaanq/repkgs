@@ -137,6 +137,11 @@ pub fn prepare(source: Source<'_>) -> io::Result<Prepared> {
       spec: attrs.spec.clone(),
       out: PathBuf::from(out),
       dest: PathBuf::from(&attrs.outputs.out),
+      dev: attrs
+         .outputs
+         .dev
+         .as_ref()
+         .map(|_dest| PathBuf::from(format!("{top}/dev"))),
       deps,
       roots,
       njobs,

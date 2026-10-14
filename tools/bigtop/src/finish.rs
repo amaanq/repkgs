@@ -126,7 +126,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
       .as_deref()
       .ok_or_else(|| io::Error::other("no debug output"))?;
    create_dir_all(debug)?;
-   relocate(&attrs, &spec, &ctx, &platform, debug, &mut laps)?;
+   relocate(&attrs, &spec, &platform, debug, out, &ctx.dest, &mut laps)?;
    let request = Request {
       name:    spec.name.clone(),
       ext:     platform.ext.clone(),
@@ -149,6 +149,34 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    }
 
    laps.lap("move");
+
+   if let Some(staging) = ctx.dev.as_deref() {
+      let dest = attrs
+         .outputs
+         .dev
+         .as_deref()
+         .ok_or_else(|| io::Error::other("no dev output"))?;
+
+      if !staging.exists() {
+         return Err(io::Error::other("nothing was installed into (ctx).dev"));
+      }
+      prune(staging)?;
+      shebangs(staging, true)?;
+      relocate(
+         &attrs,
+         &spec,
+         &platform,
+         debug,
+         staging,
+         Path::new(dest),
+         &mut laps,
+      )?;
+      succeed(Command::new("chmod").arg("-R").arg("u+w").arg(staging))?;
+      relativize(utf8(staging)?, dest)?;
+      succeed(Command::new("mv").arg(staging).arg(dest))?;
+      laps.lap("dev");
+   }
+
    version_check(&spec, &ctx, &platform, &top)?;
    laps.lap("version");
    note("finish-steps", &laps.shown.join(", "));
@@ -300,12 +328,12 @@ fn layout_check(out: &Path) -> io::Result<()> {
 fn relocate(
    attrs: &Attrs,
    spec: &Spec,
-   ctx: &Ctx,
    platform: &Platform,
    debug: &str,
+   out: &Path,
+   dest: &Path,
    laps: &mut Laps,
 ) -> io::Result<()> {
-   let out = ctx.out.as_path();
    let implanted = spec.prebuilt == Prebuilt::Implanted;
    let ldso = spec.prebuilt == Prebuilt::Ldso;
    match platform.binfmt {
@@ -386,18 +414,11 @@ fn relocate(
 
       echo(&format!(
          "reloc-fixup {} --dest {} {}",
-         ctx.out.display(),
-         ctx.dest.display(),
+         out.display(),
+         dest.display(),
          shown.join(" ")
       ));
-      fixup::run(
-         out,
-         Some(ctx.dest.as_path()),
-         sdk,
-         loader,
-         &denied,
-         &libraries,
-      )?;
+      fixup::run(out, Some(dest), sdk, loader, &denied, &libraries)?;
    }
    Ok(())
 }

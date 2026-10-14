@@ -737,6 +737,14 @@
       "doc": "split DWARF into the debug output"
     },
     {
+      "name": "dev",
+      "type": {
+        "kind": "boolean"
+      },
+      "default": null,
+      "doc": "a dev output, staged at (ctx).dev, for files only builds against the package read"
+    },
+    {
       "name": "install",
       "type": {
         "kind": "map",

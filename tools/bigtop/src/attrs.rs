@@ -112,6 +112,8 @@ pub struct Outputs {
    pub debug: Option<String>,
    #[serde(default)]
    pub tree:  Option<String>,
+   #[serde(default)]
+   pub dev:   Option<String>,
 }
 
 impl Attrs {
@@ -426,6 +428,8 @@ pub struct Ctx {
    pub spec:      Value,
    pub out:       PathBuf,
    pub dest:      PathBuf,
+   #[serde(default, skip_serializing_if = "Option::is_none")]
+   pub dev:       Option<PathBuf>,
    pub deps:      Vec<Exports>,
    pub roots:     Vec<String>,
    pub njobs:     usize,

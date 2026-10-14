@@ -150,6 +150,7 @@ fn outputs(attrs: &Attrs) -> Vec<Output> {
       ("out", Some(attrs.outputs.out.clone())),
       ("debug", attrs.outputs.debug.clone()),
       ("tree", attrs.outputs.tree.clone()),
+      ("dev", attrs.outputs.dev.clone()),
    ]
    .into_iter()
    .enumerate()

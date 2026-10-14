@@ -243,7 +243,8 @@ let
         "out"
         "debug"
       ]
-      ++ (if separate then [ "tree" ] else [ ]);
+      ++ (if separate then [ "tree" ] else [ ])
+      ++ (if valid.dev or false then [ "dev" ] else [ ]);
       args = [ "build" ];
     }
   );

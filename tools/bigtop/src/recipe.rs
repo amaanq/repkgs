@@ -74,7 +74,7 @@ fn completions() -> Type {
    )
 }
 
-fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 19] {
+fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 20] {
    let prebuilt = Type::Enum {
       values: vec!["ldso".to_owned()],
    };
@@ -159,6 +159,11 @@ fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 19] {
          "upstream binaries, implanted with our interpreter (true) or run via launch (ldso)",
       ),
       ("debug", Type::Boolean, "split DWARF into the debug output"),
+      (
+         "dev",
+         Type::Boolean,
+         "a dev output, staged at (ctx).dev, for files only builds against the package read",
+      ),
    ]
 }
 
