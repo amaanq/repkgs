@@ -1,0 +1,46 @@
+LOCALEDIR and the paths make-debug-archive runs eu-unstrip and eu-ar from name the install prefix.
+
+diff -ru a/lib/system.h b/lib/system.h
+--- a/lib/system.h
++++ b/lib/system.h
+@@ -54,6 +54,12 @@
+ #include <sys/param.h>
+ #include <unistd.h>
+ 
++#ifdef LOCALEDIR
++#include "reloc.h"
++#undef LOCALEDIR
++#define LOCALEDIR RELOC ("../share/locale")
++#endif
++
+ #if defined(HAVE_SYS_RANDOM_H)
+ #include <sys/random.h>
+ #endif
+diff -ru a/src/make-debug-archive.in b/src/make-debug-archive.in
+--- a/src/make-debug-archive.in
++++ b/src/make-debug-archive.in
+@@ -12,8 +12,8 @@
+ # An offline archive can be used via -e in any tool that accepts those options.
+ #
+ 
+-UNSTRIP=${UNSTRIP:-@UNSTRIP@}
+-AR=${AR:-@AR@}
++UNSTRIP=${UNSTRIP:-$(dirname "$0")/@UNSTRIP@}
++AR=${AR:-$(dirname "$0")/@AR@}
+ SUDO=${SUDO:-/usr/bin/sudo}
+ 
+ LS=/bin/ls
+diff -ru a/src/Makefile.in b/src/Makefile.in
+--- a/src/Makefile.in
++++ b/src/Makefile.in
+@@ -1299,8 +1299,8 @@
+ 	done; rm -f c$${pid}_.???; exit $$bad
+ 
+ make-debug-archive: $(srcdir)/make-debug-archive.in
+-	$(AM_V_GEN)UNSTRIP=$(bindir)/`echo unstrip | sed '$(transform)'`; \
+-	AR=$(bindir)/`echo ar | sed '$(transform)'`; \
++	$(AM_V_GEN)UNSTRIP=`echo unstrip | sed '$(transform)'`; \
++	AR=`echo ar | sed '$(transform)'`; \
+ 	sed -e "s,[@]UNSTRIP[@],$$UNSTRIP,g" -e "s,[@]AR[@],$$AR,g" \
+ 	    -e "s%[@]PACKAGE_NAME[@]%$(PACKAGE_NAME)%g" \
+ 	    -e "s%[@]PACKAGE_VERSION[@]%$(PACKAGE_VERSION)%g" \

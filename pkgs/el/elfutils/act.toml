@@ -1,0 +1,30 @@
+fetch   = { url = "https://sourceware.org/elfutils/ftp/{version}/elfutils-{version}.tar.bz2" }
+with    = [ "autotools" ]
+deps    = [ "zlib", "zstd", "bzip2", "xz" ]
+tools   = [ "m4", "bison", "flex" ]
+patches = [ "unused-but-set-global.patch", "elflint-lld-output.patch", "arsymtest-llvm-nm.patch", "backtrace-data-bias.patch", "relocatable.patch" ]
+
+[track]
+from = "generic:elfutils"
+
+# releases live in per-version directories, the index root stops at 0.148
+[track.watch]
+url   = "https://sourceware.org/elfutils/ftp/"
+regex = 'href="(0\.[0-9]+)/"'
+
+[only]
+os = [ "linux" ]
+
+[test]
+deps = [ "bzip2", "util-linux" ]
+bin  = [ "eu-readelf", "eu-objdump" ]
+
+[autotools]
+flags = [
+  "--program-prefix=eu-",
+  "--enable-deterministic-archives",
+  "--disable-libdebuginfod",
+  "--disable-debuginfod",
+  "--disable-nls",
+  "--disable-demangler",
+]

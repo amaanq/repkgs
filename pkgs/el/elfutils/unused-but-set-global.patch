@@ -1,0 +1,33 @@
+--- a/src/addr2line.c
++++ b/src/addr2line.c
+@@ -136,7 +136,7 @@
+ static bool show_inlines;
+ 
+ /* True if all names need to be demangled.  */
+-static bool demangle;
++static bool demangle __attribute__ ((unused));
+ 
+ /* True if all information should be printed on one line.  */
+ static bool pretty;
+--- a/src/stack.c
++++ b/src/stack.c
+@@ -48,7 +48,7 @@
+ static bool show_source = false;
+ static bool show_one_tid = false;
+ static bool show_quiet = false;
+-static bool show_raw = false;
++static bool show_raw __attribute__ ((unused)) = false;
+ static bool show_modules = false;
+ static bool show_debugname = false;
+ static bool show_inlines = false;
+--- a/tests/varlocs.c
++++ b/tests/varlocs.c
+@@ -37,7 +37,7 @@
+ // The Dwarf, Dwarf_CFIs and address bias of
+ // cfi table to adjust DWARF addresses against.
+ // Needed for DW_OP_call_frame_cfa.
+-static Dwarf *dw;
++static Dwarf *dw __attribute__ ((unused));
+ Dwarf_CFI *cfi_debug;
+ Dwarf_Addr cfi_debug_bias;
+ Dwarf_CFI *cfi_eh;

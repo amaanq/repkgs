@@ -1,0 +1,57 @@
+backtrace-data takes start - offset of the mapping holding the PC as the load
+bias, which holds only when that segment's p_vaddr equals its p_offset. lld puts
+libc's text a page above its file offset.
+
+--- a/tests/backtrace-data.c
++++ b/tests/backtrace-data.c
+@@ -88,6 +88,41 @@
+   return true;
+ }
+ 
++/* The start of FILENAME's mapping at file offset 0.  start - offset of any
++   other mapping is the load bias only when its segment's p_vaddr equals its
++   p_offset, which lld does not keep.  */
++static GElf_Addr
++file_base (pid_t pid, const char *filename)
++{
++  char *fname;
++  int i = asprintf (&fname, "/proc/%ld/maps", (long) pid);
++  assert (i > 0);
++  FILE *f = fopen (fname, "r");
++  assert (f);
++  free (fname);
++  GElf_Addr base = 0;
++  char *line = NULL;
++  size_t size = 0;
++  while (getline (&line, &size, f) > 0)
++    {
++      unsigned long start, offset;
++      int name = 0;
++      if (sscanf (line, "%lx-%*x %*s %lx %*x:%*x %*u %n", &start, &offset,
++		  &name) != 2)
++	continue;
++      line[strcspn (line, "\n")] = '\0';
++      if (offset == 0 && strcmp (line + name, filename) == 0)
++	{
++	  base = start;
++	  break;
++	}
++    }
++  free (line);
++  i = fclose (f);
++  assert (i == 0);
++  return base;
++}
++
+ /* Return filename and VMA address *BASEP where its mapping starts which
+    contains ADDR.  */
+ 
+@@ -128,7 +163,7 @@
+ 	  i = fclose (f);
+ 	  assert (i == 0);
+ 
+-	  *basep = start - offset;
++	  *basep = file_base (pid, filename);
+ 	  return filename;
+ 	}
+       free (filename);

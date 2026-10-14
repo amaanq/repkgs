@@ -1,0 +1,37 @@
+lld writes every Verneed before the Vernaux entries, keeps SHF_MERGE on an
+output section merged from inputs of different entry sizes, and puts a NOBITS
+.relro_padding at the end of the RELRO segment so .bss's file offset lands inside
+that segment's memsz. All valid ELF that elflint rejects.
+https://sourceware.org/bugzilla/show_bug.cgi?id=32232
+
+--- a/src/elflint.c
++++ b/src/elflint.c
+@@ -3253,7 +3253,7 @@
+       offset += need->vn_next;
+ 
+       if ((need->vn_next != 0 || cnt > 0)
+-	  && offset < auxoffset)
++	  && need->vn_next < gelf_fsize (ebl->elf, ELF_T_VNEED, 1, EV_CURRENT))
+ 	{
+ 	  ERROR (_("\
+ section [%2d] '%s': entry %d has invalid offset to next entry\n"),
+@@ -4064,7 +4064,8 @@
+ section [%2zu] '%s': strings flag set without merge flag\n"),
+ 	       cnt, section_name (ebl, cnt));
+ 
+-      if ((shdr->sh_flags & SHF_MERGE) != 0 && shdr->sh_entsize == 0)
++      if ((shdr->sh_flags & SHF_MERGE) != 0 && shdr->sh_entsize == 0
++	  && ehdr->e_type == ET_REL)
+ 	ERROR (_("\
+ section [%2zu] '%s': merge flag set but entry size is zero\n"),
+ 	       cnt, section_name (ebl, cnt));
+@@ -4126,7 +4127,8 @@
+ 		     && (shdr->sh_offset - phdr->p_offset < phdr->p_filesz
+ 			 || shdr->sh_size == 0))
+ 		    || (shdr->sh_offset - phdr->p_offset < phdr->p_memsz
+-			&& shdr->sh_type == SHT_NOBITS)))
++			&& shdr->sh_type == SHT_NOBITS
++			&& shdr->sh_addr - phdr->p_vaddr < phdr->p_memsz)))
+ 	      {
+ 		/* Found the segment.  */
+ 		if (phdr->p_offset + phdr->p_memsz
