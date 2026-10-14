@@ -1,0 +1,51 @@
+track   = 'generic:mesa?url=https://archive.mesa3d.org/&regex=mesa-([0-9]+\.[0-9]+\.[0-9]+)\.tar\.xz'
+fetch   = { url = "https://archive.mesa3d.org/mesa-{version}.tar.xz" }
+patches = [ "relocatable.patch" ]
+with    = [ "meson" ]
+deps    = [
+  "elfutils",
+  "expat",
+  "libdrm",
+  "libx11",
+  "libxcb",
+  "libxdamage",
+  "libxext",
+  "libxfixes",
+  "libxrandr",
+  "libxshmfence",
+  "libxxf86vm",
+  "wayland",
+  "wayland-protocols",
+  "zlib",
+  "zstd",
+]
+tools   = [
+  "bison",
+  "cpython314",
+  "flex",
+  "glslang",
+  "python-mako",
+  "python-packaging",
+  "python-pyyaml",
+  "wayland",
+]
+
+[only]
+os = [ "linux" ]
+
+[test]
+version = false
+
+[meson.defs]
+amd-use-llvm    = false
+build-tests     = false
+gallium-drivers = "radeonsi"
+gallium-va      = "disabled"
+gles1           = "disabled"
+glvnd           = "disabled"
+libunwind       = "disabled"
+llvm            = "disabled"
+lmsensors       = "disabled"
+platforms       = "x11,wayland"
+valgrind        = "disabled"
+vulkan-drivers  = "amd"

@@ -1,0 +1,80 @@
+Mesa bakes its install prefix into the drirc.d, GBM backend and Vulkan ICD paths. Resolve the
+first two relative to the library that reads them and spell the ICD library_path relative to the
+manifest, which the Vulkan loader resolves against the manifest's directory.
+
+--- a/meson.build
++++ b/meson.build
+@@ -2527,7 +2527,10 @@
+ if host_machine.system() == 'windows'
+   vulkan_icd_lib_path = import('fs').relative_to(get_option('bindir'), with_vulkan_icd_dir)
+ else
+-  vulkan_icd_lib_path = get_option('prefix') / get_option('libdir')
++  vulkan_icd_lib_path = import('fs').relative_to(
++    get_option('prefix') / get_option('libdir'),
++    get_option('prefix') / get_option('datadir') / 'vulkan' / 'icd.d',
++  )
+ endif
+ 
+ vulkan_manifest_per_architecture = get_option('vulkan-manifest-per-architecture')
+--- a/src/gbm/main/backend.c
++++ b/src/gbm/main/backend.c
+@@ -28,6 +28,7 @@
+  */
+ 
+ #include <stdio.h>
++#include "reloc.h"
+ #include <stddef.h>
+ #include <stdlib.h>
+ #include <string.h>
+--- a/src/gbm/meson.build
++++ b/src/gbm/meson.build
+@@ -11,7 +11,9 @@
+   'main/gbmint.h',
+ )
+ args_gbm = [
+-  '-DDEFAULT_BACKENDS_PATH="@0@"'.format(gbm_backends_path),
++  '-DDEFAULT_BACKENDS_PATH=RELOC("@0@")'.format(
++    import('fs').relative_to(gbm_backends_path, get_option('prefix') / get_option('libdir'))
++  ),
+ ]
+ incs_gbm = [include_directories('main'), inc_loader, inc_gallium, inc_util]
+ 
+--- a/src/util/meson.build
++++ b/src/util/meson.build
+@@ -415,11 +415,12 @@
+     c_msvc_compat_args,
+     soong_compat_c_args,
+     c_xmlconfig_arg,
+-    '-DSYSCONFDIR="@0@"'.format(
+-      join_paths(get_option('prefix'), get_option('sysconfdir'))
+-    ),
+-    '-DDATADIR="@0@"'.format(
+-      join_paths(get_option('prefix'), get_option('datadir'))
++    '-DSYSCONFDIR="/etc"',
++    '-DDRIRC_DIR="@0@"'.format(
++      import('fs').relative_to(
++        get_option('prefix') / get_option('datadir') / 'drirc.d',
++        get_option('prefix') / get_option('libdir'),
++      )
+     ),
+   ],
+   gnu_symbol_visibility : 'hidden',
+--- a/src/util/xmlconfig.c
++++ b/src/util/xmlconfig.c
+@@ -28,6 +28,7 @@
+  */
+ 
+ #include "xmlconfig.h"
++#include "reloc.h"
+ #include <ctype.h>
+ #include <limits.h>
+ #include <stdarg.h>
+@@ -1372,7 +1373,7 @@
+          free(dir);
+       }
+    } else {
+-      parseConfigDir(&userData, DATADIR "/drirc.d");
++      parseConfigDir(&userData, RELOC(DRIRC_DIR));
+       parseOneConfigFile(&userData, SYSCONFDIR "/drirc");
+    }
+ 
