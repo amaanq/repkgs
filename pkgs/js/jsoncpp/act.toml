@@ -1,6 +1,7 @@
 track = "github:open-source-parsers/jsoncpp"
 fetch = { url = "https://github.com/open-source-parsers/jsoncpp/archive/refs/tags/{version}.tar.gz" }
 with  = [ "cmake" ]
+tools = [ "cpython" ]
 
 [cmake]
 tool = "cmake-bootstrap"
@@ -9,7 +10,6 @@ tool = "cmake-bootstrap"
 BUILD_OBJECT_LIBS                = false
 BUILD_STATIC_LIBS                = true
 JSONCPP_WITH_POST_BUILD_UNITTEST = false
-JSONCPP_WITH_TESTS               = false
 
 [on.msvc.cmake.defs]
 BUILD_STATIC_LIBS = false
