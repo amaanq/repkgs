@@ -6,9 +6,6 @@ deps  = [ "libpng" ]
 [test]
 separate = true
 
-[meson]
-skipTests = [ "stress-test", "tolerance-test", "composite" ]
-
 [meson.defs]
 libpng = "enabled"
 tests  = "enabled"
