@@ -5,8 +5,8 @@ bootstrapTools = true
 patches        = [ "relocatable.patch" ]
 
 [test]
-bin = [ "bash", "sh" ]
-run = false
+bin      = [ "bash", "sh" ]
+separate = true
 
 [only]
 posix = true
