@@ -1,13 +1,5 @@
-tag   = "v{version}"
-track = "github:bootandy/dust"
-fetch = { archive = true }
-with  = [ "cargo" ]
-
-# these expect 4 KiB filesystem blocks
-[cargo]
-skipTests = [
-  "test_main_basic",
-  "test_main_long_paths",
-  "test_main_multi_arg",
-  "test_substring_of_names_and_long_names",
-]
+tag     = "v{version}"
+track   = "github:bootandy/dust"
+fetch   = { archive = true }
+with    = [ "cargo" ]
+patches = [ "small-block-tests.patch" ]

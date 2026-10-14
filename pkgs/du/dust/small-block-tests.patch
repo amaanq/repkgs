@@ -1,0 +1,82 @@
+The exact-output tests list outputs for 4 KiB and 64 KiB blocks. Add 512 byte blocks, which
+bcachefs reports for the sandbox /tmp.
+
+--- a/tests/test_exact_output.rs
++++ b/tests/test_exact_output.rs
+@@ -144,7 +144,17 @@
+     .trim()
+     .to_string();
+ 
+-    vec![mac_and_some_linux, ubuntu, large_block]
++    // 512 byte block size (e.g. bcachefs)
++    let small_block = r#"
++  0B     ┌── a_file    │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░█ │   0%
++512B     ├── hello_file│█████████████████████████████████████████████████ │ 100%
++512B   ┌─┴ many        │█████████████████████████████████████████████████ │ 100%
++512B ┌─┴ test_dir      │█████████████████████████████████████████████████ │ 100%
++"#
++    .trim()
++    .to_string();
++
++    vec![mac_and_some_linux, ubuntu, large_block, small_block]
+ }
+ 
+ #[cfg_attr(target_os = "windows", ignore)]
+@@ -180,7 +190,16 @@
+     .trim()
+     .to_string();
+ 
+-    vec![mac_and_some_linux, ubuntu, large_block]
++    let small_block = r#"
++  0B     ┌── /tmp/test_dir/many/a_file    │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░█ │   0%
++512B     ├── /tmp/test_dir/many/hello_file│██████████████████████████████ │ 100%
++512B   ┌─┴ /tmp/test_dir/many             │██████████████████████████████ │ 100%
++512B ┌─┴ /tmp/test_dir                    │██████████████████████████████ │ 100%
++"#
++    .trim()
++    .to_string();
++
++    vec![mac_and_some_linux, ubuntu, large_block, small_block]
+ }
+ 
+ // Check against directories and files whose names are substrings of each other
+@@ -239,7 +258,38 @@
+     .trim()
+     .into();
+ 
+-    vec![mac_and_some_linux, ubuntu, large_block, large_block_alt]
++    let small_block = "
++   0B   ┌── long_dir_name_what_a_very_long_dir_name_what_happens_when_this_goe..
++ 512B   │ ┌── hello
++ 512B   ├─┴ dir
++ 512B   ├── dir_name_clash
++ 512B   │ ┌── hello
++ 512B   ├─┴ dir_substring
++1.5Ki ┌─┴ test_dir2
++  "
++    .trim()
++    .into();
++
++    let small_block_alt = "
++   0B   ┌── long_dir_name_what_a_very_long_dir_name_what_happens_when_this_goe..
++ 512B   ├── dir_name_clash
++ 512B   │ ┌── hello
++ 512B   ├─┴ dir
++ 512B   │ ┌── hello
++ 512B   ├─┴ dir_substring
++1.5Ki ┌─┴ test_dir2
++  "
++    .trim()
++    .into();
++
++    vec![
++        mac_and_some_linux,
++        ubuntu,
++        large_block,
++        large_block_alt,
++        small_block,
++        small_block_alt,
++    ]
+ }
+ 
+ #[cfg_attr(target_os = "windows", ignore)]
