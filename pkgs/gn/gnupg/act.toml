@@ -26,4 +26,9 @@ flags = [
   "--disable-ldap",
   "--disable-gnutls",
   "--disable-ntbtls",
+  "--with-libgpg-error-prefix={pkg:libgpg-error}",
+  "--with-libgcrypt-prefix={pkg:libgcrypt}",
+  "--with-libassuan-prefix={pkg:libassuan}",
+  "--with-ksba-prefix={pkg:libksba}",
+  "--with-npth-prefix={pkg:npth}",
 ]

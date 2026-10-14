@@ -10,3 +10,6 @@ os = [ "linux", "macos" ]
 flags        = [ "cc=cc", "AR=llvm-ar", "RANLIB=llvm-ranlib", "USRDIR=", "ZICDIR=$(BINDIR)" ]
 installFlags = [ "TOPDIR=$(PREFIX)" ]
 programs     = [ "zic", "zdump" ]
+
+[on.cross.make]
+flags = [ "zic={tool:tzdata}/bin/zic" ]

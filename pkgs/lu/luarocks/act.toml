@@ -4,6 +4,7 @@ fetch   = { url = "https://luarocks.github.io/luarocks/releases/luarocks-{versio
 with    = [ "make" ]
 deps    = [ "lua", "unzip" ]
 patches = [ "relocatable.patch" ]
+tools   = [ "unzip" ]
 
 [test]
 bin = [ "luarocks", "luarocks-admin" ]
@@ -11,3 +12,6 @@ run = false
 
 [steps.after]
 "make.install" = [ "luarocks.use-cc" ]
+
+[make]
+configureFlags = [ "--with-lua={pkg:lua}" ]

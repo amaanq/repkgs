@@ -1,8 +1,17 @@
-track   = 'generic:xkeyboard-config?url=https://xorg.freedesktop.org/archive/individual/data/xkeyboard-config/&regex=xkeyboard-config-([0-9.]+)\.tar\.xz'
-fetch   = { url = "https://xorg.freedesktop.org/archive/individual/data/xkeyboard-config/xkeyboard-config-{version}.tar.xz" }
-with    = [ "meson" ]
+track = 'generic:xkeyboard-config?url=https://xorg.freedesktop.org/archive/individual/data/xkeyboard-config/&regex=xkeyboard-config-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/data/xkeyboard-config/xkeyboard-config-{version}.tar.xz" }
+with = [ "meson" ]
 patches = [ "pytest-module.patch" ]
-tools   = [ "gettext", "libxslt", "perl", "xkbcomp", "cpython314", "python-pytest", "python-pytest-xdist", "python-pycountry" ]
+tools = [
+  "gettext",
+  "libxslt",
+  "perl",
+  "xkbcomp",
+  "cpython314",
+  "python-pytest",
+  "python-pytest-xdist",
+  "python-pycountry",
+]
 
 [test]
 bin     = [  ]
@@ -13,3 +22,6 @@ version = false
 
 [meson.defs]
 nls = true
+
+[env]
+XKBCOMMON_LIB_PATH = "{pkg:libxkbcommon-bare}/lib/libxkbcommon.so"

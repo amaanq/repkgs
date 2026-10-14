@@ -1,6 +1,7 @@
 track   = "gnu:autoconf"
 fetch   = { url = "https://ftp.gnu.org/gnu/autoconf/autoconf-{version}.tar.xz" }
 with    = [ "autotools" ]
+tools   = [ "m4", "perl" ]
 deps    = [ "m4", "perl", "bash" ]
 test    = false
 patches = [ "relocatable.patch" ]

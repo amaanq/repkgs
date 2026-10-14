@@ -11,3 +11,6 @@ go = "."
 [go]
 packages = [ "./cmd/age", "./cmd/age-keygen" ]
 ldflags  = [ "-X main.Version={version}" ]
+
+[go.modulePatches]
+"github.com/rogpeppe/go-internal" = [ "{file:testscript-drain-pty.patch}" ]

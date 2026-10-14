@@ -1,4 +1,0 @@
-{ file, ... }:
-[
-  { source = file "src"; }
-]

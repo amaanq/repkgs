@@ -9,3 +9,6 @@ ABSL_BUILD_TESTING           = true
 ABSL_PROPAGATE_CXX_STD       = true
 ABSL_USE_EXTERNAL_GOOGLETEST = true
 CMAKE_CXX_STANDARD           = "17"
+
+[env]
+TZDIR = "{source:default}/absl/time/internal/cctz/testdata/zoneinfo"

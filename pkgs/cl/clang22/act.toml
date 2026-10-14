@@ -1,7 +1,7 @@
 fetch = { from = "llvm22" }
 with  = [ "cmake" ]
 deps  = [ "llvm22", "zlib", "zstd" ]
-tools = [ "cpython" ]
+tools = [ "cpython", "llvm22" ]
 
 [test]
 run = false
@@ -24,3 +24,15 @@ CLANG_TOOLING_BUILD_AST_INTROSPECTION = false
 LIBCLANG_BUILD_STATIC                 = false
 LLVM_INCLUDE_TESTS                    = false
 LLVM_LINK_LLVM_DYLIB                  = true
+LLVM_DIR                              = "{pkg:llvm22}/lib/cmake/llvm"
+LLVM_TABLEGEN_EXE                     = "{tool:llvm22}/bin/llvm-tblgen"
+LLVM_TOOLS_BINARY_DIR                 = "{tool:llvm22}/bin"
+
+[install]
+"bin/" = "bin/clang-tblgen{platform:ext.exe}"
+
+[on.cross]
+tools = [ "clang22" ]
+
+[on.cross.cmake.defs]
+CLANG_TABLEGEN = "{tool:clang22}/bin/clang-tblgen"

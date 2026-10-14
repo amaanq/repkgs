@@ -27,6 +27,26 @@ flags = [
   "--with-manpage-format=normal",
 ]
 
+[on.cross]
+tools = [ "ncurses" ]
+
+[on.windows.autotools]
+flags = [
+  "--enable-term-driver",
+  "--enable-sp-funcs",
+  "--with-tic-path={tool:ncurses}/bin/tic",
+  "--with-infocmp-path={tool:ncurses}/bin/infocmp",
+]
+
+[on."!windows".autotools]
+flags = [ "--with-termlib" ]
+
+[on."!x86_64".autotools]
+flags = [
+  "--with-tic-path={tool:ncurses}/bin/tic",
+  "--with-infocmp-path={tool:ncurses}/bin/infocmp",
+]
+
 [bindings]
 gems = [ "curses" ]
 hackage = [

@@ -28,3 +28,28 @@ ZIG_TARGET_MCPU      = "baseline"
 [env]
 ZIG_GLOBAL_CACHE_DIR = "/build/zig-cache"
 ZIG_LOCAL_CACHE_DIR  = "/build/zig-cache/local"
+
+[on.cross.cmake.defs]
+CMAKE_PROGRAM_PATH  = "{pkg:llvm22}/host"
+ZIG_EXECUTABLE      = "{tool:zig}/bin/zig"
+ZIG_STATIC_ZLIB     = true
+ZIG_STATIC_ZSTD     = true
+ZIG_USE_LLVM_CONFIG = true
+
+[on.macos.cmake.defs]
+ZIG_TARGET_TRIPLE = "aarch64-linux-gnu.2.44"
+
+[on.windows.cmake.defs]
+ZIG_TARGET_TRIPLE = "x86_64-linux-gnu.2.44"
+
+[on.aarch64.cmake.defs]
+ZIG_TARGET_TRIPLE = "aarch64-linux-gnu.2.44"
+
+[on.loongarch64.cmake.defs]
+ZIG_TARGET_TRIPLE = "loongarch64-linux-gnu.2.44"
+
+[on.powerpc64le.cmake.defs]
+ZIG_TARGET_TRIPLE = "powerpc64le-linux-gnu.2.44"
+
+[on.riscv64.cmake.defs]
+ZIG_TARGET_TRIPLE = "riscv64-linux-gnu.2.44"

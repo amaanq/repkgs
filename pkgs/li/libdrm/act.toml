@@ -12,3 +12,18 @@ install-test-programs = true
 radeon                = "enabled"
 amdgpu                = "enabled"
 nouveau               = "enabled"
+
+[on.x86_64]
+deps = [ "libpciaccess" ]
+
+[on.x86_64.meson.defs]
+intel  = "enabled"
+vmwgfx = "enabled"
+
+[on.aarch64.meson.defs]
+etnaviv   = "enabled"
+exynos    = "enabled"
+freedreno = "enabled"
+omap      = "enabled"
+tegra     = "enabled"
+vc4       = "enabled"

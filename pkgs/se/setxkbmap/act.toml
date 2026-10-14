@@ -5,3 +5,6 @@ deps  = [ "libx11", "libxkbfile", "libxrandr" ]
 
 [test]
 version = "-version"
+
+[meson.defs]
+xkb-config-root = "{pkg:xkeyboard-config}/share/X11/xkb"

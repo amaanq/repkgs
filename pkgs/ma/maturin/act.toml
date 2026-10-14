@@ -12,3 +12,6 @@ noDefaultFeatures = true
 [builds.python]
 names = [ "bcrypt", "cryptography", "orjson", "pydantic-core", "rpds-py" ]
 tools = [ "rust" ]
+
+[install]
+"lib/python3/site-packages/" = "{source:default}/maturin"

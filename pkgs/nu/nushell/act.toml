@@ -10,3 +10,6 @@ run = false
 [cargo]
 features          = [ "network", "sqlite", "trash-support", "rustls-tls" ]
 noDefaultFeatures = true
+
+[cargo.cratePatches]
+pest_consume_macros = [ "{file:deterministic-parser.patch}" ]

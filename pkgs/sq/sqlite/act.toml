@@ -14,6 +14,12 @@ configureFlags = [
   "CFLAGS=-DSQLITE_ENABLE_UNLOCK_NOTIFY -DSQLITE_SECURE_DELETE -DSQLITE_MAX_VARIABLE_NUMBER=250000 -DSQLITE_MAX_EXPR_DEPTH=10000",
 ]
 
+[on.cross.make]
+configureFlags = [ "--host={platform:gnuTriple}" ]
+
+[on.linux.make]
+flags = [ "LDFLAGS.libsqlite3.soname=-Wl,-soname,libsqlite3.so.0" ]
+
 [bindings]
 python = [ "pysqlite3" ]
 hackage = [

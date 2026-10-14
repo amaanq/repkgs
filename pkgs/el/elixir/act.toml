@@ -3,6 +3,7 @@ track   = "github:elixir-lang/elixir"
 fetch   = { archive = true }
 with    = [ "make" ]
 deps    = [ "erlang", "coreutils", "sed", "curl", "bash" ]
+tools   = [ "erlang" ]
 exports = false
 patches = [ "async-stream-timeout-margin.patch", "format-exit-call-race.patch" ]
 

@@ -5,6 +5,10 @@ with           = [ "autotools" ]
 deps           = [ "m4" ]
 test           = false
 bootstrapTools = true
+tools          = [ "m4" ]
 
 [only]
 posix = true
+
+[autotools]
+flags = [ "ac_cv_path_M4={pkg:m4}/bin/m4", "--disable-bootstrap" ]

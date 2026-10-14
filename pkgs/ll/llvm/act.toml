@@ -34,5 +34,11 @@ LLVM_INSTALL_UTILS      = false
 LLVM_LINK_LLVM_DYLIB    = true
 LLVM_TARGETS_TO_BUILD   = "X86;AArch64;RISCV;LoongArch;PowerPC;ARM;WebAssembly;BPF"
 
+[on.cross.steps.after]
+"cmake.install" = [ "llvm.host-config" ]
+
+[on.cross.cmake.defs]
+CROSS_TOOLCHAIN_FLAGS_NATIVE = "-DCMAKE_C_COMPILER=cc-build;-DCMAKE_CXX_COMPILER=c++-build;-DCMAKE_EXE_LINKER_FLAGS=-static;-DLLVM_BUILD_LLVM_DYLIB=ON;-DLLVM_LINK_LLVM_DYLIB=ON;-DLLVM_HOST_TRIPLE={platform:clangTarget}"
+
 [bindings]
 cargo = [ "llvm-sys" ]

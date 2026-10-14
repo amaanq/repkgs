@@ -7,6 +7,14 @@ with  = [ "make" ]
 abi = [ "gnu", "apple" ]
 
 [make]
-buildTarget    = [ "lib-shared" ]
-configureFlags = [ "--enable-lib-shared", "--disable-gettext", "--disable-shani" ]
-installTarget  = [ "-C", "librhash", "install-lib-shared", "install-lib-headers" ]
+buildTarget = [ "lib-shared" ]
+configureFlags = [
+  "--enable-lib-shared",
+  "--disable-gettext",
+  "--disable-shani",
+  "--target={platform:gnuTriple}",
+]
+installTarget = [ "-C", "librhash", "install-lib-shared", "install-lib-headers" ]
+
+[on."!windows".make]
+installTarget = [ "install-so-link" ]

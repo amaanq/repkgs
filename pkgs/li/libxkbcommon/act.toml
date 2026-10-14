@@ -16,3 +16,4 @@ bin  = [ "xkbcli" ]
 [meson.defs]
 enable-docs           = false
 xkb-config-extra-path = "/etc/xkb"
+x-locale-root         = "{pkg:libx11}/share/X11/locale"

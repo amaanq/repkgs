@@ -7,4 +7,5 @@ deps  = [ "zlib" ]
 os = [ "linux" ]
 
 [meson.defs]
-zlib = "enabled"
+zlib    = "enabled"
+pci-ids = "{pkg:hwdata}/share/hwdata"

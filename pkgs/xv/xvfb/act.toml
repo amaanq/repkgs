@@ -1,13 +1,22 @@
 track = 'generic:xorg-server?url=https://xorg.freedesktop.org/archive/individual/xserver/&regex=xorg-server-([0-9.]+)\.tar\.xz'
 fetch = { url = "https://xorg.freedesktop.org/archive/individual/xserver/xorg-server-{version}.tar.xz" }
-with  = [ "meson" ]
-deps  = [ "libxau", "libxdmcp", "libxfont2", "libxkbfile", "openssl", "pixman", "xorgproto", "xtrans" ]
+with = [ "meson" ]
+deps = [
+  "libxau",
+  "libxdmcp",
+  "libxfont2",
+  "libxkbfile",
+  "openssl",
+  "pixman",
+  "xorgproto",
+  "xtrans",
+]
 
 [only]
 os = [ "linux" ]
 
 [test]
-bin     = [ "Xvfb" ]
+bin = [ "Xvfb" ]
 # only the Xorg server has a version flag
 version = false
 
@@ -30,3 +39,5 @@ xnest             = "false"
 xorg              = "false"
 xquartz           = "false"
 xwin              = "false"
+xkb_bin_dir       = "{pkg:xkbcomp}/bin"
+xkb_dir           = "{pkg:xkeyboard-config}/share/X11/xkb"

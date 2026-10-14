@@ -15,3 +15,7 @@ tools = [ "wild" ]
 
 [on.linux.cc]
 linker = "wild"
+
+[cargo.cratePatches]
+evix             = [ "{file:evix/read-only-schema.patch}" ]
+nix-bindings-sys = [ "{file:../../ev/evix/nix-bindings-sys-fromattrs.patch}" ]

@@ -10,3 +10,12 @@ patches = [
 
 [autotools]
 flags = [ "--disable-agrep", "--enable-static" ]
+
+[on.native.steps.before]
+"autotools.test" = [ "tre.latin1" ]
+
+[on.windows.steps.after]
+"autotools.install" = [ "tre.posix-regex" ]
+
+[on.windows.env]
+SYSTRE = "{file:systre.c}"

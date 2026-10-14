@@ -1,6 +1,7 @@
 track    = 'generic:go?url=https://go.dev/dl/&regex=go(\d[0-9.]*)\.src\.tar\.gz'
 exports  = false
 prebuilt = "ldso"
+source   = "{platform:os}-{platform:cpu}"
 
 [fetch.linux-x86_64]
 url = "https://go.dev/dl/go{version}.linux-amd64.tar.gz"

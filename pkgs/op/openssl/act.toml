@@ -17,10 +17,17 @@ cflags = [ "-DOSSL_RELOCATABLE" ]
 
 [make]
 configureScript = "Configure"
+configureFlags  = [ "{platform:opensslTarget}", "--libdir=lib", "--openssldir=/etc/ssl", "shared" ]
 buildTarget     = [ "build_sw", "build_man_docs" ]
 installFlags    = [ "OPENSSLDIR=$(prefix)/etc/ssl" ]
 installTarget   = [ "install_sw", "install_ssldirs", "install_man_docs" ]
 testTarget      = [ "test", "VERBOSE=", "VF=1", "HARNESS_JOBS=$(NIX_BUILD_CORES)" ]
+
+[on.linux.make]
+configureFlags = [ "enable-ktls", "no-afalgeng" ]
+
+[on.msvc]
+tools = [ "nasm" ]
 
 [bindings]
 hackage = [

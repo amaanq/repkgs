@@ -2,3 +2,6 @@ track = "generic:libassuan?url=https://gnupg.org/ftp/gcrypt/libassuan/"
 fetch = { url = "https://gnupg.org/ftp/gcrypt/libassuan/libassuan-{version}.tar.bz2" }
 with  = [ "autotools" ]
 deps  = [ "libgpg-error" ]
+
+[autotools]
+flags = [ "--with-libgpg-error-prefix={pkg:libgpg-error}" ]

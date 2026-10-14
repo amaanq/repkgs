@@ -18,6 +18,7 @@ bin  = [ "kmod", "depmod", "modinfo" ]
 # the test modules build against linux-kernel's tree, which was built with clang
 [env]
 LLVM = "1"
+KDIR = "{pkg:linux-kernel.dev}/lib/modules/{pkg:linux-kernel.version}/build"
 
 [meson.defs]
 build-tests = true

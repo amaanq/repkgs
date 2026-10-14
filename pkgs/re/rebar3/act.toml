@@ -1,6 +1,7 @@
 track = "github:erlang/rebar3"
 fetch = { archive = true }
 deps  = [ "erlang" ]
+tools = [ "erlang" ]
 
 [steps]
 phases = [ "rebar3.build" ]

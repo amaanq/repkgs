@@ -1,7 +1,7 @@
 fetch = { from = "llvm" }
 with  = [ "cmake" ]
 deps  = [ "llvm", "zlib", "zstd" ]
-tools = [ "cpython" ]
+tools = [ "cpython", "llvm" ]
 
 [test]
 bin = [ "ld.lld", "lld" ]
@@ -16,6 +16,9 @@ skip = [ "cmake.test" ]
 root = "lld"
 
 [cmake.defs]
-BUILD_SHARED_LIBS    = false
-LLVM_INCLUDE_TESTS   = false
-LLVM_LINK_LLVM_DYLIB = true
+BUILD_SHARED_LIBS     = false
+LLVM_INCLUDE_TESTS    = false
+LLVM_LINK_LLVM_DYLIB  = true
+LLVM_DIR              = "{pkg:llvm}/lib/cmake/llvm"
+LLVM_TABLEGEN_EXE     = "{tool:llvm}/bin/llvm-tblgen"
+LLVM_TOOLS_BINARY_DIR = "{tool:llvm}/bin"
