@@ -1,0 +1,22 @@
+gnulib 5b8f646ff514 (savannah bug 67987), applied to both gnulib copies.
+
+--- a/gettext-runtime/gnulib-lib/progreloc.c
++++ b/gettext-runtime/gnulib-lib/progreloc.c
+@@ -259,7 +259,6 @@
+     char *link = xreadlink (buf);
+     if (link != NULL && link[0] != '[')
+       return link;
+-    }
+     if (executable_fd < 0)
+       executable_fd = open (buf, O_EXEC | O_CLOEXEC, 0);
+   }
+--- a/gettext-tools/gnulib-lib/progreloc.c
++++ b/gettext-tools/gnulib-lib/progreloc.c
+@@ -259,7 +259,6 @@
+     char *link = xreadlink (buf);
+     if (link != NULL && link[0] != '[')
+       return link;
+-    }
+     if (executable_fd < 0)
+       executable_fd = open (buf, O_EXEC | O_CLOEXEC, 0);
+   }

@@ -1,0 +1,15 @@
+track   = "gnu:gettext"
+fetch   = { url = "https://ftp.gnu.org/gnu/gettext/gettext-{version}.tar.xz" }
+with    = [ "autotools" ]
+patches = [ "progreloc-brace.patch" ]
+
+[test]
+bin = [ "gettext", "msgfmt", "xgettext" ]
+
+[steps.replace]
+"autotools.install" = "gettext.install"
+
+# relocate() maps paths under the configured prefix to the running file's own prefix, so a
+# prefix other than the build's leaves no build path in the binaries
+[autotools]
+flags = [ "--enable-nls", "--enable-relocatable", "--prefix=/gettext" ]
