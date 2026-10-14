@@ -1,0 +1,197 @@
+The library looks for its configuration in /etc/fonts like any distribution's, while
+fonts.conf and the conf.d links install under the prefix for FONTCONFIG_FILE. The
+conf.avail templates and the message catalogs resolve from the directory of the
+library or tool asking, and fontconfig never bound its text domains before.
+
+--- a/conf.d/meson.build
++++ b/conf.d/meson.build
+@@ -95,7 +95,7 @@
+              install_tag: 'runtime')
+ 
+ meson.add_install_script('link_confs.py', fc_templatedir,
+-                         fc_configdir,
++                         fc_installconfdir / 'conf.d',
+                          conf_links,
+                          install_tag: 'runtime')
+ 
+@@ -117,10 +117,10 @@
+ 
+ # README
+ readme_cdata = configuration_data()
+-readme_cdata.set('TEMPLATEDIR', fc_templatedir)
++readme_cdata.set('TEMPLATEDIR', fs.relative_to(fc_templatedir, prefix))
+ configure_file(output: 'README',
+   input: 'README.in',
+   configuration: readme_cdata,
+-  install_dir: fc_configdir,
++  install_dir: fc_installconfdir / 'conf.d',
+   install: true,
+   install_tag: 'runtime')
+--- a/fc-cache/fc-cache.c
++++ b/fc-cache/fc-cache.c
+@@ -309,6 +309,9 @@
+     int c;
+ 
+     setlocale (LC_ALL, "");
++#ifdef ENABLE_NLS
++    bindtextdomain (GETTEXT_PACKAGE, FC_LOCALEDIR_FROM_BIN);
++#endif
+ #  if HAVE_GETOPT_LONG
+     while ((c = getopt_long (argc, argv, "Efrsy:Vvh", longopts, NULL)) != -1)
+ #  else
+--- a/fc-cat/fc-cat.c
++++ b/fc-cat/fc-cat.c
+@@ -269,6 +269,9 @@
+     int c;
+ 
+     setlocale (LC_ALL, "");
++#ifdef ENABLE_NLS
++    bindtextdomain (GETTEXT_PACKAGE, FC_LOCALEDIR_FROM_BIN);
++#endif
+ #  if HAVE_GETOPT_LONG
+     while ((c = getopt_long (argc, argv, "Vvrh", longopts, NULL)) != -1)
+ #  else
+--- a/fc-conflist/fc-conflist.c
++++ b/fc-conflist/fc-conflist.c
+@@ -107,6 +107,9 @@
+     int c;
+ 
+     setlocale (LC_ALL, "");
++#ifdef ENABLE_NLS
++    bindtextdomain (GETTEXT_PACKAGE, FC_LOCALEDIR_FROM_BIN);
++#endif
+ #  if HAVE_GETOPT_LONG
+     while ((c = getopt_long (argc, argv, "Vh", longopts, NULL)) != -1)
+ #  else
+--- a/fc-list/fc-list.c
++++ b/fc-list/fc-list.c
+@@ -124,6 +124,9 @@
+     int c;
+ 
+     setlocale (LC_ALL, "");
++#ifdef ENABLE_NLS
++    bindtextdomain (GETTEXT_PACKAGE, FC_LOCALEDIR_FROM_BIN);
++#endif
+ #  if HAVE_GETOPT_LONG
+     while ((c = getopt_long (argc, argv, "vbf:qVh", longopts, NULL)) != -1)
+ #  else
+--- a/fc-match/fc-match.c
++++ b/fc-match/fc-match.c
+@@ -128,6 +128,9 @@
+     int c;
+ 
+     setlocale (LC_ALL, "");
++#ifdef ENABLE_NLS
++    bindtextdomain (GETTEXT_PACKAGE, FC_LOCALEDIR_FROM_BIN);
++#endif
+ #  if HAVE_GETOPT_LONG
+     while ((c = getopt_long (argc, argv, "asvbf:Vh", longopts, NULL)) != -1)
+ #  else
+--- a/fc-pattern/fc-pattern.c
++++ b/fc-pattern/fc-pattern.c
+@@ -117,6 +117,9 @@
+     int c;
+ 
+     setlocale (LC_ALL, "");
++#ifdef ENABLE_NLS
++    bindtextdomain (GETTEXT_PACKAGE, FC_LOCALEDIR_FROM_BIN);
++#endif
+ #  if HAVE_GETOPT_LONG
+     while ((c = getopt_long (argc, argv, "cdf:Vh", longopts, NULL)) != -1)
+ #  else
+--- a/fc-query/fc-query.c
++++ b/fc-query/fc-query.c
+@@ -125,6 +125,9 @@
+     int c;
+ 
+     setlocale (LC_ALL, "");
++#ifdef ENABLE_NLS
++    bindtextdomain (GETTEXT_PACKAGE, FC_LOCALEDIR_FROM_BIN);
++#endif
+ #  if HAVE_GETOPT_LONG
+     while ((c = getopt_long (argc, argv, "i:bf:Vh", longopts, NULL)) != -1)
+ #  else
+--- a/fc-scan/fc-scan.c
++++ b/fc-scan/fc-scan.c
+@@ -119,6 +119,9 @@
+     int c;
+ 
+     setlocale (LC_ALL, "");
++#ifdef ENABLE_NLS
++    bindtextdomain (GETTEXT_PACKAGE, FC_LOCALEDIR_FROM_BIN);
++#endif
+ #  if HAVE_GETOPT_LONG
+     while ((c = getopt_long (argc, argv, "bf:y:Vh", longopts, NULL)) != -1)
+ #  else
+--- a/fc-validate/fc-validate.c
++++ b/fc-validate/fc-validate.c
+@@ -123,6 +123,9 @@
+     int c;
+ 
+     setlocale (LC_ALL, "");
++#ifdef ENABLE_NLS
++    bindtextdomain (GETTEXT_PACKAGE, FC_LOCALEDIR_FROM_BIN);
++#endif
+ 
+ #  if HAVE_GETOPT_LONG
+     while ((c = getopt_long (argc, argv, "i:l:mVhv", longopts, NULL)) != -1)
+--- a/meson.build
++++ b/meson.build
+@@ -418,8 +418,10 @@
+ 
+ conf.set_quoted('CONFIGDIR', fc_configdir)
+ conf.set_quoted('FC_CACHEDIR', fc_cachedir)
+-conf.set_quoted('FC_TEMPLATEDIR', fc_templatedir)
++fs = import('fs')
++conf.set('FC_TEMPLATEDIR', 'RELOC("@0@")'.format(fs.relative_to(fc_templatedir, prefix / get_option('libdir'))))
+ conf.set_quoted('FONTCONFIG_PATH', fc_baseconfigdir)
++fc_installconfdir = prefix / get_option('sysconfdir') / 'fonts'
+ 
+ fonts_conf.set('FC_CACHEDIR', fc_cachedir)
+ fonts_conf.set('CONFIGDIR', fc_configdir)
+@@ -465,6 +467,9 @@
+ conf.set('_GNU_SOURCE', true)
+ 
+ conf.set_quoted('GETTEXT_PACKAGE', meson.project_name())
++fc_localedir = prefix / get_option('localedir')
++conf.set_quoted('FC_LOCALEDIR_FROM_BIN', fs.relative_to(fc_localedir, prefix / get_option('bindir')))
++conf.set_quoted('FC_LOCALEDIR_FROM_LIB', fs.relative_to(fc_localedir, prefix / get_option('libdir')))
+ 
+ incsrc = include_directories('src')
+ 
+@@ -586,7 +591,7 @@
+ configure_file(output: 'fonts.conf',
+                input: 'fonts.conf.in',
+                configuration: fonts_conf,
+-               install_dir: fc_baseconfigdir,
++               install_dir: fc_installconfdir,
+                install: true,
+                install_tag: 'runtime')
+ 
+--- a/src/fccfg.c
++++ b/src/fccfg.c
+@@ -3174,8 +3174,13 @@
+     r = FcPtrListIterGetValue (c->rulesetList, i);
+     if (name)
+ 	*name = FcStrdup (r->name && r->name[0] ? r->name : (const FcChar8 *)"fonts.conf");
+-    if (description)
++    if (description) {
++#ifdef ENABLE_NLS
++	bindtextdomain (GETTEXT_PACKAGE, FC_LOCALEDIR_FROM_LIB);
++	bindtextdomain (GETTEXT_PACKAGE "-conf", FC_LOCALEDIR_FROM_LIB);
++#endif
+ 	*description = FcStrdup (!r->description ? _ ("No description") : dgettext (r->domain ? (const char *)r->domain : GETTEXT_PACKAGE "-conf", (const char *)r->description));
++    }
+     if (enabled)
+ 	*enabled = r->enabled;
+ 
+--- a/src/fcinit.c
++++ b/src/fcinit.c
+@@ -23,6 +23,7 @@
+  */
+ 
+ #include "fcint.h"
++#include "reloc.h"
+ 
+ #include <stdlib.h>
+ 

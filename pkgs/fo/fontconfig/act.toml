@@ -1,0 +1,28 @@
+fetch   = { url = "https://gitlab.freedesktop.org/api/v4/projects/890/packages/generic/fontconfig/{version}/fontconfig-{version}.tar.xz" }
+with    = [ "meson" ]
+deps    = [ "expat", "freetype" ]
+tools   = [ "bash", "gperf", "cpython314", "gettext" ]
+patches = [ "relocatable.patch", "offline-thread-test.patch" ]
+
+[track]
+from = "gitlab:fontconfig/fontconfig?repository_url=https://gitlab.freedesktop.org"
+
+[track.watch] # tags before 2.3 are dates and font versions
+url   = "https://www.freedesktop.org/software/fontconfig/release/"
+regex = 'fontconfig-([0-9.]+)\.tar\.xz'
+
+[steps.before]
+"meson.test" = [ "fontconfig.test-shebangs" ]
+
+[test]
+bin = [ "fc-list" ]
+
+[meson.defs]
+baseconfig-dir = "/etc/fonts"
+cache-build    = "disabled"
+cache-dir      = "/var/cache/fontconfig"
+doc            = "disabled"
+nls            = "enabled"
+tests          = "enabled"
+tools          = "enabled"
+xml-backend    = "expat"
