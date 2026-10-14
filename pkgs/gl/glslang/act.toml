@@ -1,0 +1,11 @@
+track = "github:KhronosGroup/glslang"
+fetch = { archive = true }
+with  = [ "cmake" ]
+tools = [ "cpython314" ]
+
+[test]
+bin = [ "glslang" ]
+
+[cmake.defs]
+ENABLE_OPT    = false
+GLSLANG_TESTS = false
