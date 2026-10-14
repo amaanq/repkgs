@@ -19,14 +19,18 @@ export def login-shell []: nothing -> nothing {
    let bin     = (which --all ls | where type == external | first | get path | path dirname)
    edit $"($regress)/test-exec.sh" { str replace 'cat << EOF > $OBJ/sshd_config' "cat << EOF > $OBJ/sshd_config\n\tPermitUserEnvironment yes" }
    edit $"($regress)/sftp-cmds.sh" { str replace -a '/bin' $bin }
-   edit $"($regress)/forwarding.sh" { str replace -a '/bin' $bin }
+   edit $"($regress)/forwarding.sh" { str replace -a '/bin' $bin | str replace 'base=33' 'base=$((PORT / 100))' }
+   edit $"($regress)/cfgmatch.sh" { str replace 'fwdport=3301' 'fwdport=$((PORT / 100))01' }
+   edit $"($regress)/cfgmatchlisten.sh" { str replace 'fwdport=3301' 'fwdport=$((PORT / 100))01' }
+   edit $"($regress)/multiplex.sh" { str replace 'P=3301' 'P=$((PORT / 100))01' }
+   edit $"($regress)/forward-control.sh" { str replace 'LFWD_PORT=3320' 'LFWD_PORT=$((PORT / 100))20' | str replace 'RFWD_PORT=3321' 'RFWD_PORT=$((PORT / 100))21' }
 }
 
-# every t-exec script with its own $OBJ and port, the ones on fixed forwarding ports in one group
+# each t-exec script gets its own $OBJ and 100 ports. The forwarding scripts use xx00 to xx72 of
+# them and connection-timeout uses $PORT to $PORT+4
 export def test []: nothing -> nothing {
    let c       = (ctx)
    let regress = $"($c.build)/regress"
-   let fixed   = [ cfgmatch cfgmatchlisten forward-control forwarding multiplex ]
    cd $c.build
    x make $"-j($c.njobs)" regress-binaries regress-unit-binaries
 
@@ -34,9 +38,7 @@ export def test []: nothing -> nothing {
    let scripts = ("print:\n\t@echo $(LTESTS)\n" | ^make -s --no-print-directory -C $"($c.src)/regress" -f Makefile -f - print | str trim | split row -r '\s+')
    let groups  = (
       $scripts
-      | where $it not-in $fixed
       | each {|script| {name: $script, targets: [t-exec], tests: [$script]} }
-      | append {name: fixed-ports, targets: [t-exec], tests: $fixed}
       | append {name: rest, targets: [file-tests interop-tests extra-tests unit], tests: []}
       | enumerate
    )
@@ -44,7 +46,7 @@ export def test []: nothing -> nothing {
    let failed = ($groups | par-each --threads $c.njobs {|group|
       let g    = $group.item
       let obj  = if $g.tests == [] { $regress } else { $"($regress)-($group.index)" }
-      let port = 4300 + $group.index * 4
+      let port = 5090 + $group.index * 100
       if $obj != $regress {
          mkdir $obj
          for helper in $helpers { ^ln -s $helper $obj }
