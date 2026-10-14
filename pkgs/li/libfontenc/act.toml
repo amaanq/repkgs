@@ -1,0 +1,5 @@
+track   = 'generic:libfontenc?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=libfontenc-([0-9.]+)\.tar\.xz'
+fetch   = { url = "https://xorg.freedesktop.org/archive/individual/lib/libfontenc-{version}.tar.xz" }
+with    = [ "autotools" ]
+patches = [ "relocatable.patch" ]
+deps    = [ "xorgproto", "zlib" ]

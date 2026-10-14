@@ -1,0 +1,21 @@
+The encodings directory defaults under the install prefix, resolve it from the library's location.
+
+--- a/src/encparse.c
++++ b/src/encparse.c
+@@ -46,6 +46,7 @@
+ 
+ 
+ #include "zlib.h"
++#include "reloc.h"
+ typedef gzFile FontFilePtr;
+ 
+ #define FontFileGetc(f) gzgetc(f)
+@@ -854,7 +855,7 @@
+                 return NULL;
+         }
+         else {
+-            dir = FONT_ENCODINGS_DIRECTORY;
++            dir = RELOC("../share/fonts/X11/encodings/encodings.dir");
+         }
+     }
+     return dir;
