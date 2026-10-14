@@ -1,0 +1,28 @@
+Keys sent before readline() leaves canonical mode get echoed by the tty and redrawn, so the
+line takes four rows and the cursor check fails. Wait for the pane tty to go raw first.
+
+--- a/test/wrap-tmux.sh
++++ b/test/wrap-tmux.sh
+@@ -21,9 +21,19 @@
+ # /tmp, headless restrictions, ...) is a skip, not a failure.
+ $tm new-session -d -s "$sess" -x 10 -y 8 "$eltty" 2>/dev/null || exit 77
+ 
+-# 20 characters == exactly two rows of 10.  send-keys queues into the pty even
+-# before readline() is ready, so just poll until the line has rendered (only
+-# integer sleeps -- fractional sleep is not portable).  Give up -> skip.
++# Keys sent before readline() leaves canonical mode are echoed by the tty and
++# then redrawn, so wait for the pane tty to go raw first.
++tty=$($tm display-message -t "$sess" -p "#{pane_tty}" 2>/dev/null) || exit 77
++i=0
++while [ "$i" -lt 10 ]; do
++	stty -a -F "$tty" 2>/dev/null | grep -q -- -icanon && break
++	i=$((i + 1))
++	sleep 1
++done
++[ "$i" -lt 10 ] || exit 77
++
++# 20 characters == exactly two rows of 10.  Poll until the line has rendered
++# (only integer sleeps -- fractional sleep is not portable).  Give up -> skip.
+ $tm send-keys -t "$sess" "01234567890123456789" 2>/dev/null || exit 77
+ i=0
+ while [ "$i" -lt 10 ]; do

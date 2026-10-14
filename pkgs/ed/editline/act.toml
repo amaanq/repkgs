@@ -1,6 +1,10 @@
-track = "github:troglobit/editline"
-fetch = { url = "https://github.com/troglobit/editline/releases/download/{version}/editline-{version}.tar.gz" }
-with  = [ "autotools" ]
+track   = "github:troglobit/editline"
+fetch   = { url = "https://github.com/troglobit/editline/releases/download/{version}/editline-{version}.tar.gz" }
+with    = [ "autotools" ]
+patches = [ "wrap-tmux-raw.patch" ]
 
 [only]
 posix = true
+
+[test]
+deps = [ "tmux" ]
