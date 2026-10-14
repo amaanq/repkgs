@@ -31,6 +31,7 @@ let
     concatMap
     concatStringsSep
     elem
+    elemAt
     filter
     foldl'
     isAttrs
@@ -160,9 +161,12 @@ let
     (table.patches or [ ])
     ++ concatMap (when: table.on.${when}.patches or [ ]) (attrNames (table.on or { }))
   );
-  # act.nix can hand a patch to something else, perl's PERL_CROSS_PATCH or a cratePatches entry
-  nixText = if pathExists (dir + "/act.nix") then readFile (dir + "/act.nix") else "";
-  mentioned = file: length (split (replaceStrings [ "." "+" ] [ "[.]" "[+]" ] file) nixText) > 1;
+  # act.nix or a `{file:}` can hand a patch to something else, perl's PERL_CROSS_PATCH or a
+  # cratePatches entry
+  handoffs =
+    readFile (dir + "/act.toml")
+    + (if pathExists (dir + "/act.nix") then readFile (dir + "/act.nix") else "");
+  mentioned = file: length (split (replaceStrings [ "." "+" ] [ "[.]" "[+]" ] file) handoffs) > 1;
   unlisted = filter (
     file: match ".*[.](patch|diff)" file != null && !elem file named && !mentioned file
   ) (attrNames (readDir dir));
@@ -219,12 +223,27 @@ let
       }
     else
       [ ];
+  located =
+    text:
+    let
+      at = set: path: foldl' (found: key: found.${key}) set (filter isString (split "[.]" path));
+      resolve = {
+        pkg = path: "${at pkgs path}";
+        tool = path: "${at buildPkgs path}";
+        platform = path: toString (at platform path);
+        source = key: "${sources.fetch key}";
+        file = name: "${dir + "/${name}"}";
+      };
+    in
+    concatStringsSep "" (
+      map (part: if isString part then part else resolve.${elemAt part 0} (elemAt part 1)) (
+        split "[{](pkg|tool|platform|source|file):([^}]*)[}]" text
+      )
+    );
   expand =
     value:
-    if sources == null then
-      value
-    else if isString value then
-      sources.expand value
+    if isString value then
+      if sources == null then located value else sources.expand (located value)
     else if isList value then
       map expand value
     else if isAttrs value then

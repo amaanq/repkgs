@@ -85,7 +85,15 @@ reason) to keep its hash when the version moves.
 Every other key is a field of the package record as bigtop reads it (`install`, `exports`, `env`,
 `links`, `prebuilt`, `bootstrapTools`, …). Wherever a package is expected a string names one, from
 the build set for `tools` and a system's `tool`, from the target set everywhere else. Strings take
-the same placeholders as a source url, as in `ldflags = [ "-X main.version={version}" ]`.
+the same placeholders as a source url, as in `ldflags = [ "-X main.version={version}" ]`, and these:
+
+| placeholder         | becomes                                                  |
+| ------------------- | -------------------------------------------------------- |
+| `{pkg:<path>}`      | a target set package, `{pkg:linux-kernel.dev}` an output |
+| `{tool:<path>}`     | a build set package                                      |
+| `{platform:<path>}` | a platform field, as in `{platform:gnuTriple}`           |
+| `{source:<name>}`   | one of the act's sources, unpacked                       |
+| `{file:<name>}`     | a file beside the act                                    |
 
 `patches` names every patch that applies, in order, and a `*.patch` beside the act that neither it
 nor act.nix names fails evaluation. An entry is a file beside the act, or a pull request or commit url on GitHub, GitLab, Forgejo or Gitea
