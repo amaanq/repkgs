@@ -3,9 +3,6 @@ track = "github:madler/zlib"
 fetch = { asset = "zlib-{version}.tar.gz" }
 with  = [ "cmake" ]
 
-[test]
-parallel = false
-
 [cmake]
 tool      = "cmake-bootstrap"
 skipTests = [ "coverage" ]

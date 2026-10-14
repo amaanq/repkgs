@@ -3,8 +3,5 @@ fetch = { url = "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/downloa
 with  = [ "cmake" ]
 tools = [ "nasm" ]
 
-[test]
-parallel = false
-
 [cmake.defs]
 WITH_JPEG8 = true

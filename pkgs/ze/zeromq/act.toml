@@ -9,9 +9,6 @@ patches = [
   "algorithm-include.patch",
 ]
 
-[test]
-parallel = false
-
 [cmake]
 skipTests = [ "test_mock_pub_sub" ]
 
