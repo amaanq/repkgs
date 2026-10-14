@@ -69,7 +69,7 @@ use crate::{
       Attrs,
       Ctx,
       Kind,
-      Step,
+      Role,
       TestVar,
       build_top,
    },
@@ -213,13 +213,13 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
    let mut writable = false;
    let mut undo = None;
    for (index, step) in attrs.plan.phases.iter().enumerate() {
+      let testing = step.role != Role::Build;
       let wanted = if tests {
-         step.test
+         testing
       } else {
-         !step.test || (spec.tests.run.unwrap_or(true) && !attrs.plan.separate && ctx.tests_run)
+         !testing || (spec.tests.run.unwrap_or(true) && !attrs.plan.separate && ctx.tests_run)
       };
       if wanted {
-         let testing = in_tests(&attrs.plan.phases, index);
          let editing = spec.tests.etc == Some(true) && testing;
          if editing != writable {
             etc_access(editing)?;
@@ -329,14 +329,6 @@ fn private_etc() -> io::Result<Infallible> {
    )
 }
 
-/// Whether the step is a test or a nu step just before one.
-fn in_tests(phases: &[Step], index: usize) -> bool {
-   phases[index..]
-      .iter()
-      .find(|step| step.test || !matches!(step.kind, Kind::Nu { .. }))
-      .is_some_and(|step| step.test)
-}
-
 /// Puts `env` over this process's environment and returns what undoes it.
 fn overlay(env: &BTreeMap<String, TestVar>) -> io::Result<Env> {
    let mut previous = Env::default();
@@ -414,7 +406,7 @@ pub fn phase(attrs: &Attrs, ctx: &mut Ctx, index: usize, socket: &Path) -> io::R
          None => ctx.src.clone(),
       };
 
-      if step.test
+      if step.role == Role::Test
          && ctx.cache
          && let Ok(client) = Client::connect(socket)
       {

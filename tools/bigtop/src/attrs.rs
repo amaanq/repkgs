@@ -96,9 +96,17 @@ pub struct Plan {
 #[derive(Deserialize)]
 pub struct Step {
    pub name: String,
-   pub test: bool,
+   pub role: Role,
    #[serde(flatten)]
    pub kind: Kind,
+}
+
+#[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+   Build,
+   Setup,
+   Test,
 }
 
 #[derive(Deserialize, Serialize)]

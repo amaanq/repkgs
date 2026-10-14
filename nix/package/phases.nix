@@ -62,6 +62,26 @@ let
           ++ asList (edit.replace.${phase} or phase)
           ++ asList (edit.after.${phase} or [ ])
       ) known;
+  # steps.before a test phase only run with the tests
+  setups =
+    if isAttrs (written.phases or [ ]) then
+      concatMap (
+        phase:
+        let
+          parts = match pattern phase;
+        in
+        if parts != null && elemAt parts 1 == "test" then asList written.phases.before.${phase} else [ ]
+      ) (attrNames (written.phases.before or { }))
+    else
+      [ ];
+  role =
+    phase: verb:
+    if verb == "test" then
+      "test"
+    else if elem phase setups then
+      "setup"
+    else
+      "build";
   list =
     if (written.phases or [ ]) == [ ] then
       if length uses == 1 then
@@ -87,7 +107,7 @@ let
       {
         kind = "nu";
         inherit (phase) name;
-        test = phase.name == "test";
+        role = role phase phase.name;
         body = "do --env {\nlet c = (act)\n${phase.run}\n}";
       }
     else if parts == null then
@@ -98,13 +118,13 @@ let
         name = phase;
         system = elemAt parts 0;
         verb = elemAt parts 1;
-        test = elemAt parts 1 == "test";
+        role = role phase (elemAt parts 1);
       }
     else
       {
         kind = "nu";
         name = phase;
-        test = elemAt parts 1 == "test";
+        role = role phase (elemAt parts 1);
         body = "${elemAt parts 0} ${elemAt parts 1}";
       };
   distinct =

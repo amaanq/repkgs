@@ -124,9 +124,8 @@ let
   };
   supported = unsupportedReason == null;
 
-  # tests.separate: the build derivation skips *.test and keeps its tree in output `tree`;
-  # `<pkg>.tests` restores it and runs only the test phases: a test failure fails that derivation,
-  # not the package, and a retry does not rebuild
+  # tests.separate: the build skips the test phases and keeps its tree in output `tree`, and
+  # `<pkg>.tests` runs them on that tree, so a failing test never fails the package
   separate = valid.tests.separate or false;
   testsRun = valid.tests.run or true;
   # tools only the suite runs. With tests.separate they stay off the build derivation, which is
