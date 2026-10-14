@@ -1,0 +1,42 @@
+Search the drivers the loader was built with, named by BUNDLED_DRIVERS and found relative to
+libvulkan itself, after the XDG dirs.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -319,6 +319,10 @@
+ 
+ if(UNIX)
+     target_compile_definitions(loader_common_options INTERFACE FALLBACK_CONFIG_DIRS="${FALLBACK_CONFIG_DIRS}" FALLBACK_DATA_DIRS="${FALLBACK_DATA_DIRS}")
++    if(BUNDLED_DRIVERS)
++        get_filename_component(BUNDLED_DRIVERS_NAME "${BUNDLED_DRIVERS}" NAME)
++        target_compile_definitions(loader_common_options INTERFACE BUNDLED_DATA_DIR="../../${BUNDLED_DRIVERS_NAME}/share")
++    endif()
+ 
+     if(NOT (SYSCONFDIR STREQUAL ""))
+         # SYSCONFDIR is specified, use it and do not force /etc.
+--- a/loader/loader.c
++++ b/loader/loader.c
+@@ -30,6 +30,10 @@
+ 
+ #include "loader.h"
+ 
++#if defined(BUNDLED_DATA_DIR)
++#include "reloc.h"
++#endif
++
+ #include <errno.h>
+ #include <inttypes.h>
+ #include <limits.h>
+@@ -3800,6 +3804,12 @@
+                 if (VK_SUCCESS != vk_result) {
+                     goto out;
+                 }
++#if defined(BUNDLED_DATA_DIR)
++                vk_result = copy_data_file_info(inst, RELOC(BUNDLED_DATA_DIR), relative_location, rel_size, &search_paths);
++                if (VK_SUCCESS != vk_result) {
++                    goto out;
++                }
++#endif
+             }
+         }
+ #else

@@ -1,0 +1,16 @@
+tag     = "v{version}"
+track   = "github:KhronosGroup/Vulkan-Loader"
+fetch   = { archive = true }
+patches = [ "bundled-drivers.patch" ]
+with    = [ "cmake" ]
+deps    = [ "vulkan-headers", "libx11", "libxcb", "libxrandr", "mesa", "wayland" ]
+tools   = [ "cpython314", "wayland" ]
+
+[only]
+os = [ "linux" ]
+
+[cmake.defs]
+BUILD_TESTS        = false
+BUNDLED_DRIVERS    = "{pkg:mesa}"
+FALLBACK_DATA_DIRS = ""
+SYSCONFDIR         = "/etc"
