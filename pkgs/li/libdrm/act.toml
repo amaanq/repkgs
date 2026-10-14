@@ -1,0 +1,14 @@
+track   = 'generic:libdrm?url=https://dri.freedesktop.org/libdrm/&regex=libdrm-([0-9.]+)\.tar\.xz'
+fetch   = { url = "https://dri.freedesktop.org/libdrm/libdrm-{version}.tar.xz" }
+with    = [ "meson" ]
+tools   = [ "cpython314" ]
+patches = [ "relocatable.patch", "llvm-nm-weak.patch" ]
+
+[only]
+os = [ "linux" ]
+
+[meson.defs]
+install-test-programs = true
+radeon                = "enabled"
+amdgpu                = "enabled"
+nouveau               = "enabled"

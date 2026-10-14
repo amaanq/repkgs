@@ -1,0 +1,24 @@
+Resolve amdgpu.ids next to the installed library instead of the
+install prefix.
+
+--- a/amdgpu/amdgpu_asic_id.c
++++ b/amdgpu/amdgpu_asic_id.c
+@@ -38,6 +38,7 @@
+ #include "xf86drm.h"
+ #include "amdgpu_drm.h"
+ #include "amdgpu_internal.h"
++#include "reloc.h"
+ 
+ static int parse_one_line(struct amdgpu_device *dev, const char *line)
+ {
+--- a/amdgpu/meson.build
++++ b/amdgpu/meson.build
+@@ -33,7 +33,7 @@
+   ],
+   c_args : [
+     libdrm_c_args,
+-    '-DAMDGPU_ASIC_ID_TABLE="@0@"'.format(join_paths(datadir_amdgpu, 'amdgpu.ids')),
++    '-DAMDGPU_ASIC_ID_TABLE=RELOC("../share/libdrm/amdgpu.ids")',
+   ],
+   include_directories : [inc_root, inc_drm],
+   link_with : libdrm,

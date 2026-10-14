@@ -1,0 +1,14 @@
+llvm-nm -P prints a value and size for undefined weak symbols, so
+they no longer fall under the two-field check that GNU nm satisfies.
+
+--- a/symbols-check.py
++++ b/symbols-check.py
+@@ -33,7 +33,7 @@
+                                      stderr=open(os.devnull, 'w')).decode("ascii")
+     for line in output.splitlines():
+         fields = line.split()
+-        if len(fields) == 2 or fields[1] == 'U':
++        if len(fields) == 2 or fields[1] in ('U', 'w', 'v'):
+             continue
+         symbol_name = fields[0]
+         if platform_name == 'Linux':
