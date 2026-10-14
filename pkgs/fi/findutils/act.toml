@@ -5,8 +5,8 @@ bootstrapTools = true
 patches        = [ "relocatable.patch" ]
 
 [test]
-bin = [ "find", "xargs" ]
-run = false
+bin      = [ "find", "xargs" ]
+separate = true
 
 [only]
 posix = true
