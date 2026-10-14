@@ -5,8 +5,11 @@ with  = [ "cmake" ]
 deps  = [ "zlib", "bzip2", "xz", "zstd", "lz4", "expat", "libxml2", "openssl" ]
 
 [test]
-bin = [ "bsdtar", "bsdcpio", "bsdunzip" ]
-run = false
+bin      = [ "bsdtar", "bsdcpio", "bsdunzip" ]
+separate = true
+
+[steps.before]
+"cmake.test" = [ "libarchive.locale" ]
 
 [cmake]
 tool = "cmake-bootstrap"
@@ -16,7 +19,6 @@ ENABLE_ACL     = false
 ENABLE_EXPAT   = true
 ENABLE_LIBXML2 = true
 ENABLE_OPENSSL = true
-ENABLE_TEST    = false
 ENABLE_XATTR   = false
 
 [on.linux]
