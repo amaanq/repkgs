@@ -4,7 +4,10 @@
 
 use std::{
    cmp::Ordering,
-   collections::BTreeMap,
+   collections::{
+      BTreeMap,
+      BTreeSet,
+   },
    env::{
       current_dir,
       temp_dir,
@@ -14,6 +17,7 @@ use std::{
    fmt::Write as _,
    fs::{
       create_dir_all,
+      read_to_string,
       remove_dir_all,
       write,
    },
@@ -30,6 +34,10 @@ use std::{
 };
 
 use mummer::{
+   cargo_git::{
+      self,
+      GitSource,
+   },
    syslibs::{
       CargoBuild,
       Tables,
@@ -528,6 +536,9 @@ fn candidate_pin(chosen: &Candidate) -> Map<String, Value> {
 pub struct Prefetched {
    pub hash: String,
    pub sys:  Vec<String>,
+   /// The git sources of the tree's Cargo.lock, for a cargo build, none when
+   /// no tree was unpacked.
+   pub git:  Option<BTreeSet<GitSource>>,
 }
 
 /// The hash nix/sources.nix expects: the NAR hash of the unpacked tree, or
@@ -544,6 +555,7 @@ pub fn prefetch(
       return Ok(Prefetched {
          hash: fetched.hash,
          sys:  Vec::new(),
+         git:  None,
       });
    }
    let scratch = temp_dir().join(format!("spieler-tree.{}", id()));
@@ -551,9 +563,15 @@ pub fn prefetch(
    create_dir_all(&scratch)?;
    let tree = scratch.join("src");
    unpack("bsdtar", Path::new(&fetched.store_path), &tree)?;
+   let built = with.iter().any(|system| system == "cargo");
+   let git = match read_to_string(tree.join("Cargo.lock")) {
+      Ok(lock) if built => Some(cargo_git::locked(&lock)?),
+      _ => None,
+   };
    let found = Prefetched {
       hash: nix::hash_path(&tree)?,
-      sys:  wanted(&tables()?, &tree, with, cargo)?,
+      sys: wanted(&tables()?, &tree, with, cargo)?,
+      git,
    };
    remove_dir_all(&scratch)?;
    Ok(found)
@@ -704,6 +722,7 @@ fn with_hashes(
 ) -> io::Result<()> {
    let mut sys = Vec::<String>::new();
    let mut hashes = BTreeMap::new();
+   let mut locked_git = None::<BTreeSet<GitSource>>;
    let cargo = CargoBuild {
       home: Some(http::cache_dir().join("cargo-home")),
       ..package.cargo.clone()
@@ -725,20 +744,25 @@ fn with_hashes(
             Prefetched {
                hash,
                sys: Vec::new(),
+               git: None,
             }
          },
          None => prefetch(&url, source.unpacks(), &package.with, Some(&cargo))?,
       };
       hashes.insert(source.key.clone(), fetched.hash);
+      if let Some(found) = fetched.git {
+         locked_git.get_or_insert_default().extend(found);
+      }
       for lib in fetched.sys {
          if !sys.contains(&lib) {
             sys.push(lib);
          }
       }
    }
+   let pinned_sources = with_git(package, generated, locked_git)?;
    // a generated url names one release of its own, so an unchanged one keeps
    // its hash
-   for source in generated {
+   for source in &pinned_sources {
       nix::say(&format!("  {}", source.url));
       let hash = match source.hash {
          Some(ref hash) => hash.clone(),
@@ -755,7 +779,50 @@ fn with_hashes(
    if !sys.is_empty() {
       nix::say(&format!("  sys: {}", sys.join(" ")));
    }
-   write_lock(package, pin, &hashes, &sys, &package.vendored, generated)
+   write_lock(
+      package,
+      pin,
+      &hashes,
+      &sys,
+      &package.vendored,
+      &pinned_sources,
+   )
+}
+
+/// `generated` with the git sources of the Cargo.lock as act.lock's
+/// `git+<url>#<commit>` sources, each the forge's archive of the commit. With
+/// no lock read, act.lock's stay.
+fn with_git(
+   package: &Package,
+   generated: &[Source],
+   locked: Option<BTreeSet<GitSource>>,
+) -> io::Result<Vec<Source>> {
+   let Some(git) = locked else {
+      return Ok(generated.to_vec());
+   };
+   let mut found = generated
+      .iter()
+      .filter(|source| !source.key.starts_with("git+"))
+      .cloned()
+      .collect::<Vec<_>>();
+   for origin in git {
+      let key = origin.to_string();
+      let url = origin.archive_url()?;
+      let hash = package
+         .generated
+         .iter()
+         .find(|old| old.key == key && old.url == url)
+         .and_then(|old| old.hash.clone());
+      found.push(Source {
+         name: Some(origin.name()),
+         key,
+         url,
+         hash,
+         unpack: None,
+         frozen: None,
+      });
+   }
+   Ok(found)
 }
 
 /// The downloads the release at `pin` names beyond act.toml's, from the
