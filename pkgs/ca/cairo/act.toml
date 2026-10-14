@@ -1,0 +1,27 @@
+track   = 'generic:cairo?url=https://cairographics.org/releases/&regex=cairo-(1\.[0-9]*[02468]\.[0-9]+)\.tar\.xz'
+fetch   = { url = "https://cairographics.org/releases/cairo-{version}.tar.xz" }
+with    = [ "meson" ]
+deps    = [ "fontconfig", "freetype", "glib", "libpng", "pixman", "zlib" ]
+tools   = [ "cpython314" ]
+patches = [ "optional-test-converters.patch" ]
+
+[test]
+deps     = [ "dejavu-fonts" ]
+separate = true
+
+[steps.before]
+"meson.test" = [ "cairo.test-env" ]
+
+[meson.defs]
+fontconfig    = "enabled"
+freetype      = "enabled"
+glib          = "enabled"
+gtk2-utils    = "disabled"
+lzo           = "disabled"
+png           = "enabled"
+spectre       = "disabled"
+symbol-lookup = "disabled"
+tests         = "enabled"
+xcb           = "disabled"
+xlib          = "disabled"
+zlib          = "enabled"

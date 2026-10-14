@@ -1,0 +1,33 @@
+The PDF, PostScript and SVG targets compare through poppler, ghostscript and librsvg,
+and librsvg itself links cairo. Without them the suite tests the image targets, as
+upstream's CI does.
+
+--- a/meson.build
++++ b/meson.build
+@@ -643,7 +643,7 @@
+ endif
+ 
+ if feature_conf.get('CAIRO_HAS_PS_SURFACE', 0) == 1
+-  gs = find_program('gs', required: get_option('tests'))
++  gs = find_program('gs', required: false)
+   libspectre_dep = dependency('libspectre', version: '>= 0.2.0',
+                               required: get_option('spectre'))
+   if gs.found() and libspectre_dep.found()
+@@ -658,7 +658,7 @@
+ 
+ if feature_conf.get('CAIRO_HAS_PDF_SURFACE', 0) == 1
+   poppler_dep = dependency('poppler-glib', version: '>= 0.17.4',
+-                           required: get_option('tests'))
++                           required: false)
+   if poppler_dep.found() and cc.has_function('poppler_page_render', dependencies: [poppler_dep])
+     conf.set('CAIRO_CAN_TEST_PDF_SURFACE', 1)
+     test_deps += [poppler_dep]
+@@ -667,7 +667,7 @@
+ 
+ if feature_conf.get('CAIRO_HAS_SVG_SURFACE', 0) == 1
+   librsvg_dep = dependency('librsvg-2.0', version: '>= 2.35.0',
+-                           required: get_option('tests'))
++                           required: false)
+   if librsvg_dep.found()
+     conf.set('CAIRO_CAN_TEST_SVG_SURFACE', 1)
+     test_deps += [librsvg_dep]
