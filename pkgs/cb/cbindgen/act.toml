@@ -1,0 +1,11 @@
+tag   = "v{version}"
+track = "github:mozilla/cbindgen"
+fetch = { url = "https://github.com/mozilla/cbindgen/archive/refs/tags/v{version}.tar.gz" }
+with  = [ "cargo" ]
+
+[test]
+bin  = [ "cbindgen" ]
+deps = [ "cmake", "python-cython" ]
+
+[steps.before]
+"cargo.test" = [ "cbindgen.unstable" ]
