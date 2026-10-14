@@ -1,0 +1,3 @@
+track = 'generic:xtrans?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=xtrans-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/lib/xtrans-{version}.tar.xz" }
+with  = [ "autotools" ]
