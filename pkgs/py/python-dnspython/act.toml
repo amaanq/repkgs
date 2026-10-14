@@ -1,0 +1,11 @@
+track = "pypi:dnspython"
+fetch = { url = "https://files.pythonhosted.org/packages/source/d/dnspython/dnspython-{version}.tar.gz" }
+with  = [ "python" ]
+tools = [ "python-uv-build" ]
+
+[test]
+deps = [ "python-pytest" ]
+
+[python]
+module = "dns"
+pytest = true
