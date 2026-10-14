@@ -189,6 +189,7 @@ impl OptionType for Def {
          Type::Integer,
          Type::Path,
          Type::Package,
+         Type::list(Type::union(vec![Type::String, Type::Path, Type::Package])),
       ])
    }
 }

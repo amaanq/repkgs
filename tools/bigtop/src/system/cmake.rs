@@ -226,6 +226,7 @@ impl Cmake {
          Def::Flag(false) => "OFF".to_owned(),
          Def::Text(ref text) => text.clone(),
          Def::Number(number) => number.to_string(),
+         Def::List(ref items) => items.join(";"),
       }
    }
 
@@ -343,6 +344,9 @@ impl Cmake {
                .map(|entry| {
                   (entry.0.as_str(), match entry.1 {
                      Def::Text(ref text) => Def::Text(mask_hashes(text)),
+                     Def::List(ref items) => {
+                        Def::List(items.iter().map(|item| mask_hashes(item)).collect())
+                     },
                      ref other @ (Def::Flag(_) | Def::Number(_)) => other.clone(),
                   })
                })

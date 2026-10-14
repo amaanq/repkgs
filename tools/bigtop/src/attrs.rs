@@ -199,6 +199,7 @@ pub enum Def {
    Flag(bool),
    Text(String),
    Number(i64),
+   List(Vec<String>),
 }
 
 #[derive(Deserialize)]

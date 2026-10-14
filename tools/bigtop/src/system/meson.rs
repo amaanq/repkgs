@@ -246,6 +246,7 @@ impl Meson {
          Def::Flag(flag) => flag.to_string(),
          Def::Text(ref text) => text.clone(),
          Def::Number(number) => number.to_string(),
+         Def::List(ref items) => items.join(","),
       }
    }
 

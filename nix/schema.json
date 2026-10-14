@@ -1402,6 +1402,23 @@
                 },
                 {
                   "kind": "package"
+                },
+                {
+                  "kind": "list",
+                  "element": {
+                    "kind": "union",
+                    "variants": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "path"
+                      },
+                      {
+                        "kind": "package"
+                      }
+                    ]
+                  }
                 }
               ]
             }
@@ -1891,6 +1908,23 @@
                 },
                 {
                   "kind": "package"
+                },
+                {
+                  "kind": "list",
+                  "element": {
+                    "kind": "union",
+                    "variants": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "path"
+                      },
+                      {
+                        "kind": "package"
+                      }
+                    ]
+                  }
                 }
               ]
             }
