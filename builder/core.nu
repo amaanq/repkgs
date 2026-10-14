@@ -128,11 +128,12 @@ export def --env cache-configures [key: string]: nothing -> nothing {
       'if [ "$cache_file" = /dev/null ]; then'
       ('  pkgs_cache_base=' + (do $quote $dir) + '/$(pwd | tr / _)')
       '  pkgs_cache_env=$(for pkgs_var in $ac_precious_vars; do eval "printf %s=%s\\\\n \"\$pkgs_var\" \"\${$pkgs_var}\""; done | sed "s|/nix/store/[0-9a-z]\{32\}-|/nix/store/*-|g" | cksum | cut -d" " -f1)'
-      '  for pkgs_stale in "$pkgs_cache_base"-*.cache "$pkgs_cache_base"-*.dir; do'
+      '  for pkgs_stale in "$pkgs_cache_base"-*.cache "$pkgs_cache_base"-*.dir "$pkgs_cache_base"-*.env; do'
       '    case $pkgs_stale in "$pkgs_cache_base-$pkgs_cache_env".*) ;; *) rm -f "$pkgs_stale" ;; esac'
       '  done'
       '  cache_file=$pkgs_cache_base-$pkgs_cache_env.cache'
       '  pwd > "$pkgs_cache_base-$pkgs_cache_env.dir"'
+      '  env -0 > "$pkgs_cache_base-$pkgs_cache_env.env"'
       'fi'
       ''
    ] | str join "\n"
@@ -169,8 +170,19 @@ def configure-replays [cache: string]: nothing -> bool {
    if not ($sidecar | path exists) { return false }
    let status = $"(open --raw $sidecar | str trim)/config.status"
    if not ($status | path exists) { return false }
-   let before = (open --raw $status)
-   let rerun = (do { cd ($status | path dirname); ^sh ./config.status --recheck } | complete)
+   # cabal passes package flags to configure as CABAL_FLAG_* variables, so recheck under the
+   # environment the configure ran with
+   let recorded = ($cache | str replace --regex '[.]cache$' '.env')
+   let before   = (open --raw $status)
+   let rerun    = (do {
+      cd ($status | path dirname)
+      if ($recorded | path exists) {
+         let environment = (open --raw $recorded | split row (char nul) | where $it =~ '^[A-Za-z_][A-Za-z0-9_]*=')
+         ^env -i ...$environment sh ./config.status --recheck
+      } else {
+         ^sh ./config.status --recheck
+      }
+   } | complete)
    let after = (open --raw $status)
    if $after != $before { $before | save --force --raw $status }
    let name = ($cache | path basename)
@@ -196,6 +208,7 @@ export def store-configures []: nothing -> nothing {
          rm --force $cache ($cache | str replace --regex '[.]cache$' '.dir')
       }
    }
+   for recorded in (glob-files $"($dir)/*.env") { rm $recorded }
    for cache in (glob-files $"($dir)/*.cache") {
       let masked = (open --raw $cache | str replace --all --regex '/nix/store/[0-9a-z]{32}-' '/nix/store/*-')
       $masked | save --force --raw $cache
