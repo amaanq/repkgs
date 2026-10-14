@@ -1,0 +1,10 @@
+tag   = "version_{version_}"
+track = "github:dejavu-fonts/dejavu-fonts"
+fetch = { asset = "dejavu-fonts-ttf-{version}.tar.bz2" }
+
+[exports]
+libDirs = [  ]
+libs    = [  ]
+
+[install]
+"share/fonts/truetype/" = "ttf/*.ttf"
