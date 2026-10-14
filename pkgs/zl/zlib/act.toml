@@ -1,7 +1,8 @@
-tag   = "v{version}"
-track = "github:madler/zlib"
-fetch = { asset = "zlib-{version}.tar.gz" }
-with  = [ "cmake" ]
+tag     = "v{version}"
+track   = "github:madler/zlib"
+fetch   = { asset = "zlib-{version}.tar.gz" }
+patches = [ "exclude-fixture.patch" ]
+with    = [ "cmake" ]
 
 [cmake]
 tool = "cmake-bootstrap"
