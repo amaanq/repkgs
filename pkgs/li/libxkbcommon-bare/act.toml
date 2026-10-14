@@ -1,0 +1,24 @@
+# the library alone, without xkeyboard-config's data path, for xkeyboard-config's tests, which
+# load it through ctypes and set XKB_CONFIG_ROOT themselves
+fetch   = { from = "libxkbcommon" }
+with    = [ "meson" ]
+tools   = [ "bison" ]
+patches = [ "legacy-root.patch" ]
+
+[only]
+os = [ "linux" ]
+
+[test]
+bin = [  ]
+run = false
+
+[meson.defs]
+enable-bash-completion = false
+enable-docs            = false
+enable-tools           = false
+enable-wayland         = false
+enable-x11             = false
+enable-xkbregistry     = false
+x-locale-root          = "/usr/share/X11/locale"
+xkb-config-extra-path  = "/etc/xkb"
+xkb-config-root        = "/usr/share/xkeyboard-config-2"

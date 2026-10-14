@@ -1,0 +1,14 @@
+Without xkeyboard-config the legacy root falls back under the install prefix, and no option
+sets it.
+
+--- a/meson.build
++++ b/meson.build
+@@ -69,7 +69,7 @@
+ endforeach
+ if XKB_LEGACY_ROOT == ''
+     # Fallback to the legacy X11 directory
+-    XKB_LEGACY_ROOT = get_option('prefix')/get_option('datadir')/'X11'/'xkb'
++    XKB_LEGACY_ROOT = '/usr/share/X11/xkb'
+ endif
+ 
+ # The xkeyboard-config root
