@@ -2,6 +2,7 @@ use std::{
    fs::read_to_string,
    io,
    path::Path,
+   slice,
 };
 
 use mummer::{
@@ -87,7 +88,7 @@ impl Producer for PypiVendor {
       }
 
       for &(name, ref lock) in &locks {
-         let vendor = vendor_layout(store, lock, &format!("vendor/{name}/"))?;
+         let vendor = vendor_layout(store, slice::from_ref(lock), &format!("vendor/{name}/"))?;
          stage.layout.extend(vendor.layout);
          stage.drvs.extend(vendor.drvs);
       }

@@ -55,11 +55,19 @@ let
 in
 {
   cargoVendor =
-    { source }:
-    produce {
-      name = "cargo-vendor";
-      kind = "cargo";
-    } { inherit source; };
+    {
+      source,
+      locks ? [ "Cargo.lock" ],
+    }:
+    produce
+      {
+        name = "cargo-vendor";
+        kind = "cargo";
+      }
+      {
+        inherit source;
+        locks = builtins.concatStringsSep "\n" locks;
+      };
 
   # spieler writes locks for upstreams that commit none, so the lock may sit apart from the source
   npmDeps =

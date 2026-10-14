@@ -1,7 +1,11 @@
 use std::{
-   collections::BTreeMap,
+   collections::{
+      BTreeMap,
+      BTreeSet,
+   },
    fs::read_to_string,
    io,
+   path::Path,
 };
 
 use mummer::{
@@ -53,8 +57,9 @@ struct Checksum<'package> {
    package: &'package str,
 }
 
-/// Cargo.lock -> a directory cargo accepts as [source.vendored-sources],
-/// crates unpacked with their .cargo-checksum.json.
+/// Vendors the crates of every Cargo.lock in `locks`, relative to the source or
+/// absolute, into a directory cargo accepts as [source.vendored-sources], each
+/// with its .cargo-checksum.json.
 pub struct Cargo;
 
 impl Producer for Cargo {
@@ -64,7 +69,12 @@ impl Producer for Cargo {
 
    fn run(&self, store: &mut Store) -> io::Result<()> {
       let source = attr("source")?;
-      let vendor = vendor_layout(store, &read_to_string(format!("{source}/Cargo.lock"))?, "")?;
+      let locks = attr("locks")?
+         .lines()
+         .map(|lock| read_to_string(Path::new(&source).join(lock)))
+         .collect::<io::Result<Vec<String>>>()?;
+      let vendor = vendor_layout(store, &locks, "")?;
+
       collect(store, "cargo-vendor", &vendor.layout, &vendor.drvs)
    }
 }
@@ -74,10 +84,24 @@ pub struct Vendor {
    pub drvs:   Vec<DrvPath>,
 }
 
-pub fn vendor_layout(store: &mut Store, text: &str, prefix: &str) -> io::Result<Vendor> {
-   let lock = toml::from_str::<Lock>(text).map_err(io::Error::other)?;
-   let foreign = lock
-      .package
+pub fn vendor_layout(store: &mut Store, locks: &[String], prefix: &str) -> io::Result<Vendor> {
+   let mut listed = Vec::new();
+
+   for text in locks {
+      listed.extend(
+         toml::from_str::<Lock>(text)
+            .map_err(io::Error::other)?
+            .package,
+      );
+   }
+
+   let mut seen = BTreeSet::new();
+   let packages = listed
+      .iter()
+      .filter(|package| seen.insert((package.name.as_str(), package.version.as_str())))
+      .collect::<Vec<&Package>>();
+
+   let foreign = packages
       .iter()
       .filter(|package| {
          package
@@ -96,7 +120,7 @@ pub fn vendor_layout(store: &mut Store, text: &str, prefix: &str) -> io::Result<
    reject("cargoVendor: unsupported sources", &foreign)?;
    let mut crates = Vec::new();
    let mut rows = Vec::new();
-   for package in &lock.package {
+   for &package in &packages {
       if package.source.as_deref() != Some(CRATES_IO) {
          continue;
       }
