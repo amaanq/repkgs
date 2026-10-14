@@ -1,3 +1,6 @@
 track = "gnu:gzip"
 fetch = { url = "https://ftp.gnu.org/gnu/gzip/gzip-{version}.tar.xz" }
 with  = [ "autotools" ]
+
+[test]
+deps = [ "perl" ]
