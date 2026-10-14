@@ -1,0 +1,8 @@
+track   = 'generic:libX11?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=libX11-([0-9.]+)\.tar\.xz'
+fetch   = { url = "https://xorg.freedesktop.org/archive/individual/lib/libX11-{version}.tar.xz" }
+with    = [ "autotools" ]
+patches = [ "relocatable.patch" ]
+deps    = [ "xorgproto", "libxcb", "xtrans" ]
+
+[steps.before]
+"autotools.configure" = [ "libx11.rawcpp" ]

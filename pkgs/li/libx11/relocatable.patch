@@ -1,0 +1,81 @@
+Resolve libX11's data files next to the library instead of the install prefix, and
+have the Compose files include en_US through %S, the system locale directory.
+
+--- a/nls/Makefile.in
++++ b/nls/Makefile.in
+@@ -559,7 +559,7 @@
+                          -e '/^[	 ]*XCOMM$$/s/XCOMM/\#/' \
+                          -e '/^[	 ]*XCOMM[^a-zA-Z0-9_]/s/XCOMM/\#/' \
+                          -e '/^[	 ]*XHASH/s/XHASH/\#/' \
+-                         -e 's,X11_LOCALEDATADIR,$(X11_LOCALEDATADIR),g' \
++                         -e 's,X11_LOCALEDATADIR,%S,g' \
+                          -e '/\@\@$$/s/\@\@$$/\\/' \
+                          -e '/^$$/d'
+ 
+--- a/src/ErrDes.c
++++ b/src/ErrDes.c
+@@ -52,6 +52,7 @@
+ #include <config.h>
+ #endif
+ #include "Xlibint.h"
++#include "reloc-paths.h"
+ #include <X11/Xos.h>
+ #include "Xresource.h"
+ #include <stdio.h>
+--- a/src/reloc-paths.h
++++ b/src/reloc-paths.h
+@@ -0,0 +1,12 @@
++/* libX11's data paths taken relative to the library itself, see reloc.h. config.h has no
++   include guard and headers pull it in again, so include this after them */
++#include "reloc.h"
++
++#undef XLOCALEDIR
++#define XLOCALEDIR RELOC ("../share/X11/locale")
++#undef XLOCALELIBDIR
++#define XLOCALELIBDIR RELOC ("X11/locale")
++#undef XKEYSYMDB
++#define XKEYSYMDB RELOC ("../share/X11/XKeysymDB")
++#undef XERRORDB
++#define XERRORDB RELOC ("../share/X11/XErrorDB")
+--- a/src/StrKeysym.c
++++ b/src/StrKeysym.c
+@@ -29,6 +29,7 @@
+ #endif
+ #include <limits.h>
+ #include "Xlibint.h"
++#include "reloc-paths.h"
+ #include <X11/Xresource.h>
+ #include <X11/keysymdef.h>
+ #include "Xresinternal.h"
+--- a/src/xcms/cmsColNm.c
++++ b/src/xcms/cmsColNm.c
+@@ -54,7 +54,8 @@
+  *		#define declarations local to this package.
+  */
+ #ifndef XCMSDB
+-#define XCMSDB  XCMSDIR "/Xcms.txt"
++#include "reloc.h"
++#define XCMSDB  RELOC ("../share/X11/Xcms.txt")
+ #endif
+ 
+ #ifndef isgraph
+--- a/src/xlibi18n/lcDynamic.c
++++ b/src/xlibi18n/lcDynamic.c
+@@ -49,6 +49,7 @@
+ 
+ #include "Xlibint.h"
+ #include "Xlcint.h"
++#include "../reloc-paths.h"
+ 
+ #ifndef XLOCALEDIR
+ #define XLOCALEDIR "/usr/lib/X11/locale"
+--- a/src/xlibi18n/lcFile.c
++++ b/src/xlibi18n/lcFile.c
+@@ -51,6 +51,7 @@
+ #define XLC_BUFSIZE 256
+ 
+ #include "pathmax.h"
++#include "../reloc-paths.h"
+ 
+ #define NUM_LOCALEDIR	64
+ 
