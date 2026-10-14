@@ -22,7 +22,6 @@ deps = [
   "mimalloc",
 ]
 tools = [ "bison", "cmake", "flex" ]
-test = false
 patches = [ "relocatable.patch", "sandbox-shell-undef.patch" ]
 
 [track]
@@ -34,4 +33,16 @@ doc-gen            = false
 functional-tests   = false
 json-schema-checks = false
 "nix:mimalloc"     = "enabled"
-unit-tests         = false
+
+[on.native]
+deps   = [ "googletest", "rapidcheck" ]
+tools  = [ "util-linux" ]
+remove = [
+  "bin/nix-*-tests",
+  "include/nix/*/tests",
+  "lib/libnix*-test-support.so*",
+  "lib/pkgconfig/nix-*-test-support.pc",
+]
+
+[on.cross.meson.defs]
+unit-tests = false
