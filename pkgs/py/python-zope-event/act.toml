@@ -1,0 +1,10 @@
+track = "pypi:zope.event"
+fetch = { url = "https://files.pythonhosted.org/packages/source/z/zope_event/zope_event-{version}.tar.gz" }
+with  = [ "python" ]
+tools = [ "python-setuptools" ]
+
+[steps.after]
+"python.test" = [ "python-zope-event.test" ]
+
+[python]
+module = "zope.event"
