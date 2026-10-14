@@ -1,0 +1,15 @@
+track   = "github:vcrhonek/hwdata"
+tag     = "v{version}"
+fetch   = { archive = true }
+with    = [ "make" ]
+patches = [ "relocatable.patch", "check-python3.patch" ]
+
+[test]
+deps = [ "pciutils", "cpython314" ]
+
+[steps.before]
+"make.test" = [ "hwdata.test-shebangs" ]
+
+# check-usb-ids.sh runs lsusb in a privileged podman container
+[env]
+NO_DOCKER = "1"

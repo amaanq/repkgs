@@ -1,0 +1,10 @@
+Installs name the interpreter python3, a bare python need not exist.
+
+--- a/check-pci-ids.py
++++ b/check-pci-ids.py
+@@ -1,4 +1,4 @@
+-#!/usr/bin/env python
++#!/usr/bin/env python3
+ 
+ import re
+ import sys

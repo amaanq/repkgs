@@ -1,0 +1,10 @@
+hwdata.pc names its prefix from where it is installed.
+
+--- a/hwdata.pc.in
++++ b/hwdata.pc.in
+@@ -1,4 +1,4 @@
+-prefix=@prefix@
++prefix=${pcfiledir}/../..
+ datadir=@datadir@
+ pkgdatadir=${pc_sysrootdir}@pkgdatadir@
+ 
