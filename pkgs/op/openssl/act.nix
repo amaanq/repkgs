@@ -6,9 +6,13 @@
       "--libdir=lib"
       "--openssldir=/etc/ssl"
       "shared"
-      "no-tests"
     ];
   }
-  (when (platform.os == "linux") { make.configureFlags = [ "enable-ktls" ]; })
+  (when (platform.os == "linux") {
+    make.configureFlags = [
+      "enable-ktls"
+      "no-afalgeng"
+    ];
+  })
   (when (platform.abi == "msvc") { tools = [ "nasm" ]; })
 ]
