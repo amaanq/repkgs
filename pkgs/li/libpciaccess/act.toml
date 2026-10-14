@@ -1,0 +1,10 @@
+track = 'generic:libpciaccess?url=https://xorg.freedesktop.org/releases/individual/lib/&regex=libpciaccess-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/releases/individual/lib/libpciaccess-{version}.tar.xz" }
+with  = [ "meson" ]
+deps  = [ "zlib" ]
+
+[only]
+os = [ "linux" ]
+
+[meson.defs]
+zlib = "enabled"
