@@ -1,0 +1,4 @@
+track = 'generic:libXfont2?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=libXfont2-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/lib/libXfont2-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "freetype", "libfontenc", "xorgproto", "xtrans", "zlib" ]
