@@ -1,0 +1,25 @@
+tag     = "{version}"
+track   = "gitlab:libinput/libinput?repository_url=https://gitlab.freedesktop.org"
+fetch   = { url = "https://gitlab.freedesktop.org/libinput/libinput/-/archive/{version}/libinput-{version}.tar.gz" }
+with    = [ "meson" ]
+deps    = [ "libevdev", "mtdev", "systemd" ]
+patches = [ "relocatable.patch" ]
+
+[only]
+os = [ "linux" ]
+
+[test]
+bin     = [ "libinput" ]
+deps    = [ "check", "python-pytest" ]
+version = "--version"
+
+[meson]
+# these create uinput devices as root
+skipTests = [ "libinput-test-suite-", "list-devices" ]
+
+[meson.defs]
+debug-gui     = false
+documentation = false
+libwacom      = false
+lua-plugins   = "disabled"
+udev-dir      = "lib/udev"

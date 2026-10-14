@@ -1,0 +1,129 @@
+libinput bakes its install prefix into the quirks, plugin and tool paths. Resolve those relative to
+the ELF that reads them, the tools living two levels down in libexec, and leave the host overrides
+and plugins under /etc. The udev rules name the device-group callout bare so udev finds it in its
+own helper directory.
+
+--- a/meson.build
++++ b/meson.build
+@@ -258,7 +258,7 @@
+ 	   install_dir : dir_udev_callouts)
+ 
+ udev_rules_config = configuration_data()
+-udev_rules_config.set('UDEV_TEST_PATH', dir_udev_callouts + '/')
++udev_rules_config.set('UDEV_TEST_PATH', '')
+ configure_file(input : 'udev/80-libinput-device-groups.rules.in',
+ 	       output : '80-libinput-device-groups.rules',
+ 	       install_dir : dir_udev_rules,
+@@ -384,8 +384,11 @@
+ ############ libquirks.a #############
+ libinput_data_path = dir_data
+ libinput_data_override_path = dir_overrides / 'local-overrides.quirks'
+-config_h.set_quoted('LIBINPUT_QUIRKS_DIR', dir_data)
+-config_h.set_quoted('LIBINPUT_QUIRKS_OVERRIDE_FILE', libinput_data_override_path)
++config_h.set('LIBINPUT_QUIRKS_DIR',
++	      'RELOC("@0@")'.format(import('fs').relative_to(dir_data, dir_lib)))
++config_h.set('LIBINPUT_TOOL_QUIRKS_DIR',
++	      'RELOC("@0@")'.format(import('fs').relative_to(dir_data, dir_libexec)))
++config_h.set_quoted('LIBINPUT_QUIRKS_OVERRIDE_FILE', '/etc/libinput/local-overrides.quirks')
+ 
+ config_h.set_quoted('LIBINPUT_QUIRKS_SRCDIR', dir_src_quirks)
+ install_subdir('quirks',
+@@ -411,8 +414,8 @@
+ 	config_h.set('EVENT_DEBUGGING', 1)
+ endif
+ 
+-config_h.set_quoted('LIBINPUT_PLUGIN_LIBDIR', dir_lib / 'libinput' / 'plugins')
+-config_h.set_quoted('LIBINPUT_PLUGIN_ETCDIR', dir_etc / 'libinput' / 'plugins')
++config_h.set('LIBINPUT_PLUGIN_LIBDIR', 'RELOC("libinput/plugins")')
++config_h.set_quoted('LIBINPUT_PLUGIN_ETCDIR', '/etc/libinput/plugins')
+ 
+ install_headers('src/libinput.h')
+ src_libinput = src_libfilter + [
+@@ -544,7 +547,8 @@
+ 
+ ############ tools ############
+ libinput_tool_path = dir_libexec
+-config_h.set_quoted('LIBINPUT_TOOL_PATH', libinput_tool_path)
++config_h.set('LIBINPUT_TOOL_PATH', 'RELOC("@0@")'.format(
++	      import('fs').relative_to(libinput_tool_path, get_option('prefix') / get_option('bindir'))))
+ tools_shared_sources = [ 'tools/shared.c' ]
+ deps_tools_shared = [ dep_libinput, dep_libevdev, dep_libinput_util_libinput ]
+ lib_tools_shared = static_library('tools_shared',
+--- a/src/libinput.c
++++ b/src/libinput.c
+@@ -23,6 +23,7 @@
+  */
+ 
+ #include "config.h"
++#include "reloc.h"
+ 
+ #include <assert.h>
+ #include <errno.h>
+--- a/src/libinput-plugin.c
++++ b/src/libinput-plugin.c
+@@ -22,6 +22,7 @@
+  */
+ 
+ #include "config.h"
++#include "reloc.h"
+ 
+ #include <stdbool.h>
+ 
+--- a/tools/libinput-quirks.c
++++ b/tools/libinput-quirks.c
+@@ -22,6 +22,7 @@
+  */
+ 
+ #include "config.h"
++#include "reloc.h"
+ 
+ #include <errno.h>
+ #include <getopt.h>
+@@ -166,7 +167,7 @@
+ 		if (builddir_lookup(NULL)) {
+ 			data_path = LIBINPUT_QUIRKS_SRCDIR;
+ 		} else {
+-			data_path = LIBINPUT_QUIRKS_DIR;
++			data_path = LIBINPUT_TOOL_QUIRKS_DIR;
+ 			override_file = LIBINPUT_QUIRKS_OVERRIDE_FILE;
+ 		}
+ 	}
+--- a/tools/libinput-record.c
++++ b/tools/libinput-record.c
+@@ -22,6 +22,7 @@
+  */
+ 
+ #include "config.h"
++#include "reloc.h"
+ 
+ #include <dirent.h>
+ #include <errno.h>
+@@ -1801,7 +1802,7 @@
+ print_device_quirks(struct record_device *dev)
+ {
+ 	struct stat st;
+-	const char *data_path = LIBINPUT_QUIRKS_DIR;
++	const char *data_path = LIBINPUT_TOOL_QUIRKS_DIR;
+ 	const char *override_file = LIBINPUT_QUIRKS_OVERRIDE_FILE;
+ 
+ 	if (stat(dev->devnode, &st) < 0)
+--- a/tools/shared.c
++++ b/tools/shared.c
+@@ -22,6 +22,7 @@
+  */
+ 
+ #include <config.h>
++#include "reloc.h"
+ 
+ #include <assert.h>
+ #include <errno.h>
+--- a/test/litest.c
++++ b/test/litest.c
+@@ -23,6 +23,7 @@
+  */
+ 
+ #include "config.h"
++#include "reloc.h"
+ 
+ #include <dirent.h>
+ #include <errno.h>
