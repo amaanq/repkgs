@@ -19,6 +19,7 @@ use std::{
       canonicalize,
       metadata,
       read,
+      read_dir,
       read_to_string,
    },
    io,
@@ -326,6 +327,44 @@ impl Store {
       self
          .root_for(&masked[..end], &masked[end..])
          .map(|root| format!("{root}{}", &masked[end..]))
+   }
+
+   /// Files in this run's scratch directories that mask to `masked`, for an
+   /// input no argument names, as the CPP header GHC writes in its own
+   /// pid-named temp dir.
+   #[inline]
+   #[must_use]
+   pub fn scratch_candidates(masked: &str) -> Vec<String> {
+      let Some(ref temporary) = *TEMPORARY else {
+         return Vec::new();
+      };
+      let Some(rest) = masked.strip_prefix(&format!("{temporary}/")) else {
+         return Vec::new();
+      };
+      let mut found = vec![temporary.clone()];
+      let mut spelled = temporary.clone();
+      for component in rest.split('/') {
+         spelled = format!("{spelled}/{component}");
+         let mut next = Vec::new();
+         for directory in &found {
+            if !component.contains('#') {
+               next.push(format!("{directory}/{component}"));
+               continue;
+            }
+            let Ok(entries) = read_dir(directory) else {
+               continue;
+            };
+            next.extend(
+               entries
+                  .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+                  .map(|name| format!("{directory}/{name}"))
+                  .filter(|path| mask_random_names(path) == spelled),
+            );
+         }
+         found = next;
+      }
+      found.retain(|path| Path::new(path).is_file());
+      found
    }
 
    /// The root a masked one stands for, the one holding `rest` when two

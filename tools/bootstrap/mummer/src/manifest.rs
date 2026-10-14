@@ -245,7 +245,14 @@ impl Manifest {
             Ok(identity) if identity == input.identity => {},
             Ok(_) => return Err(Miss::InputsChanged(path.clone())),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-               return Err(Miss::InputsChanged(path.clone()));
+               let elsewhere = Store::scratch_candidates(path).iter().any(|candidate| {
+                  store
+                     .input_id(candidate)
+                     .is_ok_and(|identity| identity == input.identity)
+               });
+               if !elsewhere {
+                  return Err(Miss::InputsChanged(path.clone()));
+               }
             },
             Err(error) => return Err(Miss::Failed(error)),
          }
