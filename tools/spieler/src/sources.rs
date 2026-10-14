@@ -15,8 +15,8 @@ use std::{
 };
 
 use mummer::{
-   syslibs::CargoBuild,
    files::utf8,
+   syslibs::CargoBuild,
 };
 use serde::{
    Deserialize,
@@ -126,6 +126,7 @@ struct Act {
    fetch:   Option<Fetch>,
    patches: Option<Vec<String>>,
    cargo:   Option<CargoBuild>,
+   with:    Option<Vec<String>>,
 }
 
 /// A package as its act.toml and act.lock describe it, what every stage passes
@@ -155,6 +156,8 @@ pub struct Package {
    pub generated: Vec<Source>,
    /// act.toml's `[cargo]` features, what its Cargo.lock is resolved for.
    pub cargo:     CargoBuild,
+   /// act.toml's build systems, which decide the lock files `sys` reads.
+   pub with:      Vec<String>,
 }
 
 impl Package {
@@ -430,6 +433,7 @@ fn parse(file: &Path) -> io::Result<Option<Package>> {
       vendored,
       generated,
       cargo: act.cargo.unwrap_or_default(),
+      with: act.with.unwrap_or_default(),
    }))
 }
 

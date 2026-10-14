@@ -1,4 +1,4 @@
 version = "0.12.23"
 date    = "2026-10-03"
-sys     = [ "libffi", "libgit2", "libyaml", "zstd" ]
+sys     = [ "zstd" ]
 hash    = "sha256-U/LhX0XkUgbAXZZeLTBGF2nX2yzFb5zpiScCBD62pk4="

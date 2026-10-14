@@ -533,7 +533,12 @@ pub struct Prefetched {
 /// The hash nix/sources.nix expects: the NAR hash of the unpacked tree, or
 /// the file's own for `unpack = false`. `sys`: the libraries of ours the
 /// tree's lock files can link, for act.lock.
-pub fn prefetch(url: &str, unpacks: bool, cargo: Option<&CargoBuild>) -> io::Result<Prefetched> {
+pub fn prefetch(
+   url: &str,
+   unpacks: bool,
+   with: &[String],
+   cargo: Option<&CargoBuild>,
+) -> io::Result<Prefetched> {
    let fetched = nix::prefetch_file(url)?;
    if !unpacks {
       return Ok(Prefetched {
@@ -548,7 +553,7 @@ pub fn prefetch(url: &str, unpacks: bool, cargo: Option<&CargoBuild>) -> io::Res
    unpack("bsdtar", Path::new(&fetched.store_path), &tree)?;
    let found = Prefetched {
       hash: nix::hash_path(&tree)?,
-      sys:  wanted(&tables()?, &tree, cargo)?,
+      sys:  wanted(&tables()?, &tree, with, cargo)?,
    };
    remove_dir_all(&scratch)?;
    Ok(found)
@@ -722,7 +727,7 @@ fn with_hashes(
                sys: Vec::new(),
             }
          },
-         None => prefetch(&url, source.unpacks(), Some(&cargo))?,
+         None => prefetch(&url, source.unpacks(), &package.with, Some(&cargo))?,
       };
       hashes.insert(source.key.clone(), fetched.hash);
       for lib in fetched.sys {
@@ -737,7 +742,7 @@ fn with_hashes(
       nix::say(&format!("  {}", source.url));
       let hash = match source.hash {
          Some(ref hash) => hash.clone(),
-         None => prefetch(&source.url, source.unpacks(), None)?.hash,
+         None => prefetch(&source.url, source.unpacks(), &[], None)?.hash,
       };
       hashes.insert(source.key.clone(), hash);
    }

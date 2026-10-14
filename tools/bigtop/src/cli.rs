@@ -138,10 +138,12 @@ pub enum Mode {
 
 #[derive(Parse)]
 pub enum SyslibsOperation {
-   /// our packages the lock files under `dir` can link, as JSON. --tables
-   /// names a JSON of them outside a package build.
+   /// our packages the lock files under `dir` can link for a build `with`
+   /// these systems, as JSON. --tables names a JSON of them outside a
+   /// package build.
    Wanted {
       dir:    PathBuf,
+      with:   Vec<String>,
       #[pound(long)]
       tables: Option<PathBuf>,
    },

@@ -125,6 +125,17 @@ impl Ecosystem {
          Self::Hackage => None,
       }
    }
+
+   /// The build system that installs from this ecosystem's lock file. Cargo's
+   /// counts by its resolve instead, and Hackage has none.
+   const fn installer(self) -> Option<&'static str> {
+      match self {
+         Self::Go => Some("go"),
+         Self::Python => Some("pyapp"),
+         Self::Gems => Some("bundler"),
+         Self::Cargo | Self::Hackage => None,
+      }
+   }
 }
 
 pub type Bindings = BTreeMap<Ecosystem, Binding>;
@@ -220,15 +231,28 @@ pub fn wanted_for(tables: &Tables, ecosystem: Ecosystem, names: &[String]) -> Ve
 }
 
 /// Our packages the lock files in `dir` can link, sorted, what act.lock's `sys`
-/// should say. A Cargo.lock counts only with `cargo`, the build it is resolved
-/// for.
+/// should say.
+///
+/// A Cargo.lock counts only with `cargo`, the build it is resolved for, any
+/// other only when `with` names the system that installs from it.
 #[inline]
-pub fn wanted(tables: &Tables, dir: &Path, cargo: Option<&CargoBuild>) -> io::Result<Vec<String>> {
+pub fn wanted(
+   tables: &Tables,
+   dir: &Path,
+   with: &[String],
+   cargo: Option<&CargoBuild>,
+) -> io::Result<Vec<String>> {
    let mut found = BTreeSet::new();
    for ecosystem in Ecosystem::ALL.iter().copied() {
       let Some(file) = ecosystem.lock_file() else {
          continue;
       };
+      if ecosystem
+         .installer()
+         .is_some_and(|system| !with.iter().any(|named| named == system))
+      {
+         continue;
+      }
       let Ok(text) = read_to_string(dir.join(file)) else {
          continue;
       };

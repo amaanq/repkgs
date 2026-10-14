@@ -155,10 +155,11 @@ fn lock_tables(path: Option<&Path>) -> io::Result<Tables> {
 
 fn syslibs_mode(operation: SyslibsOperation) -> io::Result<()> {
    let found = match operation {
-      SyslibsOperation::Wanted { dir, tables } => {
+      SyslibsOperation::Wanted { dir, with, tables } => {
          wanted(
             &lock_tables(tables.as_deref())?,
             &dir,
+            &with,
             Some(&CargoBuild::default()),
          )?
       },
