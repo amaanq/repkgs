@@ -2,7 +2,7 @@ track   = 'generic:util-linux?url=https://github.com/util-linux/util-linux/tags&
 fetch   = { url = "https://www.kernel.org/pub/linux/utils/util-linux/v{major}.{minor}/util-linux-{version}.tar.xz" }
 with    = [ "meson" ]
 deps    = [ "ncurses", "zlib", "readline", "sqlite", "libxcrypt", "libcap" ]
-tools   = [ "bison", "flex" ]
+tools   = [ "bison", "flex", "gettext" ]
 patches = [ "01-CVE-2026-78408.patch", "02-libmount-build-fix.patch", "relocatable.patch" ]
 
 [only]
@@ -15,6 +15,7 @@ build-vipw    = "disabled"
 cryptsetup    = "disabled"
 libutil       = "enabled"
 ncursesw      = "enabled"
+nls           = "enabled"
 readline      = "enabled"
 sysconfdir    = "/etc"
 zlib          = "enabled"

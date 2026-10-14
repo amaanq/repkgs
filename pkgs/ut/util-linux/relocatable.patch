@@ -1,4 +1,14 @@
-diff -ruN a/term-utils/agetty.c b/term-utils/agetty.c
+--- a/include/nls.h
++++ b/include/nls.h
+@@ -6,7 +6,7 @@
+ #define UTIL_LINUX_NLS_H
+ 
+ #ifndef LOCALEDIR
+-#define LOCALEDIR "/usr/share/locale"
++#define LOCALEDIR "../share/locale"
+ #endif
+ 
+ #ifdef HAVE_LOCALE_H
 --- a/term-utils/agetty.c
 +++ b/term-utils/agetty.c
 @@ -52,6 +52,7 @@
