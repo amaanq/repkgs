@@ -92,23 +92,62 @@ const RANDOM_STEMS: [&str; 1] = ["detect_compiler_family.c"];
 /// mkdtemp templates whose random part can come out one case with no digit:
 /// rustc's link dir and Python's tempfile, directly under `$TMPDIR`.
 const TEMPLATES: [(&str, usize); 2] = [("rustc", 6), ("tmp", 8)];
-static ANCESTORS: LazyLock<BTreeSet<String>> = LazyLock::new(|| {
+/// This process and its ancestors by pid, each with when it started.
+static ANCESTORS: LazyLock<BTreeMap<String, SystemTime>> = LazyLock::new(|| {
+   let mut ancestors = BTreeMap::new();
    let mut pid = process::id().to_string();
-   let mut ancestors = BTreeSet::from([pid.clone()]);
    while let Ok(stat) = read_to_string(format!("/proc/{pid}/stat")) {
-      let Some(parent) = stat
+      let fields = stat
          .rsplit_once(')')
-         .and_then(|(_, fields)| fields.split_whitespace().nth(1))
-      else {
+         .map(|(_, rest)| rest.split_whitespace().collect::<Vec<_>>())
+         .unwrap_or_default();
+      let started = fields.get(19).and_then(|starttime| started_at(starttime));
+      ancestors.insert(pid.clone(), started.unwrap_or(UNIX_EPOCH));
+      let Some(&parent) = fields.get(1) else {
          break;
       };
-      if matches!(parent, "0" | "1") || !ancestors.insert(parent.to_owned()) {
+      if matches!(parent, "0" | "1") || ancestors.contains_key(parent) {
          break;
       }
       parent.clone_into(&mut pid);
    }
    ancestors
 });
+
+/// A process start in clock ticks after boot, `/proc/<pid>/stat`'s
+/// starttime, as a time. The tick rate is the auxiliary vector's
+/// `AT_CLKTCK`, the boot time `/proc/stat`'s btime.
+fn started_at(starttime: &str) -> Option<SystemTime> {
+   const AT_CLKTCK: u64 = 17;
+   let auxv = read("/proc/self/auxv").ok()?;
+   let rate = auxv
+      .as_chunks::<16>()
+      .0
+      .iter()
+      .map(|pair| {
+         let (kind, value) = pair.split_at(8);
+         (
+            u64::from_ne_bytes(kind.try_into().unwrap_or_default()),
+            u64::from_ne_bytes(value.try_into().unwrap_or_default()),
+         )
+      })
+      .find(|pair| pair.0 == AT_CLKTCK)?
+      .1;
+   let boot = read_to_string("/proc/stat")
+      .ok()?
+      .lines()
+      .find_map(|line| line.strip_prefix("btime "))?
+      .trim()
+      .parse::<u64>()
+      .ok()?;
+   let ticks = starttime.parse::<u64>().ok()?;
+   let nanos = ticks
+      .checked_rem(rate)?
+      .checked_mul(1_000_000_000)?
+      .checked_div(rate)?;
+   let seconds = boot.checked_add(ticks.checked_div(rate)?)?;
+   UNIX_EPOCH.checked_add(Duration::from_secs(seconds) + Duration::from_nanos(nanos))
+}
 static TEMPORARY: LazyLock<Option<String>> = LazyLock::new(|| {
    var("TMPDIR")
       .ok()
@@ -855,6 +894,32 @@ const fn is_name_byte(byte: u8) -> bool {
    byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'+')
 }
 
+/// Where the path holding the name at `start` begins.
+fn path_start(text: &str, start: usize) -> usize {
+   start
+      - text[..start]
+         .bytes()
+         .rev()
+         .take_while(|byte| is_name_byte(*byte) || *byte == b'/')
+         .count()
+}
+
+/// Whether the ancestor with pid `run` could have made `path`, which a file
+/// already there before it started, as rhash's has160.c beside a make whose
+/// pid repeats as 160 in every sandbox, rules out.
+fn made_by(path: &str, run: &str) -> bool {
+   let Some(&started) = ANCESTORS.get(run) else {
+      return false;
+   };
+   let earlier = started
+      .checked_sub(Duration::from_secs(1))
+      .unwrap_or(UNIX_EPOCH);
+   metadata(path)
+      .and_then(|found| found.modified())
+      .ok()
+      .is_none_or(|modified| modified >= earlier)
+}
+
 /// Names a process of this build made from its pid, gen$$.c and the like:
 /// a digit run, three digits or more, that is the pid of this process or
 /// one of its ancestors.
@@ -904,7 +969,11 @@ fn pid_names(text: &str) -> Vec<(Range<usize>, String)> {
          .is_some_and(|part| {
             !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_alphabetic())
          });
-      if digits >= 3 && ANCESTORS.contains(run) && extension && !hashed {
+      if digits >= 3
+         && extension
+         && !hashed
+         && made_by(&text[path_start(text, name.start)..name.end], run)
+      {
          let spelling = format!(
             "{}#{}",
             &text[name.start..index],
