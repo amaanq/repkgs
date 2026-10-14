@@ -5,8 +5,9 @@ bootstrapTools = true
 patches        = [ "relocatable.patch" ]
 
 [test]
-bin = [ "ls", "cp", "install", "sort" ]
-run = false
+bin      = [ "ls", "cp", "install", "sort" ]
+deps     = [ "perl" ]
+separate = true
 
 [only]
 posix = true
