@@ -30,6 +30,15 @@
    stringparam_vendordir = []
    stringparam_profileconditions = 'without_vendordir'
  else
+@@ -215,7 +215,7 @@
+   libintl = dependency('intl', required: get_option('i18n'))
+   if libintl.found()
+     cdata.set('ENABLE_NLS', 1)
+-    cdata.set_quoted('LOCALEDIR', localedir)
++    cdata.set_quoted('LOCALEDIR', '../share/locale')
+     foreach f: ['bindtextdomain',
+                 'dngettext',
+                ]
 --- a/modules/module-meson.build
 +++ b/modules/module-meson.build
 @@ -38,7 +38,7 @@

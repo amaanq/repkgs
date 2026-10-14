@@ -3,7 +3,7 @@ track   = "github:linux-pam/linux-pam"
 fetch   = { asset = "Linux-PAM-{version}.tar.xz" }
 with    = [ "meson" ]
 deps    = [ "libxcrypt" ]
-tools   = [ "flex", "bison" ]
+tools   = [ "flex", "bison", "gettext" ]
 patches = [ "helper-wrapper.patch", "tests-confdir.patch", "relocatable.patch" ]
 
 [only]
@@ -15,7 +15,7 @@ docs        = "disabled"
 econf       = "disabled"
 elogind     = "disabled"
 examples    = false
-i18n        = "disabled"
+i18n        = "enabled"
 logind      = "disabled"
 nis         = "disabled"
 openssl     = "disabled"
