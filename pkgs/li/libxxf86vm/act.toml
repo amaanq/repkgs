@@ -1,0 +1,4 @@
+track = 'generic:libXxf86vm?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=libXxf86vm-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/lib/libXxf86vm-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "libx11", "libxext", "xorgproto" ]
