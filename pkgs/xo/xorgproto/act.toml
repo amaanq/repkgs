@@ -1,0 +1,6 @@
+track = 'generic:xorgproto?url=https://xorg.freedesktop.org/archive/individual/proto/&regex=xorgproto-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/proto/xorgproto-{version}.tar.xz" }
+with  = [ "meson" ]
+
+[test]
+deps = [ "python-libevdev", "cpython314" ]
