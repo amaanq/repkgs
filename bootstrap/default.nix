@@ -1,20 +1,18 @@
-# The peanut grown into a C compiler for every platform. stage0 builds mummer and a musl compiler
-# with the peanut's clang, stage1 a glibc compiler that hosts cmake and llvm, and stage2 builds
-# compiler-rt, libc, the C++ runtimes, the wrapper and the launcher per platform with that llvm.
+# The peanut grown into a compiler per platform, by way of a musl starter and a glibc host with llvm
 {
   peanut ? null,
   system ? builtins.currentSystem,
 }:
 let
   platforms = import ../nix/platforms.nix;
-  host = platforms.forSystem system "glibc";
+  hostPlatform = platforms.forSystem system "glibc";
   built = import ../pkgs/pe/peanut {
     inherit system;
     buildSystem = system;
   };
 
   # configure treats a `build` vendor as another machine, so even a same-cpu build cross compiles
-  buildTriple = builtins.replaceStrings [ "-unknown-" ] [ "-build-" ] host.gnuTriple;
+  buildTriple = builtins.replaceStrings [ "-unknown-" ] [ "-build-" ] hostPlatform.gnuTriple;
   pkg = name: ../pkgs + "/${builtins.substring 0 2 name}/${name}";
 
   # the peanut is itself the unpacker, so its own sources are read without one
@@ -55,7 +53,7 @@ let
         # C.UTF-8 is built by running the new localedef, which only runs on this machine
         libcArgs = {
           linuxHeaders = headers;
-          locale = platform.clangTarget == host.clangTarget;
+          locale = platform.clangTarget == hostPlatform.clangTarget;
         };
       };
     in
@@ -67,12 +65,12 @@ let
       dlaudit = run [ parts.cc ] "dlaudit" { };
     };
 
-  stage0 =
+  starter =
     let
       platform = platforms.forSystem system "musl";
       run = stage {
         inherit platform;
-        suffix = "";
+        role = "starter";
       };
       parts = chain {
         inherit platform run;
@@ -98,17 +96,17 @@ let
       };
     };
 
-  stage1 =
+  host =
     let
       run = stage {
-        platform = host;
+        platform = hostPlatform;
         tools = [
-          stage0.mummer
-          stage0.cc
+          starter.mummer
+          starter.cc
         ];
-        suffix = "-boot";
+        role = "host";
       };
-      parts = withGlibc host run { prebuilt = stage0.mummer; };
+      parts = withGlibc hostPlatform run { prebuilt = starter.mummer; };
       cmake = run [ parts.cc ] "cmake" { inherit (parts) sysroot; };
     in
     parts
@@ -129,17 +127,19 @@ let
     let
       run = stage {
         inherit platform;
-        clang = stage1.llvm;
+        clang = host.llvm;
         tools = [
-          stage0.mummer
-          stage1.llvm
-          stage1.cc
+          starter.mummer
+          host.llvm
+          host.cc
         ];
       };
       ccArgs = {
-        prebuilt = stage0.mummer;
+        prebuilt = starter.mummer;
       }
-      // (if platform != host then { native = (toolchain.${host.name} { }).cc; } else { });
+      // (
+        if platform != hostPlatform then { native = (toolchain.${hostPlatform.name} { }).cc; } else { }
+      );
       launching = parts: parts // { launch = run [ parts.cc ] "launch" { }; };
     in
     if platform.libc == "glibc" then
@@ -161,24 +161,18 @@ let
         libcRecipe = "mingw-w64";
       })
     else
-      throw "bootstrap: no stage2 for libc ${platform.libc}"
+      throw "bootstrap: no toolchain for libc ${platform.libc}"
   ) platforms.byName;
 in
 {
   peanut = seed;
   inherit
     buildTriple
-    stage0
-    stage1
+    starter
+    host
     toolchain
     source
     ;
   inherit (built) bigtop mummer nu;
-  inherit (stage1) llvm;
-  stage2 = builtins.listToAttrs (
-    map (platform: {
-      name = platform.cpu;
-      value = toolchain.${platform.name} { };
-    }) (builtins.filter (platform: platform.os == "linux") (builtins.attrValues platforms.byName))
-  );
+  inherit (host) llvm;
 }

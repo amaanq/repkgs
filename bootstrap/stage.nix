@@ -41,7 +41,7 @@ in
   platform,
   clang ? peanut, # whose bin/clang compiles, and what the compiler driver uses
   tools ? [ ],
-  suffix ? "-${platform.name}",
+  role ? platform.name,
 }:
 let
   facts = shared // {
@@ -66,7 +66,7 @@ extraTools: recipe: args:
 leaf (
   facts
   // {
-    name = recipe + (if args ? headersOnly then "-headers" else "") + suffix;
+    name = recipe + (if args ? headersOnly then "-headers" else "") + "-${role}";
     args = [
       "bootstrap"
       recipe

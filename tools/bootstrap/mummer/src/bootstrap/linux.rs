@@ -26,7 +26,8 @@ impl Recipe for Linux {
    }
 
    /// the kernel's own `make headers`, HOSTCC builds unifdef and co. for the
-   /// build machine, stage0's cc in stage1 and the peanut clang in stage0.
+   /// build machine, the starter's cc in the host and the peanut clang in the
+   /// starter.
    fn run(&self, stage: &Stage) -> io::Result<()> {
       let src = stage.unpack("linux", &[])?;
       let hostcc = if on_path("cc").is_absolute() {

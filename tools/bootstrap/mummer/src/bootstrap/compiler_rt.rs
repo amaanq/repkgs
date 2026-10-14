@@ -145,7 +145,7 @@ impl CompilerRt {
 
    /// runtime for -coverage and -fprofile-instr-generate, where clang looks
    /// for it per binfmt. On ELF it needs kernel headers (mmap flags), so
-   /// stage1 only. *`ROCm`* is the separate `clang_rt.profile_rocm`,
+   /// never in the starter. *`ROCm`* is the separate `clang_rt.profile_rocm`,
    /// `WindowsMMap` the win32 mmap port.
    fn profile_runtime(stage: &Stage, attrs: &Attrs, src: &Path) -> io::Result<()> {
       if stage.binfmt == BinaryFormat::Elf && attrs.linux_headers.is_none() {

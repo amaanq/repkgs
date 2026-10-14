@@ -119,7 +119,7 @@ the machine. ghc takes its slots through jape.
 ## One LLVM for every target
 
 Every platform, Windows and macOS included, is built by the same LLVM, and glibc is the set's libc.
-musl only appears in the peanut and stage0. GCC is allowed only early in the x86_64 source
+musl only appears in the peanut and the starter. GCC is allowed only early in the x86_64 source
 bootstrap. Self-hosting languages take an upstream binary only as a build-only `<lang>-bootstrap`
 and build the real one from source.
 

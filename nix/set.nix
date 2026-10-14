@@ -59,7 +59,7 @@ let
   facts = stage.platform // {
     inherit system cross emulator;
     inherit (boot) buildTriple;
-    buildRustTriple = boot.stage1.platform.rustTriple;
+    buildRustTriple = boot.host.platform.rustTriple;
   };
 
   rust = import ./set/rust.nix {
@@ -116,7 +116,7 @@ let
     inherit system;
   };
   fetch = import ./fetch.nix {
-    mummer = given.mummer or boot.stage0.mummer;
+    mummer = given.mummer or boot.starter.mummer;
     sevenzip = buildPkgs."7zip";
     inherit (boot) peanut;
     inherit system;

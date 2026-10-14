@@ -45,7 +45,7 @@ Then:
 $ nix-build -A jq                                   # native
 $ nix-build -A jq --argstr platform aarch64-linux   # cross
 $ nix-build -A ripgrep -A fd -A deno -A pandoc      # cargo, prebuilt, haskell and more
-$ nix-build bootstrap -A stage2.x86_64.cc           # the toolchain alone
+$ nix-build bootstrap -A toolchain.x86_64-linux.cc  # the toolchain alone
 ```
 
 The first build fetches the peanut and builds the toolchain, and later ones are incremental.
@@ -169,7 +169,7 @@ $ spieler lock fzf       # re-pin the Go modules fzf needs in locks/go.toml
 ```
 pkgs/xx/<name>/   the packages, xx being the name's first two letters, with act.toml, phase
                   modules (<name>.nu), patches and in-tree sources (src/)
-bootstrap/        peanut, stage0 (musl cc), stage1 (llvm), stage2 (a cc per platform)
+bootstrap/        peanut, starter (musl cc), host (llvm), toolchain (a cc per platform)
 nix/              evaluation: package/ turns a manifest into a derivation, build-systems.nix binds
                   each `uses` entry, fetch.nix holds the lock-file fetchers
 builder/          the nu that phase modules import
@@ -211,9 +211,9 @@ $ motley cache stop
 
 ```
 peanut        static clang, lld, bsdtar, toybox, make and the like
-→ stage0    musl, libc++ and mummer, a C and C++ compiler for this machine
-→ stage1    glibc, libc++, cmake, then clang and lld for every target, the set's compiler
-→ stage2    compiler-rt, the libc and libc++, a cc-<platform> per target built by that clang
+→ starter     musl, libc++ and mummer, a C and C++ compiler for this machine
+→ host        glibc, libc++, cmake, then clang and lld for every target, the set's compiler
+→ toolchain   compiler-rt, the libc and libc++, a cc-<platform> per target built by that clang
 → pkgs/*
 → rust, go, zig, ghc, jdk from their upstream binary as <lang>-bootstrap, then from source
 ```
