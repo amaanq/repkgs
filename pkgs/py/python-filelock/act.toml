@@ -1,0 +1,7 @@
+track = "pypi:filelock"
+fetch = { url = "https://files.pythonhosted.org/packages/source/f/filelock/filelock-{version}.tar.gz" }
+with  = [ "python" ]
+tools = [ "python-hatchling", "python-hatch-vcs" ]
+
+[python]
+module = "filelock"
