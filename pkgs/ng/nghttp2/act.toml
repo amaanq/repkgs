@@ -7,8 +7,8 @@ with  = [ "cmake" ]
 tool = "cmake-bootstrap"
 
 [cmake.defs]
-BUILD_TESTING   = false
-ENABLE_LIB_ONLY = true
+BUILD_STATIC_LIBS = true
+ENABLE_LIB_ONLY   = true
 
 [bindings]
 cargo = [ "libnghttp2-sys" ]
