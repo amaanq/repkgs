@@ -1,0 +1,9 @@
+track = 'generic:mtdev?url=https://bitmath.org/code/mtdev/&regex=mtdev-([0-9.]+)\.tar\.bz2'
+fetch = { url = "https://bitmath.org/code/mtdev/mtdev-{version}.tar.bz2" }
+with  = [ "autotools" ]
+
+[only]
+os = [ "linux" ]
+
+[test]
+version = false
