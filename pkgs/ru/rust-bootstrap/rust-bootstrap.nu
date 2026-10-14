@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx tool x files]
 
 export def install []: nothing -> nothing {
    let c       = (ctx)

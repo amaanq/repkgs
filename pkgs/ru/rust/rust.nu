@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx dep-root tool-root tool x edit files]
 
 # std for these is freestanding, so it ships with the compiler as nixpkgs does
 const freestanding = [wasm32-unknown-unknown wasm32v1-none bpfel-unknown-none bpfeb-unknown-none]

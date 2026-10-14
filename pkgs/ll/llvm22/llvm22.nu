@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx x]
 
 # a cross build's llvm-config cannot run here, the native one beside it can answer for it
 export def host-config []: nothing -> nothing {

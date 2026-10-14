@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx x install-bins]
 
 export def build []: nothing -> nothing {
    let c      = (ctx)

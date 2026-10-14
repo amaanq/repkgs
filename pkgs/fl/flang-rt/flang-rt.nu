@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx x files]
 
 # A gfortran beside the runtime: mummer itself, configured to drive flang with this runtime's paths.
 # "@" is mummer's own prefix, so the configuration still holds once the output moves to the store

@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx x files]
 
 export def build []: nothing -> nothing {
    let c      = (ctx)

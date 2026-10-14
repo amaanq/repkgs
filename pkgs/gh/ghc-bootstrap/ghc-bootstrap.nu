@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx]
 
 # configure runs the bindist's own ghc-toolchain-bin and `make install` runs ghc-pkg, so it has
 # to run here before finish implants $out. Debian's .deb is installed as it comes

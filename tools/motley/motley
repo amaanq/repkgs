@@ -1,8 +1,8 @@
 #!/usr/bin/env nu
 # The one command for working on the set. Each subcommand ends in nix-build, nix, spieler, mummerd or
 # nuff, and `motley <command> --help` says which.
-use nix.nu *
-use dev.nu *
+use nix.nu [FEATURES root platform-arg peanut-arg rust-toolchain-arg set-expr fail eval pkg-expr is-socket mummerd-dir mummerd-socket cache-args drv]
+use dev.nu ["main dev"]
 
 def main []: nothing -> nothing { help main }
 

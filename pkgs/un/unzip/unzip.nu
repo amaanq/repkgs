@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx x]
 
 export def build []: nothing -> nothing {
    let c       = (ctx)

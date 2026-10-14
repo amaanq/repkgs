@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx edit tools-by-name]
 
 # the compiled-in directories become /usr templates that the relocation code rebases
 export def fixed-paths []: nothing -> nothing {

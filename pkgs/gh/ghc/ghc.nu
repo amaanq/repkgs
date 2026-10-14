@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx attrs options dep-root tool x cache-configures store-configures files]
 
 def --wrapped hadrian [...targets: string]: nothing -> nothing {
    let c = (ctx)

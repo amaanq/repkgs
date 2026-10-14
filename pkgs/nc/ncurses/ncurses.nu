@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx shlib linklib]
 
 export def --env configure-env []: nothing -> nothing {
    # configure takes the .pc directory from pkg-config's search path otherwise

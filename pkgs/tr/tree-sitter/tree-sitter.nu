@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx x]
 
 # the fixture store names carry the ref fixtures.json pins, tag or branch, and the rest is what
 # xtask generate-fixtures and xtask test run, without xtask test's debug profile rebuild

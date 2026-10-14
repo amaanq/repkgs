@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx x]
 
 # the Makefile has no msvc target. etc/luavs.bat builds lua54.dll, lua.exe against it, and luac.exe
 # static because it reaches internals the dll does not export

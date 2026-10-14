@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx]
 
 # --cc names the compiler curl was built with, by its store path
 export def plain-cc []: nothing -> nothing {

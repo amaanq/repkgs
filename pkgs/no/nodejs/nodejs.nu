@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx x]
 
 const bundled = [zlib openssl zstd brotli libuv nghttp2 cares sqlite]
 

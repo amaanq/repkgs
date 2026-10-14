@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx edit]
 
 export def relocate-compile-et []: nothing -> nothing {
    let c = (ctx)

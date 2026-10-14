@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx tool x]
 
 export def configure []: nothing -> nothing {
    let c = (ctx)

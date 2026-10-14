@@ -1,4 +1,4 @@
-use nix.nu *
+use nix.nu [FEATURES root platform-arg peanut-arg rust-toolchain-arg fail mummerd-socket cache-args]
 
 const SHELL = path self dev-shell.nu
 

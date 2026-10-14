@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx dep-root tool edit files]
 
 # the shipped man pages are older than the patched scripts, and help2man is not around to redo them
 export def keep-man []: nothing -> nothing {

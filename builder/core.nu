@@ -1,8 +1,8 @@
 # The helpers every nu phase may use. bigtop runs each nu phase with this directory in the include
 # path, and hands what one phase exported to the next.
 
-export use glob.nu *
-export use log.nu *
+export use glob.nu [files]
+export use log.nu [note]
 
 export def ctx []: nothing -> record<spec: record, out: string, dest: string, deps: list<record<name: string, root: string>>, roots: list<string>, njobs: int, src: string, build: string, platform: record, testsRun: bool, cache: bool> {
    open $"($env.NIX_BUILD_TOP)/ctx.json"

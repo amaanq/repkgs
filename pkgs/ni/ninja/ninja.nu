@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx x files]
 
 # configure.py would need python, which needs zlib, which builds with cmake and so with ninja
 export def build []: nothing -> nothing {

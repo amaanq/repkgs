@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx tool edit files]
 
 # --with-cross-build expects a native ICU build tree. Its data Makefiles only reach into it for the
 # tools in bin/ and config/icucross.{mk,inc}, so the installed native ICU can stand in

@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx x files note]
 
 export def configure []: nothing -> nothing {
    let c = (ctx)

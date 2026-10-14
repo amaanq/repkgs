@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx dep-root x write-launcher]
 
 export def build []: nothing -> nothing {
    let c = (ctx)

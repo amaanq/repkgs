@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx x files note]
 use msbuild.nu
 
 # PCbuild/python.props computes these from patchlevel.h with MSBuild property functions

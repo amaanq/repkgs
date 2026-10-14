@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx dep-root x edit tools-by-name files note]
 
 def assignments [pairs: record, format: closure]: nothing -> string {
    $pairs | items {|key, value| do $format $key $value } | each {|line| $"($line)\n" } | str join

@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx x test-locale]
 
 # the tests want an ISO-8859-1 locale
 export def --env latin1 []: nothing -> nothing {

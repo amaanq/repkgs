@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx files]
 
 # rocks with C modules then build with the cc on PATH, not the one configure found
 export def use-cc []: nothing -> nothing {

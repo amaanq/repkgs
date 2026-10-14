@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [ctx dep-root fix-shebangs files]
 
 # rbconfig.rb records the build's shell and compiler banner, the latter with clang's install dir
 export def relocate-rbconfig []: nothing -> nothing {

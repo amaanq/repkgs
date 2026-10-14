@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [x]
 
 # the server tests reach postgres://atuin:pass@localhost:5432/atuin unless ATUIN_DB_URI says otherwise
 export def start-postgres []: nothing -> nothing {

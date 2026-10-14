@@ -1,4 +1,4 @@
-use core.nu *
+use core.nu [attrs note]
 
 # zig speaks no cache protocol, but its global cache records paths relative to its roots, so the
 # whole directory moves between sandboxes
