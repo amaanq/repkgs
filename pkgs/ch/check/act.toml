@@ -1,0 +1,9 @@
+track = "github:libcheck/check"
+fetch = { asset = "check-{version}.tar.gz" }
+with  = [ "autotools" ]
+
+[test]
+separate = true
+
+[steps.before]
+"autotools.test" = [ "check.stale-logs" ]
