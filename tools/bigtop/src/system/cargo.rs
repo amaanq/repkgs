@@ -136,6 +136,17 @@ impl System for Cargo {
       let home = format!("{}/cargo-home", ctx.build.display());
       let mut env = Env::from(Self::configure(ctx, attrs, vendor.as_deref(), &home)?);
       env.unset("RUSTFLAGS");
+
+      // C the cc crate builds from the vendor tree bakes its paths into
+      // `__FILE__`, which keeps the whole tree in the output's closure
+      if let Some(deps) = vendor {
+         let prefix_map = match var("PKGS_PREFIX_MAP") {
+            Ok(existing) if !existing.is_empty() => format!("{existing}:{deps}=/vendor"),
+            _ => format!("{deps}=/vendor"),
+         };
+         env.set("PKGS_PREFIX_MAP", prefix_map);
+      }
+
       Ok(env)
    }
 
