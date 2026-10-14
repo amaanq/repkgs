@@ -42,6 +42,7 @@ in
     src = source "glibc";
     patches = map (patch: pkg "glibc" + "/${patch}") [
       "glibc-prefix-relative.patch"
+      "glibc-bindtextdomain-origin.patch"
       "upstream-ppc64le-clang.patch"
       "upstream-debug-after-misc.patch"
       "upstream-verneed-dst.patch"

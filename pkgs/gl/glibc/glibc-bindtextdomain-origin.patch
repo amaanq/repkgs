@@ -1,0 +1,79 @@
+--- a/intl/bindtextdom.c
++++ b/intl/bindtextdom.c
+@@ -24,7 +24,11 @@
+ 
+ #include "gettextP.h"
+ #ifdef _LIBC
++# include <dlfcn.h>
++# include <ldsodefs.h>
+ # include <libintl.h>
++# include <limits.h>
++# include <unistd.h>
+ #else
+ # include "libgnuintl.h"
+ #endif
+@@ -312,12 +316,64 @@
+   gl_rwlock_unlock (_nl_state_lock);
+ }
+ 
++#ifdef _LIBC
++/* DIRNAME against the directory of the object holding it, as a malloc'd
++   string, or NULL when no object does and it is a run-time path relative to
++   the working directory.  A static program claims every one.  */
++static char *
++object_relative (const char *dirname)
++{
++  const char *object = NULL;
++# ifdef SHARED
++  Dl_info info;
++  struct link_map *map;
++  const ElfW(Sym) *symbol;
++  if (_dl_addr (dirname, &info, &map, &symbol) == 0)
++    return NULL;
++  if (map->l_name[0] != '\0')
++    object = map->l_name;
++# endif
++  char exe[PATH_MAX];
++  if (object == NULL)
++    {
++      ssize_t len = __readlink ("/proc/self/exe", exe, sizeof exe - 1);
++      if (len <= 0)
++	return NULL;
++      exe[len] = '\0';
++      object = exe;
++    }
++
++  size_t dir = strlen (object);
++  while (dir > 0 && object[dir - 1] != '/')
++    --dir;
++  if (dir == 0)
++    return NULL;
++  size_t len = strlen (dirname) + 1;
++  char *result = malloc (dir + len);
++  if (result != NULL)
++    memcpy (__mempcpy (result, object, dir), dirname, len);
++  return result;
++}
++#endif
++
+ /* Specify that the DOMAINNAME message catalog will be found
+    in DIRNAME rather than in the system locale data base.  */
+ char *
+ BINDTEXTDOMAIN (const char *domainname, const char *dirname)
+ {
++#ifdef _LIBC
++  char *resolved = NULL;
++  if (dirname != NULL && strncmp (dirname, "../", 3) == 0)
++    {
++      resolved = object_relative (dirname);
++      if (resolved != NULL)
++	dirname = resolved;
++    }
++#endif
+   set_binding_values (domainname, &dirname, NULL);
++#ifdef _LIBC
++  free (resolved);
++#endif
+   return (char *) dirname;
+ }
+ 
