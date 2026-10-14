@@ -4,7 +4,7 @@ with  = [ "python" ]
 tools = [ "python-hatchling", "python-hatch-vcs" ]
 
 [test]
-deps = [ "python-pytest" ]
+deps = [ "python-pytest", "python-gevent", "python-eventlet" ]
 
 [steps.after]
 "python.test" = [ "python-execnet.test" ]
