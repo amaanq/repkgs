@@ -1,0 +1,14 @@
+track = "pypi:cffi"
+fetch = { url = "https://files.pythonhosted.org/packages/source/c/cffi/cffi-{version}.tar.gz" }
+with  = [ "python" ]
+deps  = [ "libffi", "python-pycparser" ]
+tools = [ "python-setuptools", "pkgconf" ]
+
+[test]
+deps = [ "python-pytest", "python-setuptools" ]
+
+[steps.after]
+"python.test" = [ "python-cffi.test" ]
+
+[python]
+module = "cffi"
