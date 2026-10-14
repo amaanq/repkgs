@@ -1,0 +1,45 @@
+libpci looks for pci.ids relative to its own location instead of under the install
+prefix, and libpci.pc names its directories from where it is installed. The
+installed config.h no longer carries the prefix on Linux, where nothing reads it.
+
+--- a/lib/configure
++++ b/lib/configure
+@@ -274,7 +274,7 @@
+ else
+ 	echo >>$c '#define PCI_IDS "pci.ids"'
+ fi
+-echo >>$c "#define PCI_PATH_IDS_DIR \"$IDSDIR\""
++[ "$sys" = linux ] || echo >>$c "#define PCI_PATH_IDS_DIR \"$IDSDIR\""
+ 
+ echo_n "Checking for DNS support... "
+ if [ "$DNS" = yes -o "$DNS" = no ] ; then
+--- a/lib/init.c
++++ b/lib/init.c
+@@ -429,10 +429,12 @@
+ 
+ #else
+ 
++#include "reloc.h"
++
+ static void
+ pci_init_name_list_path(struct pci_access *a)
+ {
+-  pci_set_name_list_path(a, PCI_PATH_IDS_DIR "/" PCI_IDS, 0);
++  pci_set_name_list_path(a, (char *) RELOC("../share/" PCI_IDS), 0);
+ }
+ 
+ #endif
+--- a/lib/libpci.pc.in
++++ b/lib/libpci.pc.in
+@@ -1,7 +1,7 @@
+-prefix=@PREFIX@
+-includedir=@INCDIR@
+-libdir=@LIBDIR@
+-idsdir=@IDSDIR@
++prefix=${pcfiledir}/../..
++includedir=${prefix}/include
++libdir=${prefix}/lib
++idsdir=${prefix}/share
+ 
+ Name: libpci
+ Description: libpci

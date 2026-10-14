@@ -1,0 +1,21 @@
+track   = 'generic:pciutils?url=https://mj.ucw.cz/download/linux/pci/&regex=pciutils-([0-9.]+)\.tar\.gz'
+fetch   = { url = "https://mj.ucw.cz/download/linux/pci/pciutils-{version}.tar.gz" }
+with    = [ "make" ]
+deps    = [ "zlib", "kmod" ]
+patches = [ "relocatable.patch" ]
+# its DEST is the install prefix, which is read-only in the store
+remove  = [ "bin/update-pciids", "share/man/man8/update-pciids.8" ]
+
+[only]
+os = [ "linux" ]
+
+[test]
+bin = [ "lspci", "setpci" ]
+
+[steps.replace]
+"make.test" = "pciutils.test"
+
+[make]
+configureScript = "none"
+flags           = [ "CC=cc", "AR=llvm-ar", "RANLIB=llvm-ranlib", "STRIP=", "SBINDIR=$(PREFIX)/bin", "MANDIR=$(PREFIX)/share/man", "SHARED=yes", "ZLIB=yes", "DNS=yes", "LIBKMOD=yes", "HWDB=no" ]
+installTarget   = [ "install", "install-lib" ]
