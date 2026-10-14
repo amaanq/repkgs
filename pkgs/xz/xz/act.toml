@@ -2,13 +2,16 @@ tag     = "v{version}"
 track   = "github:tukaani-project/xz"
 fetch   = { asset = "xz-{version}.tar.xz" }
 with    = [ "cmake" ]
-patches = [ "upstream-msvc-abi.patch" ]
+patches = [ "upstream-msvc-abi.patch", "relocatable.patch" ]
 
 [only]
 abi = [ "gnu", "apple" ]
 
+[on.linux]
+tools = [ "gettext" ]
+
 [cmake]
-flags = [ "-DBUILD_SHARED_LIBS=ON", "-DXZ_NLS=OFF", "-DXZ_DOC=OFF", "-DXZ_POSIX_SHELL=/bin/sh" ]
+flags = [ "-DBUILD_SHARED_LIBS=ON", "-DXZ_DOC=OFF", "-DXZ_POSIX_SHELL=/bin/sh" ]
 tool  = "cmake-bootstrap"
 
 # both crates bundle their own xz whenever LZMA_API_STATIC is set at all, even to 0

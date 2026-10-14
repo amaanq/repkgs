@@ -1,0 +1,11 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -207,7 +207,7 @@
+     # Elsewhere a space is safe. This also keeps things compatible with
+     # EBCDIC in case CMake-based build is ever done on such a system.
+     set(PACKAGE_NAME_DEFINITION "${PACKAGE_NAME}")
+-    set(LOCALEDIR_DEFINITION "${CMAKE_INSTALL_FULL_LOCALEDIR}")
++    set(LOCALEDIR_DEFINITION "../share/locale")
+ endif()
+ 
+ # When used with MSVC, CMake can merge .manifest files with
