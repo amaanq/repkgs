@@ -34,15 +34,22 @@ functional-tests   = false
 json-schema-checks = false
 "nix:mimalloc"     = "enabled"
 
+[test]
+deps     = [ "git", "jq", "openssh", "sqlite", "util-linux" ]
+separate = true
+
 [on.native]
-deps   = [ "googletest", "rapidcheck" ]
-tools  = [ "util-linux" ]
+deps = [ "googletest", "rapidcheck" ]
+tools = [ "util-linux" ]
 remove = [
   "bin/nix-*-tests",
   "include/nix/*/tests",
   "lib/libnix*-test-support.so*",
   "lib/pkgconfig/nix-*-test-support.pc",
 ]
+
+[on.native.steps.after]
+"meson.install" = [ "nix.test" ]
 
 [on.cross.meson.defs]
 unit-tests = false
