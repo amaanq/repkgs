@@ -15,7 +15,8 @@ deps = [
 ]
 
 [test]
-bin = [ "gpg", "gpgsm", "gpg-agent" ]
+bin  = [ "gpg", "gpgsm", "gpg-agent" ]
+deps = [ "openssh" ]
 
 [autotools]
 flags = [
