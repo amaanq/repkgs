@@ -1,0 +1,25 @@
+track   = 'generic:kmod?url=https://www.kernel.org/pub/linux/utils/kernel/kmod/&regex=kmod-([0-9.]+)\.tar\.xz'
+fetch   = { url = "https://www.kernel.org/pub/linux/utils/kernel/kmod/kmod-{version}.tar.xz" }
+with    = [ "meson" ]
+deps    = [ "zlib", "zstd", "xz", "openssl" ]
+tools   = [ "scdoc" ]
+patches = [ "fortified-open.patch", "clang-alias-order.patch", "no-confdir-install.patch" ]
+
+[only]
+os = [ "linux" ]
+
+[test]
+deps = [ "xz", "zstd", "gzip" ]
+bin  = [ "kmod", "depmod", "modinfo" ]
+
+[steps.before]
+"meson.test" = [ "kmod.test-prereq" ]
+
+# the test modules build against linux-kernel's tree, which was built with clang
+[env]
+LLVM = "1"
+
+[meson.defs]
+build-tests = true
+distconfdir = "/usr/lib"
+sysconfdir  = "/etc"

@@ -1,0 +1,17 @@
+The empty depmod.d and modprobe.d directories under /etc and /usr/lib belong to
+the system kmod runs on, outside the install prefix.
+
+--- a/meson.build
++++ b/meson.build
+@@ -226,11 +226,6 @@
+   set_variable(dir_option, customdir)
+ endforeach
+ 
+-foreach confdir : [sysconfdir, distconfdir]
+-  install_emptydir(confdir / 'depmod.d')
+-  install_emptydir(confdir / 'modprobe.d')
+-endforeach
+-
+ _completiondirs = [
+   ['bash', 'bash-completion', 'bash-completion' / 'completions', '@0@'],
+   ['fish', 'fish',            'fish' / 'vendor_functions.d',     '@0@.fish'],

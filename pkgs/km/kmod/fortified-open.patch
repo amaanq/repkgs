@@ -1,0 +1,26 @@
+With _FORTIFY_SOURCE, glibc turns open() into __open_2 or __open64_2 under
+clang, which has no __builtin_va_arg_pack, so the rootfs redirection never
+saw those calls.
+
+--- a/testsuite/path.c
++++ b/testsuite/path.c
+@@ -187,6 +187,9 @@
+ 
+ WRAP_OPEN();
+ 
++extern int __open_2(const char *path, int flags);
++WRAP_2ARGS(int, -1, __open_2, int);
++
+ #ifdef HAVE_FOPEN64
+ WRAP_2ARGS(FILE *, NULL, fopen64, const char *);
+ #endif
+@@ -201,6 +204,9 @@
+ 
+ #ifdef HAVE_OPEN64
+ WRAP_OPEN(64);
++
++extern int __open64_2(const char *path, int flags);
++WRAP_2ARGS(int, -1, __open64_2, int);
+ #endif
+ 
+ #if HAVE_DECL___XSTAT
