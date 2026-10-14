@@ -1,0 +1,4 @@
+track = 'generic:libXrandr?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=libXrandr-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/lib/libXrandr-{version}.tar.xz" }
+with  = [ "meson" ]
+deps  = [ "libx11", "libxext", "libxrender", "xorgproto" ]
