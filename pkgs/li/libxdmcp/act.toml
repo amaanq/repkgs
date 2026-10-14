@@ -1,0 +1,4 @@
+track = 'generic:libXdmcp?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=libXdmcp-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/lib/libXdmcp-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "xorgproto" ]
