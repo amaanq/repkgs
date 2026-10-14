@@ -14,13 +14,8 @@ from = "github:nlohmann/json"
 tool = "cmake-bootstrap"
 
 [cmake.defs]
-JSON_MultipleHeaders = true
-
-[on.native.cmake.defs]
+JSON_MultipleHeaders   = true
 JSON_TestDataDirectory = "{source:testdata}"
-
-[on.cross.cmake.defs]
-JSON_BuildTests = false
 
 [test]
 deps     = [ "git" ]

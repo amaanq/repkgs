@@ -20,9 +20,17 @@ deps = [
   "toml11",
   "editline",
   "mimalloc",
+  "googletest",
+  "rapidcheck",
 ]
-tools = [ "bison", "cmake", "flex" ]
+tools = [ "bison", "cmake", "flex", "util-linux" ]
 patches = [ "relocatable.patch", "sandbox-shell-undef.patch" ]
+remove = [
+  "bin/nix-*-tests",
+  "include/nix/*/tests",
+  "lib/libnix*-test-support.so*",
+  "lib/pkgconfig/nix-*-test-support.pc",
+]
 
 [track]
 from = "github:Mic92/nix-1?branch=repkgs"
@@ -38,18 +46,5 @@ json-schema-checks = false
 deps     = [ "git", "jq", "openssh", "sqlite", "util-linux" ]
 separate = true
 
-[on.native]
-deps = [ "googletest", "rapidcheck" ]
-tools = [ "util-linux" ]
-remove = [
-  "bin/nix-*-tests",
-  "include/nix/*/tests",
-  "lib/libnix*-test-support.so*",
-  "lib/pkgconfig/nix-*-test-support.pc",
-]
-
-[on.native.steps.after]
+[steps.after]
 "meson.install" = [ "nix.test" ]
-
-[on.cross.meson.defs]
-unit-tests = false

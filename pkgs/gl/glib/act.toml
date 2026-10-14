@@ -24,9 +24,6 @@ tools = [ "gettext" ]
 [on.linux.meson.defs]
 nls = "enabled"
 
-[on.cross.meson.defs]
-tests = false
-
 [meson.defs]
 documentation = false
 dtrace        = "disabled"

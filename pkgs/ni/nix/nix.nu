@@ -9,6 +9,12 @@ export def test []: nothing -> nothing {
    $env.PATH            = ($env.PATH | prepend $"($nix)/bin")
    $env.PKG_CONFIG_PATH = $"($nix)/lib/pkgconfig:($env.PKG_CONFIG_PATH? | default '')"
 
-   cue meson setup   $dir $"($c.src)/tests/functional"
+   let machine = if ($"($c.build)/cross.ini" | path exists) {
+      [--cross-file $"($c.build)/cross.ini" --native-file $"($c.build)/native.ini"]
+   } else {
+      []
+   }
+
+   cue meson setup   ...$machine $dir $"($c.src)/tests/functional"
    cue meson test -C $dir --print-errorlogs --num-processes $"($c.njobs)"
 }

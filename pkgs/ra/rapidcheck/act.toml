@@ -14,18 +14,16 @@ from = "github:emil-e/rapidcheck?branch=master"
 base = "0"
 
 [cmake.defs]
+RC_ENABLE_BOOST       = true
+RC_ENABLE_GMOCK       = true
+RC_ENABLE_GTEST       = true
+RC_ENABLE_TESTS       = true
 RC_INSTALL_ALL_EXTRAS = true
 
-[on.native.steps.before]
+[steps.before]
 "cmake.configure" = [ "rapidcheck.submodules" ]
 
-[on.native.cmake.defs]
-RC_ENABLE_BOOST = true
-RC_ENABLE_GMOCK = true
-RC_ENABLE_GTEST = true
-RC_ENABLE_TESTS = true
-
-[on.native.env]
+[env]
 RAPIDCHECK_BOOST      = "{pkg:boost}/include"
 RAPIDCHECK_CATCH      = "{source:catch}"
 RAPIDCHECK_GOOGLETEST = "{source:googletest}"
