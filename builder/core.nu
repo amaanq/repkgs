@@ -173,7 +173,17 @@ def configure-replays [cache: string]: nothing -> bool {
    let rerun = (do { cd ($status | path dirname); ^sh ./config.status --recheck } | complete)
    let after = (open --raw $status)
    if $after != $before { $before | save --force --raw $status }
-   $rerun.exit_code == 0 and $after == $before
+   let name = ($cache | path basename)
+   if $rerun.exit_code != 0 {
+      let error = ($rerun.stderr | lines | last 3 | str join ' | ')
+      note configure-caches $"($name) recheck exited ($rerun.exit_code): ($error)"
+      return false
+   }
+   let kept = ($after | lines)
+   for line in ($before | lines | where $it not-in $kept | first 3) {
+      note configure-caches $"($name) cached run lost ($line | str substring 0..159)"
+   }
+   $after == $before
 }
 
 export def store-configures []: nothing -> nothing {
