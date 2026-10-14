@@ -1,0 +1,9 @@
+track = 'generic:xkbcomp?url=https://xorg.freedesktop.org/archive/individual/app/&regex=xkbcomp-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/app/xkbcomp-{version}.tar.xz" }
+with  = [ "meson" ]
+deps  = [ "libxkbfile", "libx11", "xorgproto" ]
+tools = [ "bison" ]
+
+# xkeyboard-config tests with this, so it can not depend on it, and the tests pass -I themselves
+[meson.defs]
+xkb-config-root = "/usr/share/X11/xkb"
