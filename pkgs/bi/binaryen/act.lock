@@ -1,3 +1,9 @@
 version = "133"
 date    = "2026-09-21"
-hash    = "sha256-ip10rXDnBfgSLrc4q8TXGckGnyq4SSoXQKoCU/KQIE8="
+
+[hash]
+default    = "sha256-ip10rXDnBfgSLrc4q8TXGckGnyq4SSoXQKoCU/KQIE8="
+googletest = "sha256-rXsn2L0xeWvfxTjMAoWEu0UFZ7xOSfYmhbKgRF5J9co="
+
+[vars]
+googletest = "1.18.0"
