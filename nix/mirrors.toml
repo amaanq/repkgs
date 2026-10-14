@@ -1,5 +1,4 @@
-# Each list names prefixes that serve one tree. A source URL under any of them is tried as written,
-# then under the rest in list order.
+# Each list holds mirrors of the same files. A URL tries its own mirror first, then the rest in order.
 gnu = [
   "https://ftp.gnu.org/gnu/",
   "https://ftpmirror.gnu.org/",
