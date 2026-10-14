@@ -1,0 +1,7 @@
+track = 'generic:setxkbmap?url=https://xorg.freedesktop.org/archive/individual/app/&regex=setxkbmap-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/app/setxkbmap-{version}.tar.xz" }
+with  = [ "meson" ]
+deps  = [ "libx11", "libxkbfile", "libxrandr" ]
+
+[test]
+version = "-version"
