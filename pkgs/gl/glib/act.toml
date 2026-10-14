@@ -1,7 +1,7 @@
 fetch   = { url = "https://download.gnome.org/sources/glib/{major}.{minor}/glib-{version}.tar.xz" }
 with    = [ "meson" ]
 deps    = [ "pcre2", "libffi", "zlib", "cpython" ]
-patches = [ "relocatable.patch" ]
+patches = [ "relocatable.patch", "pkg-config-path.patch" ]
 
 [track]
 from = "generic:glib"
@@ -11,14 +11,21 @@ url   = "https://download.gnome.org/sources/glib/cache.json"
 regex = 'glib-([0-9]+\.[0-9]*[02468]\.[0-9]+)\.tar'
 
 [test]
-bin = [ "glib-compile-resources", "gdbus" ]
-run = false
+bin      = [ "glib-compile-resources", "gdbus" ]
+deps     = [ "tzdata" ]
+separate = true
+
+[steps.before]
+"meson.test" = [ "glib.test" ]
 
 [on.linux]
 tools = [ "gettext" ]
 
 [on.linux.meson.defs]
 nls = "enabled"
+
+[on.cross.meson.defs]
+tests = false
 
 [meson.defs]
 documentation = false
@@ -31,7 +38,6 @@ nls           = "disabled"
 selinux       = "disabled"
 sysprof       = "disabled"
 systemtap     = "disabled"
-tests         = false
 wrap_mode     = "nodownload"
 
 [bindings]

@@ -1,0 +1,73 @@
+--- a/gio/tests/meson.build
++++ b/gio/tests/meson.build
+@@ -1326,9 +1326,7 @@
+     bash,
+     args: [ '-xe', '-c', '\n'.join(pkg_config_tests) ],
+     suite: ['gio', 'no-valgrind', 'pkg-config'],
+-    env: {
+-      'PKG_CONFIG_PATH': meson.project_build_root() / 'meson-private',
+-    },
++    env: pkg_config_test_env,
+   )
+ 
+   platform_module = host_system == 'windows' ? 'gio-windows-2.0' : 'gio-unix-2.0'
+@@ -1344,9 +1342,7 @@
+     bash,
+     args: [ '-xe', '-c', '\n'.join(pkg_config_tests) ],
+     suite: ['gio', 'no-valgrind', 'pkg-config'],
+-    env: {
+-      'PKG_CONFIG_PATH': meson.project_build_root() / 'meson-private',
+-    },
++    env: pkg_config_test_env,
+   )
+ endif
+ 
+--- a/glib/tests/meson.build
++++ b/glib/tests/meson.build
+@@ -623,8 +623,6 @@
+       ]),
+     ],
+     suite: ['glib', 'core', 'no-valgrind', 'pkg-config'],
+-    env: {
+-      'PKG_CONFIG_PATH': meson.project_build_root() / 'meson-private',
+-    },
++    env: pkg_config_test_env,
+   )
+ endif
+--- a/gmodule/tests/meson.build
++++ b/gmodule/tests/meson.build
+@@ -151,9 +151,7 @@
+         ]),
+       ],
+       suite: ['gmodule', 'no-valgrind', 'pkg-config'],
+-      env: {
+-        'PKG_CONFIG_PATH': meson.project_build_root() / 'meson-private',
+-      },
++      env: pkg_config_test_env,
+     )
+   endforeach
+ endif
+--- a/gthread/tests/meson.build
++++ b/gthread/tests/meson.build
+@@ -66,8 +66,6 @@
+       ]),
+     ],
+     suite: ['gthread', 'no-valgrind', 'pkg-config'],
+-    env: {
+-      'PKG_CONFIG_PATH': meson.project_build_root() / 'meson-private',
+-    },
++    env: pkg_config_test_env,
+   )
+ endif
+--- a/meson.build
++++ b/meson.build
+@@ -184,6 +184,9 @@
+   'MALLOC_CHECK_=2',
+ ]
+ 
++pkg_config_test_env = environment()
++pkg_config_test_env.prepend('PKG_CONFIG_PATH', meson.project_build_root() / 'meson-private')
++
+ if get_option('werror')
+   common_test_env += 'LINT_WARNINGS_ARE_ERRORS=1'
+ endif
