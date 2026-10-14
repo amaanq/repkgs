@@ -4,10 +4,7 @@ use std::{
       remove_var,
       set_var,
    },
-   io::{
-      self,
-      Write as _,
-   },
+   io,
    path::{
       Path,
       PathBuf,
@@ -25,6 +22,7 @@ use mummer::{
       strict,
    },
    store::on_path,
+   tree::echo,
 };
 use serde::Serialize;
 
@@ -141,14 +139,6 @@ pub fn file_names(directory: &Path) -> io::Result<Vec<String>> {
 
 pub fn strs(values: &[String]) -> impl Iterator<Item = &str> {
    values.iter().map(String::as_str)
-}
-
-fn echo(program: &str, args: &[&str]) {
-   drop(writeln!(
-      io::stderr().lock(),
-      "+ {program} {}",
-      args.join(" ")
-   ));
 }
 
 pub fn run(program: &str, args: &[&str], env: &[(&str, &str)]) -> io::Result<()> {

@@ -36,7 +36,16 @@ export def tool [name: string]: nothing -> path {
 
 # run an external after printing its command line
 export def --wrapped x [command: string, ...args: string]: nothing -> nothing {
-   print -e $"+ ($command) ($args | str join ' ')"
+   let line = $"+ ($command) ($args | str join ' ')"
+   if ($line | str length) <= 200 {
+      print -e $line
+   } else {
+      let start  = ($line | str substring 0..199 | str replace -r ' [^ ]*$' '')
+      let out    = ($args | window 2 | where {|pair| $pair.0 == '-o' } | get 0?.1?)
+      let output = if $out == null { '' } else { $" -o ($out)" }
+      print -e $"($start) …($output) \(($args | length) args\)"
+      print -e $"@nix ({action: msg, level: 4, msg: $line} | to json -r)"
+   }
    ^$command ...$args
 }
 

@@ -35,6 +35,7 @@ use mummer::{
    },
    store::on_path,
    tree::{
+      echo,
       note,
       parallel_with,
    },
@@ -287,12 +288,7 @@ pub fn execute(command: &mut Command) -> io::Result<()> {
       .get_args()
       .map(|arg| arg.display().to_string())
       .collect::<Vec<_>>();
-   drop(writeln!(
-      io::stderr().lock(),
-      "+ {} {}",
-      command.get_program().display(),
-      words.join(" ")
-   ));
+   echo(&command.get_program().display().to_string(), &words);
    command.checked()
 }
 

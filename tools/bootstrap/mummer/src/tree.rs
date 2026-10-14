@@ -138,12 +138,53 @@ pub fn note(kind: &str, message: &str) {
    });
 }
 
-// Children share this stderr, so the line goes out in one write.
+/// Long commands are shortened, the full line goes to `nix log` and `-v`.
+#[inline]
+pub fn echo<Word>(program: &str, args: &[Word])
+where
+   Word: AsRef<str>,
+{
+   const WIDTH: usize = 200;
+
+   let words = args.iter().map(AsRef::as_ref).collect::<Vec<&str>>();
+   let full = format!("+ {program} {}", words.join(" "));
+   if full.len() <= WIDTH {
+      write_line(full.as_bytes());
+      return;
+   }
+
+   let end = full.floor_char_boundary(WIDTH);
+   let cut = full[..end].rfind(' ').unwrap_or(end);
+   let output = words
+      .windows(2)
+      .find_map(|pair| {
+         match *pair {
+            ["-o", out] => Some(out),
+            _ => None,
+         }
+      })
+      .map_or_else(String::new, |out| format!(" -o {out}"));
+   let short = format!("{} …{output} ({} args)", &full[..cut], words.len());
+
+   write_line(short.as_bytes());
+
+   event(&Event::Msg {
+      level: 4,
+      msg:   full,
+   });
+}
+
+// Children share this stderr, so each line goes out in one write.
+fn write_line(text: &[u8]) {
+   let mut line = text.to_vec();
+   line.push(b'\n');
+   drop(io::stderr().lock().write_all(&line));
+}
+
 fn event(event: &Event<'_>) {
    let mut line = b"@nix ".to_vec();
    if serde_json::to_writer(&mut line, event).is_ok() {
-      line.push(b'\n');
-      drop(io::stderr().lock().write_all(&line));
+      write_line(&line);
    }
 }
 
@@ -157,10 +198,12 @@ fn children(directory: &Path) -> io::Result<Vec<DirEntry>> {
 pub fn walk(root: &Path) -> io::Result<Vec<Entry>> {
    let mut found = Vec::new();
    let mut pending = vec![root.to_path_buf()];
+
    while let Some(directory) = pending.pop() {
       for child in children(&directory)? {
          let path = child.path();
          let meta = symlink_metadata(&path)?;
+
          let kind = if meta.is_symlink() {
             EntryKind::Link
          } else if meta.is_dir() {
@@ -169,7 +212,9 @@ pub fn walk(root: &Path) -> io::Result<Vec<Entry>> {
          } else {
             EntryKind::File
          };
+
          let rel = utf8(path.strip_prefix(root).map_err(io::Error::other)?)?.to_owned();
+
          found.push(Entry {
             kind,
             size: meta.len(),
@@ -183,6 +228,7 @@ pub fn walk(root: &Path) -> io::Result<Vec<Entry>> {
          });
       }
    }
+
    found.sort_by(|left, right| left.rel.cmp(&right.rel));
    Ok(found)
 }
@@ -207,6 +253,7 @@ pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
       create_dir_all(to.join(&entry.rel))?;
    }
    let workers = available_parallelism().map_or(4, NonZero::get);
+
    parallel_with(&entries, workers, |entry| {
       let placed = to.join(&entry.rel);
       match entry.kind {
@@ -226,6 +273,7 @@ pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
          EntryKind::Dir => Ok(()),
       }
    })?;
+
    // a directory's mtime last, since filling it moved it
    for entry in entries
       .iter()
@@ -240,11 +288,13 @@ pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
       )?;
       File::open(&placed)?.set_modified(meta.modified()?)?;
    }
+
    let meta = metadata(from)?;
    set_permissions(
       to,
       PermissionsExt::from_mode(meta.permissions().mode() | 0o700),
    )?;
+
    File::open(to)?.set_modified(meta.modified()?)
 }
 
