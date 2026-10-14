@@ -69,7 +69,7 @@ export def --env configure []: nothing -> nothing {
       host: [$triple]
       target: ([$triple] ++ $freestanding)
       extended: true
-      tools: [cargo clippy rustfmt rustdoc rust-analyzer-proc-macro-srv]
+      tools: [cargo clippy rustfmt rustdoc rust-analyzer-proc-macro-srv src]
       description: motley
    } {|level|
       {debuginfo-level: $level, llvm-bitcode-linker: false, codegen-backends: [llvm], codegen-tests: false}
