@@ -1,0 +1,11 @@
+fetch = { from = "uv" }
+with  = [ "python", "cargo" ]
+tools = [ "maturin" ]
+
+[steps]
+phases = [ "python.build", "python.install", "python.test" ]
+
+[python]
+backend = "maturin"
+module  = "uv_build"
+root    = "crates/uv-build"
