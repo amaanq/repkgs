@@ -1,4 +1,4 @@
-use core.nu [ctx edit x]
+use core.nu [ctx edit cue]
 
 # the sandbox's passwd has no shell or $HOME for the build user
 export def login-shell []: nothing -> nothing {
@@ -32,7 +32,7 @@ export def test []: nothing -> nothing {
    let c       = (ctx)
    let regress = $"($c.build)/regress"
    cd $c.build
-   x make $"-j($c.njobs)" regress-binaries regress-unit-binaries
+   cue make $"-j($c.njobs)" regress-binaries regress-unit-binaries
 
    let helpers = (ls $regress | get name)
    let scripts = ("print:\n\t@echo $(LTESTS)\n" | ^make -s --no-print-directory -C $"($c.src)/regress" -f Makefile -f - print | str trim | split row -r '\s+')

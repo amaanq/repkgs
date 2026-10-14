@@ -1,4 +1,4 @@
-use core.nu [ctx edit fix-shebangs tool x]
+use core.nu [ctx edit fix-shebangs tool cue]
 use glob.nu [files]
 
 # the sandbox refuses setuid bits and user xattrs and has no fs.protected_regular. The daemon tests
@@ -17,7 +17,7 @@ export def test []: nothing -> nothing {
    }
 
    cd $c.build
-   x make $"-j($c.njobs)" check-progs
-   x $runtests ...$args
-   x $runtests ...$args --use-tcp --daemon-tests-only
+   cue make $"-j($c.njobs)" check-progs
+   cue $runtests ...$args
+   cue $runtests ...$args --use-tcp --daemon-tests-only
 }

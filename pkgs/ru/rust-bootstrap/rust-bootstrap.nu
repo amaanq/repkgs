@@ -1,10 +1,10 @@
-use core.nu [ctx tool x files]
+use core.nu [ctx tool cue files]
 
 export def install []: nothing -> nothing {
    let c       = (ctx)
    let rustlib = $"($c.out)/lib/rustlib"
    for component in ([.] | append ($env.components | split row " ")) {
-      x sh $"($component)/install.sh" $"--prefix=($c.out)" --disable-ldconfig
+      cue sh $"($component)/install.sh" $"--prefix=($c.out)" --disable-ldconfig
    }
    # install.sh's own bookkeeping names the prefix
    rm -rf $"($rustlib)/($c.platform.rustTriple)/bin" $"($c.out)/etc" $"($rustlib)/install.log" ...(files $"($rustlib)/manifest-*")

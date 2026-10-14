@@ -1,4 +1,4 @@
-use core.nu [ctx x files note]
+use core.nu [ctx cue files note]
 
 export def configure []: nothing -> nothing {
    let c = (ctx)
@@ -6,7 +6,7 @@ export def configure []: nothing -> nothing {
    let init = $"($c.build)/probe-init.cmake"
    let had = (try { ^bigtop probe restore $key $init; true } catch { false })
    note cmake-probes (if $had { "restored" } else { "cold" })
-   (x $env.CONFIG_SHELL ./bootstrap $"--prefix=($c.out)" $"--parallel=($c.njobs)" --no-system-libs
+   (cue $env.CONFIG_SHELL ./bootstrap $"--prefix=($c.out)" $"--parallel=($c.njobs)" --no-system-libs
       --no-qt-gui --docdir=share/doc/cmake --mandir=share/man ...(if $had { [$"--init=($init)"] } else { [] })
       -- -DCMAKE_USE_OPENSSL=OFF -DBUILD_TESTING=OFF -DCMake_BUILD_LTO=OFF $"-DCMAKE_SYSTEM_PREFIX_PATH=($c.platform.sysroot)")
    if not $had {

@@ -1,4 +1,4 @@
-use core.nu [ctx x]
+use core.nu [ctx cue]
 
 # the fixture store names carry the ref fixtures.json pins, tag or branch, and the rest is what
 # xtask generate-fixtures and xtask test run, without xtask test's debug profile rebuild
@@ -21,6 +21,6 @@ export def test []: nothing -> nothing {
    cd $c.src
    mkdir target
    ^ln -s $"($env.CARGO_TARGET_DIR)/($env.CARGO_BUILD_TARGET)/release" target/release
-   x cargo run --release --offline --package xtask -- generate-fixtures
-   x cargo test --release --offline --workspace -- --test-threads $"($c.njobs)"
+   cue cargo run --release --offline --package xtask -- generate-fixtures
+   cue cargo test --release --offline --workspace -- --test-threads $"($c.njobs)"
 }

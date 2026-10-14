@@ -35,7 +35,7 @@ export def tool [name: string]: nothing -> path {
 }
 
 # run an external after printing its command line
-export def --wrapped x [command: string, ...args: string]: nothing -> nothing {
+export def --wrapped cue [command: string, ...args: string]: nothing -> nothing {
    let line = $"+ ($command) ($args | str join ' ')"
    if ($line | str length) <= 200 {
       print -e $line
@@ -103,7 +103,7 @@ export def --env test-locale [locale: string, charmap: string]: nothing -> nothi
    let sysroot = (ctx).platform.sysroot
    mkdir locale
    with-env {I18NPATH: $"($sysroot)/share/i18n"} {
-      (x $"($sysroot)/lib/((ctx).platform.interp | path basename)" --library-path $"($sysroot)/lib"
+      (cue $"($sysroot)/lib/((ctx).platform.interp | path basename)" --library-path $"($sysroot)/lib"
          $"($sysroot)/bin/localedef" --no-archive -i $locale -f $charmap $"./locale/($locale).($charmap)")
    }
    $env.LOCPATH = $"($env.PWD)/locale"

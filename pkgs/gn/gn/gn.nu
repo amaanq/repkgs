@@ -1,10 +1,10 @@
-use core.nu [ctx x]
+use core.nu [ctx cue]
 
 export def build []: nothing -> nothing {
    let c = (ctx)
    do {
       cd $c.src
-      (x python3 build/gen.py --no-last-commit-position --no-strip --no-static-libstdc++
+      (cue python3 build/gen.py --no-last-commit-position --no-strip --no-static-libstdc++
          --allow-warnings $"--out-path=($c.build)")
    }
    # gen.py reads these from git history, which a tarball has none of
@@ -14,5 +14,5 @@ export def build []: nothing -> nothing {
       $"#define LAST_COMMIT_POSITION \"($position.number) \(($position.commit)\)\""
       ""
    ] | str join "\n" | save $"($c.build)/last_commit_position.h"
-   x ninja -C $c.build $"-j($c.njobs)" gn
+   cue ninja -C $c.build $"-j($c.njobs)" gn
 }

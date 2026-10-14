@@ -1,4 +1,4 @@
-use core.nu [ctx x files]
+use core.nu [ctx cue files]
 
 # A gfortran beside the runtime: mummer itself, configured to drive flang with this runtime's paths.
 # "@" is mummer's own prefix, so the configuration still holds once the output moves to the store
@@ -23,6 +23,6 @@ export def driver []: nothing -> nothing {
 export def hello []: nothing -> nothing {
    let c = (ctx)
    [ "program hello" " use iso_fortran_env" " print *, compiler_version()" "end program" "" ] | str join "\n" | save hello.f90
-   x $"($c.out)/bin/gfortran" hello.f90 -o hello
-   if not $c.platform.cross { x ./hello }
+   cue $"($c.out)/bin/gfortran" hello.f90 -o hello
+   if not $c.platform.cross { cue ./hello }
 }

@@ -1,8 +1,8 @@
-use core.nu [ctx dep-root x write-launcher]
+use core.nu [ctx dep-root cue write-launcher]
 
 export def build []: nothing -> nothing {
    let c = (ctx)
-   with-env {HOME: $c.build, REBAR_OFFLINE: "1"} { x escript bootstrap }
+   with-env {HOME: $c.build, REBAR_OFFLINE: "1"} { cue escript bootstrap }
    let escript = $"($c.out)/lib/escript/rebar3"
    mkdir ($escript | path dirname)
    cp _build/prod/bin/rebar3 $escript

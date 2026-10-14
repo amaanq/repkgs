@@ -1,4 +1,4 @@
-use core.nu [ctx x files note]
+use core.nu [ctx cue files note]
 use msbuild.nu
 
 # PCbuild/python.props computes these from patchlevel.h with MSBuild property functions
@@ -51,7 +51,7 @@ export def frozen-modules []: nothing -> nothing {
    for item in $frozen {
       let header = (msbuild win-path $item.meta.OutFile $pcbuild)
       mkdir ($header | path dirname)
-      x python3 $"($c.src)/Programs/_freeze_module.py" $item.meta.ModName $item.path $header
+      cue python3 $"($c.src)/Programs/_freeze_module.py" $item.meta.ModName $item.path $header
    }
 }
 
@@ -75,11 +75,11 @@ export def windows-layout []: nothing -> nothing {
    for import in (files $"($out)/lib/*.lib") { mv $import $"($out)/libs/" }
    rm -rf $"($out)/lib"
 
-   x cp -r $"($c.src)/Lib" $"($out)/Lib"
+   cue cp -r $"($c.src)/Lib" $"($out)/Lib"
    rm -rf $"($out)/Lib/test" ...(files --dirs $"($out)/Lib/**/__pycache__")
 
    mkdir $"($out)/include"
-   x cp -r ...(files --any $"($c.src)/Include/*") $"($c.src)/PC/pyconfig.h" $"($out)/include/"
+   cue cp -r ...(files --any $"($c.src)/Include/*") $"($c.src)/PC/pyconfig.h" $"($out)/include/"
 }
 
 # the PEP 739 file names the paths of the python that generated it, under cross the build

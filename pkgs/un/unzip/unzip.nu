@@ -1,9 +1,9 @@
-use core.nu [ctx x]
+use core.nu [ctx cue]
 
 export def build []: nothing -> nothing {
    let c       = (ctx)
    let defines = [UNIX LARGE_FILE_SUPPORT UNICODE_SUPPORT UNICODE_WCHAR UTF8_MAYBE_NATIVE NO_LCHMOD DATE_FORMAT=DF_YMD USE_BZIP2]
    let quiet   = [implicit-int implicit-function-declaration deprecated-non-prototype format-security]
    let cflags  = ([-O2 -I. ...($defines | each {|d| $"-D($d)" }) -std=gnu89 ...($quiet | each {|w| $"-Wno-($w)" })] | str join " ")
-   x make -f unix/Makefile unzips CC=cc LD=cc AS=cc $"CF=($cflags)" LF2= L_BZ2=-lbz2 $"-j($c.njobs)"
+   cue make -f unix/Makefile unzips CC=cc LD=cc AS=cc $"CF=($cflags)" LF2= L_BZ2=-lbz2 $"-j($c.njobs)"
 }

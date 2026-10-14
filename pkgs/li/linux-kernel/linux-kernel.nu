@@ -1,7 +1,7 @@
-use core.nu [ctx x]
+use core.nu [ctx cue]
 
 def kmake [...args: string]: nothing -> nothing {
-   x make LLVM=1 $"HOSTCC=($env.CC_FOR_BUILD)" $"HOSTCXX=($env.CXX_FOR_BUILD)" $"-j((ctx).njobs)" ...$args
+   cue make LLVM=1 $"HOSTCC=($env.CC_FOR_BUILD)" $"HOSTCXX=($env.CXX_FOR_BUILD)" $"-j((ctx).njobs)" ...$args
 }
 
 export def configure []: nothing -> nothing { kmake defconfig }

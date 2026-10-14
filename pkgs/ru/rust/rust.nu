@@ -1,4 +1,4 @@
-use core.nu [ctx dep-root tool-root tool x edit files]
+use core.nu [ctx dep-root tool-root tool cue edit files]
 
 # std for these is freestanding, so it ships with the compiler as nixpkgs does
 const freestanding = [wasm32-unknown-unknown wasm32v1-none bpfel-unknown-none bpfeb-unknown-none]
@@ -81,11 +81,11 @@ export def --env configure []: nothing -> nothing {
    }
 }
 
-export def build []: nothing -> nothing { x python3 x.py build --stage 2 }
+export def build []: nothing -> nothing { cue python3 x.py build --stage 2 }
 
 export def install []: nothing -> nothing {
    let out = (ctx).out
-   x python3 x.py install
+   cue python3 x.py install
    rm -f ...(files $"($out)/lib/rustlib/{install.log,uninstall.sh,manifest-*,components,rust-installer-version}")
 }
 
@@ -103,7 +103,7 @@ export def std-configure []: nothing -> nothing {
    }
 }
 
-export def std-build []: nothing -> nothing { x python3 x.py build --stage 0 library }
+export def std-build []: nothing -> nothing { cue python3 x.py build --stage 0 library }
 
 # x.py install has no stage 0 path, so std is copied out of the stage 0 build. bootstrap fills the
 # stage 0 sysroot from cargo's old target/deps layout only, which leaves just self-contained/ there

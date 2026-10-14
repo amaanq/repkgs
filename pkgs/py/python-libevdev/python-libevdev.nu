@@ -1,4 +1,4 @@
-use core.nu [ctx dep-root edit shlib x]
+use core.nu [ctx dep-root edit shlib cue]
 use glob.nu [files]
 
 # ctypes otherwise looks libevdev up through the loader's search path, which knows no store paths
@@ -13,5 +13,5 @@ export def test []: nothing -> nothing {
    let c    = (ctx)
    let site = (files $"($c.out)/lib/python3*/site-packages" | first)
 
-   with-env {PYTHONPATH: $"($site):($env.PYTHONPATH)"} { x python3 -m pytest -q $"($c.src)/test" }
+   with-env {PYTHONPATH: $"($site):($env.PYTHONPATH)"} { cue python3 -m pytest -q $"($c.src)/test" }
 }

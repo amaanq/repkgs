@@ -1,4 +1,4 @@
-use core.nu [ctx x files]
+use core.nu [ctx cue files]
 
 export def build []: nothing -> nothing {
    let c      = (ctx)
@@ -16,7 +16,7 @@ export def build []: nothing -> nothing {
    }
    if $c.platform.cross { $env.CC_FOR_TARGET = "cc" }
    if $c.cache { $env.GOCACHEPROG = (which gocacheprog | get 0.path) }
-   do { cd src; x sh make.bash }
+   do { cd src; cue sh make.bash }
 
    # a cross make.bash leaves both toolchains, the target's under <os>_<arch>/
    rm -rf pkg/obj pkg/bootstrap

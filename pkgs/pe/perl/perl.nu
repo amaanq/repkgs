@@ -1,4 +1,4 @@
-use core.nu [ctx dep-root x edit tools-by-name files note]
+use core.nu [ctx dep-root cue edit tools-by-name files note]
 
 def assignments [pairs: record, format: closure]: nothing -> string {
    $pairs | items {|key, value| do $format $key $value } | each {|line| $"($line)\n" } | str join
@@ -57,20 +57,20 @@ export def configure []: nothing -> nothing {
       let restored = (try { ^bigtop probe restore $key config.sh; true } catch { false })
       note perl-configure (if $restored { "restored" } else { "cold" })
       if $restored {
-         x $env.CONFIG_SHELL ./Configure -S
-         x make depend
+         cue $env.CONFIG_SHELL ./Configure -S
+         cue make depend
       } else {
-         x $env.CONFIG_SHELL ./Configure -des ...$flags
+         cue $env.CONFIG_SHELL ./Configure -des ...$flags
          ^bigtop probe store $key config.sh
       }
       return
    }
 
-   x cp -r $"($env.PERL_CROSS)/." .
-   x patch -p1 -F0 -i $env.PERL_CROSS_PATCH
+   cue cp -r $"($env.PERL_CROSS)/." .
+   cue patch -p1 -F0 -i $env.PERL_CROSS_PATCH
    borrow-cross-diffs $c.spec.version
    # Errno_pm.PL and h2ph read the target's C headers below --sysroot
-   x env AR=llvm-ar RANLIB=llvm-ranlib READELF=llvm-readelf OBJDUMP=llvm-objdump NM=llvm-nm $env.CONFIG_SHELL ./configure $"--target=($c.platform.gnuTriple)" --host-cc=cc-build $"--sysroot=($env.PERL_SYSROOT)" ...$flags
+   cue env AR=llvm-ar RANLIB=llvm-ranlib READELF=llvm-readelf OBJDUMP=llvm-objdump NM=llvm-nm $env.CONFIG_SHELL ./configure $"--target=($c.platform.gnuTriple)" --host-cc=cc-build $"--sysroot=($env.PERL_SYSROOT)" ...$flags
 }
 
 # Config.pm, Config_heavy.pl and config.h keep the build's tool paths, sysroot and dependency

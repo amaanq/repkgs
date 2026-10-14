@@ -1,4 +1,4 @@
-use core.nu [ctx x]
+use core.nu [ctx cue]
 
 const bundled = [zlib openssl zstd brotli libuv nghttp2 cares sqlite]
 
@@ -15,11 +15,11 @@ export def configure []: nothing -> nothing {
    # node_mksnapshot faults under qemu-loongarch64 on pointers with bits 40 to 63 set
    let snapshot = if $platform.cpu == "loongarch64" { [--without-node-snapshot] } else { [] }
    let shared   = ($bundled | each {|library| $"--shared-($library)" })
-   x python3 configure.py --prefix=/ --ninja ...$shared --with-intl=system-icu --openssl-use-def-ca-store --without-corepack ...(cross-flags $platform) ...$snapshot
+   cue python3 configure.py --prefix=/ --ninja ...$shared --with-intl=system-icu --openssl-use-def-ca-store --without-corepack ...(cross-flags $platform) ...$snapshot
 }
 
-export def build []: nothing -> nothing { x ninja -C out/Release $"-j((ctx).njobs)" }
+export def build []: nothing -> nothing { cue ninja -C out/Release $"-j((ctx).njobs)" }
 
 export def install []: nothing -> nothing {
-   x python3 tools/install.py install --dest-dir "" --prefix (ctx).out --build-dir out/Release
+   cue python3 tools/install.py install --dest-dir "" --prefix (ctx).out --build-dir out/Release
 }

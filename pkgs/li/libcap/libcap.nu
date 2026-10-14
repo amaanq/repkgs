@@ -1,5 +1,5 @@
-use core.nu [x]
+use core.nu [cue]
 
 export def test []: nothing -> nothing {
-   x ./libcap/cap_test
+   cue ./libcap/cap_test
 }

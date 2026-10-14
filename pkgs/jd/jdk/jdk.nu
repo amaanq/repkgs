@@ -1,4 +1,4 @@
-use core.nu [ctx dep-root tool-root tool x edit files]
+use core.nu [ctx dep-root tool-root tool cue edit files]
 
 export def configure []: nothing -> nothing {
    let c = (ctx)
@@ -44,11 +44,11 @@ export def configure []: nothing -> nothing {
    ]
 
    # configure is a wrapper of its own that wants bash
-   x bash configure ...$cross ...$flags
+   cue bash configure ...$cross ...$flags
 }
 
 export def build []: nothing -> nothing {
-   x make images $"JOBS=((ctx).njobs)" LOG=info
+   cue make images $"JOBS=((ctx).njobs)" LOG=info
 }
 
 export def install []: nothing -> nothing {

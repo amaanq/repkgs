@@ -1,4 +1,4 @@
-use core.nu [ctx x files]
+use core.nu [ctx cue files]
 
 # configure.py would need python, which needs zlib, which builds with cmake and so with ninja
 export def build []: nothing -> nothing {
@@ -11,7 +11,7 @@ export def build []: nothing -> nothing {
    let object  = {|source| $"($source | path parse | get stem).o" }
 
    cd $c.build
-   $sources | par-each {|source| x c++ ...$flags -c $source -o (do $object $source) } | ignore
-   for source in $getopt { x cc ...$flags -c $source -o (do $object $source) }
-   x c++ ...($sources ++ $getopt | each $object) -o $"ninja($c.platform.ext.exe)"
+   $sources | par-each {|source| cue c++ ...$flags -c $source -o (do $object $source) } | ignore
+   for source in $getopt { cue cc ...$flags -c $source -o (do $object $source) }
+   cue c++ ...($sources ++ $getopt | each $object) -o $"ninja($c.platform.ext.exe)"
 }

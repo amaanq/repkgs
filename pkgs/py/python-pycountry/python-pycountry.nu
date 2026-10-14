@@ -1,4 +1,4 @@
-use core.nu [ctx x]
+use core.nu [ctx cue]
 use glob.nu [files]
 
 # upstream ships its suite inside the package, the python system's pytest option reads tests/. Its
@@ -9,6 +9,6 @@ export def test []: nothing -> nothing {
    let opts = [ "-o" "required_plugins=" "-o" "addopts=--doctest-glob=*.rst" "-o" "pythonpath=" ]
 
    with-env {PYTHONPATH: $"($site):($env.PYTHONPATH)"} {
-      x python3 -m pytest -q ...$opts $"($c.src)/src/pycountry/tests" $"($c.src)/README.rst"
+      cue python3 -m pytest -q ...$opts $"($c.src)/src/pycountry/tests" $"($c.src)/README.rst"
    }
 }

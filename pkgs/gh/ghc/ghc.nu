@@ -1,11 +1,11 @@
-use core.nu [ctx attrs options dep-root tool x cache-configures store-configures files]
+use core.nu [ctx attrs options dep-root tool cue cache-configures store-configures files]
 
 def --wrapped hadrian [...targets: string]: nothing -> nothing {
    let c = (ctx)
    cd $c.src
    let flavour = $"release+no_profiled_libs+split_sections(if $c.spec.debug { '+debug_info' })"
    let program = (^cabal list-bin $"--project-dir=($c.src)/hadrian" ...(options cabal).flags exe:hadrian | str trim)
-   x $program --directory $c.src $"-j($c.njobs)" --docs=none $"--flavour=($flavour)" ...$targets
+   cue $program --directory $c.src $"-j($c.njobs)" --docs=none $"--flavour=($flavour)" ...$targets
 }
 
 def linked [flag: string, dependency: string, headers: string]: nothing -> list<string> {
@@ -24,7 +24,7 @@ export def --env configure []: nothing -> nothing {
    cd $c.src
    let libraries = [(linked ffi libffi include) (linked gmp gmp include) (linked curses ncurses include/ncursesw)] | flatten
    # autoreconf would run aclocal, which needs automake, and AC_PATH_PROG keeps only absolute presets
-   x sh ./configure $"--prefix=($c.out)" --with-system-libffi ...$libraries GHC=ghc $"fp_cv_matching_ghc_pkg=($env.CABAL_GHC_PKG)" $"AutoreconfCmd=(tool autoconf)" ...(^bigtop system ghc-toolchain | lines)
+   cue sh ./configure $"--prefix=($c.out)" --with-system-libffi ...$libraries GHC=ghc $"fp_cv_matching_ghc_pkg=($env.CABAL_GHC_PKG)" $"AutoreconfCmd=(tool autoconf)" ...(^bigtop system ghc-toolchain | lines)
 }
 
 export def build []: nothing -> nothing {
