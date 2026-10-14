@@ -347,8 +347,11 @@ impl Python {
       set_current_dir(&ctx.build)?;
       run("python3", &["-c", &format!("import {module}")], &env)?;
       if options.pytest {
+         // suites read their config relative to the project, -P keeps the
+         // source tree from shadowing the installed module
+         set_current_dir(&ctx.src)?;
          let tests = ctx.src.join(&options.tests);
-         run("python3", &["-m", "pytest", "-q", utf8(&tests)?], &env)?;
+         run("python3", &["-P", "-m", "pytest", "-q", utf8(&tests)?], &env)?;
       }
       Ok(())
    }
