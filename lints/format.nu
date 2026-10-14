@@ -21,6 +21,7 @@ def "main nu" [...files: string]: nothing -> nothing {
    {
       ruleDirs: [($env.PWD | path join lints nu)]
       customLanguages: {nu: {libraryPath: $env.TREE_SITTER_NU, extensions: [nu], expandoChar: "_"}}
+      languageGlobs: {nu: [motley target-test]}
    } | to json | save -f $config
    let scan = (^ast-grep scan $"--config=($config)" --report-style=short ...$files | complete)
    rm $config
