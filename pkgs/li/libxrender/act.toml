@@ -1,0 +1,4 @@
+track = 'generic:libXrender?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=libXrender-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/lib/libXrender-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "libx11", "xorgproto" ]
