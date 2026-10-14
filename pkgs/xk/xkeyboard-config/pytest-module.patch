@@ -1,0 +1,16 @@
+Run the suite through the interpreter meson found with pytest importable, a pytest
+script's env shebang names no interpreter its own package provides.
+
+--- a/meson.build
++++ b/meson.build
+@@ -147,8 +147,8 @@
+         pytest_args += ['-n', 'auto']
+     endif
+ 
+-    test('pytest', pytest,
+-         args: pytest_args,
++    test('pytest', python,
++         args: ['-m', 'pytest'] + pytest_args,
+          env: {
+             'XKB_CONFIG_ROOT': meson.project_source_root(),
+             'XKB_CONFIG_EXTRA_PATH': meson.project_build_root(),
