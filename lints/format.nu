@@ -9,7 +9,7 @@ def main [] {
 # recipes and phase modules name their package by directory
 def "main package-scripts" [...files: string]: nothing -> nothing {
    if ($env.MOTLEY_NO_EVAL? | default "") == "1" { return }
-   let packaged = ($files | where $it =~ '^pkgs/[^/]+/[^/]+/(recipe\.(toml|nix)|[^/]+\.nu)$')
+   let packaged = ($files | where $it =~ '^pkgs/[^/]+/[^/]+/(act\.(toml|nix)|[^/]+\.nu)$')
    if ($packaged | is-empty) { return }
    ^nu --no-config-file lints/package-scripts.nu ...$packaged
 }
