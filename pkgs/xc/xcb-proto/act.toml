@@ -1,0 +1,7 @@
+track = 'generic:xcb-proto?url=https://xorg.freedesktop.org/archive/individual/proto/&regex=xcb-proto-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/proto/xcb-proto-{version}.tar.xz" }
+with  = [ "autotools" ]
+tools = [ "cpython314" ]
+
+[steps.after]
+"autotools.install" = [ "xcb-proto.recompile" ]
