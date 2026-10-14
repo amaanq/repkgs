@@ -1,0 +1,14 @@
+fetch = { from = "linux" }
+deps  = [ "elfutils", "openssl" ]
+tools = [ "bc", "bison", "flex", "perl", "cpio", "rsync", "cpython314" ]
+dev   = true
+
+[only]
+os = [ "linux" ]
+
+[steps]
+phases = [ "linux-kernel.configure", "linux-kernel.build", "linux-kernel.install" ]
+
+# kernel objects take only the kernel's own flags
+[cc]
+hardening = false
