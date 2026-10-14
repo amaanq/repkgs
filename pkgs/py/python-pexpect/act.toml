@@ -1,0 +1,12 @@
+track = "pypi:pexpect"
+fetch = { url = "https://files.pythonhosted.org/packages/source/p/pexpect/pexpect-{version}.tar.gz" }
+with  = [ "python" ]
+deps  = [ "python-ptyprocess" ]
+tools = [ "python-setuptools" ]
+
+[test]
+deps = [ "python-pytest" ]
+
+[python]
+module = "pexpect"
+pytest = true
