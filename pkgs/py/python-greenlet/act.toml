@@ -1,0 +1,13 @@
+track = "pypi:greenlet"
+fetch = { url = "https://files.pythonhosted.org/packages/source/g/greenlet/greenlet-{version}.tar.gz" }
+with  = [ "python" ]
+tools = [ "python-setuptools" ]
+
+[test]
+deps = [ "python-objgraph", "python-psutil" ]
+
+[steps.after]
+"python.test" = [ "python-greenlet.test" ]
+
+[python]
+module = "greenlet"
