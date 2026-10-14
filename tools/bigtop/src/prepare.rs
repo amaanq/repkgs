@@ -50,10 +50,15 @@ use crate::{
       Attrs,
       Ctx,
       Platform,
+      Spec,
+      TestVar,
       build_top,
    },
    env::compute,
-   exports::closure,
+   exports::{
+      Exports,
+      closure,
+   },
 };
 
 #[derive(Serialize)]
@@ -96,7 +101,15 @@ pub fn prepare(source: Source<'_>) -> io::Result<Prepared> {
    };
    let deps = closure(&attrs.dependencies)?;
    let cache = socket().try_exists()?;
-   let mut env = compute(&attrs, &spec, &deps, Path::new(&out), cache)?;
+   let mut env = compute(
+      &attrs,
+      &attrs.build_dependencies,
+      &spec,
+      &deps,
+      Path::new(&out),
+      cache,
+   )?;
+   let test_env = test_env(&attrs, &spec, &deps, Path::new(&out), cache, &env)?;
    let platform = resolve_platform(&attrs.platform, &top, &mut env)?;
    let src = format!("{top}/source");
    let build = format!("{top}/build");
@@ -150,6 +163,7 @@ pub fn prepare(source: Source<'_>) -> io::Result<Prepared> {
       platform,
       tests_run,
       cache,
+      test_env,
    };
    ctx.save(&top)?;
    Ok(Prepared {
@@ -157,6 +171,34 @@ pub fn prepare(source: Source<'_>) -> io::Result<Prepared> {
       cwd: utf8(&cwd)?.to_owned(),
       ctx,
    })
+}
+
+/// The variables test phases change once their dependencies join the build's.
+fn test_env(
+   attrs: &Attrs,
+   spec: &Spec,
+   deps: &[Exports],
+   out: &Path,
+   cache: bool,
+   env: &BTreeMap<String, Value>,
+) -> io::Result<BTreeMap<String, TestVar>> {
+   if attrs.test_dependencies.is_empty() {
+      return Ok(BTreeMap::new());
+   }
+   let tools = attrs
+      .build_dependencies
+      .iter()
+      .chain(&attrs.test_dependencies)
+      .cloned()
+      .collect::<Vec<String>>();
+   let changes = compute(attrs, &tools, spec, deps, out, cache)?
+      .into_iter()
+      .filter_map(|(name, value)| {
+         let change = TestVar::between(env.get(&name), &value)?;
+         Some((name, change))
+      })
+      .collect();
+   Ok(changes)
 }
 
 fn resolve_platform(

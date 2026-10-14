@@ -2,9 +2,11 @@ use std::{
    collections::BTreeMap,
    convert::Infallible,
    env::{
+      VarError,
       args_os,
       current_exe,
       set_current_dir,
+      var,
       var_os,
       vars,
    },
@@ -68,6 +70,7 @@ use crate::{
       Ctx,
       Kind,
       Step,
+      TestVar,
       build_top,
    },
    finish,
@@ -208,6 +211,7 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
    )?;
    let mut timings = vec![format!("prepare {:.1}s", started.elapsed().as_secs_f64())];
    let mut writable = false;
+   let mut undo = None;
    for (index, step) in attrs.plan.phases.iter().enumerate() {
       let wanted = if tests {
          step.test
@@ -215,10 +219,16 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
          !step.test || (spec.tests.run.unwrap_or(true) && !attrs.plan.separate && ctx.tests_run)
       };
       if wanted {
-         let editing = spec.tests.etc == Some(true) && edits_etc(&attrs.plan.phases, index);
+         let testing = in_tests(&attrs.plan.phases, index);
+         let editing = spec.tests.etc == Some(true) && testing;
          if editing != writable {
             etc_access(editing)?;
             writable = editing;
+         }
+         match (testing, undo.take()) {
+            (true, None) => undo = Some(overlay(&ctx.test_env)?),
+            (false, Some(previous)) => previous.apply(),
+            (_, kept) => undo = kept,
          }
          let begun = Instant::now();
          phase(&attrs, &mut ctx, index, socket)?;
@@ -320,11 +330,47 @@ fn private_etc() -> io::Result<Infallible> {
 }
 
 /// Whether the step is a test or a nu step just before one.
-fn edits_etc(phases: &[Step], index: usize) -> bool {
+fn in_tests(phases: &[Step], index: usize) -> bool {
    phases[index..]
       .iter()
       .find(|step| step.test || !matches!(step.kind, Kind::Nu { .. }))
       .is_some_and(|step| step.test)
+}
+
+/// Puts `env` over this process's environment and returns what undoes it.
+fn overlay(env: &BTreeMap<String, TestVar>) -> io::Result<Env> {
+   let mut previous = Env::default();
+   for (name, change) in env {
+      let (current, present) = match var(name) {
+         Ok(value) => (value, true),
+         Err(VarError::NotPresent) => (String::new(), false),
+         Err(VarError::NotUnicode(_raw)) => {
+            return Err(io::Error::other(format!("{name} is not UTF-8")));
+         },
+      };
+      match *change {
+         TestVar::Set(ref value) => export(name, value),
+         TestVar::Append {
+            ref separator,
+            ref entries,
+         } => {
+            let kept = current
+               .split(separator.as_str())
+               .filter(|entry| !entry.is_empty());
+            let joined = kept
+               .chain(entries.iter().map(String::as_str))
+               .collect::<Vec<_>>()
+               .join(separator);
+            export(name, &joined);
+         },
+      }
+      if present {
+         previous.set(name, current);
+      } else {
+         previous.unset(name);
+      }
+   }
+   Ok(previous)
 }
 
 /// Remounts the private /etc writable or read-only.

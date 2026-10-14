@@ -22,7 +22,9 @@ export def dep [name: string, why: string]: nothing -> string {
 
 # the store path of a build dependency
 export def build-dep [name: string]: nothing -> string {
-   let found = ((drv).buildDependencies | where { (^bigtop exports $in | from json | first | get name) == $name })
+   let attrs = (drv)
+   let roots = ($attrs.buildDependencies | append ($attrs.testDependencies? | default []))
+   let found = ($roots | where { (^bigtop exports $in | from json | first | get name) == $name })
    if ($found | is-empty) { error make {msg: $"buildPkgs.($name) must be in buildDependencies"} }
    $found.0
 }

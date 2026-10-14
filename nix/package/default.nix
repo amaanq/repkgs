@@ -208,6 +208,12 @@ let
     )
     ++ base;
   plumbing = concatMap (system: buildSystems.${system}.plumbing) uses;
+  # test phases add testDependencies themselves, so a tool only the suite runs never reaches
+  # configure or changes what the build produces
+  tools = buildDependencies {
+    tests = [ ];
+    base = if args.bootstrapTools or false then baseTools.bootstrap else baseTools.full;
+  };
   # act.lock's sys: libraries the lock files can link (their `[bindings]`). Those the set lacks
   # here are left to the locked package (vendored copy or feature off)
   dependencies =
@@ -224,10 +230,9 @@ let
     probeInputs = [ tree ] ++ phases.modules;
     inherit (args) version;
     patches = valid.patches or [ ];
-    buildDependencies = buildDependencies {
-      tests = if separate then [ ] else testDependencies;
-      base = if args.bootstrapTools or false then baseTools.bootstrap else baseTools.full;
-    };
+    buildDependencies = tools;
+    testDependencies =
+      if separate then [ ] else filter (dependency: !(elem dependency tools)) testDependencies;
     sysLibs = builtins.intersectAttrs (listToAttrs (
       map (name: {
         inherit name;

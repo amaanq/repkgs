@@ -55,6 +55,9 @@ pub struct Attrs {
    #[serde(rename = "buildDependencies")]
    pub build_dependencies: Vec<String>,
    pub dependencies:       Vec<String>,
+   /// On PATH in test phases only.
+   #[serde(default, rename = "testDependencies")]
+   pub test_dependencies:  Vec<String>,
    #[serde(default)]
    pub plumbing:           Vec<String>,
    #[serde(rename = "CONFIG_SITE")]
@@ -438,6 +441,63 @@ pub struct Ctx {
    pub platform:  Value,
    pub tests_run: bool,
    pub cache:     bool,
+   /// What test phases add to the build environment, their test dependencies.
+   #[serde(default)]
+   pub test_env:  BTreeMap<String, TestVar>,
+}
+
+/// A variable test phases change. A list such as PATH gains the test
+/// dependencies' entries after whatever a setup or step left in it.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TestVar {
+   Append {
+      separator: String,
+      entries:   Vec<String>,
+   },
+   Set(String),
+}
+
+impl TestVar {
+   /// How `test` differs from `base`, the build environment's value.
+   #[must_use = "the change is the whole answer"]
+   pub fn between(base: Option<&Value>, tested: &Value) -> Option<Self> {
+      let flat = |value: &Value| {
+         match *value {
+            Value::Array(ref items) => {
+               items
+                  .iter()
+                  .filter_map(Value::as_str)
+                  .collect::<Vec<_>>()
+                  .join(":")
+            },
+            Value::String(ref plain) => plain.clone(),
+            Value::Bool(flag) => flag.to_string(),
+            Value::Number(ref number) => number.to_string(),
+            Value::Null | Value::Object(_) => String::new(),
+         }
+      };
+      let wanted = flat(tested);
+      let had = base.map(flat).unwrap_or_default();
+      if wanted == had {
+         return None;
+      }
+      let separator = if wanted.contains(' ') { " " } else { ":" };
+      let old = had.split(separator).collect::<Vec<_>>();
+      let new = wanted.split(separator).collect::<Vec<_>>();
+      let listed = !had.is_empty() && !wanted.contains(['{', '"']);
+      if !listed || !old.iter().all(|entry| new.contains(entry)) {
+         return Some(Self::Set(wanted));
+      }
+      Some(Self::Append {
+         separator: separator.to_owned(),
+         entries:   new
+            .into_iter()
+            .filter(|entry| !old.contains(entry))
+            .map(str::to_owned)
+            .collect(),
+      })
+   }
 }
 
 impl Ctx {

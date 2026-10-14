@@ -57,34 +57,42 @@ pub fn run(out: &Path, cache: bool) -> io::Result<()> {
    let attrs = Attrs::load()?;
    let spec = attrs.spec()?;
    let deps = closure(&attrs.dependencies)?;
-   let env = compute(&attrs, &spec, &deps, out, cache)?;
+   let tools = attrs
+      .build_dependencies
+      .iter()
+      .chain(&attrs.test_dependencies)
+      .cloned()
+      .collect::<Vec<String>>();
+   let env = compute(&attrs, &tools, &spec, &deps, out, cache)?;
    let mut stdout = io::stdout().lock();
    serde_json::to_writer(&mut stdout, &env)?;
    writeln!(stdout)?;
    Ok(())
 }
 
+/// The build environment with `tools` on PATH, which are the build
+/// dependencies, plus the test dependencies for the environment of test phases.
 pub fn compute(
    attrs: &Attrs,
+   tools: &[String],
    spec: &Spec,
    deps: &[Exports],
    out: &Path,
    cache: bool,
 ) -> io::Result<BTreeMap<String, Value>> {
    let top = build_top()?;
-   let bins = attrs
-      .build_dependencies
+   let bins = tools
       .iter()
       .map(|root| Path::new(root).join("bin"))
       .collect::<Vec<PathBuf>>();
    let mut env = BTreeMap::<String, Value>::new();
    sandbox_dirs(&mut env, &top, &bins, out)?;
    reproducible(&mut env, attrs);
-   toolchain(&mut env, attrs, spec, deps, &top, &bins, out)?;
+   toolchain(&mut env, tools, spec, deps, &top, &bins, out)?;
    let platform = Platform::deserialize(&attrs.platform)?;
    package_cc(&mut env, spec, &platform, deps, &bins)?;
-   python_path(&mut env, &attrs.build_dependencies)?;
-   for root in &attrs.build_dependencies {
+   python_path(&mut env, tools)?;
+   for root in tools {
       for (name, value) in exports_of(Path::new(root))?.env {
          env.insert(name, Value::String(value));
       }
@@ -189,7 +197,7 @@ fn masked(path: &str, under: &str) -> String {
 
 fn toolchain(
    env: &mut BTreeMap<String, Value>,
-   attrs: &Attrs,
+   tools: &[String],
    spec: &Spec,
    deps: &[Exports],
    top: &str,
@@ -200,7 +208,7 @@ fn toolchain(
       .iter()
       .map(|dep| dep.root.clone())
       .collect::<Vec<String>>();
-   roots.extend(attrs.build_dependencies.iter().cloned());
+   roots.extend(tools.iter().cloned());
    roots.extend(spec.lock_trees().map(str::to_owned));
    if let Some(cc) = find_tool(bins, "cc") {
       let package = cc
@@ -218,12 +226,7 @@ fn toolchain(
    }
    let mut prefix_map = vec![format!("{top}=/build")];
    prefix_map.extend(deps.iter().map(|dep| masked(&dep.root, "deps")));
-   prefix_map.extend(
-      attrs
-         .build_dependencies
-         .iter()
-         .map(|root| masked(root, "tools")),
-   );
+   prefix_map.extend(tools.iter().map(|root| masked(root, "tools")));
    set(env, "CC", "cc");
    set(env, "CXX", "c++");
    set(env, "AR", "llvm-ar");
