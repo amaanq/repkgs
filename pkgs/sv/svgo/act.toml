@@ -3,5 +3,8 @@ track = "github:svg/svgo"
 fetch = { archive = true }
 with  = [ "pnpm" ]
 
+[test]
+deps = [ "git" ]
+
 [steps.replace]
 "pnpm.test" = "svgo.test"
