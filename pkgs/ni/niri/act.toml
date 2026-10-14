@@ -1,0 +1,26 @@
+tag   = "v{version}"
+track = "github:niri-wm/niri"
+fetch = { archive = true }
+with  = [ "cargo" ]
+deps  = [ "libdisplay-info03", "libinput", "libxkbcommon", "mesa", "pango", "pipewire", "seatd", "systemd", "wayland" ]
+
+[only]
+os = [ "linux" ]
+
+[test]
+bin     = [ "niri" ]
+version = "--version"
+
+[cargo]
+# niri-visual-tests is a GTK app for checking renders by eye and has no tests
+flags     = [ "--package", "niri", "--package", "niri-config", "--package", "niri-ipc" ]
+# smithay dlopens libEGL and libwayland-client by soname, naming them puts their directories in
+# the RUNPATH
+rustflags = [ "-Clink-arg=-lEGL", "-Clink-arg=-lwayland-client" ]
+
+[install]
+"bin/niri-session"                           = "resources/niri-session"
+"lib/systemd/user/niri.service"              = "resources/niri.service"
+"lib/systemd/user/niri-shutdown.target"      = "resources/niri-shutdown.target"
+"share/wayland-sessions/niri.desktop"        = "resources/niri.desktop"
+"share/xdg-desktop-portal/niri-portals.conf" = "resources/niri-portals.conf"

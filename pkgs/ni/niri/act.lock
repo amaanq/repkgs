@@ -1,0 +1,11 @@
+version = "26.04"
+date    = "2026-04-25"
+sys     = [ "clang", "glib", "pipewire", "systemd" ]
+
+[hash]
+default                                                                                                                            = "sha256-ehSMsSpE+0k8r+2Vseu8kangsYxToZv3vinynsDp9zs="
+"git+https://github.com/Smithay/smithay.git?rev=ff5fa7df392cecfba049ffed55cdaa4e98a8e7ef#ff5fa7df392cecfba049ffed55cdaa4e98a8e7ef" = "sha256-TV/GTfSvgfVwIFUGoASU7xm38opIBLjLMf1HeNTW07U="
+
+[sources."git+https://github.com/Smithay/smithay.git?rev=ff5fa7df392cecfba049ffed55cdaa4e98a8e7ef#ff5fa7df392cecfba049ffed55cdaa4e98a8e7ef"]
+url  = "https://github.com/Smithay/smithay/archive/ff5fa7df392cecfba049ffed55cdaa4e98a8e7ef.tar.gz"
+name = "smithay-ff5fa7df392c"
