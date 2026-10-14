@@ -1,0 +1,4 @@
+track = 'generic:libXdamage?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=libXdamage-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/lib/libXdamage-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "libx11", "libxfixes", "xorgproto" ]
