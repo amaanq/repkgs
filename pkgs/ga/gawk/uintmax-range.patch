@@ -1,0 +1,20 @@
+--- a/printf.c
++++ b/printf.c
+@@ -926,7 +926,7 @@
+ 		chbuf = (flags->format == 'X' ? Uchbuf : lchbuf);
+ 
+ 		if (tmpval < 0) {
+-			uval = (uintmax_t) (intmax_t) tmpval;
++			uval = tmpval < (AWKNUM) INTMAX_MIN ? 0 : (uintmax_t) (intmax_t) tmpval;
+ 			if ((AWKNUM)(intmax_t)uval != double_to_int(tmpval)) {
+ 				flags->format = 'g';
+ 				free((void *) buf);
+@@ -935,7 +935,7 @@
+ 				return format_float(arg, flags);
+ 			}
+ 		} else {
+-			uval = (uintmax_t) tmpval;
++			uval = tmpval >= (AWKNUM) UINTMAX_MAX ? 0 : (uintmax_t) tmpval;
+ 			if ((AWKNUM)uval != double_to_int(tmpval)) {
+ 				flags->format = 'g';
+ 				free((void *) buf);
