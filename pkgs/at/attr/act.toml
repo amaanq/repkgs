@@ -3,6 +3,7 @@ fetch   = { url = "https://download.savannah.nongnu.org/releases/attr/attr-{vers
 with    = [ "autotools" ]
 patches = [ "relocatable.patch" ]
 
+# the nix sandbox answers every xattr syscall with ENOTSUP
 [test]
 bin = [ "getfattr", "setfattr", "attr" ]
 run = false
