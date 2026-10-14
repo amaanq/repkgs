@@ -62,7 +62,9 @@ options! {
       module ("module"): Option<String> = None
          => "module the import test loads (null uses the package name with - as _)",
       pytest ("pytest"): bool = false
-         => "also run pytest on tests/",
+         => "also run pytest on the tests directory",
+      tests ("tests"): String = "tests".to_owned()
+         => "directory below the source pytest runs on",
    }
 }
 
@@ -345,8 +347,8 @@ impl Python {
       set_current_dir(&ctx.build)?;
       run("python3", &["-c", &format!("import {module}")], &env)?;
       if options.pytest {
-         let tests = format!("{}/tests", ctx.src.display());
-         run("python3", &["-m", "pytest", "-q", &tests], &env)?;
+         let tests = ctx.src.join(&options.tests);
+         run("python3", &["-m", "pytest", "-q", utf8(&tests)?], &env)?;
       }
       Ok(())
    }

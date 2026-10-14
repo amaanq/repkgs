@@ -2251,7 +2251,16 @@
             "kind": "boolean"
           },
           "default": false,
-          "doc": "also run pytest on tests/",
+          "doc": "also run pytest on the tests directory",
+          "system": "python"
+        },
+        {
+          "name": "tests",
+          "type": {
+            "kind": "string"
+          },
+          "default": "tests",
+          "doc": "directory below the source pytest runs on",
           "system": "python"
         }
       ]
