@@ -1,0 +1,16 @@
+track = "pypi:eventlet"
+fetch = { url = "https://files.pythonhosted.org/packages/source/e/eventlet/eventlet-{version}.tar.gz" }
+with  = [ "python" ]
+deps  = [ "python-dnspython", "python-greenlet" ]
+tools = [ "python-hatchling", "python-hatch-vcs" ]
+
+[test]
+deps = [ "python-pytest", "iana-etc" ]
+etc  = true
+
+[steps.before]
+"python.test" = [ "python-eventlet.etc" ]
+
+[python]
+module = "eventlet"
+pytest = true
