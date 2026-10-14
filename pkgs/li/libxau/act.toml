@@ -1,0 +1,4 @@
+track = 'generic:libXau?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=libXau-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/lib/libXau-{version}.tar.xz" }
+with  = [ "meson" ]
+deps  = [ "xorgproto" ]
