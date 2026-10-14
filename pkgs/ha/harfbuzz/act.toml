@@ -1,0 +1,19 @@
+tag   = "{version}"
+track = "github:harfbuzz/harfbuzz"
+fetch = { asset = "harfbuzz-{version}.tar.xz" }
+with  = [ "meson" ]
+deps  = [ "freetype", "glib" ]
+tools = [ "cpython314", "glib" ]
+
+[test]
+bin = [ "hb-shape" ]
+
+[meson.defs]
+cairo         = "disabled"
+chafa         = "disabled"
+docs          = "disabled"
+freetype      = "enabled"
+glib          = "enabled"
+icu           = "disabled"
+introspection = "disabled"
+tests         = "enabled"
