@@ -1,11 +1,30 @@
-tag   = "v{version}"
-track = "github:nlohmann/json"
-fetch = { asset = "json.tar.xz" }
-with  = [ "cmake" ]
+tag  = "v{version}"
+with = [ "cmake" ]
+
+[fetch.default]
+archive = true
+
+[fetch.testdata]
+url = "https://github.com/nlohmann/json_test_data/archive/refs/tags/v{testdata}.tar.gz"
+
+[track]
+from = "github:nlohmann/json"
 
 [cmake]
 tool = "cmake-bootstrap"
 
 [cmake.defs]
-JSON_BuildTests      = false
 JSON_MultipleHeaders = true
+
+[on.native.cmake.defs]
+JSON_TestDataDirectory = "{source:testdata}"
+
+[on.cross.cmake.defs]
+JSON_BuildTests = false
+
+[test]
+deps     = [ "git" ]
+separate = true
+
+[steps.before]
+"cmake.test" = [ "nlohmann-json.test" ]
