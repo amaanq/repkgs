@@ -12,14 +12,6 @@ flags = [
   "--disable-idn",
   "--enable-ipv6",
 ]
-# the sandbox refuses setuid bits and user xattrs and has no fs.protected_regular
-testTarget = [
-  "check",
-  "CHECK_J=8 --exclude=chmod-option,chmod-setid,variety,variety-symlink-traversal,chown-fake,fake-super-backup-fifo-regression,protected-regular",
-]
 
-[steps.before]
-"autotools.test" = [ "rsync.test-scripts" ]
-
-[steps.after]
-"autotools.test" = [ "rsync.test-tcp" ]
+[steps.replace]
+"autotools.test" = "rsync.test"
