@@ -1,0 +1,4 @@
+track = 'generic:libxkbfile?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=libxkbfile-([0-9.]+)\.tar\.xz'
+fetch = { url = "https://xorg.freedesktop.org/archive/individual/lib/libxkbfile-{version}.tar.xz" }
+with  = [ "meson" ]
+deps  = [ "libx11", "xorgproto" ]
