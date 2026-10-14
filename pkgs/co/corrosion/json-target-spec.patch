@@ -1,0 +1,18 @@
+cargo 1.98 refuses a .json target spec unless -Zjson-target-spec is passed.
+
+--- a/test/custom_target/custom_target/CMakeLists.txt
++++ b/test/custom_target/custom_target/CMakeLists.txt
+@@ -12,11 +12,11 @@
+ endif()
+ 
+ corrosion_import_crate(MANIFEST_PATH rust/Cargo.toml)
+-corrosion_set_cargo_flags(rust_lib "-Zbuild-std")
++corrosion_set_cargo_flags(rust_lib "-Zbuild-std" "-Zjson-target-spec")
+ # custom target triples require nightly features
+ corrosion_set_env_vars(rust_lib RUSTC_BOOTSTRAP=1)
+ 
+-corrosion_set_cargo_flags(rust-bin "-Zbuild-std")
++corrosion_set_cargo_flags(rust-bin "-Zbuild-std" "-Zjson-target-spec")
+ corrosion_set_env_vars(rust-bin RUSTC_BOOTSTRAP=1)
+ 
+ add_executable(test-exe main.cpp)

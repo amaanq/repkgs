@@ -1,0 +1,14 @@
+The test links the installed library from lib/, but GNUInstallDirs picks lib64
+outside Debian and Arch on 64-bit Linux.
+
+--- a/test/corrosion_install/install_lib/CMakeLists.txt
++++ b/test/corrosion_install/install_lib/CMakeLists.txt
+@@ -24,7 +24,7 @@
+         rust_lib
+         PREFIX "${CMAKE_CURRENT_BINARY_DIR}/rust_lib"
+         SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust_lib"
+-        CMAKE_ARGS "-DCMAKE_INSTALL_PREFIX=${install_prefix}"
++        CMAKE_ARGS "-DCMAKE_INSTALL_PREFIX=${install_prefix}" "-DCMAKE_INSTALL_LIBDIR=lib"
+         # INSTALL_BYPRODUCTS "${static_lib_install_path}"
+ )
+ 
