@@ -28,7 +28,8 @@ in
       (pkg "llvm" + "/upstream-x86-vastart-stack-probe.patch")
       (pkg "llvm" + "/mummer-absent-log.patch")
     ];
-    targets = (import ../nix/act.nix (pkg "llvm")).act.cmake.defs.LLVM_TARGETS_TO_BUILD;
+    targets = builtins.concatStringsSep ";" (import ../nix/act.nix (pkg "llvm"))
+    .act.cmake.defs.LLVM_TARGETS_TO_BUILD;
   };
   cmake.src = source "cmake-bootstrap";
   compiler-rt.src = llvm;
