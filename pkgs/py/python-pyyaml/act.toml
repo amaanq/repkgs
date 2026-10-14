@@ -1,0 +1,17 @@
+track = "pypi:pyyaml"
+fetch = { url = "https://files.pythonhosted.org/packages/source/p/pyyaml/pyyaml-{version}.tar.gz" }
+with  = [ "python" ]
+deps  = [ "libyaml" ]
+tools = [ "python-setuptools", "python-cython" ]
+
+[test]
+deps = [ "python-pytest" ]
+
+[python]
+module = "yaml"
+pytest = true
+
+# without these setup.py drops the libyaml extension quietly when it fails to build
+[env]
+PYYAML_FORCE_CYTHON  = "1"
+PYYAML_FORCE_LIBYAML = "1"
