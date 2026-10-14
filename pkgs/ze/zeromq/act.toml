@@ -9,9 +9,6 @@ patches = [
   "algorithm-include.patch",
 ]
 
-[cmake]
-skipTests = [ "test_mock_pub_sub" ]
-
 [cmake.defs]
 CMAKE_POLICY_VERSION_MINIMUM = "3.5"
 ENABLE_CURVE                 = true

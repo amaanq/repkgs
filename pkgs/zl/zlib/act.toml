@@ -4,8 +4,7 @@ fetch = { asset = "zlib-{version}.tar.gz" }
 with  = [ "cmake" ]
 
 [cmake]
-tool      = "cmake-bootstrap"
-skipTests = [ "coverage" ]
+tool = "cmake-bootstrap"
 
 [cmake.defs]
 ZLIB_BUILD_EXAMPLES = false
