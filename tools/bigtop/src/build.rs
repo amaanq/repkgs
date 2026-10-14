@@ -76,6 +76,7 @@ use crate::{
       Source,
       prepare,
    },
+   progress,
    system::{
       command::{
          Env,
@@ -361,30 +362,36 @@ pub fn setup(attrs: &Attrs, source: Source<'_>, socket: &Path) -> io::Result<Ctx
 
 pub fn phase(attrs: &Attrs, ctx: &mut Ctx, index: usize, socket: &Path) -> io::Result<()> {
    let step = &attrs.plan.phases[index];
-   set_phase(&step.name);
-   let workdir = match attrs.plan.setups.first() {
-      Some(system) => dispatch::workdir(system, ctx)?,
-      None => ctx.src.clone(),
-   };
-   if step.test
-      && ctx.cache
-      && let Ok(client) = Client::connect(socket)
-   {
-      return tested(attrs, ctx, index, &workdir, client);
-   }
-   match step.kind {
-      Kind::System {
-         ref system,
-         ref verb,
-      } => dispatch::phase(system, verb, ctx, attrs, socket),
-      Kind::Nu { ref body } => {
-         set_current_dir(&workdir)?;
-         let top = build_top()?;
-         nu_phase(attrs, index, &step.name, body, &top)?;
-         *ctx = Ctx::load(&top)?;
-         Ok(())
-      },
-   }
+   progress::phase(&step.name, || {
+      let workdir = match attrs.plan.setups.first() {
+         Some(system) => dispatch::workdir(system, ctx)?,
+         None => ctx.src.clone(),
+      };
+
+      if step.test
+         && ctx.cache
+         && let Ok(client) = Client::connect(socket)
+      {
+         return tested(attrs, ctx, index, &workdir, client);
+      }
+
+      match step.kind {
+         Kind::System {
+            ref system,
+            ref verb,
+         } => dispatch::phase(system, verb, ctx, attrs, socket),
+
+         Kind::Nu { ref body } => {
+            set_current_dir(&workdir)?;
+            let top = build_top()?;
+
+            nu_phase(attrs, index, &step.name, body, &top)?;
+
+            *ctx = Ctx::load(&top)?;
+            Ok(())
+         },
+      }
+   })
 }
 
 /// A test step in a child process, which the test cache traces, nu's

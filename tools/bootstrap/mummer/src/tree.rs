@@ -138,12 +138,13 @@ pub fn note(kind: &str, message: &str) {
    });
 }
 
+// Children share this stderr, so the line goes out in one write.
 fn event(event: &Event<'_>) {
-   let mut stderr = io::stderr().lock();
-   drop(write!(stderr, "@nix ").and_then(|()| {
-      serde_json::to_writer(&mut stderr, event)?;
-      writeln!(stderr)
-   }));
+   let mut line = b"@nix ".to_vec();
+   if serde_json::to_writer(&mut line, event).is_ok() {
+      line.push(b'\n');
+      drop(io::stderr().lock().write_all(&line));
+   }
 }
 
 fn children(directory: &Path) -> io::Result<Vec<DirEntry>> {

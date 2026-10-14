@@ -16,6 +16,7 @@ mod launchers;
 mod output;
 mod prepare;
 mod probe;
+mod progress;
 mod recipe;
 mod ring;
 mod site;
