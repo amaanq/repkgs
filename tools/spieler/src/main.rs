@@ -544,14 +544,22 @@ fn init(dir: &PathBuf, purl: &str, url: &str, allow: Option<&str>) -> io::Result
       return Err(io::Error::other(format!("{} exists", file.display())));
    }
    create_dir_all(dir)?;
-   let track = purl
-      .strip_prefix("pkg:")
-      .unwrap_or(purl)
-      .replacen('/', ":", 1);
-   let fetch = format!("fetch = {{ url = \"{url}\" }}\n");
+   let quote = |text: &str| toml::Value::String(text.to_owned()).to_string();
+   let track = quote(
+      &purl
+         .strip_prefix("pkg:")
+         .unwrap_or(purl)
+         .replacen('/', ":", 1),
+   );
+   let fetch = format!("fetch = {{ url = {} }}\n", quote(url));
    let text = allow.map_or_else(
-      || format!("track = \"{track}\"\n{fetch}"),
-      |range| format!("{fetch}\n[track]\nfrom  = \"{track}\"\nallow = \"{range}\"\n"),
+      || format!("track = {track}\n{fetch}"),
+      |range| {
+         format!(
+            "{fetch}\n[track]\nfrom  = {track}\nallow = {}\n",
+            quote(range)
+         )
+      },
    );
    write(&file, text)?;
    let name = utf8(Path::new(dir.file_name().unwrap_or_default()))?.to_owned();
