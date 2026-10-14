@@ -1,0 +1,312 @@
+--- a/configure
++++ b/configure
+@@ -6127,6 +6127,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-pipe"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -6288,6 +6291,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wunknown-warning-option"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -6449,6 +6455,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wno-error=discarded-qualifiers"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -6610,6 +6619,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wno-error=format-truncation"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -6771,6 +6783,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Qunused-arguments"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -6932,6 +6947,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wall"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -7093,6 +7111,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wextra"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -7254,6 +7275,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wpointer-arith"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -7415,6 +7439,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wuninitialized"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -7576,6 +7603,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wsign-compare"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -7737,6 +7767,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wformat-security"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -7898,6 +7931,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wsizeof-pointer-memaccess"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -8059,6 +8095,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag="-Wno-pointer-sign"
++	test "x$_define_flag" = "x" && _define_flag="-Wpointer-sign"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -8220,6 +8259,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag="-Wno-unused-parameter"
++	test "x$_define_flag" = "x" && _define_flag="-Wunused-parameter"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -8381,6 +8423,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag="-Wno-unused-result"
++	test "x$_define_flag" = "x" && _define_flag="-Wunused-result"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -8542,6 +8587,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wimplicit-fallthrough"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -8703,6 +8751,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wmisleading-indentation"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -8864,6 +8915,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wbitwise-instead-of-logical"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -9025,6 +9079,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-fno-strict-aliasing"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -9187,6 +9244,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wl,-z,relro"
++	eval "test \"\$$ossh_cache_var\" = yes" && LDFLAGS="$LDFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_LDFLAGS="$LDFLAGS"
+@@ -9350,6 +9410,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wl,-z,now"
++	eval "test \"\$$ossh_cache_var\" = yes" && LDFLAGS="$LDFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_LDFLAGS="$LDFLAGS"
+@@ -9513,6 +9576,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wl,-z,noexecstack"
++	eval "test \"\$$ossh_cache_var\" = yes" && LDFLAGS="$LDFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_LDFLAGS="$LDFLAGS"
+@@ -9681,6 +9747,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-ftrapv"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -9849,6 +9918,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-fzero-call-used-regs=used"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -10012,6 +10084,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-fzero-call-used-regs=used"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -10175,6 +10250,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-ftrivial-auto-var-init=zero"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -10338,6 +10416,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-mretpoline"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -10499,6 +10580,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wl,-z,retpolineplt"
++	eval "test \"\$$ossh_cache_var\" = yes" && LDFLAGS="$LDFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_LDFLAGS="$LDFLAGS"
+@@ -12023,6 +12107,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-Wno-attributes"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -16127,6 +16214,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-fPIE"
++	eval "test \"\$$ossh_cache_var\" = yes" && CFLAGS="$CFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_CFLAGS="$CFLAGS"
+@@ -16288,6 +16378,9 @@
+ if eval test \${$ossh_cache_var+y}
+ then :
+   printf %s "(cached) " >&6
++	_define_flag=""
++	test "x$_define_flag" = "x" && _define_flag="-pie"
++	eval "test \"\$$ossh_cache_var\" = yes" && LDFLAGS="$LDFLAGS $_define_flag"
+ else $as_nop
+ 
+ 	saved_LDFLAGS="$LDFLAGS"
