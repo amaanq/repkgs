@@ -100,13 +100,17 @@ export def shebangs [dir: path, --undo]: nothing -> nothing {
 }
 
 # a locale for a test suite under ./locale, LOCPATH pointing there. glibc's tools keep their
-# build-time interpreter, so the sysroot's localedef runs under the sysroot's loader
+# build-time interpreter, so the sysroot's localedef runs under the sysroot's loader. glibc looks
+# up the normalized codeset first
 export def --env test-locale [locale: string, charmap: string]: nothing -> nothing {
    let sysroot = (act).platform.sysroot
+   let folded  = $charmap | str lowercase | str replace -ar '[^a-z0-9]' ''
+   let codeset = if $folded =~ '^[0-9]+$' { $"iso($folded)" } else { $folded }
+
    mkdir locale
    with-env {I18NPATH: $"($sysroot)/share/i18n"} {
       (cue $"($sysroot)/lib/((act).platform.interp | path basename)" --library-path $"($sysroot)/lib"
-         $"($sysroot)/bin/localedef" --no-archive -i $locale -f $charmap $"./locale/($locale).($charmap)")
+         $"($sysroot)/bin/localedef" --no-archive -i $locale -f $charmap $"./locale/($locale).($codeset)")
    }
    $env.LOCPATH = $"($env.PWD)/locale"
 }
