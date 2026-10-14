@@ -1,0 +1,96 @@
+Every test script listens on the fixed 61000 and 62000 port bases, so parallel make check
+runs them into each other. Each script now locks a port slot and maps the bases into it.
+
+--- a/src/lib/kadm5/t_kadm5.c
++++ b/src/lib/kadm5/t_kadm5.c
+@@ -35,6 +35,7 @@
+ 
+ static uint32_t api;
+ static krb5_boolean rpc;
++static const char *kadmind_port;
+ 
+ static krb5_context context;
+ 
+@@ -860,7 +861,7 @@
+ 
+         /* Succeeds with configured host and port. */
+         params.admin_server = hostname;
+-        params.kadmind_port = 61001;
++        params.kadmind_port = atoi(kadmind_port);
+         params.mask = KADM5_CONFIG_ADMIN_SERVER | KADM5_CONFIG_KADMIND_PORT;
+         check(kadm5_init(context, "admin", "admin", KADM5_ADMIN_SERVICE,
+                          &params, KADM5_STRUCT_VERSION, api, NULL, &handle));
+@@ -1297,8 +1298,9 @@
+ int
+ main(int argc, char **argv)
+ {
+-    assert(argc == 2);
++    assert(argc == 3);
+     rpc = (strcmp(argv[1], "clnt") == 0);
++    kadmind_port = argv[2];
+ 
+     check(kadm5_init_krb5_context(&context));
+ 
+--- a/src/lib/kadm5/t_kadm5.py
++++ b/src/lib/kadm5/t_kadm5.py
+@@ -40,6 +40,6 @@
+ realm.run([kadminl, 'addprinc', '-pw', 'us3r', '-policy', 'minlife-pol',
+            'user'])
+ 
+-realm.run(['./t_kadm5srv', 'srv'])
+-realm.run(['./t_kadm5clnt', 'clnt'])
++realm.run(['./t_kadm5srv', 'srv', str(realm.portbase + 1)])
++realm.run(['./t_kadm5clnt', 'clnt', str(realm.portbase + 1)])
+ success('kadm5 API tests')
+--- a/src/util/k5test.py
++++ b/src/util/k5test.py
+@@ -913,6 +913,32 @@
+     return await_daemon_exit(proc)
+ 
+ 
++_port_slot = None
++
++
++def _private_port(port):
++    # Parallel test scripts would all listen on the fixed 61000 and 62000 bases, so each script
++    # holds a lock on a slot and maps both bases into its own block below the ephemeral range.
++    global _port_slot
++    if _port_slot is None:
++        tmp = os.environ.get('TMPDIR', '/tmp')
++        for slot in range(110):
++            lock = open(os.path.join(tmp, 'k5test-ports-%d' % slot), 'w')
++            try:
++                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
++            except OSError:
++                lock.close()
++                continue
++            _port_slot = (slot, lock)
++            break
++        else:
++            fail('no free k5test port slot')
++    if port < 61000:
++        return port
++    offset = port - 61000 if port < 62000 else 100 + port - 62000
++    return 10000 + 200 * _port_slot[0] + offset
++
++
+ class K5Realm(object):
+     """An object representing a functional krb5 test realm."""
+ 
+@@ -926,7 +952,7 @@
+ 
+         self.realm = realm
+         self.testdir = os.path.join(os.getcwd(), testdir)
+-        self.portbase = portbase
++        self.portbase = _private_port(portbase)
+         self.user_princ = 'user@' + self.realm
+         self.admin_princ = 'user/admin@' + self.realm
+         self.host_princ = 'host/%s@%s' % (hostname, self.realm)
+@@ -1296,6 +1322,7 @@
+             a['testdir'] = os.path.join('testdir', str(realmnumber))
+         if not 'portbase' in a:
+             a['portbase'] = 61000 + 10 * realmnumber
++        a['portbase'] = _private_port(a['portbase'])
+         realm_args.append(a)
+         
+     # Build a [realms] config fragment containing all of the realms.

@@ -9,10 +9,8 @@ patches = [
   "upstream-libdb2-test-dictionary-file.patch",
   "upstream-kpropd-loopback-only-listen.patch",
   "relocatable.patch",
+  "parallel-test-ports.patch",
 ]
-
-[test]
-parallel = false
 
 [steps.after]
 "autotools.install" = [ "krb5.relocate-compile-et" ]
