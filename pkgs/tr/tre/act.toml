@@ -11,7 +11,7 @@ patches = [
 [autotools]
 flags = [ "--disable-agrep", "--enable-static" ]
 
-[on.native.steps.before]
+[on.linux.steps.before]
 "autotools.test" = [ "tre.latin1" ]
 
 [on.windows.steps.after]

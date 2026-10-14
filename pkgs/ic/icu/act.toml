@@ -12,7 +12,6 @@ flags = [ "--disable-icu-config" ]
 root  = "source"
 
 [on.cross]
-test  = false
 tools = [ "icu" ]
 
 [on.cross.autotools]

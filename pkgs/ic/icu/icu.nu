@@ -1,20 +1,19 @@
 use core.nu [act bin rewrite glob-files]
 
-# --with-cross-build expects a native ICU build tree. Its data Makefiles only reach into it for the
-# tools in bin/ and config/icucross.{mk,inc}, so the installed native ICU can stand in
+# --with-cross-build wants a native ICU build tree. The installed ICU stands in for bin/ and
+# config/, and the tests' gentest comes from this build's tools/
 export def cross-buildroot []: nothing -> nothing {
    let native = (bin icupkg | path dirname -n 2)
    let root   = $"($env.NIX_BUILD_TOP)/native-icu"
    mkdir $"($root)/config" $"($root)/bin" $"($root)/lib"
    for program in (glob-files --any $"($native)/bin/*") { ^ln -s $program $"($root)/bin/($program | path basename)" }
+   ^ln -s $"($env.PWD)/tools" $"($root)/tools"
 
    let settings = {
       CROSS_ICU_VERSION: (act).spec.version
       TOOLEXEEXT: ""
       TOOLBINDIR: "$(cross_buildroot)/bin"
       TOOLLIBDIR: "$(cross_buildroot)/lib"
-      INVOKE: ""
-      PKGDATA_INVOKE: ""
    }
    $settings | items {|key, value| $"($key)=($value)" } | str join "\n" | save -f $"($root)/config/icucross.mk"
    # left empty CURR_FULL_DIR stays unset, and data/Makefile uses the .res files this build made
