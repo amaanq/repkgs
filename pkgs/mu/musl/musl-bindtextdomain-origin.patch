@@ -1,0 +1,54 @@
+--- a/src/locale/dcngettext.c
++++ b/src/locale/dcngettext.c
+@@ -1,4 +1,8 @@
++#define _GNU_SOURCE
+ #include <libintl.h>
++#include <dlfcn.h>
++#include <unistd.h>
++#include <sys/auxv.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <errno.h>
+@@ -43,12 +47,42 @@
+ static volatile int lock[1];
+ volatile int *const __gettext_lockptr = lock;
+ 
++/* Packages bind ../share/locale, taken from the directory of the object
++ * that called, so their catalogs are found wherever the closure was copied.
++ * The literal lives in that object even when a tail call hid the caller. */
++static int caller_relative(const void *caller, const char *dirname, char *out)
++{
++	char exe[PATH_MAX];
++	const char *object = 0;
++	Dl_info info, app;
++	if ((dladdr(dirname, &info) || dladdr(caller, &info)) && info.dli_fname
++	 && !(dladdr((void *)getauxval(AT_ENTRY), &app) && app.dli_fbase == info.dli_fbase))
++		object = info.dli_fname;
++	if (!object) {
++		ssize_t len = readlink("/proc/self/exe", exe, sizeof exe - 1);
++		if (len <= 0) return 0;
++		exe[len] = 0;
++		object = exe;
++	}
++	const char *slash = strrchr(object, '/');
++	if (!slash) return 0;
++	size_t dir = slash - object + 1, len = strlen(dirname);
++	if (dir + len >= PATH_MAX) return 0;
++	memcpy(out, object, dir);
++	memcpy(out + dir, dirname, len + 1);
++	return 1;
++}
++
+ char *bindtextdomain(const char *domainname, const char *dirname)
+ {
+ 	struct binding *p, *q;
++	char resolved[PATH_MAX];
+ 
+ 	if (!domainname) return 0;
+ 	if (!dirname) return gettextdir(domainname, &(size_t){0});
++	if (!strncmp(dirname, "../", 3)
++	 && caller_relative(__builtin_return_address(0), dirname, resolved))
++		dirname = resolved;
+ 
+ 	size_t domlen = strnlen(domainname, NAME_MAX+1);
+ 	size_t dirlen = strnlen(dirname, PATH_MAX);

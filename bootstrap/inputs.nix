@@ -34,7 +34,10 @@ in
   compiler-rt.src = llvm;
   runtimes.src = llvm;
   linux-headers.src = source "linux";
-  musl.src = source "musl";
+  musl = {
+    src = source "musl";
+    patches = [ (pkg "musl" + "/musl-bindtextdomain-origin.patch") ];
+  };
   mingw-w64.src = source "mingw-w64";
   apple-sdk.src = source "apple-sdk";
   vcruntime = { };
