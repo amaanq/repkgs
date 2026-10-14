@@ -22,6 +22,32 @@ let
   ];
   beam = [ pkgs.erlang ];
 
+  # a source already in the store at evaluation, a path or a flake input, has its Cargo.lock read
+  # and its git sources fetched by commit. One a build makes would be read only by building it
+  lockedGit =
+    source:
+    let
+      lock = "${source}/Cargo.lock";
+      built = builtins.any (entry: entry ? outputs) (
+        builtins.attrValues (builtins.getContext (toString source))
+      );
+      origins = map (entry: entry.source or "") (builtins.fromTOML (builtins.readFile lock)).package;
+      parsed = origin: builtins.match "git\\+([^?#]+)(\\?[^#]*)?#(.*)" origin;
+    in
+    if built || !builtins.pathExists lock then
+      { }
+    else
+      builtins.listToAttrs (
+        map (origin: {
+          name = origin;
+          value = builtins.fetchGit {
+            url = builtins.head (parsed origin);
+            rev = builtins.elemAt (parsed origin) 2;
+            allRefs = true;
+          };
+        }) (builtins.filter (origin: parsed origin != null) origins)
+      );
+
   table = with buildPkgs; {
     make.tools = [ sh ];
     autotools.tools = [ sh ];
@@ -57,7 +83,12 @@ let
       tool = rust;
       # formatelf and git predate llvm and rust and swap in rust-bootstrap, whose std follows it
       tools = spec: cross [ pkgs."${spec.cargo.tool.pname}-std" ];
-      lock.deps = fetch.cargoVendor;
+      lock.deps =
+        { source, git }:
+        fetch.cargoVendor {
+          inherit source;
+          git = if git != null then git else lockedGit source;
+        };
     };
     cabal = {
       tool = cabal;
@@ -202,10 +233,15 @@ let
           // args
         );
       phases = map (phase: "${name}.${phase}") descriptor.phases;
+      # `git`: the trees act.lock pins for the pinned source's git dependencies, null for any other
+      # source
       defaults =
-        source:
+        { source, git }:
         builtins.mapAttrs (_: option: option.default) options
-        // builtins.mapAttrs (_: fetcher: fetcher { inherit source; }) (entry.lock or { });
+        // builtins.mapAttrs (
+          _: fetcher:
+          fetcher ({ inherit source; } // lib.on (builtins.functionArgs fetcher ? git) { inherit git; })
+        ) (entry.lock or { });
       tools =
         spec:
         lib.on owned [ spec.${name}.tool ] ++ (if builtins.isFunction extras then extras spec else extras);

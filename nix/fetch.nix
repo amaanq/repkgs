@@ -54,10 +54,12 @@ let
     produce { inherit name kind; } { inherit source root; };
 in
 {
+  # `git`: the unpacked tree of each git source by the lock's source string
   cargoVendor =
     {
       source,
       locks ? [ "Cargo.lock" ],
+      git ? { },
     }:
     produce
       {
@@ -67,6 +69,9 @@ in
       {
         inherit source;
         locks = builtins.concatStringsSep "\n" locks;
+        git = builtins.concatStringsSep "\n" (
+          builtins.attrValues (builtins.mapAttrs (origin: tree: "${origin}=${tree}") git)
+        );
       };
 
   # spieler writes locks for upstreams that commit none, so the lock may sit apart from the source

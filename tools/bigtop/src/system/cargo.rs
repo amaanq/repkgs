@@ -25,7 +25,10 @@ use std::{
       symlink_metadata,
       write,
    },
-   io,
+   io::{
+      self,
+      ErrorKind,
+   },
    os::unix::fs::symlink,
    path::{
       Path,
@@ -39,6 +42,7 @@ use std::{
 };
 
 use mummer::{
+   cargo_git::GIT_SOURCES,
    files::{
       utf8,
       write_file,
@@ -577,6 +581,11 @@ impl Cargo {
             Self::quoted(directory)
          )
          .map_err(io::Error::other)?;
+         match read_to_string(Path::new(directory).join(GIT_SOURCES)) {
+            Ok(sources) => config.push_str(&sources),
+            Err(error) if error.kind() == ErrorKind::NotFound => {},
+            Err(error) => return Err(error),
+         }
       }
       let flags = format!("rustflags = {}\n", Self::list(&rustflags));
       let (build_flags, target_flags) = if Self::targets_rustflags(&ctx.src)? {
@@ -755,7 +764,7 @@ impl Cargo {
             remove_file(&placed)?;
             succeed(
                Command::new("cp")
-                  .arg("-r")
+                  .arg("-rL")
                   .arg(format!("{deps}/{name}"))
                   .arg(&placed),
             )?;

@@ -1,4 +1,5 @@
 pub mod attrs;
+pub mod cargo_git;
 pub mod config;
 pub mod directory;
 pub mod elf;

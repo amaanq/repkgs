@@ -180,6 +180,10 @@ let
   debug = args.debug or (prebuilt == false);
   # act.lock's sys. null: no act.toml, dependencies are all by hand
   sys = args.sys or (if pinned == null then null else pinned.sys);
+  pinnedLock = {
+    source = src;
+    git = if sourceKey != null then pinned.git else null;
+  };
   options =
     system:
     mapAttrs (
@@ -188,7 +192,7 @@ let
         errors = buildSystems.${system}.validate { value.${option} = value; };
       in
       if errors == [ ] then value else fail (join "; " errors)
-    ) (buildSystems.${system}.defaults src // (args.${system} or { }));
+    ) (buildSystems.${system}.defaults pinnedLock // (args.${system} or { }));
   spec =
     removeAttrs valid [
       "source"

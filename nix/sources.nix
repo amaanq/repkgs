@@ -122,6 +122,13 @@ let
       sys = pinned.sys or [ ];
       has = key: sources ? ${key};
       default = fetch "default";
+      # spieler keys a Cargo.lock's git sources by the lock's own source string
+      git = builtins.listToAttrs (
+        map (key: {
+          name = key;
+          value = fetch key;
+        }) (builtins.filter (startsWith "git+") (builtins.attrNames sources))
+      );
       repin = record dir;
     };
 in
