@@ -5,11 +5,8 @@ with  = [ "cargo" ]
 tools = [ "sudo" ]
 
 [test]
-bin = [ "nh" ]
+bin  = [ "nh" ]
+deps = [ "nix" ]
 
-[cargo]
-skipTests = [
-  "test_get_build_image_variants_expression",
-  "test_get_build_image_variants_file",
-  "test_get_build_image_variants_flake",
-]
+[steps.before]
+"cargo.test" = [ "nh.nix-store" ]
