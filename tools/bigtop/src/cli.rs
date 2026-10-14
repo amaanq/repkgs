@@ -198,6 +198,17 @@ pub enum ProbeOperation {
    },
    /// a CMakeCache.txt's probe results as a -C init script.
    CmakeInit { cache: PathBuf },
+   /// restore the caches of the configures a build tool runs itself, and
+   /// print the `CONFIG_SITE` that points each at its own.
+   ConfiguresRestore {
+      #[pound(parse = str::parse::<Key>)]
+      key: Key,
+   },
+   /// store those of them whose answers replay.
+   ConfiguresStore {
+      #[pound(parse = str::parse::<Key>)]
+      key: Key,
+   },
 }
 
 #[derive(Parse)]

@@ -1,4 +1,4 @@
-use core.nu [act drv knobs dep bin cue cache-configures store-configures glob-files]
+use core.nu [act drv knobs dep bin cue glob-files]
 
 def --wrapped hadrian [...targets: string]: nothing -> nothing {
    let c = (act)
@@ -20,7 +20,7 @@ def configures-key []: nothing -> string {
 
 export def --env configure []: nothing -> nothing {
    let c = (act)
-   cache-configures (configures-key)
+   $env.CONFIG_SITE = (^bigtop probe configures-restore (configures-key) | str trim)
    cd $c.src
    let libraries = [(linked ffi libffi include) (linked gmp gmp include) (linked curses ncurses include/ncursesw)] | flatten
    # autoreconf would run aclocal, which needs automake, and AC_PATH_PROG keeps only absolute presets
@@ -29,7 +29,7 @@ export def --env configure []: nothing -> nothing {
 
 export def build []: nothing -> nothing {
    hadrian binary-dist-dir
-   store-configures
+   ^bigtop probe configures-store (configures-key)
 }
 
 export def install []: nothing -> nothing {

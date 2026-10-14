@@ -5,6 +5,7 @@ mod attrs;
 mod build;
 mod bundle;
 mod cli;
+mod configures;
 mod debug;
 mod dev;
 mod env;
@@ -146,6 +147,11 @@ fn probe_mode(operation: ProbeOperation, socket: &Path) -> Result<i32> {
       ProbeOperation::CmakeInit { cache } => {
          writeln!(io::stdout().lock(), "{}", probe::cmake_init(&cache)?)?;
       },
+      ProbeOperation::ConfiguresRestore { key } => {
+         let site = configures::restore(&key, socket)?;
+         writeln!(io::stdout().lock(), "{}", site.display())?;
+      },
+      ProbeOperation::ConfiguresStore { key } => configures::store(&key, socket)?,
    }
    Ok(0)
 }

@@ -1,5 +1,4 @@
 use std::{
-   collections::HashSet,
    env::var,
    ffi::OsString,
    fs::{
@@ -26,7 +25,6 @@ use mummer::{
       utf8,
       write_file,
    },
-   process::loose,
    tree::{
       EntryKind,
       find,
@@ -43,6 +41,7 @@ use crate::{
       Attrs,
       Ctx,
    },
+   configures::note_lost_lines,
    probe,
    schema::{
       Condition,
@@ -260,7 +259,7 @@ impl Autotools {
             Ok(first) => {
                run(&shell, &args, &env)?;
                let second = read(&status)?;
-               Self::note_lost_lines(&first, &second);
+               note_lost_lines("config.cache", "", &first, &second);
                second == first
             },
          };
@@ -279,23 +278,6 @@ impl Autotools {
          Self::stub_gnulib_tests(&workdir, &platform.os)?;
       }
       Ok(())
-   }
-
-   /// Names the config.status lines a cached run lost, which point at the
-   /// check whose answer replays without its side effect.
-   fn note_lost_lines(first: &[u8], second: &[u8]) {
-      let fresh = loose(first);
-      let replayed = loose(second);
-      let kept = replayed.lines().collect::<HashSet<_>>();
-      for line in fresh.lines().filter(|line| !kept.contains(line)).take(3) {
-         note(
-            "config.cache",
-            &format!(
-               "cached run lost {}",
-               line.chars().take(160).collect::<String>()
-            ),
-         );
-      }
    }
 
    const BACKPORTS: &[(&str, &[u8], &[u8])] = &[

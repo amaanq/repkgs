@@ -186,7 +186,7 @@ pub fn restore(key: &Key, file: &Path, socket: &Path) -> io::Result<bool> {
    let Some(bytes) = client.get(key)? else {
       return Ok(false);
    };
-   let Some(text) = resolved(&ctx, strict(&bytes, "a stored probe result")?) else {
+   let Some(text) = resolved(&ctx.roots, strict(&bytes, "a stored probe result")?) else {
       note(
          "probe-cache",
          "stored results name a store path this build lacks",
@@ -200,9 +200,9 @@ pub fn restore(key: &Key, file: &Path, socket: &Path) -> io::Result<bool> {
 /// Stored results with their store hashes put back from this build's roots,
 /// or None when they name any store path outside those roots, as results
 /// stored by another toolchain do.
-fn resolved(ctx: &Ctx, text: &str) -> Option<String> {
+pub fn resolved(roots: &[String], text: &str) -> Option<String> {
    let mut resolved = text.to_owned();
-   for root in &ctx.roots {
+   for root in roots {
       let masked = mask_hashes(root);
       let mut result = String::with_capacity(resolved.len());
       let mut remaining = resolved.as_str();
@@ -223,7 +223,7 @@ fn resolved(ctx: &Ctx, text: &str) -> Option<String> {
    let known = resolved.match_indices(&prefix).all(|(position, _)| {
       let tail = &resolved[position + prefix.len()..];
       let name = tail.split('/').next().unwrap_or(tail);
-      ctx.roots.iter().any(|root| {
+      roots.iter().any(|root| {
          root.strip_prefix(&prefix) == Some(name) || tail.starts_with(&root[prefix.len()..])
       })
    });

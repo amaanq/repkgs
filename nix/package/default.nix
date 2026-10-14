@@ -47,7 +47,7 @@ let
     path = ../../builder;
     name = "build";
   };
-  prelude = "use ${tree}/core.nu [glob-files emit act drv knobs dep build-dep bin cue shared-name link-name place-bins rewrite unstore launcher shebangs test-locale cache-configures store-configures]\nuse ${tree}/implant.nu";
+  prelude = "use ${tree}/core.nu [glob-files emit act drv knobs dep build-dep bin cue shared-name link-name place-bins rewrite unstore launcher shebangs test-locale]\nuse ${tree}/implant.nu";
 
   # the part of every derivation that is the same across the set: built once
   shared = {
