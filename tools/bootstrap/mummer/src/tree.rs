@@ -127,15 +127,27 @@ enum Event<'message> {
 
 #[inline]
 pub fn set_phase(name: &str) {
-   event(&Event::SetPhase { phase: name });
+   write_line(&phase_event(name));
 }
 
 #[inline]
 pub fn note(kind: &str, message: &str) {
+   write_line(&note_event(kind, message));
+}
+
+#[inline]
+#[must_use]
+pub fn phase_event(name: &str) -> Vec<u8> {
+   event(&Event::SetPhase { phase: name })
+}
+
+#[inline]
+#[must_use]
+pub fn note_event(kind: &str, message: &str) -> Vec<u8> {
    event(&Event::Msg {
       level: 3,
       msg:   format!("{kind}: {message}"),
-   });
+   })
 }
 
 /// Long commands are shortened, the full line goes to `nix log` and `-v`.
@@ -168,10 +180,10 @@ where
 
    write_line(short.as_bytes());
 
-   event(&Event::Msg {
+   write_line(&event(&Event::Msg {
       level: 4,
       msg:   full,
-   });
+   }));
 }
 
 // Children share this stderr, so each line goes out in one write.
@@ -181,11 +193,14 @@ fn write_line(text: &[u8]) {
    drop(io::stderr().lock().write_all(&line));
 }
 
-fn event(event: &Event<'_>) {
+#[expect(
+   clippy::expect_used,
+   reason = "serializing strings and an integer cannot fail"
+)]
+fn event(event: &Event<'_>) -> Vec<u8> {
    let mut line = b"@nix ".to_vec();
-   if serde_json::to_writer(&mut line, event).is_ok() {
-      write_line(&line);
-   }
+   serde_json::to_writer(&mut line, event).expect("an event is strings and integers");
+   line
 }
 
 fn children(directory: &Path) -> io::Result<Vec<DirEntry>> {

@@ -7,14 +7,27 @@ use std::{
    },
    io::{
       self,
+      PipeReader,
+      Read as _,
       Seek as _,
       SeekFrom,
+      Write as _,
+      pipe,
    },
-   sync::mpsc::{
-      RecvTimeoutError,
-      channel,
+   os::fd::AsFd as _,
+   sync::{
+      Arc,
+      Mutex,
+      PoisonError,
+      mpsc::{
+         RecvTimeoutError,
+         channel,
+      },
    },
-   thread::scope,
+   thread::{
+      scope,
+      spawn,
+   },
    time::Duration,
 };
 
@@ -22,8 +35,14 @@ use mummer::{
    process::logged,
    tree::{
       note,
+      note_event,
+      phase_event,
       set_phase,
    },
+};
+use rustix::stdio::{
+   dup2_stderr,
+   dup2_stdout,
 };
 
 /// Compiles and cache hits mummer logged since the phase began.
@@ -65,6 +84,41 @@ impl Tally {
    }
 }
 
+/// Copies a phase's output to `out` whole lines at a time, so an event written
+/// between them never lands inside a line a child left unfinished.
+fn relay(mut reader: PipeReader, out: &Mutex<File>) -> io::Result<()> {
+   const CHUNK: usize = 1 << 16;
+
+   let mut pending = Vec::new();
+   let mut chunk = vec![0; CHUNK];
+   loop {
+      let read = reader.read(&mut chunk)?;
+      if read == 0 {
+         break;
+      }
+      pending.extend(chunk.iter().take(read));
+      let end = match pending.iter().rposition(|&byte| byte == b'\n') {
+         Some(at) => at + 1,
+         None if pending.len() >= CHUNK => pending.len(),
+         None => continue,
+      };
+      let lines = pending.drain(..end).collect::<Vec<u8>>();
+      out.lock()
+         .unwrap_or_else(PoisonError::into_inner)
+         .write_all(&lines)?;
+   }
+   out.lock()
+      .unwrap_or_else(PoisonError::into_inner)
+      .write_all(&pending)
+}
+
+fn emit(out: &Mutex<File>, mut event: Vec<u8>) -> io::Result<()> {
+   event.push(b'\n');
+   out.lock()
+      .unwrap_or_else(PoisonError::into_inner)
+      .write_all(&event)
+}
+
 /// Runs a phase, adding the compile counts to its name every second.
 pub fn phase<Body, Done>(name: &str, body: Body) -> io::Result<Done>
 where
@@ -83,31 +137,65 @@ where
       cached: 0,
    };
 
-   let (finished, ticks) = channel::<()>();
+   let stdout = io::stdout().as_fd().try_clone_to_owned()?;
+   let out = Arc::new(Mutex::new(File::from(
+      io::stderr().as_fd().try_clone_to_owned()?,
+   )));
+   let (reader, writer) = pipe()?;
+   dup2_stdout(&writer)?;
+   dup2_stderr(&writer)?;
+   drop(writer);
 
-   scope(|threads| {
+   let (relayed, relay_ended) = channel::<io::Result<()>>();
+   let relay_out = Arc::clone(&out);
+   spawn(move || drop(relayed.send(relay(reader, &relay_out))));
+
+   let (finished, ticks) = channel::<()>();
+   let ticker_out = Arc::clone(&out);
+   let result = scope(|threads| {
       threads.spawn(move || {
          while ticks.recv_timeout(Duration::from_secs(1)) == Err(RecvTimeoutError::Timeout) {
-            match tally.advance() {
-               Ok(false) => {},
+            let shown = match tally.advance() {
+               Ok(false) => continue,
                Ok(true) => {
-                  set_phase(&format!(
-                     "{name} ({} compiled, {} cached)",
-                     tally.compiled, tally.cached
-                  ));
+                  emit(
+                     &ticker_out,
+                     phase_event(&format!(
+                        "{name} ({} compiled, {} cached)",
+                        tally.compiled, tally.cached
+                     )),
+                  )
                },
                Err(error) => {
-                  note(
-                     "progress",
-                     &format!("stopped reading the mummer log, {error}"),
-                  );
+                  drop(emit(
+                     &ticker_out,
+                     note_event(
+                        "progress",
+                        &format!("stopped reading the mummer log, {error}"),
+                     ),
+                  ));
                   return;
                },
+            };
+            if shown.is_err() {
+               return;
             }
          }
       });
       let result = body();
       drop(finished);
       result
-   })
+   });
+
+   dup2_stdout(&stdout)?;
+   dup2_stderr(&*out.lock().unwrap_or_else(PoisonError::into_inner))?;
+
+   // a daemon the phase started can hold the pipe open forever
+   if let Ok(Err(error)) = relay_ended.recv_timeout(Duration::from_secs(2)) {
+      note(
+         "progress",
+         &format!("relaying the phase output failed, {error}"),
+      );
+   }
+   result
 }
