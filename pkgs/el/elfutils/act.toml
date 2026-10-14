@@ -25,6 +25,5 @@ flags = [
   "--enable-deterministic-archives",
   "--disable-libdebuginfod",
   "--disable-debuginfod",
-  "--disable-nls",
   "--disable-demangler",
 ]

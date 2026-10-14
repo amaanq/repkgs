@@ -97,6 +97,11 @@ struct Extra<'options> {
    host:   &'options [String],
 }
 
+/// Compiled code binds its catalogs relative to the object that calls
+/// bindtextdomain, which glibc-bindtextdomain-origin.patch resolves, while
+/// `make install` keeps the configured localedir.
+const RELATIVE_LOCALEDIR: &str = "localedir=../share/locale";
+
 pub struct Autotools;
 
 impl System for Autotools {
@@ -144,8 +149,16 @@ impl System for Autotools {
       let options = ctx.options::<Options>(self.name())?;
       match verb {
          "configure" => Self::configure(ctx, attrs, &options, socket),
-         "build" => make::build(ctx, &options.make_flags, &options.build_target),
-         "test" => make::test(ctx, &options.make_flags, &options.test_target),
+         "build" => {
+            let mut flags = vec![RELATIVE_LOCALEDIR.to_owned()];
+            flags.extend(options.make_flags);
+            make::build(ctx, &flags, &options.build_target)
+         },
+         "test" => {
+            let mut flags = vec![RELATIVE_LOCALEDIR.to_owned()];
+            flags.extend(options.make_flags);
+            make::test(ctx, &flags, &options.test_target)
+         },
          "install" => {
             let mut flags = options.make_flags;
             flags.extend(options.install_flags);
@@ -220,7 +233,6 @@ impl Autotools {
       )?;
       let mut args = vec![
          script.as_str(),
-         "--disable-nls",
          "--disable-dependency-tracking",
          "--disable-static",
          "--enable-shared",
