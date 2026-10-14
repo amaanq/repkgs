@@ -110,6 +110,8 @@ options! {
          => "default features to leave out, the rest of the package's default set stays on",
       flags ("flags"): Vec<String> = Vec::new()
          => "extra arguments for cargo build and cargo test",
+      rustflags ("rustflags"): Vec<String> = Vec::new()
+         => "extra rustc flags for the target triple",
       skip_tests ("skipTests"): Vec<String> = Vec::new()
          => "cargo test --skip filters (substring of the test path)",
       deps ("deps"): Option<PackagePath> = None
@@ -144,7 +146,13 @@ impl System for Cargo {
          None => None,
       };
       let home = format!("{}/cargo-home", ctx.build.display());
-      let mut env = Env::from(Self::configure(ctx, attrs, vendor.as_deref(), &home)?);
+      let mut env = Env::from(Self::configure(
+         ctx,
+         attrs,
+         vendor.as_deref(),
+         &home,
+         &options.rustflags,
+      )?);
       env.unset("RUSTFLAGS");
 
       // C the cc crate builds from the vendor tree bakes its paths into
@@ -514,6 +522,7 @@ impl Cargo {
       attrs: &Attrs,
       vendor: Option<&str>,
       home: &str,
+      target_rustflags: &[String],
    ) -> io::Result<BTreeMap<String, String>> {
       create_dir_all(home)?;
       let rustc = tool("rustc")?;
@@ -581,14 +590,43 @@ impl Cargo {
          ctx.njobs
       )
       .map_err(io::Error::other)?;
+      let target_only = (!target_rustflags.is_empty()).then(|| {
+         let all = [rustflags.as_slice(), target_rustflags].concat();
+         format!("rustflags = {}\n", Self::list(&all))
+      });
+      Self::target_tables(
+         &mut config,
+         &mut env,
+         (&host, &target),
+         target_flags,
+         target_only.as_deref(),
+      )?;
+      write_file(
+         Path::new(&format!("{home}/config.toml")),
+         config.as_bytes(),
+         None,
+      )?;
+      Ok(env)
+   }
+
+   fn target_tables(
+      config: &mut String,
+      env: &mut BTreeMap<String, String>,
+      (host, target): (&str, &str),
+      target_flags: &str,
+      target_only: Option<&str>,
+   ) -> io::Result<()> {
       // host first, natively it is the target and cc wins
       let build_linker = var("CC_FOR_BUILD").unwrap_or_default();
-      let mut linkers = vec![(host.as_str(), build_linker.as_str())];
+      let mut linkers = vec![(host, build_linker.as_str())];
       match linkers.iter_mut().find(|entry| entry.0 == target) {
          Some(entry) => entry.1 = "cc",
-         None => linkers.push((target.as_str(), "cc")),
+         None => linkers.push((target, "cc")),
       }
       for (triple, linker) in linkers {
+         let own_flags = target_only
+            .filter(|_| triple == target)
+            .unwrap_or(target_flags);
          if !linker.is_empty() {
             env.insert(
                format!(
@@ -600,18 +638,13 @@ impl Cargo {
          }
          writeln!(
             config,
-            "[target.{}]\nlinker = {}\n{target_flags}",
+            "[target.{}]\nlinker = {}\n{own_flags}",
             Self::quoted(triple),
             Self::quoted(linker)
          )
          .map_err(io::Error::other)?;
       }
-      write_file(
-         Path::new(&format!("{home}/config.toml")),
-         config.as_bytes(),
-         None,
-      )?;
-      Ok(env)
+      Ok(())
    }
 
    /// Whether a `.cargo` config in the source sets `target` rustflags,

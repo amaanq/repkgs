@@ -373,7 +373,7 @@ fn build_wheel(
 
       if Path::new(&vendor).exists() {
          let home = format!("{}/cargo-home/{name}", ctx.build.display());
-         command.envs(Cargo::configure(ctx, attrs, Some(&vendor), &home)?);
+         command.envs(Cargo::configure(ctx, attrs, Some(&vendor), &home, &[])?);
          command.env_remove("RUSTFLAGS");
          command.env(
             "MATURIN_PEP517_ARGS",

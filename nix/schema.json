@@ -1402,6 +1402,18 @@
           "system": "cargo"
         },
         {
+          "name": "rustflags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "extra rustc flags for the target triple",
+          "system": "cargo"
+        },
+        {
           "name": "skipTests",
           "type": {
             "kind": "list",
