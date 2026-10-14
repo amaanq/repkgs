@@ -116,6 +116,9 @@ impl Probe<'_> {
          .env("LC_ALL", "C")
          .output()?;
       drop(slot);
+      if output.status.code() == Some(1_i32) {
+         return Ok(Err(Outcome::Rejected));
+      }
       if !output.status.success() {
          return Ok(Err(Outcome::PreprocessFailed));
       }
@@ -218,6 +221,10 @@ pub fn lookup(args: &[String], socket: &Path) -> Result<i32> {
    }
    let preprocessed = match probe.preprocess(&mut cache)? {
       Ok(preprocessed) => preprocessed,
+      Err(Outcome::Rejected) => {
+         log(Tool::Header, Outcome::Rejected, "conftest.c", started);
+         return Ok(4);
+      },
       Err(outcome) => {
          log(Tool::Header, outcome, "conftest.c", started);
          return Ok(1);

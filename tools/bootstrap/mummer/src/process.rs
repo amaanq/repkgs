@@ -161,13 +161,14 @@ pub enum Outcome {
    UnsupportedOptions,
    CompileHit,
    PreprocessFailed,
+   Rejected,
    Diagnostics,
    Hit,
    Miss,
 }
 
 impl Outcome {
-   const ALL: [Self; 18] = [
+   const ALL: [Self; 19] = [
       Self::Query,
       Self::Linked,
       Self::Uncacheable,
@@ -183,6 +184,7 @@ impl Outcome {
       Self::UnsupportedOptions,
       Self::CompileHit,
       Self::PreprocessFailed,
+      Self::Rejected,
       Self::Diagnostics,
       Self::Hit,
       Self::Miss,
@@ -207,6 +209,7 @@ impl Outcome {
          Self::UnsupportedOptions => "unsupported-options",
          Self::CompileHit => "compile-hit",
          Self::PreprocessFailed => "preprocess-failed",
+         Self::Rejected => "rejected",
          Self::Diagnostics => "diagnostics",
          Self::Hit => "hit",
          Self::Miss => "miss",

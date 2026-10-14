@@ -324,8 +324,10 @@ key = "probe/header/" + full hex of hash(
 ```
 
 Exit 0 when the daemon holds `yes\n` at that key, exit 3 with the key on stdout when it holds
-nothing, exit 1 for every unsupported case. The autoconf side stores `yes\n` after a successful
-compile. Only successful, warning free header checks are shared.
+nothing, exit 4 when the preprocessor exits 1, exit 1 for every other unsupported case. The
+autoconf side stores `yes\n` after a successful compile and answers exit 4 as a failed check
+without compiling, since the compile runs the same preprocessor with the same flags. Only
+successful, warning free header checks are shared.
 
 ### 5.5 Go
 

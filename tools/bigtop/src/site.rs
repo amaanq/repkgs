@@ -23,6 +23,11 @@ mummer_header_compile ()
     printf '%s\n' 'mummer reused a successful header check' >&5
     return 0
   fi
+  if test "$mummer_header_status" = 4; then
+    printf '%s' '(inferred) ' >&6
+    printf '%s\n' 'mummer saw the preprocessor reject the header check' >&5
+    return 1
+  fi
   if ac_fn_c_try_compile "$@"; then
     if test "$mummer_header_status" = 3; then
       printf '%s\n' yes >conftest.mummer-result
