@@ -1,0 +1,20 @@
+track = "pypi:libevdev"
+fetch = { url = "https://files.pythonhosted.org/packages/source/l/libevdev/libevdev-{version}.tar.gz" }
+with  = [ "python" ]
+deps  = [ "libevdev" ]
+tools = [ "python-hatchling" ]
+
+[only]
+os = [ "linux" ]
+
+[test]
+deps = [ "python-pytest" ]
+
+[steps.before]
+"python.build" = [ "python-libevdev.pin-library" ]
+
+[steps.after]
+"python.test" = [ "python-libevdev.test" ]
+
+[python]
+module = "libevdev"
