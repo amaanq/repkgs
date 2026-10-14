@@ -1,16 +1,24 @@
-tag   = "v{version}"
-track = "github:libgit2/libgit2"
-fetch = { archive = true }
-with  = [ "cmake" ]
-deps  = [ "openssl", "pcre2", "zlib", "libssh2" ]
-tools = [ "pkgconf" ]
-test  = false
+tag     = "v{version}"
+track   = "github:libgit2/libgit2"
+fetch   = { archive = true }
+with    = [ "cmake" ]
+deps    = [ "openssl", "pcre2", "zlib", "libssh2" ]
+tools   = [ "pkgconf" ]
+patches = [ "process-tests-path.patch" ]
 
 [cmake.defs]
 BUILD_CLI     = false
-BUILD_TESTS   = false
 REGEX_BACKEND = "pcre2"
 USE_SSH       = "libssh2"
+
+[cmake] # need github.com or the ci/test.sh servers
+skipTests = [ "^online$", "^online_customcert$", "^gitdaemon", "^ssh$", "^proxy$", "^auth_clone" ]
+
+[on.native]
+tools = [ "cpython" ]
+
+[on.cross.cmake.defs]
+BUILD_TESTS = false
 
 [bindings.cargo]
 names = [ "libgit2-sys" ]
