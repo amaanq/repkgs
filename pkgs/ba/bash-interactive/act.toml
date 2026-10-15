@@ -4,8 +4,8 @@ patches = [ "../bash/relocatable.patch" ]
 deps    = [ "readline", "ncurses" ]
 
 [test]
-bin = [ "bash" ]
-run = false
+bin      = [ "bash" ]
+separate = true
 
 [only]
 posix = true
