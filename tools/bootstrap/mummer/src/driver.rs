@@ -280,8 +280,11 @@ impl Driver {
       output.extend([
          "-Wl,--undefined-version".to_owned(),
          format!("-Wl,-rpath,{path}"),
-         "-Wl,--enable-new-dtags".to_owned(),
       ]);
+      if !disables_new_dtags(&user) {
+         output.push("-Wl,--enable-new-dtags".to_owned());
+      }
+
       let Some(ref policy) = config.policy else {
          return output;
       };
@@ -365,6 +368,15 @@ fn fortify(arg: &str) -> bool {
 /// The space a link reserves for its RUNPATH, enough for most outputs. One
 /// that needs more is linked again with room for exactly what it needs.
 const RUNPATH_RESERVE: usize = 4096;
+
+/// Whether `args` ask the linker for `DT_RPATH` with `--disable-new-dtags`.
+fn disables_new_dtags(args: &[String]) -> bool {
+   args.iter().enumerate().any(|(index, arg)| {
+      arg.strip_prefix("-Wl,")
+         .is_some_and(|list| list.split(',').any(|flag| flag == "--disable-new-dtags"))
+         || (arg == "--disable-new-dtags" && index > 0 && args[index - 1] == "-Xlinker")
+   })
+}
 
 /// The RUNPATH entry a link reserves, padding `settle_runpath` fills in.
 fn placeholder(room: usize) -> String {
