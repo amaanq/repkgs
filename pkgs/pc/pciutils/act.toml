@@ -4,7 +4,7 @@ with    = [ "make" ]
 deps    = [ "zlib", "kmod" ]
 patches = [ "relocatable.patch" ]
 # its DEST is the install prefix, which is read-only in the store
-remove  = [ "bin/update-pciids", "share/man/man8/update-pciids.8" ]
+remove = [ "bin/update-pciids", "share/man/man8/update-pciids.8" ]
 
 [only]
 os = [ "linux" ]
@@ -17,5 +17,17 @@ bin = [ "lspci", "setpci" ]
 
 [make]
 configureScript = "none"
-flags           = [ "CC=cc", "AR=llvm-ar", "RANLIB=llvm-ranlib", "STRIP=", "SBINDIR=$(PREFIX)/bin", "MANDIR=$(PREFIX)/share/man", "SHARED=yes", "ZLIB=yes", "DNS=yes", "LIBKMOD=yes", "HWDB=no" ]
-installTarget   = [ "install", "install-lib" ]
+flags = [
+  "CC=cc",
+  "AR=llvm-ar",
+  "RANLIB=llvm-ranlib",
+  "STRIP=",
+  "SBINDIR=$(PREFIX)/bin",
+  "MANDIR=$(PREFIX)/share/man",
+  "SHARED=yes",
+  "ZLIB=yes",
+  "DNS=yes",
+  "LIBKMOD=yes",
+  "HWDB=no",
+]
+installTarget = [ "install", "install-lib" ]

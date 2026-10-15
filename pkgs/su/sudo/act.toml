@@ -1,7 +1,12 @@
-fetch   = { url = "https://www.sudo.ws/dist/sudo-{version}.tar.gz" }
-with    = [ "autotools" ]
-deps    = [ "libxcrypt", "linux-pam" ]
-patches = [ "no-setuid.patch", "mv-on-path.patch", "tests-sandbox-commands.patch", "relocatable.patch" ]
+fetch = { url = "https://www.sudo.ws/dist/sudo-{version}.tar.gz" }
+with = [ "autotools" ]
+deps = [ "libxcrypt", "linux-pam" ]
+patches = [
+  "no-setuid.patch",
+  "mv-on-path.patch",
+  "tests-sandbox-commands.patch",
+  "relocatable.patch",
+]
 
 [track]
 from = "generic:sudo"
@@ -26,4 +31,9 @@ flags = [
   "--with-iologdir=/var/log/sudo-io",
   "--enable-tmpfiles.d=no",
 ]
-installFlags = [ "INSTALL_OWNER=", "sysconfdir=$(prefix)/etc", "rundir=$(TMPDIR)/dummy", "vardir=$(TMPDIR)/dummy" ]
+installFlags = [
+  "INSTALL_OWNER=",
+  "sysconfdir=$(prefix)/etc",
+  "rundir=$(TMPDIR)/dummy",
+  "vardir=$(TMPDIR)/dummy",
+]

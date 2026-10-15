@@ -1,8 +1,14 @@
-fetch   = { url = "https://sourceware.org/elfutils/ftp/{version}/elfutils-{version}.tar.bz2" }
-with    = [ "autotools" ]
-deps    = [ "zlib", "zstd", "bzip2", "xz" ]
-tools   = [ "m4", "bison", "flex" ]
-patches = [ "unused-but-set-global.patch", "elflint-lld-output.patch", "arsymtest-llvm-nm.patch", "backtrace-data-bias.patch", "relocatable.patch" ]
+fetch = { url = "https://sourceware.org/elfutils/ftp/{version}/elfutils-{version}.tar.bz2" }
+with = [ "autotools" ]
+deps = [ "zlib", "zstd", "bzip2", "xz" ]
+tools = [ "m4", "bison", "flex" ]
+patches = [
+  "unused-but-set-global.patch",
+  "elflint-lld-output.patch",
+  "arsymtest-llvm-nm.patch",
+  "backtrace-data-bias.patch",
+  "relocatable.patch",
+]
 
 [track]
 from = "generic:elfutils"

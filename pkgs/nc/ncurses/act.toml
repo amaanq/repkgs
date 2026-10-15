@@ -32,7 +32,10 @@ flags = [
 tools = [ "ncurses" ]
 
 [on.cross.autotools]
-flags = [ "--with-tic-path={tool:ncurses}/bin/tic", "--with-infocmp-path={tool:ncurses}/bin/infocmp" ]
+flags = [
+  "--with-tic-path={tool:ncurses}/bin/tic",
+  "--with-infocmp-path={tool:ncurses}/bin/infocmp",
+]
 
 [on.windows.autotools]
 flags = [ "--enable-term-driver", "--enable-sp-funcs" ]

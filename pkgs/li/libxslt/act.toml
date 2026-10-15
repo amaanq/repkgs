@@ -1,6 +1,6 @@
-fetch  = { url = "https://download.gnome.org/sources/libxslt/{major}.{minor}/libxslt-{version}.tar.xz" }
-with   = [ "autotools" ]
-deps   = [ "libxml2" ]
+fetch = { url = "https://download.gnome.org/sources/libxslt/{major}.{minor}/libxslt-{version}.tar.xz" }
+with  = [ "autotools" ]
+deps  = [ "libxml2" ]
 # the sourced shell fragment cannot find itself, libxml2 dropped its xml2Conf.sh twin as outdated
 remove = [ "lib/xsltConf.sh" ]
 

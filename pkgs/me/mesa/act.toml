@@ -1,8 +1,8 @@
-track   = 'generic:mesa?url=https://archive.mesa3d.org/&regex=mesa-([0-9]+\.[0-9]+\.[0-9]+)\.tar\.xz'
-fetch   = { url = "https://archive.mesa3d.org/mesa-{version}.tar.xz" }
+track = 'generic:mesa?url=https://archive.mesa3d.org/&regex=mesa-([0-9]+\.[0-9]+\.[0-9]+)\.tar\.xz'
+fetch = { url = "https://archive.mesa3d.org/mesa-{version}.tar.xz" }
 patches = [ "relocatable.patch" ]
-with    = [ "meson" ]
-deps    = [
+with = [ "meson" ]
+deps = [
   "elfutils",
   "expat",
   "libdrm",
@@ -19,7 +19,7 @@ deps    = [
   "zlib",
   "zstd",
 ]
-tools   = [
+tools = [
   "bison",
   "cpython314",
   "flex",
