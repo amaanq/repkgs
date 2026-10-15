@@ -1,7 +1,10 @@
 track = "github:gnustep/libobjc2"
 fetch = { url = "https://github.com/gnustep/libobjc2/archive/refs/tags/v{version}.tar.gz" }
-with  = [ "cmake" ]
-deps  = [ "robin-map" ]
+with = [ "cmake" ]
+deps = [ "robin-map" ]
+patches = [
+  "https://github.com/gnustep/libobjc2/commit/129c5ba8bd5df8aa1c9d3aaafde6068e796d80eb.patch",
+]
 
 [cmake.defs]
 TESTS = true

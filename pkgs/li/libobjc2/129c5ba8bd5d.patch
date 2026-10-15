@@ -1,0 +1,40 @@
+From 129c5ba8bd5df8aa1c9d3aaafde6068e796d80eb Mon Sep 17 00:00:00 2001
+From: David Chisnall <github@theravensnest.org>
+Date: Fri, 17 Apr 2026 10:49:37 +0100
+Subject: [PATCH] Remove some largely-dead error handling.
+
+The runtime does not claim to work in memory-exhaustion cases and doing
+checks *sometimes* is worse than doing them all the time, especially
+when the checks are wrong.
+---
+ selector_table.cc | 11 +----------
+ 1 file changed, 1 insertion(+), 10 deletions(-)
+
+diff --git a/selector_table.cc b/selector_table.cc
+index 3723ad57..723e33d0 100644
+--- a/selector_table.cc
++++ b/selector_table.cc
+@@ -484,22 +484,13 @@ SEL objc_register_selector_copy(UnregisteredSelector &aSel, BOOL copyArgs)
+ 		else
+ 		{
+ 			copy->name = strdup(aSel.name);
+-			if (copy->name == nullptr)
+-			{
+-				fprintf(stderr, "Failed to allocate memory for selector %s\n", aSel.name);
+-				abort();
+-			}
+ 			assert(copy->name);
+ 			selector_name_copies += strlen(copy->name);
+ 		}
+ 		if (copy->types != nullptr)
+ 		{
+ 			copy->types = strdup(copy->types);
+-			if (copy->name == nullptr)
+-			{
+-				fprintf(stderr, "Failed to allocate memory for selector %s\n", aSel.name);
+-				abort();
+-			}
++			assert(copy->types);
+ 			selector_name_copies += strlen(copy->types);
+ 		}
+ 	}
