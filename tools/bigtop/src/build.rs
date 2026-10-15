@@ -119,6 +119,7 @@ use crate::{
       prepare,
    },
    progress,
+   registry,
    ring::Announced,
    system::{
       command::{
@@ -252,6 +253,7 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
       socket,
    )?;
    let mut timings = vec![format!("prepare {:.1}s", started.elapsed().as_secs_f64())];
+   let serving = registry::start(spec.tests.registry.as_ref(), &mut ctx.test_env)?;
    let mut writable = false;
    let mut furnished = false;
    let mut controlled = false;
@@ -299,6 +301,7 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
          ));
       }
    }
+   serving.map(registry::Serving::stop).transpose()?;
    set_phase("finish");
    let finishing = Instant::now();
    let finished = if tests {

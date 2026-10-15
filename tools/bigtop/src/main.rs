@@ -19,6 +19,7 @@ mod prepare;
 mod probe;
 mod progress;
 mod recipe;
+mod registry;
 mod ring;
 mod site;
 mod system;
@@ -230,6 +231,7 @@ fn run(mode: Mode, socket: &Path) -> Result<i32> {
          write_launcher(&ctx, &name, &program, &args, &env)?;
       },
       Mode::Bundle => bundle::run()?,
+      Mode::Registry { lock } => registry::serve(&lock)?,
       Mode::Syslibs { operation } => syslibs_mode(operation)?,
       Mode::Schema { check } => schema::run(check.as_deref())?,
    }

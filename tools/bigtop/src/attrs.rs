@@ -317,6 +317,7 @@ record! {
          etc ("etc"): bool,
          fhs ("fhs"): bool,
          terminal ("terminal"): bool,
+         registry ("registry"): PackagePath,
       }
    }
 }

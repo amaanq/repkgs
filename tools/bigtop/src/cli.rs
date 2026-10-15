@@ -17,6 +17,11 @@ pub enum Mode {
       #[pound(long)]
       check: Option<PathBuf>,
    },
+   /// serve a vendored package-lock.json as a read-only npm registry on
+   /// loopback, printing its URL.
+   Registry {
+      lock: PathBuf,
+   },
    /// the whole package build from the structured attrs, the derivation's
    /// builder.
    Build {

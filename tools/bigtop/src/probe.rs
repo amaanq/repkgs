@@ -54,6 +54,7 @@ use crate::{
       build_top,
    },
    build::nu_internal,
+   registry,
 };
 
 #[derive(Serialize)]
@@ -119,6 +120,7 @@ pub fn inherited(name: &str) -> bool {
          name,
          "NIX_LOG_FD" | "NIX_BUILD_CORES" | "TERM" | "SHLVL" | "_"
       )
+      && !registry::VARIABLES.contains(&name)
 }
 
 /// The cc toolchain's files and a program it links, its own path masked and

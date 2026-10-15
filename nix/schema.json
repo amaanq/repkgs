@@ -479,6 +479,17 @@
           "parallel": {
             "kind": "boolean"
           },
+          "registry": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "package"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          },
           "run": {
             "kind": "boolean"
           },
@@ -509,7 +520,8 @@
           "dependencies",
           "etc",
           "fhs",
-          "terminal"
+          "terminal",
+          "registry"
         ]
       },
       "default": null,

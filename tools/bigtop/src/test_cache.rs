@@ -109,6 +109,7 @@ struct Request<'step> {
    environment: BTreeMap<String, String>,
    runner:      &'static str,
    module:      Option<&'static str>,
+   registry:    Option<String>,
 }
 
 /// A path as stored, its bytes when they are not UTF-8, as the names test
@@ -281,6 +282,13 @@ fn request(ctx: &Ctx, step: &Step, module: Option<&'static str>) -> io::Result<K
    if let Some(fields) = spec.as_object_mut() {
       fields.remove("version");
    }
+   // the registry serves from bigtop, outside the traced reads
+   let served = spec
+      .pointer("/tests/registry")
+      .and_then(Value::as_str)
+      .map(|deps| read(Path::new(deps).join("package-lock.json")))
+      .transpose()?
+      .map(|lock| blake3::hash(&lock).to_hex().to_string());
    let request = Request {
       step:        &step.name,
       kind:        &step.kind,
@@ -288,6 +296,7 @@ fn request(ctx: &Ctx, step: &Step, module: Option<&'static str>) -> io::Result<K
       environment: env::vars().filter(|entry| inherited(&entry.0)).collect(),
       runner:      RUNNER,
       module:      fingerprinted,
+      registry:    served,
    };
    let text = mask_hashes(&serde_json::to_string(&request)?);
    format!(
