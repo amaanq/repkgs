@@ -4,6 +4,7 @@ patches = [
   "../bash/relocatable.patch",
   "../bash/fail-tests.patch",
   "../bash/tests-select.patch",
+  "../bash/tests-locale-probe.patch",
   "../bash/printf-precision-overflow.patch",
   "../bash/trap-order.patch",
   "../bash/help-columns.patch",
@@ -28,3 +29,6 @@ flags = [
   "bash_cv_job_control_missing=nomissing",
   "bash_cv_sys_named_pipes=nomissing",
 ]
+
+[on.glibc.steps.before]
+"autotools.test" = [ "bash.locales" ]

@@ -6,6 +6,7 @@ patches = [
   "relocatable.patch",
   "fail-tests.patch",
   "tests-select.patch",
+  "tests-locale-probe.patch",
   "printf-precision-overflow.patch",
   "trap-order.patch",
   "help-columns.patch",
@@ -32,3 +33,6 @@ flags = [
 
 [links]
 "bin/sh" = "bash"
+
+[on.glibc.steps.before]
+"autotools.test" = [ "bash.locales" ]

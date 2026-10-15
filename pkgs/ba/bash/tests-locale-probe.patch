@@ -1,0 +1,51 @@
+--- a/tests/glob2.sub
++++ b/tests/glob2.sub
+@@ -14,7 +14,7 @@
+ . ./test-glue-functions
+ 
+ # this locale causes problems all over the place
+-if locale -a | grep -i '^zh_TW\.big5' >/dev/null ; then
++if [ -z "$(LC_ALL=zh_TW.big5 ${THIS_SH} -c : 2>&1)" ] ; then
+         :
+ else
+         echo "glob2.sub: warning: you do not have the zh_TW.big5 locale installed;" >&2
+--- a/tests/intl2.sub
++++ b/tests/intl2.sub
+@@ -13,7 +13,7 @@
+ #
+ # this locale causes problems all over the place
+ unset LC_ALL LC_NUMERIC
+-if locale -a | grep -i '^de_DE\.UTF.*8' >/dev/null ; then
++if [ -z "$(LC_ALL=de_DE.UTF-8 ${THIS_SH} -c : 2>&1)" ] ; then
+ 	export LANG=de_DE.UTF-8
+ else
+ 	echo "intl2.sub: warning: you do not have the de_DE.UTF-8 locale installed;" >&2
+--- a/tests/unicode1.sub
++++ b/tests/unicode1.sub
+@@ -98,7 +98,7 @@
+ )
+ 
+ # this locale causes problems all over the place
+-if locale -a | grep -i '^fr_FR\.ISO8859.*1$' >/dev/null ; then
++if [ -z "$(LC_ALL=fr_FR.ISO8859-1 ${THIS_SH} -c : 2>&1)" ] ; then
+ 	TestCodePage fr_FR.ISO8859-1 fr_FR_ISO_8859_1
+ else
+ 	localewarn fr_FR.ISO8859-1
+@@ -118,7 +118,7 @@
+ )
+ 
+ # this locale causes problems all over the place
+-if locale -a | grep -i '^zh_TW\.big5' >/dev/null ; then
++if [ -z "$(LC_ALL=zh_TW.BIG5 ${THIS_SH} -c : 2>&1)" ] ; then
+ 	TestCodePage zh_TW.BIG5 zh_TW_BIG5
+ else
+ 	localewarn zh_TW.BIG5
+@@ -318,7 +318,7 @@
+ )
+ 
+ #TestCodePage ja_JP.SHIFT_JIS jp_JP_SHIFT_JIS
+-if locale -a | grep -i '^ja_JP.SJIS' >/dev/null ; then
++if [ -z "$(LC_ALL=ja_JP.SJIS ${THIS_SH} -c : 2>&1)" ] ; then
+ 	TestCodePage ja_JP.SJIS jp_JP_SHIFT_JIS
+ else
+ 	localewarn ja_JP.SJIS
