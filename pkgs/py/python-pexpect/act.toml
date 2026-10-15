@@ -1,11 +1,15 @@
 track = "pypi:pexpect"
 fetch = { sdist = true }
-with  = [ "python" ]
-deps  = [ "python-ptyprocess" ]
+with = [ "python" ]
+deps = [ "python-ptyprocess" ]
 tools = [ "python-setuptools" ]
+patches = [
+  "github:pexpect/pexpect/commit/456bc10d94b57e254568e7ea9a8b3cffb856ebff",
+  "sandbox-tests.patch",
+]
 
 [test]
-deps = [ "python-pytest" ]
+deps = [ "python-pytest", "openssl", "bash-interactive" ]
 
 [python]
 module = "pexpect"

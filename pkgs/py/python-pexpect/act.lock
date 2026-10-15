@@ -1,3 +1,6 @@
 version = "4.9.0"
 date    = "2023-11-25"
 hash    = "sha256-nykaVRvkq2Cia36wKpoakdWUDfykxaqsGwLoi0cn8ZE="
+
+[patches]
+"github:pexpect/pexpect/commit/456bc10d94b57e254568e7ea9a8b3cffb856ebff" = "456bc10d94b5.patch"
