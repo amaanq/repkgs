@@ -16,6 +16,8 @@ patches = [
 [test]
 bin      = [ "bash", "sh" ]
 separate = true
+fhs      = true
+terminal = true
 
 [only]
 posix = true
