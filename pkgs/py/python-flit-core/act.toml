@@ -1,5 +1,5 @@
 track = "pypi:flit-core"
-fetch = { url = "https://files.pythonhosted.org/packages/source/f/flit_core/flit_core-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 
 [python]

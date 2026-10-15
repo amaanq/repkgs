@@ -1,5 +1,5 @@
 track = "pypi:pygments"
-fetch = { url = "https://files.pythonhosted.org/packages/source/p/pygments/pygments-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 tools = [ "python-hatchling" ]
 

@@ -1,5 +1,5 @@
 track = "pypi:zope.testing"
-fetch = { url = "https://files.pythonhosted.org/packages/source/z/zope_testing/zope_testing-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 tools = [ "python-setuptools" ]
 

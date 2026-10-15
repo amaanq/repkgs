@@ -1,5 +1,5 @@
 track = "pypi:execnet"
-fetch = { url = "https://files.pythonhosted.org/packages/source/e/execnet/execnet-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 tools = [ "python-hatchling", "python-hatch-vcs" ]
 

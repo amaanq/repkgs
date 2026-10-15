@@ -1,5 +1,5 @@
 track = "pypi:pyproject-hooks"
-fetch = { url = "https://files.pythonhosted.org/packages/source/p/pyproject_hooks/pyproject_hooks-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 
 [python]

@@ -1,5 +1,5 @@
 track = "pypi:sortedcontainers"
-fetch = { url = "https://files.pythonhosted.org/packages/source/s/sortedcontainers/sortedcontainers-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 tools = [ "python-setuptools" ]
 

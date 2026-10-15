@@ -1,5 +1,5 @@
 track   = "pypi:psutil"
-fetch   = { url = "https://files.pythonhosted.org/packages/source/p/psutil/psutil-{version}.tar.gz" }
+fetch   = { sdist = true }
 with    = [ "python" ]
 tools   = [ "python-setuptools" ]
 patches = [ "no-sysfs-battery.patch", "sandbox-tests.patch" ]

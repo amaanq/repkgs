@@ -1,5 +1,5 @@
 track = "pypi:cython"
-fetch = { url = "https://files.pythonhosted.org/packages/source/c/cython/cython-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 deps  = [ "cpython" ]
 tools = [ "python-setuptools" ]

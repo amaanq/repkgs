@@ -1,5 +1,5 @@
 track = "pypi:installer"
-fetch = { url = "https://files.pythonhosted.org/packages/source/i/installer/installer-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 
 [python]

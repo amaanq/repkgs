@@ -1,5 +1,5 @@
 track = "pypi:hatch-vcs"
-fetch = { url = "https://files.pythonhosted.org/packages/source/h/hatch-vcs/hatch_vcs-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 deps  = [ "python-setuptools-scm" ]
 tools = [ "python-hatchling" ]

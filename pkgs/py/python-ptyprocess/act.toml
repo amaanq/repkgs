@@ -1,5 +1,5 @@
 track = "pypi:ptyprocess"
-fetch = { url = "https://files.pythonhosted.org/packages/source/p/ptyprocess/ptyprocess-{version}.tar.gz" }
+fetch = { sdist = true }
 with = [ "python" ]
 tools = [ "python-flit-core" ]
 patches = [

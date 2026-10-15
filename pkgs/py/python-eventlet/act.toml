@@ -1,5 +1,5 @@
 track = "pypi:eventlet"
-fetch = { url = "https://files.pythonhosted.org/packages/source/e/eventlet/eventlet-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 deps  = [ "python-dnspython", "python-greenlet" ]
 tools = [ "python-hatchling", "python-hatch-vcs" ]

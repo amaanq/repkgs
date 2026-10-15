@@ -1,5 +1,5 @@
 track = "pypi:pathspec"
-fetch = { url = "https://files.pythonhosted.org/packages/source/p/pathspec/pathspec-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 
 [test]

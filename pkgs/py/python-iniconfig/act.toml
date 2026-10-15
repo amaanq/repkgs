@@ -1,5 +1,5 @@
 track = "pypi:iniconfig"
-fetch = { url = "https://files.pythonhosted.org/packages/source/i/iniconfig/iniconfig-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 tools = [ "python-setuptools", "python-setuptools-scm" ]
 

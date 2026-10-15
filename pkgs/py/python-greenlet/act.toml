@@ -1,5 +1,5 @@
 track = "pypi:greenlet"
-fetch = { url = "https://files.pythonhosted.org/packages/source/g/greenlet/greenlet-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 tools = [ "python-setuptools" ]
 

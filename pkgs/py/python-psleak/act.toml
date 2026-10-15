@@ -1,5 +1,5 @@
 track = "pypi:psleak"
-fetch = { url = "https://files.pythonhosted.org/packages/source/p/psleak/psleak-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 deps  = [ "python-psutil" ]
 tools = [ "python-setuptools" ]

@@ -1,5 +1,5 @@
 track = "pypi:sniffio"
-fetch = { url = "https://files.pythonhosted.org/packages/source/s/sniffio/sniffio-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 tools = [ "python-setuptools", "python-setuptools-scm" ]
 

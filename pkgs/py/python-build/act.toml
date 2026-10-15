@@ -1,5 +1,5 @@
 track = "pypi:build"
-fetch = { url = "https://files.pythonhosted.org/packages/source/b/build/build-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 deps  = [ "python-packaging", "python-pyproject-hooks" ]
 

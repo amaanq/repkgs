@@ -1,5 +1,5 @@
 track = "pypi:zope.interface"
-fetch = { url = "https://files.pythonhosted.org/packages/source/z/zope_interface/zope_interface-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 tools = [ "python-setuptools" ]
 

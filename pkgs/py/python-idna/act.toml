@@ -1,5 +1,5 @@
 track = "pypi:idna"
-fetch = { url = "https://files.pythonhosted.org/packages/source/i/idna/idna-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 
 [python]

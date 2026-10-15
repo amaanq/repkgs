@@ -1,5 +1,5 @@
 track = "pypi:mako"
-fetch = { url = "https://files.pythonhosted.org/packages/source/m/mako/mako-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 deps  = [ "python-markupsafe" ]
 tools = [ "python-setuptools" ]

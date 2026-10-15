@@ -1,5 +1,5 @@
 track = "pypi:hatchling"
-fetch = { url = "https://files.pythonhosted.org/packages/source/h/hatchling/hatchling-{version}.tar.gz" }
+fetch = { sdist = true }
 with = [ "python" ]
 deps = [
   "cpython",

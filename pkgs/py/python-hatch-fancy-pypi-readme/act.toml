@@ -1,5 +1,5 @@
 track = "pypi:hatch-fancy-pypi-readme"
-fetch = { url = "https://files.pythonhosted.org/packages/source/h/hatch_fancy_pypi_readme/hatch_fancy_pypi_readme-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 deps  = [ "python-hatchling" ]
 tools = [ "python-hatchling" ]

@@ -1,5 +1,5 @@
 track = "pypi:pycountry"
-fetch = { url = "https://files.pythonhosted.org/packages/source/p/pycountry/pycountry-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 tools = [ "python-poetry-core" ]
 

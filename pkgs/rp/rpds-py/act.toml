@@ -1,5 +1,5 @@
 track = "pypi:rpds-py"
-fetch = { url = "https://files.pythonhosted.org/packages/source/r/rpds_py/rpds_py-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python", "cargo" ]
 tools = [ "maturin" ]
 

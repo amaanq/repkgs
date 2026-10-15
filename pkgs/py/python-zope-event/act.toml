@@ -1,5 +1,5 @@
 track = "pypi:zope.event"
-fetch = { url = "https://files.pythonhosted.org/packages/source/z/zope_event/zope_event-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 tools = [ "python-setuptools" ]
 

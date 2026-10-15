@@ -1,5 +1,5 @@
 track = "pypi:setuptools-scm"
-fetch = { url = "https://files.pythonhosted.org/packages/source/s/setuptools-scm/setuptools_scm-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 deps  = [ "python-packaging", "python-setuptools", "python-vcs-versioning" ]
 tools = [ "python-setuptools" ]

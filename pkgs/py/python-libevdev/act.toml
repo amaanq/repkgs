@@ -1,5 +1,5 @@
 track = "pypi:libevdev"
-fetch = { url = "https://files.pythonhosted.org/packages/source/l/libevdev/libevdev-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 deps  = [ "libevdev" ]
 tools = [ "python-hatchling" ]

@@ -1,5 +1,5 @@
 track = "pypi:pytest_xdist"
-fetch = { url = "https://files.pythonhosted.org/packages/source/p/pytest_xdist/pytest_xdist-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 deps  = [ "python-execnet", "python-pytest" ]
 tools = [ "python-setuptools", "python-setuptools-scm" ]

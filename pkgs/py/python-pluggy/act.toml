@@ -1,5 +1,5 @@
 track = "pypi:pluggy"
-fetch = { url = "https://files.pythonhosted.org/packages/source/p/pluggy/pluggy-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 tools = [ "python-setuptools", "python-setuptools-scm" ]
 

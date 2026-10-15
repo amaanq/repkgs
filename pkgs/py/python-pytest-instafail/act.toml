@@ -1,5 +1,5 @@
 track = "pypi:pytest-instafail"
-fetch = { url = "https://files.pythonhosted.org/packages/source/p/pytest-instafail/pytest-instafail-{version}.tar.gz" }
+fetch = { sdist = "pytest-instafail" }
 with  = [ "python" ]
 deps  = [ "python-pytest" ]
 tools = [ "python-setuptools" ]

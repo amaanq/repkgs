@@ -1,5 +1,5 @@
 track = "pypi:markupsafe"
-fetch = { url = "https://files.pythonhosted.org/packages/source/m/markupsafe/markupsafe-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 tools = [ "python-setuptools" ]
 

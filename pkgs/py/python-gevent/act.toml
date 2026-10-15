@@ -1,9 +1,17 @@
 track = "pypi:gevent"
-fetch = { url = "https://files.pythonhosted.org/packages/source/g/gevent/gevent-{version}.tar.gz" }
-with  = [ "python" ]
-deps  = [ "c-ares", "libev", "libuv", "python-cffi", "python-greenlet", "python-zope-event", "python-zope-interface" ]
+fetch = { sdist = true }
+with = [ "python" ]
+deps = [
+  "c-ares",
+  "libev",
+  "libuv",
+  "python-cffi",
+  "python-greenlet",
+  "python-zope-event",
+  "python-zope-interface",
+]
 tools = [ "python-cffi", "python-cython", "python-setuptools", "pkgconf" ]
-env   = { GEVENTSETUP_EMBED = "0" }
+env = { GEVENTSETUP_EMBED = "0" }
 
 [steps.after]
 "python.test" = [ "python-gevent.test" ]

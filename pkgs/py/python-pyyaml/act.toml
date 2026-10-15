@@ -1,5 +1,5 @@
 track = "pypi:pyyaml"
-fetch = { url = "https://files.pythonhosted.org/packages/source/p/pyyaml/pyyaml-{version}.tar.gz" }
+fetch = { sdist = true }
 with  = [ "python" ]
 deps  = [ "libyaml" ]
 tools = [ "python-setuptools", "python-cython" ]
