@@ -10,6 +10,7 @@ patches = [
   "../llvm/lit-test-marks.patch",
   "https://github.com/rust-lang/llvm-project/commit/abcef279cd33492fe8301c8873fc535fa4dbf0d5.patch",
   "m68k-update-tests.patch",
+  "https://github.com/llvm/llvm-project/commit/4e8c730fc23b3d007c3ed0a04573957a718df1d3.patch",
 ]
 
 [track]

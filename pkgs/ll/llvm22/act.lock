@@ -3,3 +3,4 @@ hash    = "sha256-SF7wFuh4kXZTytpdgX7vUZItKtRobnVICm+ixze4iG0="
 
 [patches]
 "https://github.com/rust-lang/llvm-project/commit/abcef279cd33492fe8301c8873fc535fa4dbf0d5.patch" = "abcef279cd33.patch"
+"https://github.com/llvm/llvm-project/commit/4e8c730fc23b3d007c3ed0a04573957a718df1d3.patch" = "4e8c730fc23b.patch"
