@@ -4,9 +4,11 @@ dir:
 let
   inherit (builtins)
     attrNames
+    concatStringsSep
     elem
     filter
     fromTOML
+    genList
     head
     isAttrs
     isString
@@ -16,6 +18,8 @@ let
     readFile
     removeAttrs
     replaceStrings
+    split
+    substring
     ;
   act = fromTOML (readFile (dir + "/act.toml"));
   lock = if pathExists (dir + "/act.lock") then fromTOML (readFile (dir + "/act.lock")) else { };
@@ -28,18 +32,39 @@ let
       throw "${where}: asset and archive need a github track"
     else
       "https://github.com/${head repo}";
+  project = match "pypi:([^?]+)" (if track == null then "" else track);
+  # PEP 625's sdist name, lowercase with each run of `-`, `_` and `.` as one `_`
+  normalized =
+    let
+      letters = upper: genList (index: substring index 1 upper) 26;
+      lower = replaceStrings (letters "ABCDEFGHIJKLMNOPQRSTUVWXYZ") (
+        letters "abcdefghijklmnopqrstuvwxyz"
+      );
+      name = if project == null then throw "${where}: sdist needs a pypi track" else head project;
+    in
+    lower (concatStringsSep "_" (filter isString (split "[-_.]+" name)));
   url =
     source:
     source.url or (
-      if source ? asset then
+      if source ? sdist then
+        "https://files.pythonhosted.org/packages/source/${substring 0 1 normalized}/${normalized}/${
+          if isString source.sdist then
+            source.sdist
+          else if source.sdist then
+            normalized
+          else
+            throw "${where}: sdist = false names no source"
+        }-{version}.tar.gz"
+      else if source ? asset then
         "${forge}/releases/download/{tag}/${source.asset}"
       else if source.archive or false then
         "${forge}/archive/refs/tags/{tag}.tar.gz"
       else
-        throw "${where}: a source needs url, asset or archive"
+        throw "${where}: a source needs url, asset, archive or sdist"
     );
 
-  single = act ? fetch && (act.fetch ? url || act.fetch ? asset || act.fetch ? archive);
+  single =
+    act ? fetch && (act.fetch ? url || act.fetch ? asset || act.fetch ? archive || act.fetch ? sdist);
   from = act.fetch.from or null;
   declared =
     if single then
@@ -78,6 +103,7 @@ in
       "url"
       "asset"
       "archive"
+      "sdist"
     ]
     // {
       url = url source;

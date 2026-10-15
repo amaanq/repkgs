@@ -105,10 +105,20 @@ struct Fetched {
    url:     Option<String>,
    asset:   Option<String>,
    archive: Option<bool>,
+   sdist:   Option<Sdist>,
    from:    Option<String>,
    unpack:  Option<bool>,
    name:    Option<String>,
    frozen:  Option<String>,
+}
+
+/// `sdist = true` takes the file name from the project, `sdist = "<stem>"`
+/// spells out one that predates PEP 625's normalized names.
+#[derive(Clone, Deserialize)]
+#[serde(untagged)]
+enum Sdist {
+   Normalized(bool),
+   Stem(String),
 }
 
 #[derive(Deserialize)]
@@ -197,10 +207,26 @@ fn sources_files(root: &Path) -> io::Result<Vec<PathBuf>> {
 }
 
 /// The source's url, `asset` and `archive` spelled out against the github
-/// repository `track` names.
+/// repository `track` names, `sdist` against the pypi project.
 fn url_of(fetched: &Fetched, purl: Option<&str>) -> Result<String, String> {
    if let Some(ref url) = fetched.url {
       return Ok(url.clone());
+   }
+   if let Some(ref sdist) = fetched.sdist {
+      let project = purl
+         .and_then(|text| text.strip_prefix("pkg:pypi/"))
+         .filter(|project| !project.is_empty() && !project.contains('?'))
+         .ok_or("sdist needs a pypi track")?;
+      let normalized = normalize(project);
+      let stem = match *sdist {
+         Sdist::Normalized(true) => &normalized,
+         Sdist::Normalized(false) => return Err("sdist = false names no source".to_owned()),
+         Sdist::Stem(ref stem) => stem,
+      };
+      let first = normalized.chars().next().ok_or("sdist needs a pypi track")?;
+      return Ok(format!(
+         "https://files.pythonhosted.org/packages/source/{first}/{normalized}/{stem}-{{version}}.tar.gz"
+      ));
    }
    let repo = purl
       .and_then(|text| text.strip_prefix("pkg:github/"))
@@ -216,7 +242,23 @@ fn url_of(fetched: &Fetched, purl: Option<&str>) -> Result<String, String> {
          "https://github.com/{repo}/archive/refs/tags/{{tag}}.tar.gz"
       ));
    }
-   Err("a source needs url, asset or archive".to_owned())
+   Err("a source needs url, asset, archive or sdist".to_owned())
+}
+
+/// PEP 625's sdist name, lowercase with each run of `-`, `_` and `.` as one
+/// `_`.
+fn normalize(project: &str) -> String {
+   let mut normalized = String::with_capacity(project.len());
+   for character in project.chars() {
+      if matches!(character, '-' | '_' | '.') {
+         if !normalized.ends_with('_') {
+            normalized.push('_');
+         }
+      } else {
+         normalized.push(character.to_ascii_lowercase());
+      }
+   }
+   normalized
 }
 
 /// `github:owner/repo` as the purl the datasources take.

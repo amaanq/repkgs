@@ -30,7 +30,7 @@ business and ignored here.
 # act.toml
 tag   = "v{version}"
 track = "github:sharkdp/fd"        # a purl without pkg:, which picks the datasource and versioning
-fetch = { archive = true }         # or { asset = "…" }, { url = "…" }, [fetch.<name>] tables
+fetch = { archive = true }         # or { asset = "…" }, { sdist = true }, { url = "…" }, [fetch.<name>] tables
 # unpack = false                   keep the file whole, the hash is then its flat sha256
 # frozen = "distro build"          on a source, a url that ignores the version, which rehash leaves alone
 

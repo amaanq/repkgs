@@ -63,6 +63,8 @@ string.
   key of act.lock as placeholders
 - `{ asset = "<file>" }`, a release asset of the tracked forge repository at `{tag}`
 - `{ archive = true }`, the tracked forge repository's tarball of `{tag}`
+- `{ sdist = true }`, the tracked PyPI project's sdist under its PEP 625 name, or
+  `{ sdist = "<stem>" }` for an older one named otherwise
 - `{ from = "<package>" }`, that package's sources, for a subproject of its tarball
 
 plus `unpack = false` to keep the download as it is, `name` for its store name, and `frozen` (a
