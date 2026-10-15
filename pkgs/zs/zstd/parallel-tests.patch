@@ -1,0 +1,54 @@
+--- a/build/cmake/tests/CMakeLists.txt
++++ b/build/cmake/tests/CMakeLists.txt
+@@ -61,7 +61,8 @@
+     target_compile_options(fullbench PRIVATE "-Wno-deprecated-declarations")
+ endif()
+ target_link_libraries(fullbench libzstd_static)
+-add_test(NAME fullbench COMMAND "$<TARGET_FILE:fullbench>" ${ZSTD_FULLBENCH_FLAGS})
++add_test(NAME fullbench COMMAND "$<TARGET_FILE:fullbench>" -i1 ${ZSTD_FULLBENCH_FLAGS})
++add_test(NAME fullbench-P0 COMMAND "$<TARGET_FILE:fullbench>" -i1 -P0 ${ZSTD_FULLBENCH_FLAGS})
+ 
+ #
+ # fuzzer
+@@ -73,7 +74,20 @@
+ target_link_libraries(fuzzer libzstd_static)
+ AddTestFlagsOption(ZSTD_FUZZER_FLAGS "$ENV{FUZZERTEST} $ENV{FUZZER_FLAGS}"
+     "Semicolon-separated list of flags to pass to the fuzzer test (see `fuzzer -h` for usage)")
+-add_test(NAME fuzzer COMMAND "$<TARGET_FILE:fuzzer>" ${ZSTD_FUZZER_FLAGS})
++set(FUZZ_SEED ${CMAKE_CURRENT_BINARY_DIR}/fuzz-seed)
++add_test(NAME fuzz-seed COMMAND sh -c "echo $(( $(od -An -N2 -tu2 /dev/urandom) % 10000 )) > '${FUZZ_SEED}'")
++set_property(TEST fuzz-seed PROPERTY FIXTURES_SETUP fuzz-seed)
++function(AddSlicedTest name target count slice)
++    string(REPLACE ";" " " flags "${ARGN}")
++    foreach(first RANGE 1 ${count} ${slice})
++        math(EXPR last "${first} + ${slice} - 1")
++        add_test(NAME ${name}-${first} COMMAND sh -c "exec '$<TARGET_FILE:${target}>' -s$(cat '${FUZZ_SEED}') -t${first} -i${last} ${flags}")
++        set_property(TEST ${name}-${first} PROPERTY FIXTURES_REQUIRED fuzz-seed)
++        set_property(TEST ${name}-${first} APPEND PROPERTY LABELS Medium)
++    endforeach()
++endfunction()
++add_test(NAME fuzzer-unit COMMAND "$<TARGET_FILE:fuzzer>" -t0 -i0 ${ZSTD_FUZZER_FLAGS})
++AddSlicedTest(fuzzer fuzzer 30000 1000 ${ZSTD_FUZZER_FLAGS})
+ # Disable the timeout since the run time is too long for the default timeout of
+ # 1500 seconds and varies considerably between low-end and high-end CPUs.
+ # set_tests_properties(fuzzer PROPERTIES TIMEOUT 0)
+@@ -88,7 +105,9 @@
+ target_link_libraries(zstreamtest libzstd_static)
+ AddTestFlagsOption(ZSTD_ZSTREAM_FLAGS "$ENV{ZSTREAM_TESTTIME} $ENV{FUZZER_FLAGS}"
+     "Semicolon-separated list of flags to pass to the zstreamtest test (see `zstreamtest -h` for usage)")
+-add_test(NAME zstreamtest COMMAND "$<TARGET_FILE:zstreamtest>" ${ZSTD_ZSTREAM_FLAGS})
++add_test(NAME zstreamtest-unit COMMAND "$<TARGET_FILE:zstreamtest>" -t0 -i0 ${ZSTD_ZSTREAM_FLAGS})
++AddSlicedTest(zstreamtest zstreamtest 10000 500 ${ZSTD_ZSTREAM_FLAGS})
++AddSlicedTest(zstreamtest-newapi zstreamtest 10000 500 --newapi ${ZSTD_ZSTREAM_FLAGS})
+ 
+ #
+ # playTests.sh
+@@ -108,7 +127,7 @@
+ endif()
+ 
+ # Label the "Medium" set of tests (see TESTING.md)
+-set_property(TEST fuzzer zstreamtest playTests APPEND PROPERTY LABELS Medium)
++set_property(TEST fuzzer-unit zstreamtest-unit playTests APPEND PROPERTY LABELS Medium)
+ 
+ add_executable(paramgrill ${PROGRAMS_DIR}/benchfn.c ${PROGRAMS_DIR}/benchzstd.c ${PROGRAMS_DIR}/datagen.c ${PROGRAMS_DIR}/lorem.c ${PROGRAMS_DIR}/util.c ${PROGRAMS_DIR}/timefn.c ${TESTS_DIR}/paramgrill.c)
+ if (UNIX)

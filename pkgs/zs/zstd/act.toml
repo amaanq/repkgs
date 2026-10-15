@@ -3,6 +3,7 @@ track = "github:facebook/zstd"
 fetch = { archive = true }
 with  = [ "cmake" ]
 deps  = [ "zlib", "xz", "lz4" ]
+patches = [ "parallel-tests.patch" ]
 
 [cmake]
 root = "build/cmake"
