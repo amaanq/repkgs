@@ -10,5 +10,7 @@ export def host-config []: nothing -> nothing {
 
 export def check []: nothing -> nothing {
    let c = (act)
-   cue cmake --build $c.build --target check-llvm $"-j($c.njobs)"
+   with-env {LIT_OPTS: "--print-result-after=all"} {
+      cue cmake --build $c.build --target check-llvm $"-j($c.njobs)"
+   }
 }
