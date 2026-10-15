@@ -5,7 +5,7 @@ use glob.nu [glob-files]
 # pytest config requires pytest-cov for coverage reports only, and puts src/ ahead of the install
 export def test []: nothing -> nothing {
    let c    = (act)
-   let site = (glob-files $"($c.out)/lib/python3*/site-packages" | first)
+   let site = (glob-files --dirs $"($c.out)/lib/python3*/site-packages" | first)
    let opts = [ "-o" "required_plugins=" "-o" "addopts=--doctest-glob=*.rst" "-o" "pythonpath=" ]
 
    with-env {PYTHONPATH: $"($site):($env.PYTHONPATH)"} {
