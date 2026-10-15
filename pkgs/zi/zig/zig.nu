@@ -1,4 +1,4 @@
-use core.nu [drv emit]
+use core.nu [act cue drv emit]
 
 # zig speaks no cache protocol, but its global cache records paths relative to its roots, so the
 # whole directory moves between sandboxes
@@ -13,3 +13,8 @@ export def restore []: nothing -> nothing {
 }
 
 export def store []: nothing -> nothing { ^bigtop probe store-dir (cache-key) $env.ZIG_GLOBAL_CACHE_DIR }
+
+export def test []: nothing -> nothing {
+   let c = (act)
+   cue $"($c.build)/stage3/bin/zig" test -I $"($c.src)/test" $"($c.src)/test/behavior.zig"
+}

@@ -11,8 +11,10 @@ patches = [
 ]
 
 [test]
-run     = false
 version = "version"
+
+[steps.replace]
+"cmake.test" = [ "zig.test" ]
 
 [steps.after]
 "cmake.build"     = "zig.store"
