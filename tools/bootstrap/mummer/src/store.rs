@@ -859,6 +859,7 @@ fn random_names(text: &str) -> Vec<(Range<usize>, String)> {
       }
    }
    names.extend(pid_names(text));
+   names.extend(gnulib_names(text));
    if let Some(ref temporary) = *TEMPORARY {
       names.extend(scratch_names(text, temporary));
    }
@@ -957,6 +958,30 @@ fn made_by(path: &str, run: &str) -> bool {
       .and_then(|found| found.modified())
       .ok()
       .is_none_or(|modified| modified >= earlier)
+}
+
+/// gnulib's tests/init.sh runs each test in `gt-<test>.XXXX` under the
+/// directory the test started in, made by mktemp.
+fn gnulib_names(text: &str) -> Vec<(Range<usize>, String)> {
+   let mut names = Vec::new();
+   for (found, _) in text.match_indices("gt-") {
+      if found > 0 && text.as_bytes()[found - 1] != b'/' {
+         continue;
+      }
+
+      let end = text[found..]
+         .find('/')
+         .map_or(text.len(), |length| found + length);
+      let Some(dot) = text[found..end].rfind('.').map(|offset| found + offset) else {
+         continue;
+      };
+
+      if end - dot == 5 && random_tail(text, dot + 1, 4) {
+         names.push((found..end, format!("{}####", &text[found..=dot])));
+      }
+   }
+
+   names
 }
 
 /// Names a process of this build made from its pid, gen$$.c and the like:

@@ -1020,8 +1020,13 @@ pub fn run_cc(language: Language, raw: &[String], socket: &Path) -> io::Result<i
    invocation.prescan(language, compiler)?;
    let mut store = Store::new();
    let mut manifests = invocation.manifest_store();
-   store.learn_random(&invocation.args);
-   manifests.learn_random(&invocation.args);
+
+   let cwd = [utf8(&current_dir()?)?.to_owned()];
+   for learned in [&*invocation.args, &cwd] {
+      store.learn_random(learned);
+      manifests.learn_random(learned);
+   }
+
    invocation.key_injected(&user);
    let subject = invocation
       .source
@@ -1091,6 +1096,7 @@ pub fn run_cc(language: Language, raw: &[String], socket: &Path) -> io::Result<i
          },
       }
    };
+
    let slot = (outcome != Outcome::Query).then_some(socket);
    let result = run_uncached(&invocation, driver.format(), compiler, slot)?;
    uncached(Tool::Cc, outcome, &subject, &user, started);
