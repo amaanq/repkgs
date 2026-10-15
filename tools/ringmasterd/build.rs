@@ -9,11 +9,12 @@ use std::{
 };
 
 fn main() -> io::Result<()> {
-   println!("cargo::rerun-if-changed=src/trace.bpf.c");
-   println!("cargo::rerun-if-env-changed=RINGMASTERD_CLANG");
    if var("CARGO_FEATURE_DAEMON").is_err() {
+      println!("cargo::rerun-if-changed=build.rs");
       return Ok(());
    }
+   println!("cargo::rerun-if-changed=src/trace.bpf.c");
+   println!("cargo::rerun-if-env-changed=RINGMASTERD_CLANG");
    let arch = match var("CARGO_CFG_TARGET_ARCH")
       .map_err(io::Error::other)?
       .as_str()
