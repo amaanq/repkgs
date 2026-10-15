@@ -51,7 +51,7 @@ use crate::{
    },
 };
 
-const EPOCH: &str = "315532800";
+pub const EPOCH: u64 = 315_532_800;
 
 pub fn run(out: &Path, cache: bool) -> io::Result<()> {
    let attrs = Attrs::load()?;
@@ -167,7 +167,7 @@ fn sandbox_dirs(
 fn reproducible(env: &mut BTreeMap<String, Value>, attrs: &Attrs) {
    // 1980-01-01 is the earliest mtime ZIP archives (wheels, jars) can store,
    // and clang derives __DATE__ from SOURCE_DATE_EPOCH
-   set(env, "SOURCE_DATE_EPOCH", EPOCH);
+   set(env, "SOURCE_DATE_EPOCH", EPOCH.to_string());
    set(env, "TZ", "UTC");
    set(env, "LC_ALL", "C.UTF-8");
    set(env, "ZERO_AR_DATE", "1");

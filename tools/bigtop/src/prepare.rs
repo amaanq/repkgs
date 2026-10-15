@@ -20,6 +20,10 @@ use std::{
       Stdio,
    },
    thread::available_parallelism,
+   time::{
+      Duration,
+      UNIX_EPOCH,
+   },
 };
 
 use mummer::{
@@ -31,9 +35,12 @@ use mummer::{
    },
    store::normalize,
    tree::{
+      EntryKind,
       copy_tree,
       note,
+      parallel_with,
       shebangs,
+      walk,
    },
 };
 use serde::{
@@ -54,7 +61,10 @@ use crate::{
       TestVar,
       build_top,
    },
-   env::compute,
+   env::{
+      EPOCH,
+      compute,
+   },
    exports::{
       Exports,
       closure,
@@ -315,11 +325,27 @@ fn build_machine_tools(
    ])
 }
 
-// the copy keeps the store's uniform mtimes so generated files stay newer
+/// Gives a tree `SOURCE_DATE_EPOCH` for every mtime. One shared mtime leaves
+/// make nothing out of date, and the store's 1 predates what ZIP can hold.
+fn date(root: &Path) -> io::Result<()> {
+   let stamp = UNIX_EPOCH + Duration::from_secs(EPOCH);
+   let entries = walk(root)?;
+   let workers = available_parallelism()?.get();
+   parallel_with(&entries, workers, |entry| {
+      match entry.kind {
+         EntryKind::File | EntryKind::Dir => File::open(&entry.path)?.set_modified(stamp),
+         EntryKind::Link => Ok(()),
+      }
+   })?;
+   File::open(root)?.set_modified(stamp)
+}
+
+// the copy keeps one mtime for every file so generated files stay newer
 // than their inputs for make, patch -F0 refuses a hunk whose context moved
 fn unpack(attrs: &Attrs, src: &str) -> io::Result<()> {
    note("unpack", &attrs.src);
    copy_tree(Path::new(&attrs.src), Path::new(src))?;
+   date(Path::new(src))?;
    for patch in &attrs.patches {
       note("patch", patch);
       succeed(
@@ -349,7 +375,9 @@ fn restore(tree: &Path, top: &str) -> io::Result<()> {
          .args(["-R", "u+w"])
          .arg(Path::new(top).join("source"))
          .arg(Path::new(top).join("build")),
-   )
+   )?;
+   date(&Path::new(top).join("source"))?;
+   date(&Path::new(top).join("build"))
 }
 
 pub fn succeed(command: &mut Command) -> io::Result<()> {
