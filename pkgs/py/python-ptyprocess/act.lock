@@ -1,3 +1,7 @@
 version = "0.7.0"
 date    = "2020-12-28"
 hash    = "sha256-HVsg0evcGCxcKj4PioOQBhtjeR1MUB6houqvm+Etmks="
+
+[patches]
+"github:pexpect/ptyprocess/commit/40c1ccf3432a6787be1801ced721540e34c6cd87" = "40c1ccf3432a.patch"
+"github:pexpect/ptyprocess/commit/a44312974bd9084aa568d2e18ce5b2a7e0e45983" = "a44312974bd9.patch"

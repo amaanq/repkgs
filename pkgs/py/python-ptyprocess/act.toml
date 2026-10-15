@@ -1,10 +1,15 @@
 track = "pypi:ptyprocess"
 fetch = { url = "https://files.pythonhosted.org/packages/source/p/ptyprocess/ptyprocess-{version}.tar.gz" }
-with  = [ "python" ]
+with = [ "python" ]
 tools = [ "python-flit-core" ]
+patches = [
+  "github:pexpect/ptyprocess/commit/40c1ccf3432a6787be1801ced721540e34c6cd87",
+  "github:pexpect/ptyprocess/commit/a44312974bd9084aa568d2e18ce5b2a7e0e45983",
+  "upstream-pep621-metadata.patch",
+]
 
 [test]
-deps = [ "python-pytest" ]
+deps = [ "bc", "python-pytest" ]
 
 [python]
 module = "ptyprocess"

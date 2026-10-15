@@ -1,0 +1,23 @@
+From 40c1ccf3432a6787be1801ced721540e34c6cd87 Mon Sep 17 00:00:00 2001
+From: Ivan Babrou <github@ivan.computer>
+Date: Fri, 9 Apr 2021 17:43:30 -0700
+Subject: [PATCH] Read error in PtyTestCase::test_pass_fds
+
+Without this on macOS the child process becomes a zombie,
+because parent never reaps it after exit.
+---
+ tests/test_spawn.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/test_spawn.py b/tests/test_spawn.py
+index d69548d..77f3d27 100755
+--- a/tests/test_spawn.py
++++ b/tests/test_spawn.py
+@@ -142,6 +142,7 @@ def test_pass_fds(self):
+                                   '-c',
+                                   'printf bye >&{}'.format(temp_file_fd)],
+                                  echo=True)
++            p.read() # Read error off child to allow it to terminate nicely
+             p.wait()
+             assert p.status != 0
+ 
