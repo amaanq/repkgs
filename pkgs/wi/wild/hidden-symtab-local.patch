@@ -1,0 +1,165 @@
+Give hidden symbols STB_LOCAL binding in .symtab of a non-relocatable output, as the
+gABI requires and GNU ld and lld do. libunwind's check-namespace.sh nm's the symtab and
+rejects any global symbol outside its namespace.
+
+--- a/libwild/src/elf.rs
++++ b/libwild/src/elf.rs
+@@ -2037,7 +2037,10 @@
+                 // If we've decided to emit the symbol even though it's not referenced (because it's
+                 // in a section we're emitting), then make sure we have a resolution for it.
+                 flags.fetch_or(ValueFlags::DIRECT);
+-                if flags.get().is_symtab_local(sym) {
++                if flags
++                    .get()
++                    .is_symtab_local(sym, !symbol_db.args.should_output_partial_object)
++                {
+                     num_locals += 1;
+                 } else {
+                     num_globals += 1;
+--- a/libwild/src/elf_writer.rs
++++ b/libwild/src/elf_writer.rs
+@@ -691,8 +691,12 @@
+             buffers,
+             &layout.output_sections,
+         );
+-        let debug_symbol_writer =
+-            SymbolTableWriter::<C>::new(strtab_start_offset, buffers, &layout.output_sections);
++        let debug_symbol_writer = SymbolTableWriter::<C>::new(
++            strtab_start_offset,
++            buffers,
++            &layout.output_sections,
++            !layout.args().should_output_partial_object,
++        );
+ 
+         Self::new(
+             layout.symbol_db.output_kind,
+@@ -1379,6 +1383,7 @@
+     output_sections: &'layout OutputSections<'layout, elf::Elf<C>>,
+     strtab_writer: StrTabWriter<'out>,
+     is_dynamic: bool,
++    localize_hidden: bool,
+     symtab_shndx_local_entries: Option<&'out mut [u32]>,
+     symtab_shndx_global_entries: Option<&'out mut [u32]>,
+ }
+@@ -1388,6 +1393,7 @@
+         start_string_offset: u32,
+         buffers: &mut OutputSectionPartMap<&'out mut [u8]>,
+         output_sections: &'layout OutputSections<'layout, elf::Elf<C>>,
++        localize_hidden: bool,
+     ) -> Self {
+         let local_entries = slice_from_all_bytes_mut(buffers.take(part_id::SYMTAB_LOCAL));
+         let global_entries = slice_from_all_bytes_mut(buffers.take(part_id::SYMTAB_GLOBAL));
+@@ -1406,6 +1412,7 @@
+                 out: strings,
+             },
+             is_dynamic: false,
++            localize_hidden,
+             symtab_shndx_local_entries,
+             symtab_shndx_global_entries,
+         }
+@@ -1427,6 +1434,7 @@
+                 out: strings,
+             },
+             is_dynamic: true,
++            localize_hidden: false,
+             symtab_shndx_local_entries: None,
+             symtab_shndx_global_entries: None,
+         }
+@@ -1465,7 +1473,7 @@
+         flags: ValueFlags,
+     ) -> Result<&mut elf::SymtabEntry<C>> {
+         let e = LittleEndian;
+-        let is_local = flags.is_symtab_local(sym);
++        let is_local = flags.is_symtab_local(sym, self.localize_hidden);
+         let size = sym.st_size(e).into();
+         let entry = self.define_symbol(
+             is_local,
+@@ -1477,7 +1485,7 @@
+         entry.set_info(sym.st_info());
+         entry.set_other(sym.st_other());
+         // Fix binding if symbol was downgraded to local by version script
+-        if flags.is_downgraded_to_local() {
++        if is_local {
+             entry.set_binding_and_type(object::elf::STB_LOCAL, sym.st_type());
+         }
+         Ok(entry)
+@@ -1490,7 +1498,7 @@
+         flags: ValueFlags,
+     ) -> Result<&mut elf::SymtabEntry<C>> {
+         let e = LittleEndian;
+-        let is_local = flags.is_symtab_local(sym);
++        let is_local = flags.is_symtab_local(sym, self.localize_hidden);
+         let value = sym.st_value(e).into();
+         let size = sym.st_size(e).into();
+         let entry = self.define_symbol(
+@@ -1503,7 +1511,7 @@
+         entry.set_info(sym.st_info());
+         entry.set_other(sym.st_other());
+         // Fix binding if symbol was downgraded to local by version script
+-        if flags.is_downgraded_to_local() {
++        if is_local {
+             entry.set_binding_and_type(object::elf::STB_LOCAL, sym.st_type());
+         }
+         Ok(entry)
+@@ -1647,6 +1655,7 @@
+             output_sections: self.output_sections,
+             strtab_writer: self.strtab_writer.take_prefix(strtab_size),
+             is_dynamic: self.is_dynamic,
++            localize_hidden: self.localize_hidden,
+             symtab_shndx_local_entries: None,
+             symtab_shndx_global_entries: None,
+         }
+@@ -1880,7 +1889,10 @@
+                 )
+                 .is_some()
+                 {
+-                    if flags.get().is_symtab_local(sym) {
++                    if flags
++                        .get()
++                        .is_symtab_local(sym, !layout.args().should_output_partial_object)
++                    {
+                         map[symbol_id.as_usize()] = Some(group_local_base);
+                         group_local_base += 1;
+                     } else {
+@@ -6161,7 +6173,7 @@
+     );
+ 
+     let dynsym_writer = SymbolTableWriter::<C>::new_dynamic(0, &mut buffers, output_sections);
+-    let debug_symbol_writer = SymbolTableWriter::<C>::new(0, &mut buffers, output_sections);
++    let debug_symbol_writer = SymbolTableWriter::<C>::new(0, &mut buffers, output_sections, false);
+     let mut table_writer = TableWriter::<C>::new(
+         output_kind,
+         0..100,
+--- a/libwild/src/value_flags.rs
++++ b/libwild/src/value_flags.rs
+@@ -182,8 +182,12 @@
+     /// Returns true if a symbol should be treated as local in the symbol table.
+     /// This includes both originally-local symbols and symbols downgraded by version scripts.
+     #[must_use]
+-    pub(crate) fn is_symtab_local<S: platform::Symbol>(self, sym: &S) -> bool {
+-        sym.is_local() || self.is_downgraded_to_local()
++    pub(crate) fn is_symtab_local<S: platform::Symbol>(
++        self,
++        sym: &S,
++        localize_hidden: bool,
++    ) -> bool {
++        sym.is_local() || self.is_downgraded_to_local() || (localize_hidden && sym.is_hidden())
+     }
+ 
+     #[must_use]
+--- /dev/null
++++ b/wild/tests/sources/elf/hidden-symtab-local/hidden-symtab-local.c
+@@ -0,0 +1,13 @@
++//#LinkArgs:-shared -z now
++//#RunEnabled:false
++//#CompArgs:-fPIC
++//#DiffEnabled:false
++//#ExpectSym:hidden_fn binding=local
++//#ExpectSym:hidden_data binding=local
++//#ExpectSym:public_fn binding=global
++
++__attribute__((visibility("hidden"))) int hidden_fn(int x) { return x + 1; }
++
++__attribute__((visibility("hidden"))) int hidden_data;
++
++int public_fn(int x) { return hidden_fn(x) + hidden_data; }

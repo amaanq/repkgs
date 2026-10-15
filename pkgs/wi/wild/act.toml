@@ -8,6 +8,7 @@ patches = [
   "linker-script-directory.patch",
   "relr-version-definition.patch",
   "init-fini.patch",
+  "hidden-symtab-local.patch",
 ]
 
 [test]
