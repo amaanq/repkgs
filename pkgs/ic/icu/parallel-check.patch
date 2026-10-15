@@ -1,0 +1,59 @@
+--- a/source/test/Makefile.in
++++ b/source/test/Makefile.in
+@@ -86,30 +86,47 @@
+ 	  $(MAKE) "$$target-local" || exit; \
+ 	fi
+ 
+-xcheck-recursive check-recursive check-exhaustive-recursive:
++CHECK_RUNS = $(foreach target,check xcheck check-exhaustive,$(SUBDIRS:%=$(STATUS_TMP)/run.$(target).%))
++
++check-recursive: $(SUBDIRS:%=$(STATUS_TMP)/run.check.%)
++xcheck-recursive: $(SUBDIRS:%=$(STATUS_TMP)/run.xcheck.%)
++check-exhaustive-recursive: $(SUBDIRS:%=$(STATUS_TMP)/run.check-exhaustive.%)
++
++.PHONY: $(CHECK_RUNS)
++
++$(CHECK_RUNS): all-recursive
+ 	@$(MKINSTALLDIRS) $(STATUS_TMP)
+-	@mystatus=$(STATUS_FULL)/status.$$$$.deleteme ; \
+-	$(RMV) "$$mystatus".* ; \
+-	goods=; \
++	@run=$(STATUS_FULL)/$(@F); \
++	target=`echo $(@F) | sed 's/^run\.//; s/\.[^.]*$$//'`; \
++	subdir=`echo $(@F) | sed 's/.*\.//'`; \
++	$(RMV) "$$run".*; \
++	if (cd $$subdir && $(MAKE) $$target TEST_STATUS_FILE="$$run.status") > "$$run.log" 2>&1; then \
++	  touch "$$run.pass"; \
++	fi
++
++xcheck-recursive check-recursive check-exhaustive-recursive:
++	@goods=; \
+ 	bads=; \
+ 	target=`echo $@ | sed s/-recursive//`; \
+ 	list='$(SUBDIRS)'; for subdir in $$list; do \
++	  run=$(STATUS_FULL)/run.$$target.$$subdir; \
+ 	  echo "$(MAKE)[$(MAKELEVEL)]: Making \`$$target' in \`$$subdir'"; \
+-	  local_target="$$target"; \
+-	  if (cd $$subdir && $(MAKE) $$local_target TEST_STATUS_FILE="$$mystatus.$$subdir" ); then \
++	  cat "$$run.log"; \
++	  if [ -f "$$run.pass" ]; then \
+ 	    goods="$$goods $$subdir"; \
+           else \
+             bads="$$bads $$subdir"; \
+           fi; \
+ 	done; \
+ 	for subdir in $$list; do \
+-	  if [ -f "$$mystatus.$$subdir" ]; then \
++	  run=$(STATUS_FULL)/run.$$target.$$subdir; \
++	  if [ -f "$$run.status" ]; then \
+ 	    echo "-------------" ; \
+ 	    echo "| ***     FAILING TEST SUMMARY FOR:              $$subdir  " ; \
+-	    cat "$$mystatus.$$subdir" ; \
++	    cat "$$run.status" ; \
+ 	    echo "| *** END FAILING TEST SUMMARY FOR:              $$subdir" ; \
+-	    $(RMV) "$$mystatus.$$subdir" ; \
+ 	  fi; \
++	  $(RMV) "$$run".*; \
+ 	done; \
+ 	echo "---------------"; \
+ 	echo "ALL TESTS SUMMARY:"; \

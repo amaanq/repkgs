@@ -2,7 +2,7 @@ tag     = "release-{version}"
 track   = "github:unicode-org/icu"
 fetch   = { url = "https://github.com/unicode-org/icu/releases/download/release-{version}/icu4c-{version}-sources.tgz" }
 with    = [ "autotools" ]
-patches = [ "upstream-ssearch-snprintf-bound.patch" ]
+patches = [ "parallel-check.patch", "upstream-ssearch-snprintf-bound.patch" ]
 
 [steps.after]
 "autotools.install" = [ "icu.relative-prefix" ]
