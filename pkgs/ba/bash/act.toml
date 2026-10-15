@@ -18,6 +18,7 @@ bin      = [ "bash", "sh" ]
 separate = true
 fhs      = true
 terminal = true
+deps     = [ "util-linux" ]
 
 [only]
 posix = true
@@ -36,5 +37,11 @@ flags = [
 [links]
 "bin/sh" = "bash"
 
+[on.glibc.test]
+deps = [ "glibc-bin" ]
+
 [on.glibc.steps.before]
 "autotools.test" = [ "bash.locales" ]
+
+[steps.before]
+"autotools.test" = [ "bash.home" ]

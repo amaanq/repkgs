@@ -17,6 +17,7 @@ bin      = [ "bash" ]
 separate = true
 fhs      = true
 terminal = true
+deps     = [ "util-linux" ]
 
 [only]
 posix = true
@@ -32,5 +33,11 @@ flags = [
   "bash_cv_sys_named_pipes=nomissing",
 ]
 
+[on.glibc.test]
+deps = [ "glibc-bin" ]
+
 [on.glibc.steps.before]
 "autotools.test" = [ "bash.locales" ]
+
+[steps.before]
+"autotools.test" = [ "bash.home" ]

@@ -8,3 +8,8 @@ export def --env locales []: nothing -> nothing {
    test-locale ja_JP SHIFT_JIS --codeset sjis
    test-locale ru_RU CP1251
 }
+
+export def --env home []: nothing -> nothing {
+   mkdir home
+   $env.HOME = $"($env.PWD)/home"
+}
