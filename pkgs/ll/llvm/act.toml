@@ -1,9 +1,13 @@
-tag     = "llvmorg-{version}"
-fetch   = { asset = "llvm-project-{version}.src.tar.xz" }
-with    = [ "cmake" ]
-deps    = [ "zlib", "zstd" ]
-tools   = [ "cpython" ]
-patches = [ "upstream-x86-vastart-stack-probe.patch", "mummer-absent-log.patch" ]
+tag = "llvmorg-{version}"
+fetch = { asset = "llvm-project-{version}.src.tar.xz" }
+with = [ "cmake" ]
+deps = [ "zlib", "zstd" ]
+tools = [ "cpython" ]
+patches = [
+  "upstream-x86-vastart-stack-probe.patch",
+  "mummer-absent-log.patch",
+  "sandbox-setid-tests.patch",
+]
 
 [track]
 from  = "github:llvm/llvm-project"

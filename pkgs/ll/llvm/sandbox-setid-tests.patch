@@ -1,0 +1,146 @@
+diff -ruN a/llvm/test/lit.cfg.py b/llvm/test/lit.cfg.py
+--- a/llvm/test/lit.cfg.py
++++ b/llvm/test/lit.cfg.py
+@@ -48,6 +48,21 @@
+ # directories.
+ config.excludes = ["Inputs", "CMakeLists.txt", "README.txt", "LICENSE.txt"]
+ 
++
++def setid_chmod_allowed():
++    import tempfile
++
++    with tempfile.NamedTemporaryFile() as probe:
++        try:
++            os.chmod(probe.name, 0o6640)
++        except PermissionError:
++            return False
++    return True
++
++
++if setid_chmod_allowed():
++    config.available_features.add("setid-chmod")
++
+ if config.enable_profcheck:
+     config.available_features.add("profcheck")
+     # Exclude llvm-reduce tests for profcheck because we substitute the FileCheck
+diff -ruN a/llvm/test/tools/llvm-objcopy/ELF/mirror-permissions-unix.test b/llvm/test/tools/llvm-objcopy/ELF/mirror-permissions-unix.test
+--- a/llvm/test/tools/llvm-objcopy/ELF/mirror-permissions-unix.test
++++ b/llvm/test/tools/llvm-objcopy/ELF/mirror-permissions-unix.test
+@@ -36,12 +36,6 @@
+ # RUN: ls -l %t1 | cut -f 1 -d ' ' > %t1.perms
+ # RUN: cmp %t1.perms %t.0640
+ 
+-## Drop S_ISUID/S_ISGID bits.
+-# RUN: chmod 6640 %t
+-# RUN: llvm-objcopy %t %t1
+-# RUN: ls -l %t1 | cut -f 1 -d ' ' > %t1.perms
+-# RUN: cmp %t1.perms %t.0640
+-
+ ## Don't set the permission of a character special file, otherwise there will
+ ## be an EPERM error (or worse: root may change the permission).
+ # RUN: ls -l /dev/null | cut -f 1 -d ' ' > %tnull.perms
+diff -ruN a/llvm/test/tools/llvm-objcopy/ELF/mirror-setid-unix.test b/llvm/test/tools/llvm-objcopy/ELF/mirror-setid-unix.test
+--- a/llvm/test/tools/llvm-objcopy/ELF/mirror-setid-unix.test
++++ b/llvm/test/tools/llvm-objcopy/ELF/mirror-setid-unix.test
+@@ -0,0 +1,19 @@
++## Test that S_ISUID/S_ISGID bits are dropped from output files.
++# UNSUPPORTED: system-windows
++# REQUIRES: setid-chmod
++
++# RUN: yaml2obj %s -o %t
++# RUN: chmod 0640 %t
++# RUN: ls -l %t | cut -f 1 -d ' ' > %t.0640
++# RUN: umask 0
++# RUN: chmod 6640 %t
++# RUN: llvm-objcopy %t %t1
++# RUN: ls -l %t1 | cut -f 1 -d ' ' > %t1.perms
++# RUN: cmp %t1.perms %t.0640
++
++--- !ELF
++FileHeader:
++  Class:   ELFCLASS64
++  Data:    ELFDATA2LSB
++  Type:    ET_EXEC
++  Machine: EM_X86_64
+diff -ruN a/llvm/unittests/Support/Path.cpp b/llvm/unittests/Support/Path.cpp
+--- a/llvm/unittests/Support/Path.cpp
++++ b/llvm/unittests/Support/Path.cpp
+@@ -2484,6 +2484,8 @@
+   };
+ 
+   std::error_code NoError;
++  bool SetIdAllowed =
++      !fs::setPermissions(TempPath, fs::set_uid_on_exe | fs::set_gid_on_exe);
+   EXPECT_EQ(fs::setPermissions(TempPath, fs::all_all), NoError);
+   EXPECT_TRUE(CheckPermissions(fs::all_all));
+ 
+@@ -2612,11 +2614,13 @@
+   EXPECT_EQ(fs::setPermissions(TempPath, fs::all_exe), NoError);
+   EXPECT_TRUE(CheckPermissions(fs::all_exe));
+ 
+-  EXPECT_EQ(fs::setPermissions(TempPath, fs::set_uid_on_exe), NoError);
+-  EXPECT_TRUE(CheckPermissions(fs::set_uid_on_exe));
+-
+-  EXPECT_EQ(fs::setPermissions(TempPath, fs::set_gid_on_exe), NoError);
+-  EXPECT_TRUE(CheckPermissions(fs::set_gid_on_exe));
++  if (SetIdAllowed) {
++    EXPECT_EQ(fs::setPermissions(TempPath, fs::set_uid_on_exe), NoError);
++    EXPECT_TRUE(CheckPermissions(fs::set_uid_on_exe));
++
++    EXPECT_EQ(fs::setPermissions(TempPath, fs::set_gid_on_exe), NoError);
++    EXPECT_TRUE(CheckPermissions(fs::set_gid_on_exe));
++  }
+ 
+   // Modern BSDs require root to set the sticky bit on files.
+   // AIX and Solaris without root will mask off (i.e., lose) the sticky bit
+@@ -2626,27 +2630,31 @@
+   EXPECT_EQ(fs::setPermissions(TempPath, fs::sticky_bit), NoError);
+   EXPECT_TRUE(CheckPermissions(fs::sticky_bit));
+ 
+-  EXPECT_EQ(fs::setPermissions(TempPath, fs::set_uid_on_exe |
+-                                             fs::set_gid_on_exe |
+-                                             fs::sticky_bit),
+-            NoError);
+-  EXPECT_TRUE(CheckPermissions(fs::set_uid_on_exe | fs::set_gid_on_exe |
+-                               fs::sticky_bit));
+-
+-  EXPECT_EQ(fs::setPermissions(TempPath, fs::all_read | fs::set_uid_on_exe |
+-                                             fs::set_gid_on_exe |
+-                                             fs::sticky_bit),
+-            NoError);
+-  EXPECT_TRUE(CheckPermissions(fs::all_read | fs::set_uid_on_exe |
+-                               fs::set_gid_on_exe | fs::sticky_bit));
+-
+-  EXPECT_EQ(fs::setPermissions(TempPath, fs::all_perms), NoError);
+-  EXPECT_TRUE(CheckPermissions(fs::all_perms));
++  if (SetIdAllowed) {
++    EXPECT_EQ(fs::setPermissions(TempPath, fs::set_uid_on_exe |
++                                               fs::set_gid_on_exe |
++                                               fs::sticky_bit),
++              NoError);
++    EXPECT_TRUE(CheckPermissions(fs::set_uid_on_exe | fs::set_gid_on_exe |
++                                 fs::sticky_bit));
++
++    EXPECT_EQ(fs::setPermissions(TempPath, fs::all_read | fs::set_uid_on_exe |
++                                               fs::set_gid_on_exe |
++                                               fs::sticky_bit),
++              NoError);
++    EXPECT_TRUE(CheckPermissions(fs::all_read | fs::set_uid_on_exe |
++                                 fs::set_gid_on_exe | fs::sticky_bit));
++
++    EXPECT_EQ(fs::setPermissions(TempPath, fs::all_perms), NoError);
++    EXPECT_TRUE(CheckPermissions(fs::all_perms));
++  }
+ #endif // !FreeBSD && !NetBSD && !OpenBSD && !AIX
+ 
+-  EXPECT_EQ(fs::setPermissions(TempPath, fs::all_perms & ~fs::sticky_bit),
+-                               NoError);
+-  EXPECT_TRUE(CheckPermissions(fs::all_perms & ~fs::sticky_bit));
++  if (SetIdAllowed) {
++    EXPECT_EQ(fs::setPermissions(TempPath, fs::all_perms & ~fs::sticky_bit),
++                                 NoError);
++    EXPECT_TRUE(CheckPermissions(fs::all_perms & ~fs::sticky_bit));
++  }
+ #endif
+ }
+ 
