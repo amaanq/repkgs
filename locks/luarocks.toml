@@ -1,5 +1,13 @@
 [luarocks]
 "argparse"      = { sha256 = "sha256-wSKiUiSHbpO9OAzrUa8ozYpyKW4Jiy7tTwbYX1TxoLQ=", version = "0.7.2-1" }
 "datafile"      = { sha256 = "sha256-BVbek0znNSYR+Q9tkKGnGr094uQqoDIwR8fMtEdR5cY=", version = "0.11-1" }
+"dkjson"        = { sha256 = "sha256-3fNEQHbTz5pj3Xl+VsvPdk4NEh3oRWvCOn16y03LFQY=", version = "2.11-1" }
 "lpeg"          = { sha256 = "sha256-g20xW5IKXN1i4heGxsn61UfE+qEx1Vg+vKZPC2WV7nY=", version = "1.1.0-2" }
+"lua-term"      = { rockspec = "sha256-QB/befI0oJBIBdaM+a+zuQT8dTk0f+ZDLQxq1IekSJw=", sha256 = "sha256-j/lPOQ6p2YxzRpk3PKOwzlANZRsqscuNfSM2/Ft5ze0=", url = "https://github.com/hoelzro/lua-term/archive/0.08.tar.gz", version = "0.8-1" }
+"lua_cliargs"   = { sha256 = "sha256-PHmYEpKqty2/up61wAa7N8X0Luc9cGKxX92EDAC3DWM=", version = "3.0-2" }
 "luafilesystem" = { sha256 = "sha256-PeaNYZ9q2Von9HKIFDdUR9khMFGUtwUN7mGZBXwxKC8=", version = "1.9.0-1" }
+"luassert"      = { sha256 = "sha256-FGp7Lsjgyt99vKbcmT3rzSCQ4OT99cYy2fTsIGcDV90=", version = "1.9.0-1" }
+"luasystem"     = { sha256 = "sha256-jBF+xisiMzPYSUxd0hWL/7lyrHz1AayNDrDoViETg+0=", version = "0.7.1-1" }
+"mediator_lua"  = { rockspec = "sha256-dR3r7+CqAPqTwK5jcZIgVSiemUiwIx0UMMIUEY/bPzs=", sha256 = "sha256-+vWFn9IIG+Tp5PuIc6LcZffv8/2T1t0U2mX44SP8/5s=", url = "https://github.com/Olivine-Labs/mediator_lua/archive/v1.1.2-0.tar.gz", version = "1.1.2-0" }
+"penlight"      = { sha256 = "sha256-uhOLi7yRb0Kttbh2xI0lQRT0FuiGeQL4w0/qJ4gUCXM=", version = "1.15.0-1" }
+"say"           = { sha256 = "sha256-kKHAJT7DjWYoAH7vC0JNBwfQ8+BEL85HimJxEesCuwc=", version = "1.4.1-3" }

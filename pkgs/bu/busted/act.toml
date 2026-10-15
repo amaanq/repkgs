@@ -1,0 +1,23 @@
+tag   = "v{version}"
+fetch = { archive = true }
+with  = [ "luarocks" ]
+deps  = [ "lua" ]
+
+[track]
+from = "github:lunarmodules/busted"
+
+[track.locks]
+luarocks = "."
+
+[luarocks]
+rockspec = "rockspecs/busted-{version}-1.rockspec"
+
+[test]
+deps = [ "luacov", "moonscript" ]
+fhs  = true
+
+[steps.after]
+"luarocks.install" = "busted.test"
+
+[only]
+posix = true
