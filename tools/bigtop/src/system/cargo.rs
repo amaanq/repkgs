@@ -20,6 +20,7 @@ use std::{
       create_dir_all,
       read,
       read_dir,
+      read_to_string,
       remove_file,
       symlink_metadata,
       write,
@@ -54,11 +55,19 @@ use mummer::{
       feature_flags,
       workspace_root,
    },
-   tree::note,
+   tree::{
+      EntryKind,
+      note,
+      walk,
+   },
 };
 use serde::{
    Deserialize,
    Serialize,
+};
+use toml::{
+   Table,
+   Value,
 };
 
 use crate::{
@@ -496,9 +505,10 @@ impl Cargo {
    /// pkg-config, the -sys crates' usual probe, refuses to answer under
    /// --target without `ALLOW_CROSS`. bindgen asks a clang executable for
    /// its include dirs, ours and not a bare one on PATH. rustflags go in the
-   /// config because RUSTFLAGS from the environment would replace them, the
-   /// linker in the environment too since a project's own .cargo/config.toml
-   /// outranks `CARGO_HOME`'s.
+   /// config because RUSTFLAGS from the environment would replace them, in
+   /// whichever table the project's own rustflags use so cargo joins the
+   /// two. The linker goes in the environment too since a project's own
+   /// .cargo/config.toml outranks `CARGO_HOME`'s.
    pub fn configure(
       ctx: &Ctx,
       attrs: &Attrs,
@@ -559,9 +569,15 @@ impl Cargo {
          )
          .map_err(io::Error::other)?;
       }
+      let flags = format!("rustflags = {}\n", Self::list(&rustflags));
+      let (build_flags, target_flags) = if Self::targets_rustflags(&ctx.src)? {
+         ("", flags.as_str())
+      } else {
+         (flags.as_str(), "")
+      };
       writeln!(
          config,
-         "[net]\noffline = true\n\n[build]\njobs = {}\n",
+         "[net]\noffline = true\n\n[build]\njobs = {}\n{build_flags}",
          ctx.njobs
       )
       .map_err(io::Error::other)?;
@@ -584,10 +600,9 @@ impl Cargo {
          }
          writeln!(
             config,
-            "[target.{}]\nlinker = {}\nrustflags = {}\n",
+            "[target.{}]\nlinker = {}\n{target_flags}",
             Self::quoted(triple),
-            Self::quoted(linker),
-            Self::list(&rustflags)
+            Self::quoted(linker)
          )
          .map_err(io::Error::other)?;
       }
@@ -597,6 +612,33 @@ impl Cargo {
          None,
       )?;
       Ok(env)
+   }
+
+   /// Whether a `.cargo` config in the source sets `target` rustflags,
+   /// which make cargo ignore every `build.rustflags`.
+   fn targets_rustflags(src: &Path) -> io::Result<bool> {
+      for entry in walk(src)? {
+         let path = Path::new(&entry.rel);
+         let in_cargo = path.parent().and_then(Path::file_name) == Some(OsStr::new(".cargo"));
+         let config = path
+            .file_name()
+            .is_some_and(|name| name == "config" || name == "config.toml");
+         if entry.kind != EntryKind::File || !in_cargo || !config {
+            continue;
+         }
+         let table = read_to_string(&entry.path)?
+            .parse::<Table>()
+            .map_err(|error| io::Error::other(format!("{}: {error}", entry.path)))?;
+         let targets = table.get("target").and_then(Value::as_table);
+         if targets.is_some_and(|tables| {
+            tables
+               .values()
+               .any(|target| target.get("rustflags").is_some())
+         }) {
+            return Ok(true);
+         }
+      }
+      Ok(false)
    }
 
    /// cc-rs links libstdc++ on Linux unless `CXXSTDLIB` says otherwise.

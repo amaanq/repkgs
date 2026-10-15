@@ -13,6 +13,8 @@
   buildSystems,
   baseTools,
   relocTools,
+  # the wild package and the names of what it is built from, which link with lld
+  linking,
   # overrides applied to a spec before validation: name -> spec -> spec (nix/overrides.nix)
   edit,
   # act.lock's sys names packages of the set
@@ -201,6 +203,9 @@ let
       # sys for bigtop syslibs
       inherit prebuilt debug sys;
       phases = phases.list;
+      cc = valid.cc or { } // {
+        inherit linker;
+      };
     }
     # resolved values, for phases: `(act).spec.features.tls`
     // (if features == { } then { } else { inherit features; });
@@ -211,20 +216,30 @@ let
   # system that lists the peanut as its `sh` does not pull toybox ahead of coreutils and grep
   buildDependencies =
     { tests, base }:
-    filter (dependency: !(elem dependency base)) (
-      [
-        toolchain
-        bigtop
-      ]
-      ++ (valid.buildDependencies or [ ])
-      ++ tests
-      ++ (if runsNu then [ nu ] else [ ])
-      ++ (if prebuilt == true then relocTools else [ ])
-      ++ concatMap (system: buildSystems.${system}.tools spec ++ before buildSystems.${system}.stack) uses
-      ++ plumbing
-    )
-    ++ base;
+    filter (dependency: !(elem dependency base)) (named { inherit tests; } ++ linkers) ++ base;
+  named =
+    { tests }:
+    [
+      toolchain
+      bigtop
+    ]
+    ++ (valid.buildDependencies or [ ])
+    ++ tests
+    ++ (if runsNu then [ nu ] else [ ])
+    ++ (if prebuilt == true then relocTools else [ ])
+    ++ concatMap (system: buildSystems.${system}.tools spec ++ before buildSystems.${system}.stack) uses
+    ++ plumbing;
   plumbing = concatMap (system: buildSystems.${system}.plumbing) uses;
+  # wild links everything but its own build closure. Read through `inputs`, which compares no
+  # derivations, since the closure's members decide their linker from it
+  inputs =
+    named { tests = if separate then [ ] else testDependencies; }
+    ++ dependencies
+    ++ (if args.bootstrapTools or false then baseTools.bootstrap else baseTools.full);
+  linker =
+    valid.cc.linker
+      or (if elf && prebuilt == false && !(linking.built ? ${name}) then "wild" else "lld");
+  linkers = if linker == "wild" then [ linking.wild ] else [ ];
   # test phases add testDependencies themselves, so a tool only the suite runs never reaches
   # configure or changes what the build produces
   tools = buildDependencies {
@@ -319,6 +334,7 @@ drv
     dirs
     features
     fn
+    inputs
     supported
     unsupportedReason
     ;
@@ -331,6 +347,7 @@ drv
     {
       linked = drv.${head linked} // {
         pname = name;
+        inherit inputs;
       };
     }
   else

@@ -143,6 +143,37 @@ let
     dlaudit = stage.dlaudit or null;
     # `prebuilt = true` packages get upstream ELFs patched with it
     relocTools = [ buildPkgs.formatelf ];
+    linking = {
+      inherit (buildPkgs) wild;
+      # a cross set builds none of them
+      built =
+        if cross then
+          { }
+        else
+          builtins.listToAttrs (
+            map
+              (item: {
+                name = item.key;
+                value = null;
+              })
+              (
+                builtins.genericClosure {
+                  startSet = [
+                    {
+                      key = "wild";
+                      package = all.wild;
+                    }
+                  ];
+                  operator =
+                    item:
+                    map (dependency: {
+                      key = dependency.pname or dependency.name;
+                      package = dependency;
+                    }) (item.package.inputs or [ ]);
+                }
+              )
+          );
+    };
     edit = if tree == { } then null else overriding.apply all tree;
     pkgs = all;
   };

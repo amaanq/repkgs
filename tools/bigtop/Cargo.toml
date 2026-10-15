@@ -24,6 +24,7 @@ rustix      = { features = [ "event", "mount", "net", "process", "stdio", "threa
 serde       = { features = [ "derive" ], version = "1" }
 serde_json  = "1"
 tightrope   = { workspace = true }
+toml        = "1"
 
 [build-dependencies]
 blake3 = { workspace = true }

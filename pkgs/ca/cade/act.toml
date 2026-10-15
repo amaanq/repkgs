@@ -4,9 +4,3 @@ with  = [ "cargo" ]
 [track]
 from = "github:manic-systems/cade?branch=main"
 base = "0.1.3"
-
-[on.linux]
-tools = [ "wild" ]
-
-[on.linux.cc]
-linker = "wild"

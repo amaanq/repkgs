@@ -380,7 +380,8 @@ impl OptionType for DebugInfo {
    }
 }
 
-/// The linker a package's links run, lld unless it asks for another.
+/// The linker a package's links run. The set picks wild on ELF except for
+/// wild's own build closure, lld elsewhere.
 #[derive(Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(try_from = "String")]
 pub enum Linker {

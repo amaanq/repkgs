@@ -11,11 +11,5 @@ deps = [ "git" ]
 [steps.before]
 "cargo.test" = [ "evix.test-store" ]
 
-[on.linux]
-tools = [ "wild" ]
-
-[on.linux.cc]
-linker = "wild"
-
 [cargo.cratePatches]
 nix-bindings-sys = [ "{file:nix-bindings-sys-fromattrs.patch}" ]

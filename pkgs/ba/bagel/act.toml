@@ -5,9 +5,3 @@ tools = [ "binaryen", "cacert" ]
 [track]
 from = "github:manic-systems/bagel?branch=main"
 base = "1.0.0"
-
-[on.linux]
-tools = [ "wild" ]
-
-[on.linux.cc]
-linker = "wild"

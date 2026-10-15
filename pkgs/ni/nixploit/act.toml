@@ -4,9 +4,3 @@ with  = [ "cargo" ]
 [track]
 from = "github:manic-systems/nixploit?branch=master"
 base = "0.1.0"
-
-[on.linux]
-tools = [ "wild" ]
-
-[on.linux.cc]
-linker = "wild"

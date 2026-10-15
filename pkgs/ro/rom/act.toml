@@ -2,9 +2,3 @@ tag   = "v{version}"
 track = "github:manic-systems/rom"
 fetch = { archive = true }
 with  = [ "cargo" ]
-
-[on.linux]
-tools = [ "wild" ]
-
-[on.linux.cc]
-linker = "wild"

@@ -3,12 +3,6 @@ track = "github:manic-systems/nixos-core"
 fetch = { archive = true }
 with  = [ "cargo" ]
 
-[on.linux]
-tools = [ "wild" ]
-
-[on.linux.cc]
-linker = "wild"
-
 # the binary has no --version
 [test]
 version = false
