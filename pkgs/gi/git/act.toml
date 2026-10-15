@@ -3,7 +3,7 @@ track   = "github:git/git"
 fetch   = { url = "https://www.kernel.org/pub/software/scm/git/git-{version}.tar.xz" }
 with    = [ "autotools", "cargo" ]
 deps    = [ "zlib", "curl", "expat", "pcre2", "openssl" ]
-patches = [ "relocatable.patch" ]
+patches = [ "relocatable.patch", "test-perl-path.patch", "sandbox-setgid-tests.patch" ]
 
 [test]
 deps = [ "perl" ]
@@ -21,5 +21,9 @@ testTarget = [
   "t",
   "DEFAULT_TEST_TARGET=prove",
   "GIT_PROVE_OPTS=--jobs $(NIX_BUILD_CORES) --failures",
+  "GIT_TEST_OPTS=--verbose-log",
   "TEST_SHELL_PATH={pkg:bash-interactive}/bin/bash",
 ]
+
+[on.glibc.test]
+deps = [ "glibc-bin" ]

@@ -1,0 +1,122 @@
+--- a/t/t0001-init.sh
++++ b/t/t0001-init.sh
+@@ -214,7 +214,7 @@
+ 	test_cmp templatedir-source/file templatedir-expansion/.git/file
+ '
+ 
+-test_expect_success 'init --bare/--shared overrides system/global config' '
++test_expect_success SETGID 'init --bare/--shared overrides system/global config' '
+ 	test_config_global core.bare false &&
+ 	test_config_global core.sharedRepository 0640 &&
+ 	git init --bare --shared=0666 init-bare-shared-override &&
+@@ -223,7 +223,7 @@
+ 	x$(git config -f init-bare-shared-override/config core.sharedRepository)
+ '
+ 
+-test_expect_success 'init honors global core.sharedRepository' '
++test_expect_success SETGID 'init honors global core.sharedRepository' '
+ 	test_config_global core.sharedRepository 0666 &&
+ 	git init shared-honor-global &&
+ 	test x0666 = \
+@@ -266,7 +266,7 @@
+ 	test_path_is_dir newdir/a/b/c/.git/refs
+ '
+ 
+-test_expect_success POSIXPERM 'init creates a new deep directory (umask vs. shared)' '
++test_expect_success POSIXPERM,SETGID 'init creates a new deep directory (umask vs. shared)' '
+ 	rm -fr newdir &&
+ 	(
+ 		# Leading directories should honor umask while
+--- a/t/t0600-reffiles-backend.sh
++++ b/t/t0600-reffiles-backend.sh
+@@ -451,7 +451,7 @@
+ 	mv actual_logs .git/logs
+ '
+ 
+-test_expect_success POSIXPERM 'git reflog expire honors core.sharedRepository' '
++test_expect_success POSIXPERM,SETGID 'git reflog expire honors core.sharedRepository' '
+ 	umask 077 &&
+ 	git config core.sharedRepository group &&
+ 	git reflog expire --all &&
+--- a/t/t0610-reftable-basics.sh
++++ b/t/t0610-reftable-basics.sh
+@@ -105,7 +105,7 @@
+ 	local shared="$2"
+ 	local expect="$3"
+ 
+-	test_expect_success POSIXPERM "init: honors --shared=$shared with umask $umask" '
++	test_expect_success POSIXPERM,SETGID "init: honors --shared=$shared with umask $umask" '
+ 		test_when_finished "rm -rf repo" &&
+ 		(
+ 			umask $umask &&
+@@ -119,7 +119,7 @@
+ 		done
+ 	'
+ 
+-	test_expect_success POSIXPERM "pack-refs: honors --shared=$shared with umask $umask" '
++	test_expect_success POSIXPERM,SETGID "pack-refs: honors --shared=$shared with umask $umask" '
+ 		test_when_finished "rm -rf repo" &&
+ 		(
+ 			umask $umask &&
+--- a/t/t1301-shared-repo.sh
++++ b/t/t1301-shared-repo.sh
+@@ -14,6 +14,12 @@
+ # Remove a default ACL from the test dir if possible.
+ setfacl -k . 2>/dev/null || :
+ 
++if ! test_have_prereq SETGID
++then
++	skip_all='skipping shared repository tests, setgid directories are not allowed'
++	test_done
++fi
++
+ # User must have read permissions to the repo -> failure on --shared=0400
+ test_expect_success 'shared = 0400 (faulty permission u-w)' '
+ 	test_when_finished "rm -rf sub" &&
+--- a/t/t1700-split-index.sh
++++ b/t/t1700-split-index.sh
+@@ -427,6 +427,7 @@
+ while read -r mode modebits
+ do
+ 	test_expect_success POSIXPERM "split index respects core.sharedrepository $mode" '
++		test_when_finished "git config --unset core.sharedrepository" &&
+ 		# Remove existing shared index files
+ 		git config core.splitIndex false &&
+ 		git update-index --force-remove one &&
+--- a/t/t4129-apply-samemode.sh
++++ b/t/t4129-apply-samemode.sh
+@@ -76,7 +76,7 @@
+ 	test_grep "invalid mode" err
+ '
+ 
+-test_expect_success POSIXPERM 'do not use core.sharedRepository for working tree files' '
++test_expect_success POSIXPERM,SETGID 'do not use core.sharedRepository for working tree files' '
+ 	git reset --hard &&
+ 	test_config core.sharedRepository 0666 &&
+ 	(
+--- a/t/t5324-split-commit-graph.sh
++++ b/t/t5324-split-commit-graph.sh
+@@ -489,7 +489,7 @@
+ 
+ while read mode modebits
+ do
+-	test_expect_success POSIXPERM "split commit-graph respects core.sharedrepository $mode" '
++	test_expect_success POSIXPERM,SETGID "split commit-graph respects core.sharedrepository $mode" '
+ 		rm -rf $graphdir $infodir/commit-graph &&
+ 		git reset --hard commits/1 &&
+ 		test_config core.sharedrepository "$mode" &&
+--- a/t/test-lib.sh
++++ b/t/test-lib.sh
+@@ -1900,6 +1900,12 @@
+ 	return $status
+ '
+ 
++test_lazy_prereq SETGID '
++	mkdir SETGIDTESTD &&
++	chmod g+s SETGIDTESTD &&
++	test -g SETGIDTESTD
++'
++
+ test FreeBSD != $uname_s || GIT_UNZIP=${GIT_UNZIP:-/usr/local/bin/unzip}
+ GIT_UNZIP=${GIT_UNZIP:-unzip}
+ test_lazy_prereq UNZIP '

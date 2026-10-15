@@ -1,0 +1,13 @@
+--- a/t/test-lib.sh
++++ b/t/test-lib.sh
+@@ -128,6 +128,10 @@
+ 	exit 1
+ fi
+ . "$GIT_BUILD_DIR"/GIT-BUILD-OPTIONS
++case "$PERL_PATH" in
++''|/*) ;;
++*) PERL_PATH=$(command -v "$PERL_PATH") ;;
++esac
+ export PERL_PATH SHELL_PATH
+ 
+ if test -z "$TEST_OUTPUT_DIRECTORY"
