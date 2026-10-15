@@ -1,7 +1,5 @@
-# The phase list and the plan bigtop runs from it. `install`/`links` alone (prebuilt binaries, data):
-# the one phase is copying them into $out. `phases` is the whole list, or edits to the first build
-# system's list (README):
-# { before.<phase> = [..]; after.<phase> = [..]; replace.<phase> = phase | [..]; remove = [..]; }
+# Turns a recipe's `phases` into the plan bigtop runs. `phases` is either a full list or edits to
+# the first build system's list, as in { before.<phase>, after.<phase>, replace.<phase>, remove }.
 {
   buildSystems,
   uses,
@@ -16,87 +14,84 @@ let
   inherit (builtins)
     attrNames
     concatMap
+    concatStringsSep
     elem
     elemAt
     filter
+    foldl'
     head
     isAttrs
     isList
     length
     match
-    tail
     ;
-  pattern = "([a-z][a-z0-9-]*)\\.([a-zA-Z][a-zA-Z0-9-]*)";
-  edits = [
+
+  # edits may name one phase or a list
+  asList = value: if isList value then value else [ value ];
+
+  # a phase name split into prefix and verb, null for inline or malformed phases
+  parts =
+    phase: if isAttrs phase then null else match "([a-z][a-z0-9-]*)\\.([a-zA-Z][a-zA-Z0-9-]*)" phase;
+
+  # the prefix, a build system or one of the package's .nu files
+  owner = phase: head (parts phase);
+
+  # the part after the dot, or an inline phase's name
+  verb =
+    phase:
+    if isAttrs phase then
+      phase.name
+    else if parts phase == null then
+      null
+    else
+      elemAt (parts phase) 1;
+
+  # test phases are the ones the test cache can skip
+  isTest = phase: verb phase == "test";
+
+  known = buildSystems.${head uses}.phases;
+
+  edits = if isAttrs (written.phases or [ ]) then written.phases else { };
+  before = edits.before or { };
+  after = edits.after or { };
+  replace = edits.replace or { };
+  remove = edits.remove or [ ];
+
+  # an edit gated off with `on cond [ … ]` names a phase of the other platform's build system
+  nonEmpty = set: filter (phase: set.${phase} != [ ]) (attrNames set);
+  named = nonEmpty before ++ nonEmpty after ++ attrNames replace ++ remove;
+  unknown = filter (phase: !elem phase known) named;
+
+  editKeys = [
     "before"
     "after"
     "replace"
     "remove"
   ];
-  asList = value: if isList value then value else [ value ];
+  badEdits = filter (key: !elem key editKeys) (attrNames edits);
+
+  # a build system phase with its before, replace and after edits, or nothing if removed
+  expand =
+    phase:
+    if elem phase remove then
+      [ ]
+    else
+      asList (before.${phase} or [ ])
+      ++ asList (replace.${phase} or phase)
+      ++ asList (after.${phase} or [ ]);
+
   edited =
-    edit:
-    let
-      known = buildSystems.${head uses}.phases;
-      # an edit gated off with `on cond [ … ]` names a phase of the other platform's build system
-      nonEmpty = set: filter (phase: set.${phase} != [ ]) (attrNames set);
-      named =
-        nonEmpty (edit.before or { })
-        ++ nonEmpty (edit.after or { })
-        ++ attrNames (edit.replace or { })
-        ++ (edit.remove or [ ]);
-      unknown = filter (phase: !elem phase known) named;
-      badEdits = filter (key: !elem key edits) (attrNames edit);
-    in
     if badEdits != [ ] then
       fail "phases: unknown edit ${head badEdits} (before, after, replace, remove)"
     else if unknown != [ ] then
       fail "phases: ${head unknown} is not a phase of ${head uses} (${toString known})"
     else
-      concatMap (
-        phase:
-        if elem phase (edit.remove or [ ]) then
-          [ ]
-        else
-          asList (edit.before.${phase} or [ ])
-          ++ asList (edit.replace.${phase} or phase)
-          ++ asList (edit.after.${phase} or [ ])
-      ) known;
-  # steps before or in place of a test phase only run with the tests
-  aroundTest =
-    edits:
-    if isAttrs (written.phases or [ ]) then
-      concatMap (
-        edit:
-        concatMap (
-          phase:
-          let
-            parts = match pattern phase;
-          in
-          if parts != null && elemAt parts 1 == "test" then asList written.phases.${edit}.${phase} else [ ]
-        ) (attrNames (written.phases.${edit} or { }))
-      ) edits
-    else
-      [ ];
-  befores = aroundTest [ "before" ];
-  setups = aroundTest [
-    "before"
-    "replace"
-  ];
-  role =
-    phase: verb:
-    if elem phase befores then
-      "setup"
-    else if verb == "test" then
-      "test"
-    else if elem phase setups then
-      "setup"
-    else
-      "build";
+      concatMap expand known;
+
   list =
     if (written.phases or [ ]) == [ ] then
       if length uses == 1 then
-        buildSystems.${head uses}.phases
+        known
       else if uses == [ ] && (args ? install || args ? links) then
         [ ]
       else
@@ -104,85 +99,95 @@ let
     else if isList written.phases then
       written.phases
     else
-      edited written.phases;
-  prefix = phase: if isAttrs phase then null else match pattern phase;
-  # a phase as a plan step for bigtop: a build system's verb runs in bigtop, anything else is nu text,
-  # inline or a package module's command. A prefix that is neither: nix reports "path …/<bs>.nu
-  # does not exist". An inline phase's env changes carry over to later phases, its cwd does not
+      edited;
+
+  # steps before or in place of a test phase only run with the tests
+  setups =
+    if edits == { } then
+      [ ]
+    else
+      concatMap (
+        phase:
+        asList (before.${phase} or [ ]) ++ filter (step: !isTest step) (asList (replace.${phase} or [ ]))
+      ) (filter isTest known);
+
+  # build steps always run, setup and test steps only when the tests do
+  role =
+    phase:
+    if elem phase setups then
+      "setup"
+    else if isTest phase then
+      "test"
+    else
+      "build";
+
+  # a build system's phase runs inside bigtop, the rest run as nu, keeping env but not cwd
   step =
     phase:
-    let
-      parts = prefix phase;
-    in
     if isAttrs phase then
       {
         kind = "nu";
         inherit (phase) name;
-        role = role phase phase.name;
+        role = role phase;
         body = "do --env {\nlet c = (act)\n${phase.run}\n}";
       }
-    else if parts == null then
+    else if parts phase == null then
       fail "phase '${phase}' is not <build system or module>.<phase>"
-    else if elem (elemAt parts 0) uses then
+    else if elem (owner phase) uses then
       {
         kind = "system";
         name = phase;
-        system = elemAt parts 0;
-        verb = elemAt parts 1;
-        role = role phase (elemAt parts 1);
+        system = owner phase;
+        verb = verb phase;
+        role = role phase;
       }
     else
       {
         kind = "nu";
         name = phase;
-        role = role phase (elemAt parts 1);
-        body = "${elemAt parts 0} ${elemAt parts 1}";
+        role = role phase;
+        body = "${owner phase} ${verb phase}";
       };
-  distinct =
-    seen: names:
-    if names == [ ] then
-      [ ]
-    else if elem (head names) seen then
-      distinct seen (tail names)
-    else
-      [ (head names) ] ++ distinct (seen ++ [ (head names) ]) (tail names);
-  # a phase "zig.restore" whose prefix is no `uses` entry is the package's own module zig.nu next
-  # to package.nix, for phases too long to read inline. It imports the builder by bare name
+
+  steps = map step list;
+
+  # prefixes that aren't build systems name the package's own .nu files beside act.toml
   modules =
-    if !(args ? phases) then
-      [ ]
-    else
-      distinct uses (map head (filter (parts: parts != null) (map prefix list)));
-  # <store dir>/<m>.nu: nu names a module after its file, a bare store path would be <hash>-<m>
+    let
+      owners = map owner (filter (phase: parts phase != null) list);
+      addNew = seen: name: if elem name seen || elem name uses then seen else seen ++ [ name ];
+    in
+    if args ? phases then foldl' addNew [ ] owners else [ ];
+
+  # keep the file name, or nu would name the module <hash>-<name> instead of <name>
   module =
     name:
     let
       found = filter (dir: builtins.pathExists (dir + "/${name}.nu")) dirs;
+
+      copy = builtins.path {
+        path = head found;
+        name = "module";
+        filter = path: _: baseNameOf path == "${name}.nu";
+      };
     in
-    if found == [ ] then
-      fail "phases: no ${name}.nu beside act.toml"
-    else
-      "${
-        builtins.path {
-          path = head found;
-          name = "module";
-          filter = path: _: baseNameOf path == "${name}.nu";
-        }
-      }/${name}.nu";
-  steps = map step list;
-  header = builtins.concatStringsSep "\n" ([ prelude ] ++ map (name: "use ${module name}") modules);
+    if found == [ ] then fail "phases: no ${name}.nu beside act.toml" else "${copy}/${name}.nu";
+
+  header = concatStringsSep "\n" ([ prelude ] ++ map (name: "use ${module name}") modules);
 in
 {
   inherit list steps;
   modules = map module modules;
+
   plan = {
     prelude = header;
     inherit separate;
     setups = uses;
     phases = steps;
   };
-  # what nu parses of a package, for lints/package-scripts.nu
-  script = builtins.concatStringsSep "\n" (
+
+  # what nu parses of a package
+  script = concatStringsSep "\n" (
     [ header ] ++ map (step: step.body) (filter (step: step.kind == "nu") steps)
   );
 }
