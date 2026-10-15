@@ -1,0 +1,22 @@
+--- a/tests/install/install-C.sh
++++ b/tests/install/install-C.sh
+@@ -72,12 +72,15 @@
+ ginstall -v -m$mode1 a b > out || fail=1
+ compare out out_installed_second || fail=1
+ 
+ # option -C ignored if any non-permission mode should be set
+-ginstall -Cv -m$mode3 a b > out || fail=1
+-compare out out_installed_second || fail=1
+-ginstall -Cv -m$mode3 a b > out || fail=1
+-compare out out_installed_second || fail=1
++touch setgid-probe || framework_failure_
++if chmod $mode3 setgid-probe 2>/dev/null; then
++  ginstall -Cv -m$mode3 a b > out || fail=1
++  compare out out_installed_second || fail=1
++  ginstall -Cv -m$mode3 a b > out || fail=1
++  compare out out_installed_second || fail=1
++fi
+ 
+ # non regular files
+ ginstall -v -m$mode1 a b > out || fail=1  # reset to regular mode
+ compare out out_installed_second || fail=1
