@@ -8,7 +8,7 @@ export def host-config []: nothing -> nothing {
    cp NATIVE/bin/llvm-config $"($host)/llvm-config"
 }
 
-export def check []: nothing -> nothing {
+export def test []: nothing -> nothing {
    let c = (act)
    with-env {LIT_OPTS: "--print-result-after=all"} {
       cue cmake --build $c.build --target check-llvm $"-j($c.njobs)"

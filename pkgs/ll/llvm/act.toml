@@ -17,7 +17,7 @@ allow = "==23.*"
 bin = [ "llvm-config" ]
 
 [steps.replace]
-"cmake.test" = [ "llvm.check" ]
+"cmake.test" = [ "llvm.test" ]
 
 [cmake]
 root = "llvm"
