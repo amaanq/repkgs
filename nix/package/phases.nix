@@ -62,16 +62,24 @@ let
           ++ asList (edit.replace.${phase} or phase)
           ++ asList (edit.after.${phase} or [ ])
       ) known;
-  # steps.before a test phase only run with the tests
+  # steps before or in place of a test phase only run with the tests
   setups =
     if isAttrs (written.phases or [ ]) then
-      concatMap (
-        phase:
-        let
-          parts = match pattern phase;
-        in
-        if parts != null && elemAt parts 1 == "test" then asList written.phases.before.${phase} else [ ]
-      ) (attrNames (written.phases.before or { }))
+      concatMap
+        (
+          edit:
+          concatMap (
+            phase:
+            let
+              parts = match pattern phase;
+            in
+            if parts != null && elemAt parts 1 == "test" then asList written.phases.${edit}.${phase} else [ ]
+          ) (attrNames (written.phases.${edit} or { }))
+        )
+        [
+          "before"
+          "replace"
+        ]
     else
       [ ];
   role =
