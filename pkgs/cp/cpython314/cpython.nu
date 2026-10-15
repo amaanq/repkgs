@@ -111,3 +111,7 @@ export def drop-test-modules []: nothing -> nothing {
    rm ...$found
    emit test-modules $"dropped ($found | length) of ($gated | length)"
 }
+
+export def etc []: nothing -> nothing {
+   cp $"($env.IANA_ETC)/protocols" $"($env.IANA_ETC)/services" /etc
+}

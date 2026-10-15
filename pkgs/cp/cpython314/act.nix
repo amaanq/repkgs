@@ -70,9 +70,14 @@
       "cpython.drop-test-modules"
       "cpython.build-details"
     ];
+    steps.before."autotools.test" = [ "cpython.etc" ];
     test = {
       bin = [ "python3" ];
-      deps = [ "bzip2" ];
+      deps = [
+        "bzip2"
+        "iana-etc"
+      ];
+      etc = true;
     };
     deps = [
       "zlib"
