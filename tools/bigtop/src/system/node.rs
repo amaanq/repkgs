@@ -110,9 +110,11 @@ fn options(manager: Manager, ctx: &Ctx) -> io::Result<(Options, BTreeMap<String,
 
 #[derive(Deserialize)]
 struct PackageJson {
-   name: String,
+   name:    String,
    #[serde(default)]
-   bin:  Option<Bin>,
+   bin:     Option<Bin>,
+   #[serde(default)]
+   scripts: BTreeMap<String, String>,
 }
 
 #[derive(Deserialize)]
@@ -440,8 +442,10 @@ fn phase(manager: Manager, ctx: &Ctx, verb: &str) -> io::Result<()> {
       },
       "test" => {
          let mut args = vec!["test"];
-         if matches!(manager, Manager::Yarn) {
-            args.push("--offline");
+         match manager {
+            Manager::Yarn => args.push("--offline"),
+            Manager::Bun if own_test_script()? => args.insert(0, "run"),
+            Manager::Npm | Manager::Pnpm | Manager::Bun => {},
          }
          run(name, &args, &[])
       },
@@ -500,6 +504,13 @@ fn install(
       },
    }
    install_tree(ctx)
+}
+
+/// `bun test` is bun's own runner where the other managers run the package's
+/// `test` script, so a package with one gets `bun run test`.
+fn own_test_script() -> io::Result<bool> {
+   let package = serde_json::from_str::<PackageJson>(&read_to_string("package.json")?)?;
+   Ok(package.scripts.contains_key("test"))
 }
 
 /// `bin` as a string means one executable named like the package, npm strips
