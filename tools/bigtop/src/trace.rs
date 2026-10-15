@@ -341,6 +341,12 @@ pub trait Tests: Sync {
    fn state(&self, _path: &Path) -> bool {
       false
    }
+
+   /// Whether each test announces itself by opening a marker, so a run
+   /// limited to some tests must have announced every one of them.
+   fn announces(&self) -> bool {
+      false
+   }
 }
 
 /// Tests a harness starts as listed commands in listed directories. Tests
@@ -448,6 +454,9 @@ pub struct Accesses {
    pub deep:          BTreeSet<OsString>,
    /// Why the paths may not be everything the run read.
    pub escaped:       Option<&'static str>,
+   /// The tests that announced themselves, none when the tracer offered
+   /// the run no markers to open.
+   pub announced:     Option<BTreeSet<String>>,
    /// Whether a task installed a handler without `SA_RESTART`, the only kind
    /// that makes a call waiting on the trace server fail with EINTR.
    pub interruptible: bool,

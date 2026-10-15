@@ -81,6 +81,10 @@ impl Tests for Announced {
          .file_name()
          .is_some_and(|name| name == ".lit_test_times.txt")
    }
+
+   fn announces(&self) -> bool {
+      true
+   }
 }
 
 /// The test an open under `MARKS` announces, none for any other path, and
@@ -191,6 +195,10 @@ impl Processes {
             }
             match announced(&path) {
                Some(Ok(test)) => {
+                  accesses
+                     .announced
+                     .get_or_insert_default()
+                     .insert(test.clone());
                   self.units.insert(tgid, Some(test));
                   return;
                },
@@ -314,7 +322,10 @@ impl Read for Received {
 /// Applies the session's records until the daemon says it is over.
 fn collect(stream: UnixStream, tests: Option<&dyn Tests>, mark: Mark) -> io::Result<Accesses> {
    let mut reader = Received::spawn(stream);
-   let mut accesses = Accesses::default();
+   let mut accesses = Accesses {
+      announced: Some(BTreeSet::new()),
+      ..Accesses::default()
+   };
    let mut processes = Processes::default();
    loop {
       match Reply::read(&mut reader)? {

@@ -939,6 +939,46 @@ fn keep(
    }
 }
 
+/// Why a passing run limited to `selected` tests cannot show it ran them all,
+/// none when it can or its harness does not announce tests. A selected test
+/// it was shown not to announce is an error, since the harness skips a name
+/// it does not know and passes.
+fn unproven(
+   tests: Option<&dyn Tests>,
+   traced: Option<&Traced>,
+   selected: &BTreeSet<String>,
+   step: &str,
+) -> io::Result<Option<&'static str>> {
+   if !tests.is_some_and(Tests::announces) {
+      return Ok(None);
+   }
+   let Some(accesses) = traced.map(|run| &run.accesses) else {
+      return Ok(Some("the rerun was untraced, so no test announced itself"));
+   };
+   let Some(announced) = accesses.announced.as_ref() else {
+      return Ok(Some(
+         "the rerun's tracer offered no markers to announce tests",
+      ));
+   };
+   let missing = selected.difference(announced).collect::<Vec<_>>();
+   if missing.is_empty() {
+      return Ok(None);
+   }
+   if let Some(why) = accesses.escaped {
+      return Ok(Some(why));
+   }
+   Err(io::Error::other(format!(
+      "phase {step} reran {} tests but these never announced themselves, so the harness did not \
+       know them: {}",
+      selected.len(),
+      missing
+         .into_iter()
+         .map(String::as_str)
+         .collect::<Vec<_>>()
+         .join(", ")
+   )))
+}
+
 /// A test step skipped when a stored pass matches, otherwise run traced from
 /// `command` and its pass stored. `module` is the build system's, for a step
 /// that dispatches into one, and `tests` how its harness divides the step,
@@ -972,7 +1012,14 @@ pub fn run(
             ),
          );
          let (status, traced) = attempt(command, tests, Some(&names), seccomp)?;
-         if status.success() {
+         if !status.success() {
+            note(
+               "test-cache",
+               &format!("those failed with {status}, running every test"),
+            );
+         } else if let Some(why) = unproven(tests, traced.as_ref(), &names, &step.name)? {
+            note("test-cache", &format!("{why}, running every test"));
+         } else {
             keep(
                &mut client,
                &mut store,
@@ -982,10 +1029,6 @@ pub fn run(
             );
             return Ok(Ran::Passed);
          }
-         note(
-            "test-cache",
-            &format!("those failed with {status}, running every test"),
-         );
       },
       Found::Miss(miss) => note("test-cache", &format!("miss, {miss}")),
    }
