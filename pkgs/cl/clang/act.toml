@@ -1,7 +1,8 @@
-fetch = { from = "llvm" }
-with  = [ "cmake" ]
-deps  = [ "llvm", "zlib", "zstd" ]
-tools = [ "cpython", "llvm" ]
+fetch   = { from = "llvm" }
+with    = [ "cmake" ]
+deps    = [ "llvm", "zlib", "zstd" ]
+tools   = [ "cpython", "llvm" ]
+patches = [ "../../ll/llvm/lit-test-marks.patch" ]
 
 [test]
 bin = [  ]

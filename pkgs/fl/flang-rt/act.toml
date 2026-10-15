@@ -1,6 +1,7 @@
-fetch = { from = "llvm" }
-with  = [ "cmake" ]
-tools = [ "cpython" ]
+fetch   = { from = "llvm" }
+with    = [ "cmake" ]
+tools   = [ "cpython" ]
+patches = [ "../../ll/llvm/lit-test-marks.patch" ]
 
 [test]
 bin = [ "gfortran" ]

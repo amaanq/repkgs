@@ -7,6 +7,7 @@ patches = [
   "../llvm/upstream-x86-vastart-stack-probe.patch",
   "../llvm/mummer-absent-log.patch",
   "../llvm/sandbox-setid-tests.patch",
+  "../llvm/lit-test-marks.patch",
   "https://github.com/rust-lang/llvm-project/commit/abcef279cd33492fe8301c8873fc535fa4dbf0d5.patch",
 ]
 

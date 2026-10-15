@@ -1,0 +1,43 @@
+--- a/llvm/utils/lit/lit/main.py
++++ b/llvm/utils/lit/lit/main.py
+@@ -82,6 +82,13 @@
+     if opts.filterFailed:
+         selected_tests = [t for t in selected_tests if t.previous_failure]
+ 
++    chosen = os.environ.get("BIGTOP_TESTS")
++    if chosen is not None:
++        names = set(chosen.splitlines())
++        selected_tests = [t for t in selected_tests if t.getFullName() in names]
++        if not selected_tests:
++            sys.exit(0)
++
+     if not selected_tests:
+         sys.stderr.write(
+             "error: filter did not match any tests "
+--- a/llvm/utils/lit/lit/worker.py
++++ b/llvm/utils/lit/lit/worker.py
+@@ -62,8 +62,24 @@
+     return _parallelism_semaphores.get(pg, NopSemaphore())
+ 
+ 
++def _announce(test):
++    marks = os.environ.get("BIGTOP_TEST_MARKS")
++    if not marks:
++        return
++    spelled = test.getFullName().encode().hex()
++    parts = [spelled[at : at + 128] for at in range(0, len(spelled), 128)]
++    path = os.path.join(marks, *parts)
++    if len(path) >= 4096:
++        raise ValueError("test name too long to announce: " + test.getFullName())
++    try:
++        os.close(os.open(path, os.O_RDONLY))
++    except FileNotFoundError:
++        pass
++
++
+ # Do not inline! Directly used by LitTestCase.py
+ def _execute(test, lit_config):
++    _announce(test)
+     start = time.time()
+     result = _execute_test_handle_errors(test, lit_config)
+     result.elapsed = time.time() - start

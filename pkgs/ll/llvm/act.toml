@@ -7,6 +7,7 @@ patches = [
   "upstream-x86-vastart-stack-probe.patch",
   "mummer-absent-log.patch",
   "sandbox-setid-tests.patch",
+  "lit-test-marks.patch",
 ]
 
 [track]

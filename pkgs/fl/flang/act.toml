@@ -1,7 +1,7 @@
 fetch = { from = "llvm" }
 with  = [ "cmake" ]
 deps  = [ "llvm", "zlib", "zstd", "clang", "mlir" ]
-tools = [ "cpython", "llvm" ]
+tools = [ "cpython", "llvm", "lit" ]
 
 [test]
 bin     = [ "flang" ]
@@ -24,7 +24,7 @@ LLVM_INCLUDE_TESTS    = true
 LLVM_LINK_LLVM_DYLIB  = true
 CLANG_DIR             = "{pkg:clang}/lib/cmake/clang"
 LLVM_DIR              = "{pkg:llvm}/lib/cmake/llvm"
-LLVM_EXTERNAL_LIT     = "{source:default}/llvm/utils/lit/lit.py"
+LLVM_EXTERNAL_LIT     = "{tool:lit}/bin/lit"
 LLVM_TABLEGEN_EXE     = "{pkg:llvm}/bin/llvm-tblgen"
 LLVM_TOOLS_BINARY_DIR = "{pkg:llvm}/bin"
 MLIR_DIR              = "{pkg:mlir}/lib/cmake/mlir"

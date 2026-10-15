@@ -1,0 +1,9 @@
+fetch   = { from = "llvm" }
+with    = [ "python" ]
+deps    = [ "cpython" ]
+tools   = [ "python-setuptools" ]
+patches = [ "../../ll/llvm/lit-test-marks.patch" ]
+
+[python]
+module = "lit"
+root   = "llvm/utils/lit"
