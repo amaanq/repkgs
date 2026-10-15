@@ -285,6 +285,7 @@ impl Recipe for Cc {
          "c++",
          "gcc",
          "g++",
+         "cpp",
          "reloc-fixup",
          "gocacheprog",
          "rustcwrap",

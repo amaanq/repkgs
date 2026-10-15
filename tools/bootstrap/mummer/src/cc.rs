@@ -235,7 +235,7 @@ impl Invocation {
          match arg.as_str() {
             "-c" => invocation.action = Action::Compile,
             "-S" => invocation.action = Action::Assembly,
-            "-E" => invocation.action = Action::Preprocess,
+            "-E" | "--driver-mode=cpp" => invocation.action = Action::Preprocess,
             "-o" => {
                keyed = false;
                if let Some(ref value) = next {
@@ -1132,8 +1132,10 @@ fn served_query(
       && invocation.source.as_deref().is_none_or(null)
       && invocation.inputs.iter().all(|input| null(input));
    let reads_files = user.iter().any(|arg| {
-      matches!(arg.as_str(), "-" | "-include" | "-imacros")
-         || discarded && matches!(arg.as_str(), "-v" | "-###")
+      matches!(
+         arg.as_str(),
+         "-" | "-include" | "-imacros" | "--driver-mode=cpp"
+      ) || discarded && matches!(arg.as_str(), "-v" | "-###")
          || [
             "-print-file-name",
             "--print-file-name",

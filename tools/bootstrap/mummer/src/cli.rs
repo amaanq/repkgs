@@ -36,6 +36,8 @@ pub enum Mode {
       alias = "clang++-build"
    )]
    Cxx,
+   /// the C preprocessor, clang's cpp driver mode.
+   Cpp,
    /// the Fortran compiler.
    #[pound(
       alias = "gfortran",
@@ -113,6 +115,7 @@ impl Mode {
          "c++" | "g++" | "clang++" | "c++-build" | "g++-build" | "clang++-build" => {
             return Ok(Self::Cxx);
          },
+         "cpp" => return Ok(Self::Cpp),
          "rustcwrap" => return Ok(Self::Rustcwrap),
          "ghcwrap" => return Ok(Self::Ghcwrap),
          "tblgenwrap" => return Ok(Self::Tblgenwrap),

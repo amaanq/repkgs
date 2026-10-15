@@ -88,6 +88,11 @@ fn run(mode: Mode, args: &[OsString], socket: &Path) -> Result<i32> {
    match mode {
       Mode::Cc => return Ok(cc::run_cc(Language::Cc, &text_arguments(args)?, socket)?),
       Mode::Cxx => return Ok(cc::run_cc(Language::Cxx, &text_arguments(args)?, socket)?),
+      Mode::Cpp => {
+         let mut arguments = vec!["--driver-mode=cpp".to_owned()];
+         arguments.extend(text_arguments(args)?);
+         return Ok(cc::run_cc(Language::Cc, &arguments, socket)?);
+      },
       Mode::Fortran => {
          return Ok(cc::run_cc(
             Language::Fortran,

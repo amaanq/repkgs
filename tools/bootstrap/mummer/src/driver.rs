@@ -199,7 +199,7 @@ impl Driver {
          };
          linking &= !matches!(
             arg.as_str(),
-            "-c" | "-E" | "-S" | "-M" | "-MM" | "-fsyntax-only" | "-###"
+            "-c" | "-E" | "-S" | "-M" | "-MM" | "-fsyntax-only" | "-###" | "--driver-mode=cpp"
          );
          no_policy |= matches!(arg.as_str(), "-static" | "-static-pie" | "-r" | "-Wl,-r");
          no_startup |= arg == "-nostartfiles";
