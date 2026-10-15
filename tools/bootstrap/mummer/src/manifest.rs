@@ -1,5 +1,8 @@
 use std::{
-   collections::HashSet,
+   collections::{
+      BTreeMap,
+      HashSet,
+   },
    env::var,
    fmt::{
       Display,
@@ -12,10 +15,12 @@ use std::{
       Path,
       PathBuf,
    },
+   sync::LazyLock,
 };
 
 use blake3::Hasher;
 use mummer::{
+   attrs,
    files::utf8,
    store::{
       InputId,
@@ -65,7 +70,18 @@ pub struct Manifest {
    /// keys leave out so builds of other packages still share results.
    #[serde(default, skip_serializing_if = "Option::is_none")]
    owner:       Option<String>,
+   /// The same output unmasked.
+   #[serde(default, skip_serializing_if = "Option::is_none")]
+   build:       Option<String>,
 }
+
+#[derive(Deserialize)]
+struct Outputs {
+   outputs: BTreeMap<String, String>,
+}
+
+static OUTPUT: LazyLock<Option<String>> =
+   LazyLock::new(|| attrs::load::<Outputs>().ok()?.outputs.remove("out"));
 
 /// What a result key covers, the manifest without its owner.
 #[derive(Serialize)]
@@ -116,7 +132,8 @@ impl Manifest {
          inputs,
          environment,
          absent,
-         owner: var("out").ok().map(|out| mask_hashes(&out)),
+         owner: OUTPUT.as_deref().map(mask_hashes),
+         build: OUTPUT.clone(),
       })
    }
 
@@ -148,13 +165,11 @@ impl Manifest {
       Ok(Digest::from(hasher.finalize()))
    }
 
-   /// Whether this one replaces `older` for good, the same package built
-   /// with the same store inputs and environment, only its own sources
-   /// changed, as an edit or a version bump does. A store input that differs
-   /// could be another pin of the toolchain, which keeps the older one.
+   /// Whether this is a later build of `older`'s package with only its sources changed.
    fn supersedes(&self, older: &Self) -> bool {
       self.owner.is_some()
          && self.owner == older.owner
+         && self.build != older.build
          && self.environment == older.environment
          && self.store_inputs() == older.store_inputs()
    }
