@@ -43,9 +43,12 @@ use crate::bootstrap::{
 
 #[derive(Deserialize)]
 struct Attrs {
-   zstd:    PathBuf,
-   zlib:    PathBuf,
-   targets: String,
+   zstd:         PathBuf,
+   zlib:         PathBuf,
+   #[serde(rename = "LLVM_TARGETS_TO_BUILD")]
+   targets:      String,
+   #[serde(rename = "LLVM_EXPERIMENTAL_TARGETS_TO_BUILD")]
+   experimental: String,
 }
 
 const TOOLCHAIN_TOOLS: &[&str] = &[
@@ -265,6 +268,10 @@ impl Llvm {
                tool("python3")?.display()
             ))
             .arg(format!("-DLLVM_TARGETS_TO_BUILD={}", attrs.targets))
+            .arg(format!(
+               "-DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD={}",
+               attrs.experimental
+            ))
             .arg(format!("-DLLVM_HOST_TRIPLE={}", stage.clang_target))
             .arg(format!(
                "-DLLVM_DEFAULT_TARGET_TRIPLE={}",

@@ -7,6 +7,7 @@
 }:
 let
   llvm = source "llvm";
+  llvmDefs = (import ../nix/act.nix (pkg "llvm")).act.cmake.defs;
 in
 {
   mummer.prebuilt = prebuiltShim;
@@ -28,8 +29,7 @@ in
       (pkg "llvm" + "/upstream-x86-vastart-stack-probe.patch")
       (pkg "llvm" + "/mummer-absent-log.patch")
     ];
-    targets = builtins.concatStringsSep ";" (import ../nix/act.nix (pkg "llvm"))
-    .act.cmake.defs.LLVM_TARGETS_TO_BUILD;
+    inherit (llvmDefs) LLVM_TARGETS_TO_BUILD LLVM_EXPERIMENTAL_TARGETS_TO_BUILD;
   };
   cmake.src = source "cmake-bootstrap";
   compiler-rt.src = llvm;

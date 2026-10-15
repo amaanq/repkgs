@@ -7,3 +7,8 @@ export def host-config []: nothing -> nothing {
    mkdir $host
    cp NATIVE/bin/llvm-config $"($host)/llvm-config"
 }
+
+export def check []: nothing -> nothing {
+   let c = (act)
+   cue cmake --build $c.build --target check-llvm $"-j($c.njobs)"
+}
