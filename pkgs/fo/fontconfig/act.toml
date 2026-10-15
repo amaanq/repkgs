@@ -12,7 +12,7 @@ url   = "https://www.freedesktop.org/software/fontconfig/release/"
 regex = 'fontconfig-([0-9.]+)\.tar\.xz'
 
 [steps.before]
-"meson.test" = [ "fontconfig.test-shebangs" ]
+"meson.configure" = [ "fontconfig.test-shebangs" ]
 
 [test]
 bin = [ "fc-list" ]

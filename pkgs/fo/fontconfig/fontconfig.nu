@@ -1,6 +1,9 @@
 use core.nu [act shebangs]
 
-# the meson tests run scripts through /bin/bash, absent in the sandbox
+# meson keeps the interpreter a script names when configure finds it, and
+# /bin/bash is absent in the sandbox. The tarball ships the script unexecutable
 export def test-shebangs []: nothing -> nothing {
-   shebangs (act).src
+   let test = (act).src | path join test
+   chmod +x ($test | path join run-test.sh)
+   shebangs $test
 }

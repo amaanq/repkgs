@@ -168,6 +168,18 @@ library or tool asking, and fontconfig never bound its text domains before.
                 install: true,
                 install_tag: 'runtime')
  
+@@ -607,11 +612,6 @@
+   meson.add_dist_script('build-aux/meson-dist-autotools.py')
+ endif
+ 
+-if host_machine.system() != 'windows'
+-  install_emptydir(fc_cachedir,
+-                   install_tag: 'runtime')
+-endif
+-
+ # Summary
+ doc_targets = get_variable('doc_targets', [])
+ 
 --- a/src/fccfg.c
 +++ b/src/fccfg.c
 @@ -3174,8 +3174,13 @@
