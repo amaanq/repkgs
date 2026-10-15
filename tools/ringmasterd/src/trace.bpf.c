@@ -108,6 +108,7 @@ struct linux_binprm {
 
 #if defined(__TARGET_ARCH_x86)
 struct pt_regs {
+   unsigned long orig_ax;
    unsigned long cs;
 } CORE;
 #define USER32_CS 0x23
@@ -117,15 +118,27 @@ INLINE int foreign(struct pt_regs* regs, long id) {
    bpf_probe_read_kernel(&cs, sizeof(cs), __builtin_preserve_access_index(&regs->cs));
    return cs == USER32_CS || (id & X32_BIT);
 }
+INLINE __u32 number_of(struct pt_regs* regs) {
+   unsigned long number = 0;
+   bpf_probe_read_kernel(&number, sizeof(number), __builtin_preserve_access_index(&regs->orig_ax));
+   return number;
+}
 #elif defined(__TARGET_ARCH_arm64)
 struct pt_regs {
    __u64 pstate;
+   __s32 syscallno;
 } CORE;
 #define PSR_MODE32_BIT 0x10
 INLINE int foreign(struct pt_regs* regs, long id) {
    __u64 pstate = 0;
    bpf_probe_read_kernel(&pstate, sizeof(pstate), __builtin_preserve_access_index(&regs->pstate));
    return (pstate & PSR_MODE32_BIT) != 0;
+}
+INLINE __u32 number_of(struct pt_regs* regs) {
+   __s32 number = 0;
+   bpf_probe_read_kernel(&number, sizeof(number),
+                         __builtin_preserve_access_index(&regs->syscallno));
+   return number;
 }
 #else
 #error "ringmasterd knows x86 and arm64 compat calls only"
@@ -789,9 +802,19 @@ int syscall(__u64* context) {
    long id = (long)context[1];
    if (foreign(regs, id)) {
       escape(*session, tgid, ESCAPE_FOREIGN);
+   }
+   return 0;
+}
+
+/* A call that failed changed nothing, so only one that returned escapes. */
+SEC("tp_btf/sys_exit")
+int returned(__u64* context) {
+   __u32 tgid = bpf_get_current_pid_tgid() >> 32;
+   __u64* session = session_of(tgid);
+   if (!session || (long)context[1] < 0) {
       return 0;
    }
-   __u32 number = id;
+   __u32 number = number_of((void*)context[0]);
    if (bpf_map_lookup_elem(&escapes, &number)) {
       escape(*session, tgid, number);
    }

@@ -135,6 +135,7 @@ const TRACEPOINTS: &[(&str, &str)] = &[
    ("exec", "sched_process_exec"),
    ("reaped", "sched_process_free"),
    ("syscall", "sys_enter"),
+   ("returned", "sys_exit"),
 ];
 
 /// The kernel's `struct losses` in trace.bpf.c.
