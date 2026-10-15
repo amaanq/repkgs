@@ -1,8 +1,20 @@
 tag   = "v{version}"
 track = "github:honojs/create-hono"
-fetch = { archive = true }
 with  = [ "bun" ]
 
+[fetch.default]
+archive = true
+
+[fetch.starter]
+unpack = false
+url    = "https://github.com/honojs/starter/archive/{starter}.tar.gz"
+
+[env]
+GIGET_STARTER     = "{source:starter}"
+GIGET_STARTER_REF = "v{major}.{minor}"
+
 [test]
-run     = false
 version = true
+
+[steps.before]
+"bun.test" = [ "create-hono.giget-cache" ]
