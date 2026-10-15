@@ -99,3 +99,15 @@ export def build-details []: nothing -> nothing {
    }
    | save -f $file
 }
+
+# the suite needs the modules configure builds only with test modules on, $out keeps none of them.
+# TEST_MODULES=no at install leaves out Lib/test but not these
+export def drop-test-modules []: nothing -> nothing {
+   let c       = (act)
+   let gated   = (open --raw $"($c.src)/configure.ac" | parse -r 'PY_STDLIB_MOD\(\[(?<name>\w+)\],\s*\[test "\$TEST_MODULES" = yes\]' | get name)
+   let dynload = (glob-files --dirs $"($c.out)/lib/python3.*/lib-dynload" | first)
+   let found   = ($gated | each {|name| glob-files $"($dynload)/($name).*" } | flatten)
+   if ($gated | is-empty) or ($found | is-empty) { error make {msg: "configure.ac names no installed test modules"} }
+   rm ...$found
+   emit test-modules $"dropped ($found | length) of ($gated | length)"
+}

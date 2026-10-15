@@ -8,7 +8,6 @@
 [
   {
     autotools.flags = [
-      "--disable-test-modules"
       "--without-ensurepip"
       "--with-openssl=${pkgs.openssl}"
       "--with-system-libmpdec"
@@ -30,6 +29,10 @@
   })
 
   (when (platform.libc == "msvc") {
+    test = {
+      run = false;
+      separate = false;
+    };
     steps.after."vcxproj.install" = [ "cpython.windows-layout" ];
     steps.before."vcxproj.configure" = [
       "cpython.properties"
@@ -63,7 +66,10 @@
   })
 
   (when (platform.libc != "msvc") {
-    steps.after."autotools.install" = [ "cpython.build-details" ];
+    steps.after."autotools.install" = [
+      "cpython.drop-test-modules"
+      "cpython.build-details"
+    ];
     test.bin = [ "python3" ];
     deps = [
       "zlib"
@@ -78,6 +84,11 @@
       "readline"
       "zstd"
     ];
+    autotools.testTarget = [
+      "test"
+      "TESTOPTS=-u-network,-urlfetch" # network and urlfetch reach the internet
+    ];
+    autotools.installFlags = [ "TEST_MODULES=no" ];
     autotools.flags = [
       "--enable-shared"
       "--with-tzpath=/etc/zoneinfo:/usr/share/zoneinfo:/usr/lib/zoneinfo:/usr/share/lib/zoneinfo"

@@ -24,8 +24,8 @@ url = "https://github.com/python/cpython-source-deps/archive/refs/tags/xz-{xz}.t
 url = "https://github.com/python/cpython-source-deps/archive/refs/tags/sqlite-{sqlite}.tar.gz"
 
 [test]
-bin = [  ]
-run = false
+bin      = [  ]
+separate = true
 
 [steps.after]
 "autotools.install" = [  ]
