@@ -5,11 +5,10 @@ tools = [ "cpython", "llvm" ]
 
 [test]
 bin     = [ "flang" ]
-run     = false
 version = true
 
-[steps]
-skip = [ "cmake.test" ]
+[steps.replace]
+"cmake.test" = [ "llvm.test" ]
 
 [only]
 cross = false
@@ -20,11 +19,12 @@ root = "flang"
 [cmake.defs]
 BUILD_SHARED_LIBS     = false
 FLANG_INCLUDE_DOCS    = false
-FLANG_INCLUDE_TESTS   = false
-LLVM_INCLUDE_TESTS    = false
+FLANG_INCLUDE_TESTS   = true
+LLVM_INCLUDE_TESTS    = true
 LLVM_LINK_LLVM_DYLIB  = true
 CLANG_DIR             = "{pkg:clang}/lib/cmake/clang"
 LLVM_DIR              = "{pkg:llvm}/lib/cmake/llvm"
+LLVM_EXTERNAL_LIT     = "{source:default}/llvm/utils/lit/lit.py"
 LLVM_TABLEGEN_EXE     = "{pkg:llvm}/bin/llvm-tblgen"
 LLVM_TOOLS_BINARY_DIR = "{pkg:llvm}/bin"
 MLIR_DIR              = "{pkg:mlir}/lib/cmake/mlir"
