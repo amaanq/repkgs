@@ -1,0 +1,14 @@
+From 2d4ba0c618584d3554165b9484d921ec8c4e4523 Mon Sep 17 00:00:00 2001
+From: Chet Ramey <chet.ramey@case.edu>
+Date: Wed, 20 May 2026 10:18:32 -0400
+Subject: [PATCH] fixed a bug with expanding unquoted $* when the separator is
+ not whitespace
+
+--- a/tests/run-test
++++ b/tests/run-test
+@@ -1,4 +1,4 @@
+-unset GROUPS UID 2>/dev/null
++unset GROUPS 2>/dev/null
+ 
+ ${THIS_SH} ./test.tests >${BASH_TSTOUT} 2>&1
+ diff ${BASH_TSTOUT} test.right && rm -f ${BASH_TSTOUT}

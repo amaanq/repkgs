@@ -8,6 +8,7 @@ patches = [
   "tests-select.patch",
   "printf-precision-overflow.patch",
   "trap-order.patch",
+  "run-test-uid.patch",
 ]
 
 [test]
