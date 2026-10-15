@@ -78,7 +78,7 @@ use crate::{
       build_top,
    },
    output::{
-      SHARED,
+      RUNNER,
       fingerprint,
    },
    probe::inherited,
@@ -109,7 +109,7 @@ struct Request<'step> {
    kind:        &'step Kind,
    spec:        &'step Value,
    environment: BTreeMap<String, String>,
-   shared:      &'static str,
+   runner:      &'static str,
    module:      Option<&'static str>,
 }
 
@@ -285,7 +285,7 @@ fn request(ctx: &Ctx, step: &Step, module: Option<&'static str>) -> io::Result<K
       kind:        &step.kind,
       spec:        &spec,
       environment: vars().filter(|entry| inherited(&entry.0)).collect(),
-      shared:      SHARED,
+      runner:      RUNNER,
       module:      fingerprinted,
    };
    let text = mask_hashes(&serde_json::to_string(&request)?);

@@ -27,6 +27,9 @@ use blake3::Hasher;
 /// The `system` modules every build system goes through, shared code.
 const PLUMBING: [&str; 4] = ["mod", "command", "dispatch", "syslibs"];
 
+/// The modules that set up and start a step.
+const RUNNER: [&str; 6] = ["build", "prepare", "env", "attrs", "exports", "hardening"];
+
 fn sources(directory: &Path, found: &mut Vec<PathBuf>) -> io::Result<()> {
    for entry in read_dir(directory)? {
       let path = entry?.path();
@@ -155,11 +158,22 @@ fn main() -> io::Result<()> {
 
    shared.extend(linked(&library, &protocol, lock)?);
 
+   let runner = RUNNER
+      .iter()
+      .map(|name| src.join(format!("{name}.rs")))
+      .chain(
+         PLUMBING
+            .iter()
+            .map(|name| system.join(format!("{name}.rs"))),
+      )
+      .collect::<BTreeSet<_>>();
+
    let mut generated = format!(
-      "/// Over the code every build runs.\npub const SHARED: &str = \"{}\";\n\n/// Each \
-       build-system module over itself and the siblings it names.\npub const MODULES: &[(&str, \
-       &str)] = &[\n",
-      digest(&shared, &tools)?
+      "/// Over the code every build runs.\npub const SHARED: &str = \"{}\";\n\n/// Over the code \
+       that sets up and starts a step.\npub const RUNNER: &str = \"{}\";\n\n/// Each build-system \
+       module over itself and the siblings it names.\npub const MODULES: &[(&str, &str)] = &[\n",
+      digest(&shared, &tools)?,
+      digest(&runner, &tools)?
    );
    for name in modules.keys() {
       let mut closure = BTreeSet::from([name.as_str()]);
