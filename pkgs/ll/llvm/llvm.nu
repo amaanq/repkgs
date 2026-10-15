@@ -1,6 +1,5 @@
 use core.nu [act cue]
 
-# a cross build's llvm-config cannot run here, the native one beside it can answer for it
 export def host-config []: nothing -> nothing {
    let host = $"((act).out)/host"
    cue cmake --build NATIVE --target llvm-config
@@ -9,8 +8,10 @@ export def host-config []: nothing -> nothing {
 }
 
 export def test []: nothing -> nothing {
-   let c = (act)
+   let c       = (act)
+   let lit     = ($c.build | path join utils lit | path exists)
+   let targets = [$"check-($c.spec.cmake.root)"] | append (if $lit { ["check-lit"] } else { [] })
    with-env {LIT_OPTS: "--print-result-after=all"} {
-      cue cmake --build $c.build --target $"check-($c.spec.cmake.root)" $"-j($c.njobs)"
+      cue cmake --build $c.build --target ...$targets $"-j($c.njobs)"
    }
 }
