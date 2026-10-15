@@ -13,7 +13,8 @@ use std::{
    },
    io::{
       self,
-      BufReader,
+      ErrorKind,
+      Read,
       Write as _,
    },
    os::unix::{
@@ -29,6 +30,11 @@ use std::{
       PathBuf,
    },
    process::Command,
+   sync::mpsc::{
+      Receiver,
+      Sender,
+      channel,
+   },
    thread::spawn,
 };
 
@@ -196,9 +202,63 @@ impl Processes {
    }
 }
 
+/// The session's stream as a thread took it off the socket. Applying records
+/// is slower than the daemon sends them while the run's processes hold every
+/// CPU, and the daemon drops what a client falls behind on, so the backlog
+/// waits here instead.
+struct Received {
+   chunks: Receiver<io::Result<Vec<u8>>>,
+   chunk:  Vec<u8>,
+   at:     usize,
+}
+
+impl Received {
+   fn spawn(mut stream: UnixStream) -> Self {
+      let (sender, chunks) = channel();
+      spawn(move || Self::receive(&mut stream, &sender));
+      Self {
+         chunks,
+         chunk: Vec::new(),
+         at: 0,
+      }
+   }
+
+   fn receive(stream: &mut UnixStream, sender: &Sender<io::Result<Vec<u8>>>) {
+      let mut buffer = vec![0_u8; 1 << 20];
+      loop {
+         let chunk = match stream.read(&mut buffer) {
+            Ok(0) => return,
+            Ok(count) => Ok(buffer[..count].to_vec()),
+            Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+            Err(error) => Err(error),
+         };
+         let failed = chunk.is_err();
+         if sender.send(chunk).is_err() || failed {
+            return;
+         }
+      }
+   }
+}
+
+impl Read for Received {
+   fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+      while self.at == self.chunk.len() {
+         let Ok(chunk) = self.chunks.recv() else {
+            return Ok(0);
+         };
+         self.chunk = chunk?;
+         self.at = 0;
+      }
+      let count = buf.len().min(self.chunk.len() - self.at);
+      buf[..count].copy_from_slice(&self.chunk[self.at..self.at + count]);
+      self.at += count;
+      Ok(count)
+   }
+}
+
 /// Applies the session's records until the daemon says it is over.
 fn collect(stream: UnixStream, tests: Option<&dyn Tests>, mark: Mark) -> io::Result<Accesses> {
-   let mut reader = BufReader::new(stream);
+   let mut reader = Received::spawn(stream);
    let mut accesses = Accesses::default();
    let mut processes = Processes::default();
    loop {
