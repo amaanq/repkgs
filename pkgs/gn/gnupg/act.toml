@@ -32,3 +32,4 @@ flags = [
   "--with-ksba-prefix={pkg:libksba}",
   "--with-npth-prefix={pkg:npth}",
 ]
+testTarget = [ "check", "TESTFLAGS=--parallel=$(NIX_BUILD_CORES)" ]
