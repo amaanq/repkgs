@@ -1,6 +1,10 @@
 use std::{
    collections::BTreeMap,
    env::var,
+   ffi::{
+      OsStr,
+      OsString,
+   },
    fmt::{
       Display,
       Formatter,
@@ -18,6 +22,7 @@ use std::{
       PathBuf,
    },
    str::FromStr,
+   sync::OnceLock,
 };
 
 use mummer::{
@@ -25,13 +30,18 @@ use mummer::{
       glob,
       utf8,
    },
-   store::on_path,
+   store::{
+      normalize,
+      on_path,
+   },
 };
+use serde::Deserialize;
 
 use crate::{
    attrs::{
       Attrs,
       Ctx,
+      build_top,
    },
    schema::Field,
    system::{
@@ -45,6 +55,7 @@ use crate::{
       dispatch::System,
    },
    test_cache,
+   trace::Tests,
 };
 
 options! {
@@ -67,6 +78,66 @@ options! {
          => "extra arguments for make.configureScript",
       programs ("programs"): Vec<String> = Vec::new()
          => "programs the Makefile installs without the platform executable suffix",
+      test_scripts ("testScripts"): Option<TestScripts> = None
+         => "scripts the test goals run one process each, rerun alone by file name",
+   }
+}
+
+record! {
+   pub TestScripts {
+      required {
+         files ("files"): String,
+         variable ("variable"): String,
+      }
+   }
+}
+
+#[derive(Deserialize)]
+struct Scripted {
+   root:         String,
+   #[serde(rename = "testScripts")]
+   test_scripts: Option<TestScripts>,
+}
+
+/// The files a system's `testScripts` glob finds, each named by its file name.
+pub struct Scripts {
+   names: BTreeMap<PathBuf, String>,
+}
+
+impl Scripts {
+   pub fn of(cell: &'static OnceLock<Option<Self>>, system: &str) -> Option<&'static Self> {
+      cell
+         .get_or_init(|| Self::find(system).ok().flatten())
+         .as_ref()
+   }
+
+   fn find(system: &str) -> io::Result<Option<Self>> {
+      let ctx = Ctx::load(&build_top()?)?;
+      let scripted = ctx.options::<Scripted>(system)?;
+      let Some(scripts) = scripted.test_scripts else {
+         return Ok(None);
+      };
+      let pattern = ctx.project_dir(&scripted.root).join(&scripts.files);
+      let mut names = BTreeMap::new();
+      for path in glob(utf8(&pattern)?)? {
+         let name = path
+            .file_name()
+            .and_then(OsStr::to_str)
+            .ok_or_else(|| io::Error::other(format!("{} has no file name", path.display())))?
+            .to_owned();
+         names.insert(path, name);
+      }
+      Ok(Some(Self { names }))
+   }
+
+   /// The script a process running `args` in `cwd` runs, when it names one
+   /// and not several, as the harness does.
+   pub fn unit(&self, args: &[OsString], cwd: &Path) -> Option<String> {
+      let mut named = args
+         .iter()
+         .filter_map(|arg| self.names.get(&normalize(&cwd.join(arg))));
+      let found = named.next()?;
+      named.next().is_none().then(|| found.clone())
    }
 }
 
@@ -107,6 +178,10 @@ impl System for Make {
       Ok(shell()?.into())
    }
 
+   fn tests(&self) -> Option<&'static dyn Tests> {
+      Some(&Self)
+   }
+
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
       let options = ctx.options::<Options>(self.name())?;
       // PREFIX/prefix for hand-written Makefiles, configure'd ones ignore them.
@@ -144,7 +219,14 @@ impl System for Make {
             )])
          },
          "build" => build(ctx, &flags, &options.build_target),
-         "test" => test(ctx, &flags, &options.test_target),
+         "test" => {
+            test(
+               ctx,
+               &flags,
+               &options.test_target,
+               options.test_scripts.as_ref(),
+            )
+         },
          "install" => {
             flags.extend(options.install_flags);
             with_programs(ctx, &options.programs, || {
@@ -153,6 +235,13 @@ impl System for Make {
          },
          _ => Err(unknown(self.name(), verb)),
       }
+   }
+}
+
+impl Tests for Make {
+   fn unit(&self, _exe: &Path, args: &[OsString], cwd: &Path) -> Option<String> {
+      static SCRIPTS: OnceLock<Option<Scripts>> = OnceLock::new();
+      Scripts::of(&SCRIPTS, "make")?.unit(args, cwd)
    }
 }
 
@@ -235,12 +324,27 @@ impl FromStr for AutomakeTest {
    }
 }
 
-pub fn test(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
+pub fn test(
+   ctx: &Ctx,
+   flags: &[String],
+   targets: &[String],
+   scripts: Option<&TestScripts>,
+) -> io::Result<()> {
    let jobs = format!("-j{}", ctx.test_jobs()?);
+   let mut args = vec![jobs.as_str(), "VERBOSE=1"];
+   args.extend(strs(targets));
+   args.extend(strs(flags));
+
+   if let Some(listed) = scripts {
+      let Some(selected) = test_cache::selected::<String>()? else {
+         return run("make", &args, &[]);
+      };
+      let assigned = format!("{}={}", listed.variable, selected.join(" "));
+      args.push(&assigned);
+      return run("make", &args, &[]);
+   }
+
    let Some(selected) = test_cache::selected::<AutomakeTest>()? else {
-      let mut args = vec![jobs.as_str(), "VERBOSE=1"];
-      args.extend(strs(targets));
-      args.extend(strs(flags));
       return run("make", &args, &[]);
    };
    let mut directories = BTreeMap::<String, Vec<String>>::new();
@@ -252,11 +356,11 @@ pub fn test(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
    }
    for (directory, names) in directories {
       let tests = format!("TESTS={}", names.join(" "));
-      let mut args = vec!["-C", directory.as_str(), jobs.as_str(), "VERBOSE=1"];
-      args.extend(strs(targets));
-      args.push(&tests);
-      args.extend(strs(flags));
-      run("make", &args, &[])?;
+      let mut directed = vec!["-C", directory.as_str(), jobs.as_str(), "VERBOSE=1"];
+      directed.extend(strs(targets));
+      directed.push(&tests);
+      directed.extend(strs(flags));
+      run("make", &directed, &[])?;
    }
    Ok(())
 }

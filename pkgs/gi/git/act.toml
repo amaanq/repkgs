@@ -16,6 +16,7 @@ posix = true
 [autotools]
 flags = [ "--with-curl", "--with-expat", "--with-libpcre2", "--without-tcltk" ]
 outOfTree = false
+testScripts = { files = "t/t*.sh", variable = "T" }
 testTarget = [
   "-C",
   "t",

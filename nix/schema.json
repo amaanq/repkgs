@@ -1007,6 +1007,31 @@
           "default": true,
           "doc": "configure from a separate build directory",
           "system": "autotools"
+        },
+        {
+          "name": "testScripts",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "record",
+                "fields": {
+                  "files": {
+                    "kind": "string"
+                  },
+                  "variable": {
+                    "kind": "string"
+                  }
+                }
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "default": null,
+          "doc": "scripts the test goals run one process each, rerun alone by file name",
+          "system": "autotools"
         }
       ]
     },
@@ -1866,6 +1891,31 @@
           },
           "default": [],
           "doc": "programs the Makefile installs without the platform executable suffix",
+          "system": "make"
+        },
+        {
+          "name": "testScripts",
+          "type": {
+            "kind": "union",
+            "variants": [
+              {
+                "kind": "record",
+                "fields": {
+                  "files": {
+                    "kind": "string"
+                  },
+                  "variable": {
+                    "kind": "string"
+                  }
+                }
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "default": null,
+          "doc": "scripts the test goals run one process each, rerun alone by file name",
           "system": "make"
         }
       ]

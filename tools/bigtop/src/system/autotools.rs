@@ -17,6 +17,7 @@ use std::{
       Path,
       PathBuf,
    },
+   sync::OnceLock,
 };
 
 use mummer::{
@@ -60,6 +61,8 @@ use crate::{
       make::{
          self,
          AutomakeTest,
+         Scripts,
+         TestScripts,
          shell,
       },
    },
@@ -86,6 +89,8 @@ options! {
          => "configure script relative to the project",
       out_of_tree ("outOfTree"): bool = true
          => "configure from a separate build directory",
+      test_scripts ("testScripts"): Option<TestScripts> = None
+         => "scripts the test goals run one process each, rerun alone by file name",
    }
 }
 
@@ -158,7 +163,12 @@ impl System for Autotools {
          "test" => {
             let mut flags = vec![RELATIVE_LOCALEDIR.to_owned()];
             flags.extend(options.make_flags);
-            make::test(ctx, &flags, &options.test_target)
+            make::test(
+               ctx,
+               &flags,
+               &options.test_target,
+               options.test_scripts.as_ref(),
+            )
          },
          "install" => {
             let mut flags = options.make_flags;
@@ -175,6 +185,10 @@ impl System for Autotools {
 /// `--test-name`, which `make TESTS=` in the driver's directory runs alone.
 impl Tests for Autotools {
    fn unit(&self, _exe: &Path, args: &[OsString], cwd: &Path) -> Option<String> {
+      static SCRIPTS: OnceLock<Option<Scripts>> = OnceLock::new();
+      if let Some(scripts) = Scripts::of(&SCRIPTS, "autotools") {
+         return scripts.unit(args, cwd);
+      }
       let at = args.iter().position(|arg| arg == "--test-name")?;
       let test = AutomakeTest {
          directory: cwd.to_str()?.to_owned(),
