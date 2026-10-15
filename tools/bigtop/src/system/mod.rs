@@ -1,3 +1,4 @@
+mod autotest;
 mod autotools;
 mod beam;
 mod bundler;

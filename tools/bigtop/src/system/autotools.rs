@@ -51,6 +51,7 @@ use crate::{
    },
    site::site,
    system::{
+      autotest,
       command::{
          Env,
          run,
@@ -161,8 +162,13 @@ impl System for Autotools {
             make::build(ctx, &flags, &options.build_target)
          },
          "test" => {
+            let suites = options.test_scripts.is_none()
+               && autotest::present(&Self::build_dir(ctx, &options))?;
             let mut flags = vec![RELATIVE_LOCALEDIR.to_owned()];
             flags.extend(options.make_flags);
+            if suites {
+               return autotest::test(ctx, &flags, &options.test_target);
+            }
             make::test(
                ctx,
                &flags,
@@ -189,12 +195,19 @@ impl Tests for Autotools {
       if let Some(scripts) = Scripts::of(&SCRIPTS, "autotools") {
          return scripts.unit(args, cwd);
       }
+      if let Some(group) = autotest::unit(args) {
+         return Some(group);
+      }
       let at = args.iter().position(|arg| arg == "--test-name")?;
       let test = AutomakeTest {
          directory: cwd.to_str()?.to_owned(),
          name:      args.get(at + 1)?.to_str()?.to_owned(),
       };
       Some(test.to_string())
+   }
+
+   fn state(&self, path: &Path) -> bool {
+      autotest::state(path)
    }
 }
 

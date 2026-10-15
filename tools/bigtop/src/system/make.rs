@@ -347,6 +347,18 @@ pub fn test(
    let Some(selected) = test_cache::selected::<AutomakeTest>()? else {
       return run("make", &args, &[]);
    };
+   automake(ctx, flags, targets, selected)
+}
+
+/// The tests automake's harness ran that the cache picked, each directory's
+/// with `TESTS=` naming them.
+pub fn automake(
+   ctx: &Ctx,
+   flags: &[String],
+   targets: &[String],
+   selected: Vec<AutomakeTest>,
+) -> io::Result<()> {
+   let jobs = format!("-j{}", ctx.test_jobs()?);
    let mut directories = BTreeMap::<String, Vec<String>>::new();
    for test in selected {
       directories
