@@ -377,7 +377,10 @@ fn build_wheel(
          command.env_remove("RUSTFLAGS");
          command.env(
             "MATURIN_PEP517_ARGS",
-            format!("--interpreter {} --auditwheel skip", maturin_interpreter()?),
+            format!(
+               "--interpreter {} --auditwheel skip --strip false",
+               maturin_interpreter()?
+            ),
          );
       }
 

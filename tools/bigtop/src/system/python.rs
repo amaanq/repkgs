@@ -178,6 +178,8 @@ impl Python {
                   &interpreter,
                   "--auditwheel",
                   "skip",
+                  "--strip",
+                  "false",
                   "-o",
                   &dist,
                ],
