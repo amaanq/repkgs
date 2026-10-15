@@ -1,6 +1,99 @@
-diff -ru a/Pod-Simple-Texinfo/pod2texi.pl b/Pod-Simple-Texinfo/pod2texi.pl
---- a/Pod-Simple-Texinfo/pod2texi.pl	2026-10-04 02:30:12.957285501 -0400
-+++ b/Pod-Simple-Texinfo/pod2texi.pl	2026-10-04 02:30:13.112542327 -0400
+--- a/info/configfiles.c
++++ b/info/configfiles.c
+@@ -18,6 +18,7 @@
+ 
+ #include "info.h"
+ #include "run-external.h"
++#include <reloc.h>
+ 
+ #if defined (HAVE_SYS_WAIT_H)
+ #include <sys/wait.h>
+@@ -117,15 +118,14 @@
+     }
+ 
+   /* Next, check sysconfdir. */
+-#ifdef SYSCONFDIR
+-  filename = xmalloc (strlen (SYSCONFDIR) + strlen("/xdg/")
++  const char *sysconfdir = RELOC ("../etc");
++  filename = xmalloc (strlen (sysconfdir) + strlen("/xdg/")
+                       + strlen (PACKAGE) + 1
+                       + strlen (init_file) + 1);
+-  sprintf (filename, "%s/xdg/%s/%s", SYSCONFDIR, PACKAGE, init_file);
++  sprintf (filename, "%s/xdg/%s/%s", sysconfdir, PACKAGE, init_file);
+   if (init_file_stat (filename, &finfo) == 0)
+     return filename;
+   free (filename);
+-#endif
+ 
+   /* Check through XDG_CONFIG_DIRS. */
+   char *xdg_config_dirs = getenv ("XDG_CONFIG_DIRS");
+@@ -153,14 +153,13 @@
+   free (xdg_config_dirs_split);
+ 
+   /* Finally, check installed location. */
+-#ifdef PKGDATADIR
+-  filename = xmalloc (strlen (PKGDATADIR) + 1
++  const char *pkgdatadir = RELOC ("../share/texinfo");
++  filename = xmalloc (strlen (pkgdatadir) + 1
+                       + strlen (init_file) + 1);
+-  sprintf (filename, "%s/%s", PKGDATADIR, init_file);
++  sprintf (filename, "%s/%s", pkgdatadir, init_file);
+   if (init_file_stat (filename, &finfo) == 0)
+     return filename;
+   free (filename);
+-#endif
+   return 0;
+ }
+ 
+--- a/info/infopath.c
++++ b/info/infopath.c
+@@ -20,6 +20,7 @@
+ #include "util.h"
+ #include "session.h"
+ #include "filesys.h"
++#include <reloc.h>
+ 
+ typedef struct {
+   char *name;    /* Path to directory to be searched. */
+@@ -53,13 +54,7 @@
+ 
+   if (!infopath_no_defaults_p)
+     {
+-#ifdef INFODIR /* $infodir, set by configure script in Makefile */
+-      infopath_add (INFODIR);
+-#ifdef INFODIR2 /* $datadir/info, which could be different. */
+-      if (!STREQ (INFODIR, INFODIR2))
+-        infopath_add (INFODIR2);
+-#endif /* INFODIR2 */
+-#endif /* INFODIR */
++      infopath_add (RELOC ("../share/info"));
+     }
+ 
+   if (!path_from_env)
+--- a/info/Makefile.am
++++ b/info/Makefile.am
+@@ -28,7 +28,7 @@
+   -I$(top_srcdir)                               \
+   -I$(top_srcdir)/gnulib/lib                    \
+   -I$(top_builddir)/gnulib/lib                  \
+-  -DLOCALEDIR=\"$(datadir)/locale\"             \
++  -DLOCALEDIR=\"$(localedir)\"                  \
+   -DINFODIR=\"$(infodir)\"                      \
+   -DINFODIR2=\"$(datadir)/info\"                \
+   -DSYSCONFDIR=\"$(sysconfdir)\"                \
+--- a/info/Makefile.in
++++ b/info/Makefile.in
+@@ -2127,7 +2127,7 @@
+   -I$(top_srcdir)                               \
+   -I$(top_srcdir)/gnulib/lib                    \
+   -I$(top_builddir)/gnulib/lib                  \
+-  -DLOCALEDIR=\"$(datadir)/locale\"             \
++  -DLOCALEDIR=\"$(localedir)\"                  \
+   -DINFODIR=\"$(infodir)\"                      \
+   -DINFODIR2=\"$(datadir)/info\"                \
+   -DSYSCONFDIR=\"$(sysconfdir)\"                \
+--- a/Pod-Simple-Texinfo/pod2texi.pl
++++ b/Pod-Simple-Texinfo/pod2texi.pl
 @@ -40,9 +40,9 @@
       = fileparse($0, '.pl');
    my $updir = File::Spec->updir();
@@ -22,9 +115,8 @@ diff -ru a/Pod-Simple-Texinfo/pod2texi.pl b/Pod-Simple-Texinfo/pod2texi.pl
      if ($0 =~ /\.pl$/) {
        $in_source = 1;
      } else {
-diff -ru a/texindex/texindex.in b/texindex/texindex.in
---- a/texindex/texindex.in	2026-10-04 02:30:12.984177453 -0400
-+++ b/texindex/texindex.in	2026-10-04 02:30:13.112707205 -0400
+--- a/texindex/texindex.in
++++ b/texindex/texindex.in
 @@ -71,13 +71,6 @@
  test -z "$ti_script" && test -s "$mydir/texindex.awk" \
  && ti_script=$mydir/texindex.awk
@@ -49,9 +141,19 @@ diff -ru a/texindex/texindex.in b/texindex/texindex.in
    exit 1
  fi
  
-diff -ru a/tta/perl/load_txi_modules.pl b/tta/perl/load_txi_modules.pl
---- a/tta/perl/load_txi_modules.pl	2026-10-04 02:30:12.936917577 -0400
-+++ b/tta/perl/load_txi_modules.pl	2026-10-04 02:30:13.111927958 -0400
+--- a/tta/C/main/utils.c
++++ b/tta/C/main/utils.c
+@@ -237,7 +237,7 @@
+       free (localedir);
+     }
+   else
+-    bindtextdomain (PACKAGE_CONFIG, DATADIR "/locale");
++    bindtextdomain (PACKAGE_CONFIG, "../../../share/locale");
+ 
+   textdomain (PACKAGE_CONFIG);
+ #else
+--- a/tta/perl/load_txi_modules.pl
++++ b/tta/perl/load_txi_modules.pl
 @@ -28,7 +28,7 @@
  
  # Through rules in Makefile.am, directory paths set through configure are
@@ -107,9 +209,8 @@ diff -ru a/tta/perl/load_txi_modules.pl b/tta/perl/load_txi_modules.pl
  } else {
    $sysconfdir = "$fallback_prefix/etc";
  }
-diff -ru a/tta/perl/texi2any.pl b/tta/perl/texi2any.pl
---- a/tta/perl/texi2any.pl	2026-10-04 02:30:12.909245467 -0400
-+++ b/tta/perl/texi2any.pl	2026-10-04 02:30:13.111119680 -0400
+--- a/tta/perl/texi2any.pl
++++ b/tta/perl/texi2any.pl
 @@ -49,7 +49,7 @@
  
  # Through rules in Makefile.am, directory paths set through configure are
@@ -165,77 +266,3 @@ diff -ru a/tta/perl/texi2any.pl b/tta/perl/texi2any.pl
  } else {
    $sysconfdir = "$fallback_prefix/etc";
  }
-diff -ru a/info/configfiles.c b/info/configfiles.c
---- a/info/configfiles.c	2026-10-04 06:43:24.796894311 -0400
-+++ b/info/configfiles.c	2026-10-04 06:43:24.855517876 -0400
-@@ -18,6 +18,7 @@
- 
- #include "info.h"
- #include "run-external.h"
-+#include <reloc.h>
- 
- #if defined (HAVE_SYS_WAIT_H)
- #include <sys/wait.h>
-@@ -117,15 +118,14 @@
-     }
- 
-   /* Next, check sysconfdir. */
--#ifdef SYSCONFDIR
--  filename = xmalloc (strlen (SYSCONFDIR) + strlen("/xdg/")
-+  const char *sysconfdir = RELOC ("../etc");
-+  filename = xmalloc (strlen (sysconfdir) + strlen("/xdg/")
-                       + strlen (PACKAGE) + 1
-                       + strlen (init_file) + 1);
--  sprintf (filename, "%s/xdg/%s/%s", SYSCONFDIR, PACKAGE, init_file);
-+  sprintf (filename, "%s/xdg/%s/%s", sysconfdir, PACKAGE, init_file);
-   if (init_file_stat (filename, &finfo) == 0)
-     return filename;
-   free (filename);
--#endif
- 
-   /* Check through XDG_CONFIG_DIRS. */
-   char *xdg_config_dirs = getenv ("XDG_CONFIG_DIRS");
-@@ -153,14 +153,13 @@
-   free (xdg_config_dirs_split);
- 
-   /* Finally, check installed location. */
--#ifdef PKGDATADIR
--  filename = xmalloc (strlen (PKGDATADIR) + 1
-+  const char *pkgdatadir = RELOC ("../share/texinfo");
-+  filename = xmalloc (strlen (pkgdatadir) + 1
-                       + strlen (init_file) + 1);
--  sprintf (filename, "%s/%s", PKGDATADIR, init_file);
-+  sprintf (filename, "%s/%s", pkgdatadir, init_file);
-   if (init_file_stat (filename, &finfo) == 0)
-     return filename;
-   free (filename);
--#endif
-   return 0;
- }
- 
-diff -ru a/info/infopath.c b/info/infopath.c
---- a/info/infopath.c	2026-10-04 06:43:24.796824255 -0400
-+++ b/info/infopath.c	2026-10-04 06:43:24.854895739 -0400
-@@ -20,6 +20,7 @@
- #include "util.h"
- #include "session.h"
- #include "filesys.h"
-+#include <reloc.h>
- 
- typedef struct {
-   char *name;    /* Path to directory to be searched. */
-@@ -53,13 +54,7 @@
- 
-   if (!infopath_no_defaults_p)
-     {
--#ifdef INFODIR /* $infodir, set by configure script in Makefile */
--      infopath_add (INFODIR);
--#ifdef INFODIR2 /* $datadir/info, which could be different. */
--      if (!STREQ (INFODIR, INFODIR2))
--        infopath_add (INFODIR2);
--#endif /* INFODIR2 */
--#endif /* INFODIR */
-+      infopath_add (RELOC ("../share/info"));
-     }
- 
-   if (!path_from_env)
