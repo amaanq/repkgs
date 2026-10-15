@@ -7,3 +7,10 @@ export def host-config []: nothing -> nothing {
    mkdir $host
    cp NATIVE/bin/llvm-config $"($host)/llvm-config"
 }
+
+export def test []: nothing -> nothing {
+   let c = (act)
+   with-env {LIT_OPTS: "--print-result-after=all"} {
+      cue cmake --build $c.build --target $"check-($c.spec.cmake.root)" $"-j($c.njobs)"
+   }
+}

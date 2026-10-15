@@ -6,6 +6,7 @@ tools = [ "cpython" ]
 patches = [
   "../llvm/upstream-x86-vastart-stack-probe.patch",
   "../llvm/mummer-absent-log.patch",
+  "../llvm/sandbox-setid-tests.patch",
   "https://github.com/rust-lang/llvm-project/commit/abcef279cd33492fe8301c8873fc535fa4dbf0d5.patch",
 ]
 
@@ -15,7 +16,9 @@ allow = "==22.*"
 
 [test]
 bin = [ "llvm-config" ]
-run = false
+
+[steps.replace]
+"cmake.test" = [ "llvm22.test" ]
 
 [cmake]
 root = "llvm"
@@ -33,8 +36,9 @@ LLVM_ENABLE_ZSTD                   = "FORCE_ON"
 LLVM_INCLUDE_BENCHMARKS            = false
 LLVM_INCLUDE_DOCS                  = false
 LLVM_INCLUDE_EXAMPLES              = false
-LLVM_INCLUDE_TESTS                 = false
-LLVM_INSTALL_UTILS                 = false
+LLVM_INCLUDE_TESTS                 = true
+LLVM_INSTALL_GTEST                 = true
+LLVM_INSTALL_UTILS                 = true
 LLVM_LINK_LLVM_DYLIB               = true
 LLVM_TARGETS_TO_BUILD              = "all"
 LLVM_EXPERIMENTAL_TARGETS_TO_BUILD = "all"
