@@ -1,0 +1,20 @@
+track = "generic:mandoc?url=https://mandoc.bsd.lv/snapshots/"
+fetch = { url = "https://mandoc.bsd.lv/snapshots/mandoc-{version}.tar.gz" }
+with  = [ "make" ]
+deps  = [ "zlib" ]
+
+[test]
+bin     = [ "mandoc", "man", "demandoc", "soelim" ]
+deps    = [ "perl" ]
+version = false
+
+[steps.before]
+"make.build" = [ "mandoc.configure" ]
+"make.test"  = [ "mandoc.test" ]
+
+[only]
+posix = true
+
+[make]
+configureScript = "none"
+testTarget      = [ "regress" ]
