@@ -1,0 +1,14 @@
+track   = "github:Tessil/robin-map"
+fetch   = { url = "https://github.com/Tessil/robin-map/archive/refs/tags/v{version}.tar.gz" }
+with    = [ "cmake" ]
+deps    = [ "boost" ]
+patches = [ "shared-boost.patch" ]
+
+[steps.replace]
+"cmake.test" = [ "robin-map.test" ]
+
+[cmake]
+root = "tests"
+
+[cmake.defs]
+TSL_ROBIN_MAP_ENABLE_INSTALL = true

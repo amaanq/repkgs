@@ -1,0 +1,10 @@
+--- a/tests/CMakeLists.txt
++++ b/tests/CMakeLists.txt
+@@ -17,7 +17,6 @@
+ endif()
+ 
+ # Boost::unit_test_framework
+-set(Boost_USE_STATIC_LIBS ON)
+ find_package(Boost REQUIRED COMPONENTS unit_test_framework)
+ target_link_libraries(tsl_robin_map_tests PRIVATE Boost::unit_test_framework)   
+ 
