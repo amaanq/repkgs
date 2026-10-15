@@ -21,6 +21,7 @@ typedef long long __s64;
 #define O_TRUNC 01000
 #define MAX_ERRNO 4095
 #define LOOKUP_IN_ROOT (1U << 28)
+#define BPF_NOEXIST 1
 
 enum {
    BPF_MAP_TYPE_HASH = 1,
@@ -186,11 +187,21 @@ struct {
    __type(value, __u64);
 } traced SEC(".maps");
 
+/* Mirrors `Losses` in main.rs, one counter per reason a record never reached the ring. */
+struct losses {
+   __u64 slots;
+   __u64 ring;
+   __u64 oversize;
+   __u64 forks;
+};
+
+enum loss { LOSS_SLOTS, LOSS_RING, LOSS_OVERSIZE, LOSS_FORKS };
+
 struct {
    __uint(type, BPF_MAP_TYPE_HASH);
    __uint(max_entries, 1 << 10);
    __type(key, __u64);
-   __type(value, __u64);
+   __type(value, struct losses);
 } lost SEC(".maps");
 
 struct {
@@ -220,13 +231,15 @@ INLINE __u64* session_of(__u32 tgid) {
    return bpf_map_lookup_elem(&traced, &tgid);
 }
 
-INLINE void count_lost(__u64 session) {
-   __u64 one = 1;
-   __u64* count = bpf_map_lookup_elem(&lost, &session);
-   if (count) {
-      __sync_fetch_and_add(count, 1);
-   } else {
-      bpf_map_update_elem(&lost, &session, &one, 0);
+INLINE void count_lost(__u64 session, enum loss why) {
+   __u64* counts = bpf_map_lookup_elem(&lost, &session);
+   if (!counts) {
+      struct losses zero = {};
+      bpf_map_update_elem(&lost, &session, &zero, BPF_NOEXIST);
+      counts = bpf_map_lookup_elem(&lost, &session);
+   }
+   if (counts) {
+      __sync_fetch_and_add(&counts[why & 3], 1);
    }
 }
 
@@ -239,7 +252,7 @@ INLINE struct scratch* begin(__u64 session, __u32 kind, __u32 tgid, __u32 detail
       }
    }
    if (!scratch) {
-      count_lost(session);
+      count_lost(session, LOSS_SLOTS);
       return 0;
    }
    scratch->head.session = session;
@@ -260,9 +273,10 @@ INLINE void drop(struct scratch* scratch) {
 INLINE void finish(struct scratch* scratch) {
    __u64 size =
       sizeof(struct record) + scratch->head.base + scratch->head.name + scratch->head.args;
-   if (size > sizeof(struct record) + sizeof(scratch->data) ||
-       bpf_ringbuf_output(&events, scratch, size, 0)) {
-      count_lost(scratch->head.session);
+   if (size > sizeof(struct record) + sizeof(scratch->data)) {
+      count_lost(scratch->head.session, LOSS_OVERSIZE);
+   } else if (bpf_ringbuf_output(&events, scratch, size, 0)) {
+      count_lost(scratch->head.session, LOSS_RING);
    }
    drop(scratch);
 }
@@ -587,7 +601,7 @@ int fork(__u64* context) {
    __u64 value = *session;
    __u32 child_key = child_tgid;
    if (bpf_map_update_elem(&traced, &child_key, &value, 0)) {
-      count_lost(value);
+      count_lost(value, LOSS_FORKS);
       return 0;
    }
    struct scratch* scratch = begin(value, KIND_FORK, key, child_key);

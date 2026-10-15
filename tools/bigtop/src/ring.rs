@@ -32,7 +32,10 @@ use std::{
    thread::spawn,
 };
 
-use mummer::store::normalize;
+use mummer::{
+   store::normalize,
+   tree::note,
+};
 use ringmasterd::{
    Access,
    Named,
@@ -200,7 +203,8 @@ fn collect(stream: UnixStream, tests: Option<&dyn Tests>, mark: Mark) -> io::Res
             for tgid in pending {
                processes.settle(tgid, &mut accesses, tests.is_some(), mark);
             }
-            if lost > 0 {
+            if lost.total() > 0 {
+               note("ring", &lost.to_string());
                accesses
                   .escaped
                   .get_or_insert("records the kernel ring lost");

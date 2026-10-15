@@ -33,6 +33,7 @@ use aya::{
    Btf,
    BtfError,
    Ebpf,
+   Pod,
    include_bytes_aligned,
    maps::{
       HashMap as BpfHashMap,
@@ -54,6 +55,7 @@ use misstep::{
 use pound::Parse;
 use ringmasterd::{
    ESCAPES,
+   Lost,
    Reply,
    Request,
    session,
@@ -135,11 +137,24 @@ const TRACEPOINTS: &[(&str, &str)] = &[
    ("syscall", "sys_enter"),
 ];
 
+/// The kernel's `struct losses` in trace.bpf.c.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct Losses {
+   slots:    u64,
+   ring:     u64,
+   oversize: u64,
+   forks:    u64,
+}
+
+// SAFETY: four `u64`s with no padding, valid for any bit pattern.
+unsafe impl Pod for Losses {}
+
 struct Kernel {
    /// Kept so the programs stay attached.
    _object: Ebpf,
    traced:  BpfHashMap<MapData, u32, u64>,
-   lost:    BpfHashMap<MapData, u64, u64>,
+   lost:    BpfHashMap<MapData, u64, Losses>,
    events:  RingBuf<MapData>,
 }
 
@@ -216,7 +231,7 @@ impl Kernel {
 
    /// Stops tracing a session's processes and says how many of their
    /// accesses never reached the ring.
-   fn forget(&mut self, token: u64) -> u64 {
+   fn forget(&mut self, token: u64) -> Lost {
       let members = self
          .traced
          .iter()
@@ -225,9 +240,15 @@ impl Kernel {
       for member in members {
          drop(self.traced.remove(&member));
       }
-      let lost = self.lost.get(&token, 0).unwrap_or(0);
+      let losses = self.lost.get(&token, 0).unwrap_or_default();
       drop(self.lost.remove(&token));
-      lost
+      Lost {
+         slots:    losses.slots,
+         ring:     losses.ring,
+         oversize: losses.oversize,
+         forks:    losses.forks,
+         backlog:  0,
+      }
    }
 }
 
@@ -377,13 +398,15 @@ impl Daemon {
          },
          (Request::End, Some(token)) => {
             self.drain();
-            let lost = self.kernel.forget(token);
+            let kernel = self.kernel.forget(token);
             self.sessions.remove(&token);
             let client = &mut self.clients[index];
             client.session = None;
-            client
-               .queued
-               .extend_from_slice(&Reply::done(lost + client.dropped));
+            let lost = Lost {
+               backlog: client.dropped,
+               ..kernel
+            };
+            client.queued.extend_from_slice(&Reply::done(lost));
             client.ending = true;
             true
          },

@@ -5,6 +5,11 @@
 
 use std::{
    error::Error,
+   fmt::{
+      Display,
+      Formatter,
+      Result as FormatResult,
+   },
    io::{
       self,
       ErrorKind,
@@ -104,8 +109,59 @@ pub enum Reply {
    Record(Record),
    /// The session is over, `lost` accesses short of everything it made.
    Done {
-      lost: u64,
+      lost: Lost,
    },
+}
+
+/// Records that never reached a session's client, by where they were dropped.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Lost {
+   /// Every scratch slot on the CPU was busy.
+   pub slots:    u64,
+   /// The kernel ring was full.
+   pub ring:     u64,
+   /// The record outgrew its scratch buffer.
+   pub oversize: u64,
+   /// The traced map had no room for a forked child.
+   pub forks:    u64,
+   /// The client fell too far behind the daemon.
+   pub backlog:  u64,
+}
+
+impl Lost {
+   const FIELDS: usize = 5;
+
+   #[inline]
+   #[must_use]
+   pub const fn total(&self) -> u64 {
+      self.slots + self.ring + self.oversize + self.forks + self.backlog
+   }
+
+   const fn fields(&self) -> [u64; Self::FIELDS] {
+      [
+         self.slots,
+         self.ring,
+         self.oversize,
+         self.forks,
+         self.backlog,
+      ]
+   }
+}
+
+impl Display for Lost {
+   #[inline]
+   fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+      write!(
+         f,
+         "{} lost, slots {} ring {} oversize {} forks {} backlog {}",
+         self.total(),
+         self.slots,
+         self.ring,
+         self.oversize,
+         self.forks,
+         self.backlog
+      )
+   }
 }
 
 impl Reply {
@@ -130,9 +186,11 @@ impl Reply {
 
    #[inline]
    #[must_use]
-   pub fn done(lost: u64) -> Vec<u8> {
+   pub fn done(lost: Lost) -> Vec<u8> {
       let mut bytes = vec![Self::DONE];
-      bytes.extend_from_slice(&lost.to_le_bytes());
+      for count in lost.fields() {
+         bytes.extend_from_slice(&count.to_le_bytes());
+      }
       bytes
    }
 
@@ -161,8 +219,19 @@ impl Reply {
             Ok(Self::Record(Record::try_from(raw.as_slice())?))
          },
          Self::DONE => {
+            let mut fields = [0_u64; Lost::FIELDS];
+            for field in &mut fields {
+               *field = u64::from_le_bytes(array(from)?);
+            }
+            let [slots, ring, oversize, forks, backlog] = fields;
             Ok(Self::Done {
-               lost: u64::from_le_bytes(array(from)?),
+               lost: Lost {
+                  slots,
+                  ring,
+                  oversize,
+                  forks,
+                  backlog,
+               },
             })
          },
          other => Err(invalid(format!("unknown reply {other}"))),
