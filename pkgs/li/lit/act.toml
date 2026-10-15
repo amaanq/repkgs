@@ -4,6 +4,12 @@ deps    = [ "cpython" ]
 tools   = [ "python-setuptools" ]
 patches = [ "../../ll/llvm/lit-test-marks.patch" ]
 
+[test]
+deps = [ "llvm", "python-psutil" ]
+
+[steps.after]
+"python.test" = "lit.test"
+
 [python]
 module = "lit"
 root   = "llvm/utils/lit"
