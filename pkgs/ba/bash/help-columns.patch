@@ -1,0 +1,11 @@
+--- a/tests/builtins.right
++++ b/tests/builtins.right
+@@ -362,7 +362,7 @@
+  complete [-abcdefgjksuv] [-pr] [-DEI]>  set [-abefhkmnptuvxBCEHPT] [-o optio>
+  compopt [-o|+o option] [-DEI] [name .>  shift [n]
+  continue [n]                            shopt [-pqsu] [-o] [optname ...]
+- coproc [NAME] command [redirections]    source [-p path] filename [argument>
++ coproc [NAME] command [redirections]    source [-p path] filename [arguments>
+  declare [-aAfFgiIlnrtux] [name[=value>  suspend [-f]
+  dirs [-clpv] [+N] [-N]                  test [expr]
+  disown [-h] [-ar] [jobspec ... | pid >  time [-p] pipeline
