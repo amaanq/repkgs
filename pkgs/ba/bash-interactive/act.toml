@@ -1,6 +1,6 @@
 fetch   = { from = "bash" }
 with    = [ "autotools" ]
-patches = [ "../bash/relocatable.patch" ]
+patches = [ "../bash/relocatable.patch", "../bash/tests-select.patch" ]
 deps    = [ "readline", "ncurses" ]
 
 [test]
@@ -11,6 +11,7 @@ separate = true
 posix = true
 
 [autotools]
+testScripts = { files = "tests/run-*", variable = "BASH_TEST_SCRIPTS" }
 flags = [
   "--without-bash-malloc",
   "--with-installed-readline",

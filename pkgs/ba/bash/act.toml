@@ -2,7 +2,7 @@ track          = "gnu:bash"
 fetch          = { url = "https://ftp.gnu.org/gnu/bash/bash-{version}.tar.gz" }
 with           = [ "autotools" ]
 bootstrapTools = true
-patches        = [ "relocatable.patch" ]
+patches        = [ "relocatable.patch", "tests-select.patch" ]
 
 [test]
 bin      = [ "bash", "sh" ]
@@ -12,6 +12,7 @@ separate = true
 posix = true
 
 [autotools]
+testScripts = { files = "tests/run-*", variable = "BASH_TEST_SCRIPTS" }
 flags = [
   "--without-bash-malloc",
   "--disable-readline",

@@ -1,0 +1,11 @@
+--- a/tests/run-all
++++ b/tests/run-all
+@@ -58,7 +58,7 @@
+ 
+ echo Any output from any test, unless otherwise noted, indicates a possible anomaly
+ 
+-for x in run-*
++for x in ${BASH_TEST_SCRIPTS:-run-*}
+ do
+ 	case $x in
+ 	$0|run-minimal|run-gprof)	;;
