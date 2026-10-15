@@ -1,0 +1,17 @@
+tag     = "kyua-{version}"
+track   = "github:freebsd/kyua"
+fetch   = { asset = "kyua-{version}.tar.gz" }
+with    = [ "autotools" ]
+patches = [ "iterator-include.patch", "piped-core-pattern.patch", "relocatable.patch" ]
+deps    = [ "lutok", "lua", "sqlite", "atf" ]
+tools   = [ "pkgconf" ]
+
+[test]
+bin     = [ "kyua" ]
+version = "about version"
+
+[steps.after]
+"autotools.install" = [ "kyua.drop-tests" ]
+
+[autotools]
+flags = [ "--enable-atf", "--sysconfdir=/etc" ]

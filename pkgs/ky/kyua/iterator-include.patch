@@ -1,0 +1,22 @@
+diff -ruN a/engine/atf_helpers.cpp b/engine/atf_helpers.cpp
+--- a/engine/atf_helpers.cpp
++++ b/engine/atf_helpers.cpp
+@@ -37,6 +37,7 @@
+ #include <cstdlib>
+ #include <fstream>
+ #include <iostream>
++#include <iterator>
+ #include <set>
+ #include <sstream>
+ #include <string>
+diff -ruN a/engine/filters.cpp b/engine/filters.cpp
+--- a/engine/filters.cpp
++++ b/engine/filters.cpp
+@@ -29,6 +29,7 @@
+ #include "engine/filters.hpp"
+ 
+ #include <algorithm>
++#include <iterator>
+ #include <stdexcept>
+ 
+ #include "utils/format/macros.hpp"

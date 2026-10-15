@@ -1,0 +1,55 @@
+diff -ruN a/utils/stacktrace_test.cpp b/utils/stacktrace_test.cpp
+--- a/utils/stacktrace_test.cpp
++++ b/utils/stacktrace_test.cpp
+@@ -37,8 +37,10 @@
+ #include <unistd.h>
+ }
+ 
++#include <fstream>
+ #include <iostream>
+ #include <sstream>
++#include <string>
+ 
+ #include <atf-c++.hpp>
+ 
+@@ -140,6 +142,16 @@
+ }
+ 
+ 
++static void
++require_core_files(const atf::tests::tc* test_case)
++{
++    std::ifstream pattern("/proc/sys/kernel/core_pattern");
++    std::string line;
++    if (std::getline(pattern, line) && !line.empty() && line[0] == '|')
++        test_case->skip("core_pattern pipes core dumps to " + line);
++}
++
++
+ /// Generates a core dump, if possible.
+ ///
+ /// \post If this fails to generate a core file, the test case is marked as
+@@ -157,6 +169,7 @@
+ generate_core(const atf::tests::tc* test_case, const char* base_name)
+ {
+     utils::prepare_coredump_test(test_case);
++    require_core_files(test_case);
+ 
+     const fs::path helper = fs::path(test_case->get_config_var("srcdir")) /
+         "stacktrace_helper";
+@@ -191,6 +204,7 @@
+               executor::executor_handle& executor_handle)
+ {
+     utils::prepare_coredump_test(test_case);
++    require_core_files(test_case);
+ 
+     const fs::path helper = fs::path(test_case->get_config_var("srcdir")) /
+         "stacktrace_helper";
+@@ -253,6 +267,7 @@
+ ATF_TEST_CASE_BODY(unlimit_core_size__hard_is_zero)
+ {
+     utils::require_run_coredump_tests(this);
++    require_core_files(this);
+ 
+     struct rlimit rl;
+     rl.rlim_cur = 0;
