@@ -4,8 +4,9 @@ with           = [ "autotools" ]
 bootstrapTools = true
 
 [test]
-bin = [ "pkgconf", "pkg-config" ]
-run = false
+bin      = [ "pkgconf", "pkg-config" ]
+deps     = [ "kyua", "atf" ]
+separate = true
 
 [autotools]
 flags = [
