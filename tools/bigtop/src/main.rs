@@ -28,6 +28,7 @@ mod trace;
 
 use std::{
    env::args_os,
+   ffi::OsString,
    io::{
       self,
       Write as _,
@@ -79,6 +80,7 @@ use crate::{
       run as launch_outputs,
       write as write_launcher,
    },
+   prepare::for_build_pkg_config,
    system::{
       cabal::ordered_ghc_pkg,
       dispatch,
@@ -114,12 +116,18 @@ fn dispatch() -> Result<i32> {
       return Ok(code);
    }
    let arguments = args_os().collect::<Vec<_>>();
-   let text = text_arguments(arguments.get(1..).unwrap_or_default())?;
-   if arguments
-      .first()
-      .and_then(|program| Path::new(program).file_name())
-      .is_some_and(|name| name == "ghc-pkg")
-   {
+   let invoked = Path::new(
+      arguments
+         .first()
+         .map(OsString::as_os_str)
+         .unwrap_or_default(),
+   );
+   let rest = arguments.get(1..).unwrap_or_default();
+   if invoked.file_name().is_some_and(|name| name == "pkg-config") {
+      match for_build_pkg_config(invoked, rest)? {}
+   }
+   let text = text_arguments(rest)?;
+   if invoked.file_name().is_some_and(|name| name == "ghc-pkg") {
       return Ok(ordered_ghc_pkg(&text)?);
    }
    let mode = Mode::try_parse_from(text.iter().map(String::as_str))?;

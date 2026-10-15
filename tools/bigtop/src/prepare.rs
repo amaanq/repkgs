@@ -1,16 +1,23 @@
 use std::{
    collections::BTreeMap,
-   env::var,
+   convert::Infallible,
+   env::{
+      current_exe,
+      var,
+   },
+   ffi::OsString,
    fs::{
       File,
       create_dir_all,
-      set_permissions,
    },
    io::{
       self,
       Write as _,
    },
-   os::unix::fs::PermissionsExt,
+   os::unix::{
+      fs::symlink,
+      process::CommandExt as _,
+   },
    path::{
       Path,
       PathBuf,
@@ -304,11 +311,7 @@ fn build_machine_tools(
    let dir = format!("{top}/for-build");
    create_dir_all(format!("{dir}/no-pc"))?;
    let script = PathBuf::from(format!("{dir}/pkg-config"));
-   File::create(&script)?.write_all(
-      format!("#!/bin/sh\nPKG_CONFIG_PATH= PKG_CONFIG_LIBDIR={dir}/no-pc exec pkg-config \"$@\"\n")
-         .as_bytes(),
-   )?;
-   set_permissions(&script, PermissionsExt::from_mode(0o755))?;
+   symlink(current_exe()?, &script)?;
    let triple = build_rust_triple.replace('-', "_");
    Ok(vec![
       ("CC_FOR_BUILD".to_owned(), "cc-build".to_owned()),
@@ -378,6 +381,23 @@ fn restore(tree: &Path, top: &str) -> io::Result<()> {
    )?;
    date(&Path::new(top).join("source"))?;
    date(&Path::new(top).join("build"))
+}
+
+/// The build machine's pkg-config under cross, as bigtop linked into
+/// `for-build`, which finds no `.pc` file since the host's would mislead it.
+pub fn for_build_pkg_config(invoked: &Path, args: &[OsString]) -> io::Result<Infallible> {
+   let empty = invoked
+      .parent()
+      .map(|directory| directory.join("no-pc"))
+      .filter(|empty| empty.is_dir())
+      .ok_or_else(|| io::Error::other("pkg-config for the build machine has no no-pc beside it"))?;
+   Err(
+      Command::new("pkg-config")
+         .env("PKG_CONFIG_PATH", "")
+         .env("PKG_CONFIG_LIBDIR", empty)
+         .args(args)
+         .exec(),
+   )
 }
 
 pub fn succeed(command: &mut Command) -> io::Result<()> {
