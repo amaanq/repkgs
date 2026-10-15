@@ -4,7 +4,7 @@ fetch   = { asset = "openssl-{version}.tar.gz" }
 with    = [ "make" ]
 tools   = [ "perl" ]
 remove  = [ "bin/c_rehash" ]
-patches = [ "relocatable.patch" ]
+patches = [ "relocatable.patch", "parallel-ssl-tests.patch" ]
 
 [test]
 version = "version"

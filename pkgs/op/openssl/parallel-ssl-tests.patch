@@ -1,0 +1,66 @@
+--- a/test/run_tests.pl
++++ b/test/run_tests.pl
+@@ -332,15 +332,36 @@
+     exit 127;
+ }
+ 
++sub entries {
++    my @entries = ();
++    foreach my $test (@_) {
++        my $path = abs2rel($test, rel2abs(curdir()));
++        my $name = basename($test);
++        if ($jobs > 1 && $package eq 'TAP::Harness::OpenSSL'
++            && $name eq '80-test_ssl_new.t') {
++            foreach my $conf (glob(catfile($srctop, "test", "ssl-tests", "*.cnf.in"))) {
++                my $alias = "$name " . basename($conf, ".cnf.in");
++                $tapargs{test_args}->{$alias} = [ basename($conf) ];
++                push @entries, [ $path, $alias ];
++            }
++        } else {
++            $tapargs{test_args}->{$name} = [];
++            push @entries, [ $path, $name ];
++        }
++    }
++    return @entries;
++}
++
++my @preps_run = entries(@preps);
++my @tests_run = entries(sort { reorder($a) cmp reorder($b) } keys %tests);
++
+ my $harness = $package->new(\%tapargs);
+ my $ret =
+-    $harness->runtests(map { [ abs2rel($_, rel2abs(curdir())), basename($_) ] }
+-                       @preps);
++    $harness->runtests(@preps_run);
+ 
+ if (ref($ret) ne "TAP::Parser::Aggregator" || !$ret->has_errors) {
+     $ret =
+-        $harness->runtests(map { [ abs2rel($_, rel2abs(curdir())), basename($_) ] }
+-                           sort { reorder($a) cmp reorder($b) } keys %tests);
++        $harness->runtests(@tests_run);
+ }
+ 
+ # If this is a TAP::Parser::Aggregator, $ret->has_errors is the count of
+--- a/test/recipes/80-test_ssl_new.t
++++ b/test/recipes/80-test_ssl_new.t
+@@ -21,7 +21,7 @@
+ use OpenSSL::Test::Utils qw/disabled alldisabled available_protocols/;
+ 
+ BEGIN {
+-setup("test_ssl_new");
++setup(@ARGV ? "test_ssl_new-" . basename($ARGV[0], ".cnf.in") : "test_ssl_new");
+ }
+ 
+ use lib srctop_dir('Configurations');
+@@ -32,7 +32,10 @@
+ $ENV{TEST_CERTS_DIR} = srctop_dir("test", "certs");
+ 
+ my @conf_srcs = ();
+-if (defined $ENV{SSL_TESTS}) {
++if (@ARGV) {
++    @conf_srcs = map { srctop_file("test", "ssl-tests", $_) } @ARGV;
++    plan tests => scalar @conf_srcs;
++} elsif (defined $ENV{SSL_TESTS}) {
+     my @conf_list = split(' ', $ENV{SSL_TESTS});
+     foreach my $conf_file (@conf_list) {
+         push (@conf_srcs, glob(srctop_file("test", "ssl-tests", $conf_file)));
