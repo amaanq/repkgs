@@ -10,6 +10,9 @@ tools   = [ "pkgconf" ]
 bin     = [ "kyua" ]
 version = "about version"
 
+[steps.before]
+"autotools.configure" = [ "kyua.check-config" ]
+
 [steps.after]
 "autotools.install" = [ "kyua.drop-tests" ]
 
