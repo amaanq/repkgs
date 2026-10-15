@@ -68,6 +68,20 @@ fn kept(format: BinaryFormat, arg: &str) -> Option<String> {
    }
 }
 
+/// Clang's own spelling of a driver flag its Options.td also takes with `--`.
+pub fn canonical(arg: &str) -> &str {
+   match arg {
+      "--shared" => "-shared",
+      "--static" => "-static",
+      "--compile" => "-c",
+      "--assemble" => "-S",
+      "--preprocess" => "-E",
+      "--dependencies" => "-M",
+      "--user-dependencies" => "-MM",
+      other => other,
+   }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Language {
    Cc,
@@ -197,13 +211,14 @@ impl Driver {
          let Some(kept) = kept(format, arg) else {
             continue;
          };
+         let mode = canonical(arg);
          linking &= !matches!(
-            arg.as_str(),
+            mode,
             "-c" | "-E" | "-S" | "-M" | "-MM" | "-fsyntax-only" | "-###" | "--driver-mode=cpp"
          );
-         no_policy |= matches!(arg.as_str(), "-static" | "-static-pie" | "-r" | "-Wl,-r");
-         no_startup |= arg == "-nostartfiles";
-         shared |= arg == "-shared" || arg == "-dynamiclib";
+         no_policy |= matches!(mode, "-static" | "-static-pie" | "-r" | "-Wl,-r");
+         no_startup |= mode == "-nostartfiles";
+         shared |= mode == "-shared" || mode == "-dynamiclib";
          have_input |= !arg.starts_with('-');
          sets_fortify |= fortify(arg);
          if arg.starts_with("-O") {

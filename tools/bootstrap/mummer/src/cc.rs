@@ -86,6 +86,7 @@ use crate::{
       Driver,
       Language,
       Settled,
+      canonical,
       replayed_link,
       reserve,
       settle_runpath,
@@ -232,7 +233,7 @@ impl Invocation {
          let next = invocation.args.get(index + 1).cloned();
          let mut keyed = true;
          let mut consumed = false;
-         match arg.as_str() {
+         match canonical(&arg) {
             "-c" => invocation.action = Action::Compile,
             "-S" => invocation.action = Action::Assembly,
             "-E" | "--driver-mode=cpp" => invocation.action = Action::Preprocess,
@@ -1660,8 +1661,11 @@ fn absent_libraries(job: &[String]) -> io::Result<Vec<String>> {
       match token.as_str() {
          "-L" | "--library-path" => directories.extend(tokens.next().map(PathBuf::from)),
          "-l" | "--library" => wanted.extend(tokens.next().map(|name| (name.clone(), only_static))),
-         "-Bstatic" | "-static" | "-dn" | "-non_shared" => only_static = true,
-         "-Bdynamic" | "-dy" | "-call_shared" => only_static = false,
+         "-Bstatic" | "--Bstatic" | "-static" | "--static" | "-dn" | "--dn" | "-non_shared"
+         | "--non_shared" => only_static = true,
+         "-Bdynamic" | "--Bdynamic" | "-dy" | "--dy" | "-call_shared" | "--call_shared" => {
+            only_static = false;
+         },
          other => {
             if let Some(directory) = other
                .strip_prefix("--library-path=")
