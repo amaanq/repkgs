@@ -1,0 +1,36 @@
+From 12ea4bfec3e9f06fea2930a55f49c4c2ccf08071 Mon Sep 17 00:00:00 2001
+From: Chet Ramey <chet.ramey@case.edu>
+Date: Tue, 8 Jul 2025 09:59:39 -0400
+Subject: [PATCH] update system-dependent tests
+
+--- a/builtins/printf.def
++++ b/builtins/printf.def
+@@ -914,7 +914,7 @@
+ 	  pr = decodeint (&fmt, 1, -1);
+ 	  /* pr < precision means we adjusted precision in printf_builtin
+ 	     for the quoted string length (%Q), so we use the adjusted value */
+-	  if (pr < precision)
++	  if (pr >= 0 && pr < precision)
+ 	    pr = precision;
+ 	}
+       else
+@@ -1012,7 +1012,7 @@
+ 	  pr = decodeint (&fmt, 1, -1);
+ 	  /* pr < precision means we adjusted precision in printf_builtin
+ 	     for the quoted string length (%Q), so we use the adjusted value */
+-	  if (pr < precision)
++	  if (pr >= 0 && pr < precision)
+ 	    pr = precision;
+ 	}
+       else
+--- a/tests/printf7.sub
++++ b/tests/printf7.sub
+@@ -85,7 +85,5 @@
+ 
+ # can't test %s, too many varying implementations
+ #printf "%.${TOOBIG}s\n" XY
+-printf -v VAR "%.${TOOBIG}s\n" XY
+-echo $VAR
+-unset -v VAR
++printf_overflow $LINENO "%.${TOOBIG}b\n" XY
+ printf_overflow $LINENO "%.${TOOBIG}Q\n" XY

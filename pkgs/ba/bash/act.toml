@@ -6,6 +6,7 @@ patches = [
   "relocatable.patch",
   "fail-tests.patch",
   "tests-select.patch",
+  "printf-precision-overflow.patch",
 ]
 
 [test]

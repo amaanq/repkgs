@@ -4,6 +4,7 @@ patches = [
   "../bash/relocatable.patch",
   "../bash/fail-tests.patch",
   "../bash/tests-select.patch",
+  "../bash/printf-precision-overflow.patch",
 ]
 deps = [ "readline", "ncurses" ]
 
