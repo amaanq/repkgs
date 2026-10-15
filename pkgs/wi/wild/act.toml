@@ -7,6 +7,7 @@ patches = [
   "package-metadata.patch",
   "linker-script-directory.patch",
   "relr-version-definition.patch",
+  "init-fini.patch",
 ]
 
 [test]

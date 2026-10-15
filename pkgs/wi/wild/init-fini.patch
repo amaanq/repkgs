@@ -1,0 +1,244 @@
+Point DT_INIT and DT_FINI at the functions named by -init and -fini, as GNU ld and lld do.
+numactl links its shared library with -Wl,-init,numa_init.
+
+--- a/libwild/src/args/elf.rs
++++ b/libwild/src/args/elf.rs
+@@ -79,6 +79,8 @@
+     pub(crate) undefined: Vec<String>,
+     pub(crate) relro: bool,
+     pub(crate) entry: Option<String>,
++    pub(crate) init: Option<String>,
++    pub(crate) fini: Option<String>,
+     pub(crate) export_all_dynamic_symbols: bool,
+     pub(crate) export_list: Vec<String>,
+     pub(crate) export_list_path: Option<PathBuf>,
+@@ -310,6 +312,8 @@
+             undefined: Vec::new(),
+             relro: true,
+             entry: None,
++            init: None,
++            fini: None,
+             b_symbolic: BSymbolicKind::None,
+             export_all_dynamic_symbols: false,
+             export_list: Vec::new(),
+@@ -967,6 +971,24 @@
+ 
+     parser
+         .declare_with_param()
++        .long("init")
++        .help("Point DT_INIT at the named function instead of the .init section")
++        .execute(|args, _modifier_stack, value| {
++            args.init = Some(value.to_owned());
++            Ok(())
++        });
++
++    parser
++        .declare_with_param()
++        .long("fini")
++        .help("Point DT_FINI at the named function instead of the .fini section")
++        .execute(|args, _modifier_stack, value| {
++            args.fini = Some(value.to_owned());
++            Ok(())
++        });
++
++    parser
++        .declare_with_param()
+         .long("wild-experiments")
+         .help("List of numbers. Used to tweak internal parameters. '_' keeps default value.")
+         .execute(|args, _modifier_stack, value| {
+@@ -1931,6 +1953,10 @@
+         &self.wrap
+     }
+ 
++    fn init_fini_symbol_names(&self) -> [Option<&str>; 2] {
++        [self.init.as_deref(), self.fini.as_deref()]
++    }
++
+     fn entry_point<'a>(
+         &'a self,
+         linker_script_entry: Option<&'a [u8]>,
+--- a/libwild/src/elf_writer.rs
++++ b/libwild/src/elf_writer.rs
+@@ -4205,8 +4205,19 @@
+             .write(object::elf::DT_AUXILIARY, offset.into())?;
+     }
+ 
++    let named = layout.args().init_fini_symbol_names();
++    let resolved = layout.resolved_init_fini_addresses();
++    let sections = [output_section_id::INIT, output_section_id::FINI];
++    let init_fini = std::array::from_fn(|index| match named[index] {
++        Some(_) => resolved[index],
++        None => {
++            let section = layout.merged_section_layouts.get(sections[index]);
++            (section.file_size > 0).then_some(section.mem_offset)
++        }
++    });
+     let inputs = DynamicEntryInputs {
+         args: layout.args(),
++        init_fini,
+         has_static_tls: layout.has_static_tls,
+         has_variant_pcs: layout.has_variant_pcs,
+         section_layouts: &layout.merged_section_layouts,
+@@ -5217,13 +5228,13 @@
+ const EPILOGUE_DYNAMIC_ENTRY_WRITERS: &[DynamicEntryWriter] = &[
+     DynamicEntryWriter::optional(
+         object::elf::DT_INIT,
+-        |inputs| inputs.has_data_in_section(output_section_id::INIT),
+-        |inputs| inputs.vma_of_section(output_section_id::INIT),
++        |inputs| inputs.init_fini[0].is_some(),
++        |inputs| inputs.init_fini[0].unwrap_or(0),
+     ),
+     DynamicEntryWriter::optional(
+         object::elf::DT_FINI,
+-        |inputs| inputs.has_data_in_section(output_section_id::FINI),
+-        |inputs| inputs.vma_of_section(output_section_id::FINI),
++        |inputs| inputs.init_fini[1].is_some(),
++        |inputs| inputs.init_fini[1].unwrap_or(0),
+     ),
+     DynamicEntryWriter::optional(
+         object::elf::DT_INIT_ARRAY,
+@@ -5475,6 +5486,7 @@
+ 
+ struct DynamicEntryInputs<'layout> {
+     args: &'layout ElfArgs,
++    init_fini: [Option<u64>; 2],
+     has_static_tls: bool,
+     has_variant_pcs: bool,
+     section_layouts: &'layout OutputSectionMap<OutputRecordLayout>,
+--- a/libwild/src/layout.rs
++++ b/libwild/src/layout.rs
+@@ -855,6 +855,7 @@
+     symbol_id_range: SymbolIdRange,
+     internal_symbols: InternalSymbols<'data, P>,
+     entry_symbol_id: Option<SymbolId>,
++    init_fini_symbol_ids: [Option<SymbolId>; 2],
+     identity: String,
+     header_info: Option<HeaderInfo>,
+     dynamic_linker: Option<CString>,
+@@ -931,6 +932,7 @@
+ #[derive(Debug)]
+ pub(crate) struct PreludeLayout<'data, P: Platform> {
+     pub(crate) entry_symbol_id: Option<SymbolId>,
++    pub(crate) init_fini_symbol_ids: [Option<SymbolId>; 2],
+     pub(crate) identity: String,
+     pub(crate) header_info: HeaderInfo,
+     pub(crate) internal_symbols: InternalSymbols<'data, P>,
+@@ -1577,6 +1579,14 @@
+             .map(move |(i, res)| (range.offset_to_id(i), res.as_ref()))
+     }
+ 
++    pub(crate) fn resolved_init_fini_addresses(&self) -> [Option<u64>; 2] {
++        self.prelude().init_fini_symbol_ids.map(|symbol_id| {
++            let resolution = self.local_symbol_resolution(symbol_id?)?;
++            let flags = resolution.flags();
++            (flags.is_address() && !flags.is_dynamic()).then(|| resolution.value())
++        })
++    }
++
+     pub(crate) fn resolved_entry_symbol_address(&self) -> Result<Option<u64>> {
+         let Some(symbol_id) = self.prelude().entry_symbol_id else {
+             return Ok(None);
+@@ -3064,6 +3074,7 @@
+                 start_symbol_id: SymbolId::zero(),
+             },
+             entry_symbol_id: None,
++            init_fini_symbol_ids: [None, None],
+             identity: format!("Linker: {}\0", args.common().linker_identity()),
+             header_info: None,
+             dynamic_linker: None,
+@@ -3089,6 +3100,7 @@
+         }
+ 
+         self.load_entry_point::<A>(resources, queue, scope);
++        self.load_init_fini::<A>(resources, queue, scope);
+ 
+         P::allocate_prelude(common, resources.symbol_db);
+ 
+@@ -3148,17 +3160,35 @@
+         let Some(entry_name) = resources.symbol_db.entry_symbol_name() else {
+             return;
+         };
+-        let Some(symbol_id) = resources
+-            .symbol_db
+-            .get_unversioned(&UnversionedSymbolName::prehashed(entry_name))
+-        else {
+-            // We'll emit a warning when writing the file if it's an executable.
+-            return;
+-        };
++        // We'll emit a warning when writing the file if it's an executable.
++        self.entry_symbol_id = Self::load_named_symbol::<A>(entry_name, resources, queue, scope);
++    }
+ 
++    fn load_init_fini<'scope, A: Arch<Platform = P>>(
++        &mut self,
++        resources: &'scope GraphResources<'data, '_, P>,
++        queue: &mut LocalWorkQueue,
++        scope: &Scope<'scope>,
++    ) {
++        let names = resources.symbol_db.args.init_fini_symbol_names();
++        for (slot, name) in self.init_fini_symbol_ids.iter_mut().zip(names) {
++            *slot = name.and_then(|name| {
++                Self::load_named_symbol::<A>(name.as_bytes(), resources, queue, scope)
++            });
++        }
++    }
++
++    fn load_named_symbol<'scope, A: Arch<Platform = P>>(
++        name: &[u8],
++        resources: &'scope GraphResources<'data, '_, P>,
++        queue: &mut LocalWorkQueue,
++        scope: &Scope<'scope>,
++    ) -> Option<SymbolId> {
++        let symbol_id = resources
++            .symbol_db
++            .get_unversioned(&UnversionedSymbolName::prehashed(name))?;
+         let symbol_id = resources.symbol_db.definition(symbol_id);
+ 
+-        self.entry_symbol_id = Some(symbol_id);
+         let file_id = resources.symbol_db.file_id_for_symbol(symbol_id);
+         let old_flags = resources
+             .per_symbol_flags
+@@ -3172,6 +3202,7 @@
+                 scope,
+             );
+         }
++        Some(symbol_id)
+     }
+ 
+     fn finalise_sizes(
+@@ -3519,6 +3550,7 @@
+         Ok(PreludeLayout {
+             internal_symbols: self.internal_symbols,
+             entry_symbol_id: self.entry_symbol_id,
++            init_fini_symbol_ids: self.init_fini_symbol_ids,
+             identity: self.identity,
+             dynamic_linker: self.dynamic_linker,
+             header_info: self
+--- a/libwild/src/platform.rs
++++ b/libwild/src/platform.rs
+@@ -1443,6 +1443,10 @@
+ 
+     fn entry_point<'a>(&'a self, linker_script_entry: Option<&'a [u8]>) -> EntryPoint<'a>;
+ 
++    fn init_fini_symbol_names(&self) -> [Option<&str>; 2] {
++        [None, None]
++    }
++
+     fn version_script_path(&self) -> Option<&Path> {
+         None
+     }
+--- /dev/null
++++ b/wild/tests/sources/elf/init-fini-symbols/init-fini-symbols.c
+@@ -0,0 +1,12 @@
++//#LinkArgs:-shared -z now -init my_init -fini my_fini
++//#RunEnabled:false
++//#CompArgs:-fPIC
++//#DiffEnabled:false
++//#ExpectDynamic:DT_INIT
++//#ExpectDynamic:DT_FINI
++
++int counter;
++
++void my_init(void) { counter = 1; }
++
++void my_fini(void) { counter = 0; }
