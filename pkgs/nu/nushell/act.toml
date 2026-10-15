@@ -5,7 +5,6 @@ patches = [  ]
 
 [test]
 bin = [ "nu" ]
-run = false
 
 [cargo]
 features          = [ "network", "sqlite", "trash-support", "rustls-tls" ]
