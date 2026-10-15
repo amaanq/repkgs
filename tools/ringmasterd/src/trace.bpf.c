@@ -543,13 +543,13 @@ INLINE void named(__u32 kind, __u32 detail, int dfd, const void* filename) {
    finish(scratch);
 }
 
-INLINE void resolved(__u32 kind, struct path* path) {
+INLINE void resolved(__u32 kind, __u32 detail, struct path* path) {
    __u32 tgid = bpf_get_current_pid_tgid() >> 32;
    __u64* session = session_of(tgid);
    if (!session) {
       return;
    }
-   struct scratch* scratch = begin(*session, kind, tgid, 0);
+   struct scratch* scratch = begin(*session, kind, tgid, detail);
    if (!scratch) {
       return;
    }
@@ -574,6 +574,10 @@ int open(__u64* context) {
    READ(open_flag, flags->open_flag);
    READ(lookup_flags, flags->lookup_flags);
    if (lookup_flags & LOOKUP_IN_ROOT) {
+      if (file < (unsigned long)-MAX_ERRNO) {
+         resolved(KIND_OPEN, open_flag, &((struct file*)file)->f_path);
+         return 0;
+      }
       __u32 tgid = bpf_get_current_pid_tgid() >> 32;
       __u64* session = session_of(tgid);
       if (session) {
@@ -642,14 +646,14 @@ int rename(__u64* context) {
 
 SEC("fexit/vfs_truncate")
 int truncate(__u64* context) {
-   resolved((long)context[2] ? KIND_LOOKUP : KIND_CLOBBER, (struct path*)context[0]);
+   resolved((long)context[2] ? KIND_LOOKUP : KIND_CLOBBER, 0, (struct path*)context[0]);
    return 0;
 }
 
 SEC("fentry/iterate_dir")
 int listing(__u64* context) {
    struct file* file = (void*)context[0];
-   resolved(KIND_LISTING, &file->f_path);
+   resolved(KIND_LISTING, 0, &file->f_path);
    return 0;
 }
 
