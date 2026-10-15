@@ -100,6 +100,10 @@ options! {
          => "exe components to build and install",
       project ("project"): String = String::new()
          => "extra cabal.project text (allow-newer:, constraints:)",
+      project_file ("projectFile"): String = String::new()
+         => "project file in place of cabal.project, as in cabal.release.project",
+      suite_runs ("testOptions"): BTreeMap<String, Vec<Vec<String>>> = BTreeMap::new()
+         => "per test-suite target, the argument lists of its runs, each its own cabal test",
    }
 }
 
@@ -247,7 +251,7 @@ impl System for Cabal {
          ""
       };
       write_file(
-         Path::new("cabal.project.local"),
+         Path::new(&format!("{}.local", Self::project_file(&options))),
          format!(
             "program-locations\n  gcc-location: {}\npackage *\n  split-sections: True\n{debug}{}",
             tool("cc")?.display(),
@@ -304,10 +308,21 @@ impl Cabal {
          })
    }
 
+   fn project_file(options: &Options) -> &str {
+      if options.project_file.is_empty() {
+         "cabal.project"
+      } else {
+         &options.project_file
+      }
+   }
+
    /// flags go to every cabal subcommand, build, test and list-bin must agree
    /// on one plan, so tests are enabled in all of them when the suite runs.
    fn flags(options: &Options, testing: bool) -> Vec<String> {
       let mut flags = options.flags.clone();
+      if !options.project_file.is_empty() {
+         flags.push(format!("--project-file={}", options.project_file));
+      }
       if testing {
          flags.push("--enable-tests".to_owned());
       }
@@ -610,14 +625,47 @@ impl Cabal {
          return Ok(());
       }
       let flags = Self::flags(options, true);
-      let chosen = test_cache::selected::<String>()?;
-      let mut args = vec!["test"];
-      args.extend(strs(&flags));
-      match chosen {
-         Some(ref names) => args.extend(strs(names)),
-         None => args.push("all:tests"),
+      let names = if let Some(chosen) = test_cache::selected::<String>()? {
+         chosen
+      } else {
+         if !Path::new(&build_top()?).join(SUITES).exists() {
+            Self::prepare_tests(ctx, options)?;
+         }
+         let all = suites()
+            .ok_or_else(|| io::Error::other(format!("test-prepare wrote no {SUITES}")))?
+            .values()
+            .cloned()
+            .collect::<Vec<String>>();
+         if let Some(stray) = options.suite_runs.keys().find(|name| !all.contains(name)) {
+            return Err(io::Error::other(format!(
+               "cabal testOptions names {stray}, which is no test suite"
+            )));
+         }
+         all
+      };
+      let (custom, plain) = names
+         .iter()
+         .partition::<Vec<&String>, _>(|name| options.suite_runs.contains_key(*name));
+      if !plain.is_empty() {
+         let mut args = vec!["test"];
+         args.extend(strs(&flags));
+         args.extend(plain.iter().map(|name| name.as_str()));
+         run("cabal", &args, &[])?;
       }
-      run("cabal", &args, &[])
+      for name in custom {
+         for arguments in &options.suite_runs[name] {
+            let passed = arguments
+               .iter()
+               .map(|arg| format!("--test-option={arg}"))
+               .collect::<Vec<String>>();
+            let mut args = vec!["test"];
+            args.extend(strs(&flags));
+            args.push(name);
+            args.extend(strs(&passed));
+            run("cabal", &args, &[])?;
+         }
+      }
+      Ok(())
    }
 
    fn install(ctx: &Ctx, options: &Options, testing: bool) -> io::Result<()> {

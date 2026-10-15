@@ -1310,6 +1310,33 @@
           "default": "",
           "doc": "extra cabal.project text (allow-newer:, constraints:)",
           "system": "cabal"
+        },
+        {
+          "name": "projectFile",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "doc": "project file in place of cabal.project, as in cabal.release.project",
+          "system": "cabal"
+        },
+        {
+          "name": "testOptions",
+          "type": {
+            "kind": "map",
+            "value": {
+              "kind": "list",
+              "element": {
+                "kind": "list",
+                "element": {
+                  "kind": "string"
+                }
+              }
+            }
+          },
+          "default": {},
+          "doc": "per test-suite target, the argument lists of its runs, each its own cabal test",
+          "system": "cabal"
         }
       ]
     },
