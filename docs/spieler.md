@@ -106,7 +106,9 @@ passes its own table to the fetcher):
 - **hackage**: there is no upstream lock, so cabal solves the set. Entries are keyed
   `name-version`, keeping several releases where packages disagree, with the tarball hash, the
   Cabal revision and its hash.
-- **luarocks**: a version and hash per rock, from luarocks' own solve.
+- **luarocks**: a version and hash per rock, from luarocks' own solve. A rock luarocks.org
+  serves only as a rockspec also records that rockspec's hash and its source url, and mummer packs
+  the two into the .src.rock luarocks expects.
 
 A table holds one sorted line per entry and merges as text (`merge=union` in .gitattributes),
 with `spieler normalize` as the nuff step restoring the order. Cargo and npm locks carry file

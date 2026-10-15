@@ -179,6 +179,14 @@ pub enum Kind {
    Unpack { unpack: String },
    Write { write: String },
    Copy { copy: String, append: String },
+   Zip { zip: Vec<Member> },
+}
+
+/// A file a `Zip` entry stores, at `name` inside the archive.
+#[derive(Deserialize, Serialize)]
+pub struct Member {
+   pub name: String,
+   pub path: String,
 }
 
 impl Entry {
@@ -207,6 +215,13 @@ impl Entry {
       Self {
          to,
          kind: Kind::Copy { copy, append },
+      }
+   }
+
+   pub const fn zip(zip: Vec<Member>, to: String) -> Self {
+      Self {
+         to,
+         kind: Kind::Zip { zip },
       }
    }
 }

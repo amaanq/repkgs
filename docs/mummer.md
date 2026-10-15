@@ -761,7 +761,8 @@ stage over the fetched jsr manifests), `pypi` (uv.lock, followed by `pypi-vendor
 dependencies in sdists and source trees), `gems`, `hex`, `go`, `hackage`, `luarocks`
 and `winsdk`, each a `Producer` in `mummer/src/fetch/`. The collecting derivation is
 content-addressed and runs `mummer assemble`, which reads its `layout` from the structured attrs,
-each entry `{ to, link | unpack | write | copy+append }`, with bsdtar and chmod from `peanut`.
+each entry `{ to, link | unpack | write | copy+append | zip }`, with bsdtar and chmod from
+`peanut`. `zip` stores its files uncompressed with fixed timestamps.
 `winsdk` submits `mummer winsdk-assemble` instead, which unpacks the .vsix and .msi payloads with
 7zz and writes the sysroot's `etc/cc` facts. `mummer unpack` is nix/sources.nix's fixed-output
 builder, it downloads the first of `urls` that answers (rustls, built-in roots, proxies from the
