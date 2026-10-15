@@ -1,0 +1,71 @@
+From 12ea4bfec3e9f06fea2930a55f49c4c2ccf08071 Mon Sep 17 00:00:00 2001
+From: Chet Ramey <chet.ramey@case.edu>
+Date: Tue, 8 Jul 2025 09:59:39 -0400
+Subject: [PATCH] update system-dependent tests
+
+--- a/tests/exec3.sub
++++ b/tests/exec3.sub
+@@ -25,10 +25,17 @@
+ 
+ shopt -s execfail
+ 
+-trap 'echo EXIT' EXIT 
++trapsort()
++{
++	trap > x.output
++	sort x.output && rm -f x.output
++}
++
++trap 'rm -f x.sh x.output ; echo EXIT' EXIT 
+ trap 'echo USR1' USR1
+ trap '' TERM
+-trap
++
++trapsort
+ 
+ kill -s USR1 $$		# should run the trap
+ 
+@@ -94,7 +101,7 @@
+ esac
+ rm -f x.sh x.output
+ 
+-trap
++trapsort
+ kill -s USR1 $$		# should run the trap
+ kill -s TERM $$		# should still be ignored
+ 
+--- a/tests/exec.right
++++ b/tests/exec.right
+@@ -25,16 +25,16 @@
+ 126
+ 0
+ this is bashenv
+-trap -- 'echo EXIT' EXIT
+ trap -- '' SIGTERM
+ trap -- 'echo USR1' SIGUSR1
++trap -- 'rm -f x.sh x.output ; echo EXIT' EXIT
+ USR1
+-./exec3.sub: line 38: /tmp/bash-notthere: No such file or directory
++./exec3.sub: line 45: /tmp/bash-notthere: No such file or directory
+ ./exec3.sub: ENOENT: after failed exec: 127
+-./exec3.sub: line 43: exec: bash-notthere: not found
+-trap -- 'echo EXIT' EXIT
++./exec3.sub: line 50: exec: bash-notthere: not found
+ trap -- '' SIGTERM
+ trap -- 'echo USR1' SIGUSR1
++trap -- 'rm -f x.sh x.output ; echo EXIT' EXIT
+ USR1
+ EXIT
+ ./execscript: line 103: notthere: command not found
+--- a/tests/run-execscript
++++ b/tests/run-execscript
+@@ -14,9 +14,6 @@
+ 
+ echo "warning: the text of a system error message may vary between systems and" >&2
+ echo "warning: produce diff output." >&2
+-echo "warning: UNIX versions number signals differently." >&2
+-echo "warning: If output differing only in line numbers is produced, please" >&2
+-echo "warning: do not consider this a test failure." >&2
+ echo "warning: if the text of the error messages concerning \`notthere' or" >&2
+ echo "warning: \`/tmp/bash-notthere' not being found or \`/' being a directory" >&2
+ echo "warning: produce diff output, please do not consider this a test failure" >&2
