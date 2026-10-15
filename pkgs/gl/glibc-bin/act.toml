@@ -1,0 +1,24 @@
+version  = "2.44"
+prebuilt = true
+
+[only]
+libc = [ "glibc" ]
+
+[test]
+bin = [ "iconv", "getconf", "locale" ]
+
+[install]
+"bin/" = [
+  "bin/gencat",
+  "bin/getconf",
+  "bin/getent",
+  "bin/iconv",
+  "bin/locale",
+  "bin/localedef",
+  "bin/makedb",
+  "bin/pcprofiledump",
+  "bin/pldd",
+  "bin/sprof",
+  "bin/zdump",
+  "sbin/iconvconfig",
+]
