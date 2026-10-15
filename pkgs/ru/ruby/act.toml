@@ -1,17 +1,52 @@
-tag   = "v{version}"
-track = "github:ruby/ruby"
-fetch = { url = "https://cache.ruby-lang.org/pub/ruby/{major}.{minor}/ruby-{version}.tar.xz" }
-with  = [ "autotools" ]
-deps  = [ "bash", "zlib", "openssl", "libyaml", "libffi" ]
+tag     = "v{version}"
+track   = "github:ruby/ruby"
+with    = [ "autotools" ]
+deps    = [ "bash", "zlib", "openssl", "libyaml", "libffi" ]
+patches = [ "sandbox-tests.patch" ]
+
+[fetch.default]
+url = "https://cache.ruby-lang.org/pub/ruby/{major}.{minor}/ruby-{version}.tar.xz"
+
+[fetch.rspec]
+unpack = false
+url    = "https://rubygems.org/downloads/rspec-{rspec}.gem"
+
+[fetch.rspec-core]
+unpack = false
+url    = "https://rubygems.org/downloads/rspec-core-{rspec_core}.gem"
+
+[fetch.rspec-expectations]
+unpack = false
+url    = "https://rubygems.org/downloads/rspec-expectations-{rspec_expectations}.gem"
+
+[fetch.rspec-mocks]
+unpack = false
+url    = "https://rubygems.org/downloads/rspec-mocks-{rspec_mocks}.gem"
+
+[fetch.rspec-support]
+unpack = false
+url    = "https://rubygems.org/downloads/rspec-support-{rspec_support}.gem"
+
+[fetch.diff-lcs]
+unpack = false
+url    = "https://rubygems.org/downloads/diff-lcs-{diff_lcs}.gem"
+
+[env]
+RUBY_TEST_GEMS = "{source:diff-lcs} {source:rspec-support} {source:rspec-core} {source:rspec-expectations} {source:rspec-mocks} {source:rspec}"
 
 [test]
-bin = [ "ruby", "gem", "bundle", "irb", "rake" ]
-run = false
+bin  = [ "ruby", "gem", "bundle", "irb", "rake" ]
+deps = [ "tzdata", "procps", "iana-etc" ]
+etc  = true
+
+[steps.before]
+"autotools.test" = [ "ruby.test-env" ]
 
 [steps.after]
 "autotools.install" = [ "ruby.relocate-rbconfig" ]
 
 [autotools]
+testTarget = [ "check", "PREPARE_SYNTAX_SUGGEST=" ]
 flags = [
   "--enable-load-relative",
   "--disable-install-doc",

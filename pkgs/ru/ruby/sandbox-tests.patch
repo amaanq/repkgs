@@ -1,0 +1,455 @@
+diff -ruN a/spec/ruby/core/file/owned_spec.rb b/spec/ruby/core/file/owned_spec.rb
+--- a/spec/ruby/core/file/owned_spec.rb
++++ b/spec/ruby/core/file/owned_spec.rb
+@@ -26,7 +26,7 @@
+   platform_is_not :windows do
+     as_user do
+       it "returns false when the file is not owned by the user" do
+-        system_file = '/etc/passwd'
++        system_file = '/bin/sh'
+         File.owned?(system_file).should == false
+       end
+     end
+diff -ruN a/spec/ruby/core/file/setuid_spec.rb b/spec/ruby/core/file/setuid_spec.rb
+--- a/spec/ruby/core/file/setuid_spec.rb
++++ b/spec/ruby/core/file/setuid_spec.rb
+@@ -26,9 +26,11 @@
+ 
+   platform_is_not :windows do
+     it "returns true when the gid bit is set" do
+-      system "chmod u+s #{@name}"
+-
+-      File.setuid?(@name).should == true
++      if system("chmod u+s #{@name}", err: File::NULL)
++        File.setuid?(@name).should == true
++      else
++        File.setuid?(@name).should == false
++      end
+     end
+   end
+ end
+diff -ruN a/spec/ruby/core/file/stat/owned_spec.rb b/spec/ruby/core/file/stat/owned_spec.rb
+--- a/spec/ruby/core/file/stat/owned_spec.rb
++++ b/spec/ruby/core/file/stat/owned_spec.rb
+@@ -24,7 +24,7 @@
+   platform_is_not :windows, :android do
+     as_user do
+       it "returns false if the file is not owned by the user" do
+-        system_file = '/etc/passwd'
++        system_file = '/bin/sh'
+         st = File.stat(system_file)
+         st.should_not.owned?
+       end
+diff -ruN a/spec/ruby/core/process/egid_spec.rb b/spec/ruby/core/process/egid_spec.rb
+--- a/spec/ruby/core/process/egid_spec.rb
++++ b/spec/ruby/core/process/egid_spec.rb
+@@ -33,12 +33,12 @@
+ 
+     as_user do
+       it "raises Errno::ERPERM if run by a non superuser trying to set the root group id" do
+-        -> { Process.egid = 0 }.should raise_error(Errno::EPERM)
++        -> { Process.egid = 0 }.should raise_error(SystemCallError) { |e| [Errno::EPERM, Errno::EINVAL].should include(e.class) }
+       end
+ 
+       platform_is :linux do
+         it "raises Errno::ERPERM if run by a non superuser trying to set the group id from group name" do
+-          -> { Process.egid = "root" }.should raise_error(Errno::EPERM)
++          -> { Process.egid = "root" }.should raise_error(SystemCallError) { |e| [Errno::EPERM, Errno::EINVAL].should include(e.class) }
+         end
+       end
+     end
+diff -ruN a/spec/ruby/core/process/euid_spec.rb b/spec/ruby/core/process/euid_spec.rb
+--- a/spec/ruby/core/process/euid_spec.rb
++++ b/spec/ruby/core/process/euid_spec.rb
+@@ -33,11 +33,11 @@
+ 
+     as_user do
+       it "raises Errno::ERPERM if run by a non superuser trying to set the superuser id" do
+-        -> { Process.euid = 0 }.should raise_error(Errno::EPERM)
++        -> { Process.euid = 0 }.should raise_error(SystemCallError) { |e| [Errno::EPERM, Errno::EINVAL].should include(e.class) }
+       end
+ 
+       it "raises Errno::ERPERM if run by a non superuser trying to set the superuser id from username" do
+-        -> { Process.euid = "root" }.should raise_error(Errno::EPERM)
++        -> { Process.euid = "root" }.should raise_error(SystemCallError) { |e| [Errno::EPERM, Errno::EINVAL].should include(e.class) }
+       end
+     end
+ 
+diff -ruN a/spec/ruby/core/process/exec_spec.rb b/spec/ruby/core/process/exec_spec.rb
+--- a/spec/ruby/core/process/exec_spec.rb
++++ b/spec/ruby/core/process/exec_spec.rb
+@@ -154,7 +154,7 @@
+   describe "with a command array" do
+     it "uses the first element as the command name and the second as the argv[0] value" do
+       platform_is_not :windows do
+-        ruby_exe('Process.exec(["/bin/sh", "argv_zero"], "-c", "echo $0")').should == "argv_zero\n"
++        ruby_exe('Process.exec(["bash", "argv_zero"], "-c", "echo $0")').should == "argv_zero\n"
+       end
+       platform_is :windows do
+         ruby_exe('Process.exec(["cmd.exe", "/C"], "/C", "echo", "argv_zero")').should == "argv_zero\n"
+@@ -163,7 +163,7 @@
+ 
+     it "coerces the argument using to_ary" do
+       platform_is_not :windows do
+-        ruby_exe('o = Object.new; def o.to_ary; ["/bin/sh", "argv_zero"]; end; Process.exec(o, "-c", "echo $0")').should == "argv_zero\n"
++        ruby_exe('o = Object.new; def o.to_ary; ["bash", "argv_zero"]; end; Process.exec(o, "-c", "echo $0")').should == "argv_zero\n"
+       end
+       platform_is :windows do
+         ruby_exe('o = Object.new; def o.to_ary; ["cmd.exe", "/C"]; end; Process.exec(o, "/C", "echo", "argv_zero")').should == "argv_zero\n"
+diff -ruN a/spec/ruby/core/process/spawn_spec.rb b/spec/ruby/core/process/spawn_spec.rb
+--- a/spec/ruby/core/process/spawn_spec.rb
++++ b/spec/ruby/core/process/spawn_spec.rb
+@@ -133,7 +133,7 @@
+   describe "with a command array" do
+     it "uses the first element as the command name and the second as the argv[0] value" do
+       platform_is_not :windows do
+-        -> { Process.wait Process.spawn(["/bin/sh", "argv_zero"], "-c", "echo $0") }.should output_to_fd("argv_zero\n")
++        -> { Process.wait Process.spawn(["bash", "argv_zero"], "-c", "echo $0") }.should output_to_fd("argv_zero\n")
+       end
+       platform_is :windows do
+         -> { Process.wait Process.spawn(["cmd.exe", "/C"], "/C", "echo", "argv_zero") }.should output_to_fd("argv_zero\n")
+@@ -156,7 +156,7 @@
+     it "calls #to_ary to convert the argument to an Array" do
+       o = mock("to_ary")
+       platform_is_not :windows do
+-        o.should_receive(:to_ary).and_return(["/bin/sh", "argv_zero"])
++        o.should_receive(:to_ary).and_return(["bash", "argv_zero"])
+         -> { Process.wait Process.spawn(o, "-c", "echo $0") }.should output_to_fd("argv_zero\n")
+       end
+       platform_is :windows do
+diff -ruN a/spec/ruby/core/process/uid_spec.rb b/spec/ruby/core/process/uid_spec.rb
+--- a/spec/ruby/core/process/uid_spec.rb
++++ b/spec/ruby/core/process/uid_spec.rb
+@@ -25,11 +25,11 @@
+ 
+     as_user do
+       it "raises Errno::ERPERM if run by a non privileged user trying to set the superuser id" do
+-        -> { (Process.uid = 0)}.should raise_error(Errno::EPERM)
++        -> { (Process.uid = 0)}.should raise_error(SystemCallError) { |e| [Errno::EPERM, Errno::EINVAL].should include(e.class) }
+       end
+ 
+       it "raises Errno::ERPERM if run by a non privileged user trying to set the superuser id from username" do
+-        -> { Process.uid = "root" }.should raise_error(Errno::EPERM)
++        -> { Process.uid = "root" }.should raise_error(SystemCallError) { |e| [Errno::EPERM, Errno::EINVAL].should include(e.class) }
+       end
+     end
+ 
+diff -ruN a/spec/ruby/shared/file/writable.rb b/spec/ruby/shared/file/writable.rb
+--- a/spec/ruby/shared/file/writable.rb
++++ b/spec/ruby/shared/file/writable.rb
+@@ -10,7 +10,7 @@
+   it "returns true if named file is writable by the effective user id of the process, otherwise false" do
+     platform_is_not :windows, :android do
+       as_user do
+-        @object.send(@method, "/etc/passwd").should == false
++        @object.send(@method, "/bin/sh").should == false
+       end
+     end
+     File.open(@file,'w') { @object.send(@method, @file).should == true }
+diff -ruN a/test/.excludes/TestGc.rb b/test/.excludes/TestGc.rb
+--- a/test/.excludes/TestGc.rb
++++ b/test/.excludes/TestGc.rb
+@@ -0,0 +1,2 @@
++exclude(:test_exception_in_finalizer_procs, "the second finalizer never runs after the first raises, https://bugs.ruby-lang.org/issues/21613")
++exclude(:test_exception_in_finalizer_method, "the second finalizer never runs after the first raises, https://bugs.ruby-lang.org/issues/21613")
+diff -ruN a/test/fileutils/test_fileutils.rb b/test/fileutils/test_fileutils.rb
+--- a/test/fileutils/test_fileutils.rb
++++ b/test/fileutils/test_fileutils.rb
+@@ -6,6 +6,7 @@
+ require_relative 'fileasserts'
+ require 'pathname'
+ require 'tmpdir'
++require 'tempfile'
+ require 'stringio'
+ require 'test/unit'
+ 
+@@ -41,6 +42,13 @@
+       /mswin|mingw|bcc|emx/ !~ RUBY_PLATFORM
+     end
+ 
++    def have_setid_perm?
++      Tempfile.create("setid") {|f| File.chmod(06700, f.path) }
++      true
++    rescue Errno::EPERM
++      false
++    end
++
+     @@have_symlink = nil
+ 
+     def have_symlink?
+@@ -1132,9 +1140,10 @@
+   end
+ 
+   def test_mkdir_file_perm
+-    mkdir 'tmp/tmp', :mode => 07777
++    mode = have_setid_perm? ? 07777 : 01777
++    mkdir 'tmp/tmp', :mode => mode
+     assert_directory 'tmp/tmp'
+-    assert_filemode 07777, 'tmp/tmp'
++    assert_filemode mode, 'tmp/tmp'
+     Dir.rmdir 'tmp/tmp'
+   end if have_file_perm?
+ 
+@@ -1233,9 +1242,10 @@
+   end
+ 
+   def test_mkdir_p_file_perm
+-    mkdir_p 'tmp/tmp/tmp', :mode => 07777
++    mode = have_setid_perm? ? 07777 : 01777
++    mkdir_p 'tmp/tmp/tmp', :mode => mode
+     assert_directory 'tmp/tmp/tmp'
+-    assert_filemode 07777, 'tmp/tmp/tmp'
++    assert_filemode mode, 'tmp/tmp/tmp'
+     Dir.rmdir 'tmp/tmp/tmp'
+     Dir.rmdir 'tmp/tmp'
+   end if have_file_perm?
+@@ -1353,12 +1363,14 @@
+     assert_filemode 0500, 'tmp/g'
+     install 'tmp/g', 'tmp/h', :mode => "+wrx"
+     assert_filemode 0777, 'tmp/h'
+-    install 'tmp/h', 'tmp/i', :mode => "u+s,o=s"
+-    assert_filemode 04770, 'tmp/i'
+-    install 'tmp/i', 'tmp/j', :mode => "u-w,go-wrx"
+-    assert_filemode 04500, 'tmp/j'
+-    install 'tmp/j', 'tmp/k', :mode => "+s"
+-    assert_filemode 06500, 'tmp/k'
++    if have_setid_perm?
++      install 'tmp/h', 'tmp/i', :mode => "u+s,o=s"
++      assert_filemode 04770, 'tmp/i'
++      install 'tmp/i', 'tmp/j', :mode => "u-w,go-wrx"
++      assert_filemode 04500, 'tmp/j'
++      install 'tmp/j', 'tmp/k', :mode => "+s"
++      assert_filemode 06500, 'tmp/k'
++    end
+     install 'tmp/a', 'tmp/l', :mode => "o+X"
+     assert_equal_filemode 'tmp/a', 'tmp/l'
+   end if have_file_perm?
+@@ -1391,12 +1403,17 @@
+     assert_filemode 0500, 'tmp/a'
+     chmod "+wrx", 'tmp/a'
+     assert_filemode 0777, 'tmp/a'
+-    chmod "u+s,o=s", 'tmp/a'
+-    assert_filemode 04770, 'tmp/a'
+-    chmod "u-w,go-wrx", 'tmp/a'
+-    assert_filemode 04500, 'tmp/a'
+-    chmod "+s", 'tmp/a'
+-    assert_filemode 06500, 'tmp/a'
++    if have_setid_perm?
++      chmod "u+s,o=s", 'tmp/a'
++      assert_filemode 04770, 'tmp/a'
++      chmod "u-w,go-wrx", 'tmp/a'
++      assert_filemode 04500, 'tmp/a'
++      chmod "+s", 'tmp/a'
++      assert_filemode 06500, 'tmp/a'
++    else
++      chmod "u-w,go-wrx", 'tmp/a'
++      assert_filemode 0500, 'tmp/a'
++    end
+ 
+     # FreeBSD ufs and tmpfs don't allow to change sticky bit against
+     # regular file. It's slightly strange. Anyway it's no effect bit.
+@@ -1404,7 +1421,7 @@
+     # NetBSD, OpenBSD, Solaris, and AIX also deny it.
+     if /freebsd|netbsd|openbsd|aix/ !~ RUBY_PLATFORM
+       chmod "u+t,o+t", 'tmp/a'
+-      assert_filemode 07500, 'tmp/a'
++      assert_filemode have_setid_perm? ? 07500 : 01500, 'tmp/a'
+       chmod "a-t,a-s", 'tmp/a'
+       assert_filemode 0500, 'tmp/a'
+     end
+@@ -1699,7 +1716,7 @@
+     else
+       def test_chown_without_permission
+         touch 'tmp/a'
+-        assert_raise(Errno::EPERM) {
++        assert_raise(Errno::EPERM, Errno::EINVAL) {
+           chown UID_1, nil, 'tmp/a'
+           chown UID_2, nil, 'tmp/a'
+         }
+@@ -1707,7 +1724,7 @@
+ 
+       def test_chown_R_without_permission
+         touch 'tmp/a'
+-        assert_raise(Errno::EPERM) {
++        assert_raise(Errno::EPERM, Errno::EINVAL) {
+           chown_R UID_1, nil, 'tmp/a'
+           chown_R UID_2, nil, 'tmp/a'
+         }
+diff -ruN a/test/pathname/test_pathname.rb b/test/pathname/test_pathname.rb
+--- a/test/pathname/test_pathname.rb
++++ b/test/pathname/test_pathname.rb
+@@ -896,7 +896,7 @@
+       old_gid = path.stat.gid
+       begin
+         path.chown(0, 0)
+-      rescue Errno::EPERM
++      rescue Errno::EPERM, Errno::EINVAL
+         next
+       end
+       assert_equal(0, path.stat.uid)
+@@ -915,7 +915,7 @@
+       old_gid = path.stat.gid
+       begin
+         path.lchown(0, 0)
+-      rescue Errno::EPERM
++      rescue Errno::EPERM, Errno::EINVAL
+         next
+       end
+       assert_equal(0, path.stat.uid)
+diff -ruN a/test/ruby/test_file_exhaustive.rb b/test/ruby/test_file_exhaustive.rb
+--- a/test/ruby/test_file_exhaustive.rb
++++ b/test/ruby/test_file_exhaustive.rb
+@@ -97,7 +97,11 @@
+     if POSIX
+       @suidfile = make_tmp_filename("suidfile")
+       make_file("", @suidfile)
+-      File.chmod 04500, @suidfile
++      begin
++        File.chmod 04500, @suidfile
++      rescue Errno::EPERM
++        return @suidfile = nil
++      end
+       @suidfile
+     else
+       @suidfile = nil
+@@ -109,7 +113,11 @@
+     if POSIX
+       @sgidfile = make_tmp_filename("sgidfile")
+       make_file("", @sgidfile)
+-      File.chmod 02500, @sgidfile
++      begin
++        File.chmod 02500, @sgidfile
++      rescue Errno::EPERM
++        return @sgidfile = nil
++      end
+       @sgidfile
+     else
+       @sgidfile = nil
+diff -ruN a/test/ruby/test_process.rb b/test/ruby/test_process.rb
+--- a/test/ruby/test_process.rb
++++ b/test/ruby/test_process.rb
+@@ -2023,7 +2023,7 @@
+         assert_nothing_raised(feature6975) do
+           begin
+             system(*TRUECOMMAND, uid: user, exception: true)
+-          rescue Errno::EPERM, Errno::EACCES, NotImplementedError
++          rescue Errno::EPERM, Errno::EACCES, Errno::EINVAL, NotImplementedError
+           end
+         end
+       end
+@@ -2031,7 +2031,7 @@
+       assert_nothing_raised(feature6975) do
+         begin
+           system(*TRUECOMMAND, uid: uid, exception: true)
+-        rescue Errno::EPERM, Errno::EACCES, NotImplementedError
++        rescue Errno::EPERM, Errno::EACCES, Errno::EINVAL, NotImplementedError
+         end
+       end
+ 
+@@ -2039,7 +2039,7 @@
+         begin
+           u = IO.popen([RUBY, "-e", "print Process.uid", uid: user||uid], &:read)
+           assert_equal(uid.to_s, u, feature6975)
+-        rescue Errno::EPERM, Errno::EACCES, NotImplementedError
++        rescue Errno::EPERM, Errno::EACCES, Errno::EINVAL, NotImplementedError
+         end
+       end
+     end
+@@ -2059,7 +2059,7 @@
+       assert_nothing_raised(feature6975) do
+         begin
+           system(*TRUECOMMAND, gid: group)
+-        rescue Errno::EPERM, NotImplementedError
++        rescue Errno::EPERM, Errno::EINVAL, NotImplementedError
+         end
+       end
+ 
+@@ -2076,7 +2076,7 @@
+           # To conclude, on AIX, if the "gid" variable is a supplementary group,
+           # the assert_equal next can fail, so skip it.
+           assert_equal(gid, g, feature6975) unless $?.exitstatus == 1 && /aix/ =~ RUBY_PLATFORM && gid != Process.gid
+-        rescue Errno::EPERM, NotImplementedError
++        rescue Errno::EPERM, Errno::EINVAL, NotImplementedError
+         end
+       end
+     end
+diff -ruN a/test/ruby/test_rubyoptions.rb b/test/ruby/test_rubyoptions.rb
+--- a/test/ruby/test_rubyoptions.rb
++++ b/test/ruby/test_rubyoptions.rb
+@@ -953,7 +953,7 @@
+     Tempfile.create(["script", ".sh"]) do |script|
+       Tempfile.create("crash_report") do |crash_report|
+         script.write(<<~BASH)
+-          #!/usr/bin/env bash
++          #!/bin/sh
+ 
+           cat > #{crash_report.path}
+         BASH
+diff -ruN a/test/rubygems/test_gem_commands_pristine_command.rb b/test/rubygems/test_gem_commands_pristine_command.rb
+--- a/test/rubygems/test_gem_commands_pristine_command.rb
++++ b/test/rubygems/test_gem_commands_pristine_command.rb
+@@ -136,6 +136,7 @@
+   end
+ 
+   def test_execute_env_shebang
++    pend "no env in #{Gem::Installer::ENV_PATHS}" unless Gem.win_platform? || Gem::Installer::ENV_PATHS.any? {|env| File.executable?(env) }
+     a = util_spec "a" do |s|
+       s.executables = %w[foo]
+       s.files = %w[bin/foo]
+diff -ruN a/test/rubygems/test_gem_commands_setup_command.rb b/test/rubygems/test_gem_commands_setup_command.rb
+--- a/test/rubygems/test_gem_commands_setup_command.rb
++++ b/test/rubygems/test_gem_commands_setup_command.rb
+@@ -123,6 +123,7 @@
+   end
+ 
+   def test_env_shebang_flag
++    pend "no env in #{Gem::Installer::ENV_PATHS}" unless Gem.win_platform? || Gem::Installer::ENV_PATHS.any? {|env| File.executable?(env) }
+     gem_bin_path = gem_install "a"
+     write_file gem_bin_path do |io|
+       io.puts "I changed it!"
+diff -ruN a/test/rubygems/test_gem_dependency_installer.rb b/test/rubygems/test_gem_dependency_installer.rb
+--- a/test/rubygems/test_gem_dependency_installer.rb
++++ b/test/rubygems/test_gem_dependency_installer.rb
+@@ -657,6 +657,7 @@
+   end
+ 
+   def test_install_env_shebang
++    pend "no env in #{Gem::Installer::ENV_PATHS}" unless Gem.win_platform? || Gem::Installer::ENV_PATHS.any? {|env| File.executable?(env) }
+     util_setup_gems
+ 
+     FileUtils.mv @a1_gem, @tempdir
+diff -ruN a/test/rubygems/test_gem_package.rb b/test/rubygems/test_gem_package.rb
+--- a/test/rubygems/test_gem_package.rb
++++ b/test/rubygems/test_gem_package.rb
+@@ -2,6 +2,7 @@
+ 
+ require_relative "package/tar_test_case"
+ require "rubygems/openssl"
++require "tempfile"
+ 
+ class TestGemPackage < Gem::Package::TarTestCase
+   def setup
+@@ -554,6 +555,11 @@
+ 
+   def test_extract_file_permissions
+     pend "chmod not supported" if Gem.win_platform?
++    begin
++      Tempfile.create("setid") {|f| File.chmod(04700, f.path) }
++    rescue Errno::EPERM
++      pend "setuid bits refused"
++    end
+ 
+     gem_with_long_permissions = File.expand_path("packages/Bluebie-legs-0.6.2.gem", __dir__)
+ 
+diff -ruN a/test/socket/test_addrinfo.rb b/test/socket/test_addrinfo.rb
+--- a/test/socket/test_addrinfo.rb
++++ b/test/socket/test_addrinfo.rb
+@@ -703,7 +703,7 @@
+     end
+ 
+     def test_addrinfo_timeout
+-      ai = Addrinfo.getaddrinfo("localhost", "ssh", Socket::PF_INET, Socket::SOCK_STREAM, timeout: 1).fetch(0)
++      ai = Addrinfo.getaddrinfo("localhost", 22, Socket::PF_INET, Socket::SOCK_STREAM, timeout: 1).fetch(0)
+       assert_equal(22, ai.ip_port)
+     end
+   end

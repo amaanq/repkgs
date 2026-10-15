@@ -1,3 +1,19 @@
 version = "4.0.7"
 date    = "2026-09-15"
-hash    = "sha256-2iG4H3UV+BZvqXtz73tDYjNgWRs1+UmB5bGf6ftHjTI="
+
+[hash]
+default            = "sha256-2iG4H3UV+BZvqXtz73tDYjNgWRs1+UmB5bGf6ftHjTI="
+rspec              = "sha256-IGKEoIrXmOYfhtfKPjdnGNUsC8lEYmsjSSZvI5+CBYc="
+rspec-core         = "sha256-qII8ZBFme2CovKE1NkNR3aNM1V5E/5TEvkYzs32Ciy0="
+rspec-expectations = "sha256-M6TTodlQYK6kyU6fI3AwqPnq5WFem9hXGP46CeS1iDY="
+rspec-mocks        = "sha256-CGrT09F1M/QjdkPeC1xC8EtmNIwov2ucLT9KOwGvHUc="
+rspec-support      = "sha256-BkDlVwhyqv79eYZ5Ad7u60CwyYdaNrmD2F9U+3OBxHw="
+diff-lcs           = "sha256-muDSy6fU3zB1/ozYYCqGBJk+/A36k0z/Volp77GQmWI="
+
+[vars]
+rspec              = "3.13.2"
+rspec_core         = "3.13.6"
+rspec_expectations = "3.13.5"
+rspec_mocks        = "3.13.8"
+rspec_support      = "3.13.7"
+diff_lcs           = "1.6.2"
