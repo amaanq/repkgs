@@ -12,6 +12,7 @@ use std::{
       rename,
    },
    io,
+   iter,
    path::{
       Path,
       PathBuf,
@@ -200,9 +201,10 @@ fn with_programs(
 
 pub fn build(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
    let jobs = format!("-j{}", ctx.njobs);
-   let mut args = vec![jobs.as_str()];
-   args.extend(strs(targets));
-   args.extend(strs(flags));
+   let args = iter::once(jobs.as_str())
+      .chain(strs(targets))
+      .chain(strs(flags))
+      .collect::<Vec<_>>();
    run("make", &args, &[])
 }
 
@@ -259,8 +261,6 @@ pub fn test(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
    Ok(())
 }
 
-pub fn install(_ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
-   let mut args = strs(targets).collect::<Vec<&str>>();
-   args.extend(strs(flags));
-   run("make", &args, &[])
+pub fn install(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
+   build(ctx, flags, targets)
 }
