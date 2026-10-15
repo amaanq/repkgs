@@ -7,4 +7,5 @@ with  = [ "cargo" ]
 bin = [ "bindgen" ]
 
 [cargo]
-flags = [ "-p", "bindgen-cli" ]
+root            = "bindgen-cli"
+withoutFeatures = [ "runtime" ]
