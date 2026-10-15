@@ -1,0 +1,10 @@
+--- a/crates/nu-test-support/Cargo.toml
++++ b/crates/nu-test-support/Cargo.toml
+@@ -33,6 +33,7 @@
+   "dep:nu-cmd-plugin",
+   "dep:nu-plugin-core",
+   "dep:nu-plugin-engine",
++  "nu-plugin-engine/local-socket",
+   "nu-protocol/plugin",
+   "os",
+ ]

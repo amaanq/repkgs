@@ -1,7 +1,7 @@
 track   = "github:nushell/nushell"
 fetch   = { archive = true }
 with    = [ "cargo" ]
-patches = [  ]
+patches = [ "test-support-local-socket.patch" ]
 
 [test]
 bin = [ "nu" ]
