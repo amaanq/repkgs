@@ -1,7 +1,8 @@
-track = "generic:fftw?url=https://fftw.org/download.html"
-fetch = { url = "https://fftw.org/fftw-{version}.tar.gz" }
-with  = [ "autotools" ]
-tools = [ "perl" ]
+track   = "generic:fftw?url=https://fftw.org/download.html"
+fetch   = { url = "https://fftw.org/fftw-{version}.tar.gz" }
+with    = [ "autotools" ]
+patches = [ "parallel-check.patch" ]
+tools   = [ "perl" ]
 
 [autotools]
 flags = [ "--enable-threads", "CFLAGS=-O3 -fomit-frame-pointer -fstrict-aliasing" ]

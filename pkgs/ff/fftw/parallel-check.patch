@@ -1,0 +1,73 @@
+--- a/tests/Makefile.am
++++ b/tests/Makefile.am
+@@ -19,18 +19,29 @@
+ $(top_builddir)/libfftw3@PREC_SUFFIX@.la		\
+ $(top_builddir)/libbench2/libbench2.a $(THREADLIBS)
+ 
+-check-local: bench$(EXEEXT)
++check-local: check-basic
++if SMP
++check-local: check-threaded
++endif
++
++check-basic: bench$(EXEEXT)
+ 	perl -w $(srcdir)/check.pl $(CHECK_PL_OPTS) -r -c=30 -v `pwd`/bench$(EXEEXT)
+ 	@echo "--------------------------------------------------------------"
+ 	@echo "         FFTW transforms passed basic tests!"
+ 	@echo "--------------------------------------------------------------"
+-if SMP
+-	perl -w $(srcdir)/check.pl $(CHECK_PL_OPTS) -r -c=30 -v --nthreads=2 `pwd`/bench$(EXEEXT)
+-	perl -w $(srcdir)/check.pl $(CHECK_PL_OPTS) -r -c=5 -v --threads_callback --nthreads=2 `pwd`/bench$(EXEEXT)
++
++check-threaded: check-threads check-threads-callback
+ 	@echo "--------------------------------------------------------------"
+ 	@echo "         FFTW threaded transforms passed basic tests!"
+ 	@echo "--------------------------------------------------------------"
+-endif
++
++check-threads: bench$(EXEEXT)
++	perl -w $(srcdir)/check.pl $(CHECK_PL_OPTS) -r -c=30 -v --nthreads=2 `pwd`/bench$(EXEEXT)
++
++check-threads-callback: bench$(EXEEXT)
++	perl -w $(srcdir)/check.pl $(CHECK_PL_OPTS) -r -c=5 -v --threads_callback --nthreads=2 `pwd`/bench$(EXEEXT)
++
++.PHONY: check-basic check-threaded check-threads check-threads-callback
+ 
+ bigcheck: bench$(EXEEXT)
+ 	perl -w $(srcdir)/check.pl $(CHECK_PL_OPTS) --validate-wisdom -a -v `pwd`/bench$(EXEEXT)
+--- a/tests/Makefile.in
++++ b/tests/Makefile.in
+@@ -700,16 +700,27 @@
+ .PRECIOUS: Makefile
+ 
+ 
+-check-local: bench$(EXEEXT)
++check-local: check-basic
++@SMP_TRUE@check-local: check-threaded
++
++check-basic: bench$(EXEEXT)
+ 	perl -w $(srcdir)/check.pl $(CHECK_PL_OPTS) -r -c=30 -v `pwd`/bench$(EXEEXT)
+ 	@echo "--------------------------------------------------------------"
+ 	@echo "         FFTW transforms passed basic tests!"
+ 	@echo "--------------------------------------------------------------"
+-@SMP_TRUE@	perl -w $(srcdir)/check.pl $(CHECK_PL_OPTS) -r -c=30 -v --nthreads=2 `pwd`/bench$(EXEEXT)
+-@SMP_TRUE@	perl -w $(srcdir)/check.pl $(CHECK_PL_OPTS) -r -c=5 -v --threads_callback --nthreads=2 `pwd`/bench$(EXEEXT)
+-@SMP_TRUE@	@echo "--------------------------------------------------------------"
+-@SMP_TRUE@	@echo "         FFTW threaded transforms passed basic tests!"
+-@SMP_TRUE@	@echo "--------------------------------------------------------------"
++
++check-threaded: check-threads check-threads-callback
++	@echo "--------------------------------------------------------------"
++	@echo "         FFTW threaded transforms passed basic tests!"
++	@echo "--------------------------------------------------------------"
++
++check-threads: bench$(EXEEXT)
++	perl -w $(srcdir)/check.pl $(CHECK_PL_OPTS) -r -c=30 -v --nthreads=2 `pwd`/bench$(EXEEXT)
++
++check-threads-callback: bench$(EXEEXT)
++	perl -w $(srcdir)/check.pl $(CHECK_PL_OPTS) -r -c=5 -v --threads_callback --nthreads=2 `pwd`/bench$(EXEEXT)
++
++.PHONY: check-basic check-threaded check-threads check-threads-callback
+ 
+ bigcheck: bench$(EXEEXT)
+ 	perl -w $(srcdir)/check.pl $(CHECK_PL_OPTS) --validate-wisdom -a -v `pwd`/bench$(EXEEXT)
