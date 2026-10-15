@@ -28,6 +28,7 @@ use mummer::{
       wanted_for,
    },
 };
+use serde_json::Value;
 
 use crate::{
    go,
@@ -180,8 +181,15 @@ pub fn add(package: &Package) -> io::Result<Vec<Used>> {
       let mine = match eco.as_str() {
          "go" => go::lock(&src.join(sub), &old)?,
          "hackage" => {
-            let options = nix::eval_json(&root(), &format!("{}.spec.cabal", package.name))?;
-            hackage::lock(&src, sub, &options, &old)?
+            let spec = nix::eval_json(&root(), &format!("{}.spec", package.name))?;
+            let phases = spec.get("phases").and_then(Value::as_array);
+            let tests = phases
+               .is_some_and(|listed| listed.iter().any(|phase| phase == "cabal.test"))
+               && spec.pointer("/tests/run").and_then(Value::as_bool) != Some(false);
+            let options = spec
+               .get("cabal")
+               .ok_or_else(|| io::Error::other(format!("{} has no [cabal] spec", package.name)))?;
+            hackage::lock(&src, sub, options, tests, &old)?
          },
          "luarocks" => luarocks::lock(&src.join(sub), &old)?,
          other => {

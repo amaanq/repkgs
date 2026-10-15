@@ -79,9 +79,16 @@ fn has_index(home: &Path) -> bool {
 }
 
 /// What cabal's solver picks for the project at `src`/`sub` with the
-/// package's cabal options, preferring `old`. The whole source is copied,
-/// cabal.project may name siblings.
-fn solve(src: &Path, sub: &str, options: &Value, old: &Entries) -> io::Result<Vec<PackageId>> {
+/// package's cabal options, preferring `old`, its test-suites' dependencies
+/// included when it runs them. The whole source is copied, cabal.project may
+/// name siblings.
+fn solve(
+   src: &Path,
+   sub: &str,
+   options: &Value,
+   tests: bool,
+   old: &Entries,
+) -> io::Result<Vec<PackageId>> {
    let ghc = tool("ghc-bootstrap", "ghc")?;
    let cabal = tool("cabal-bootstrap", "cabal")?;
    let home = cabal_home();
@@ -141,7 +148,12 @@ fn solve(src: &Path, sub: &str, options: &Value, old: &Entries) -> io::Result<Ve
       .arg(format!("--project-dir={}", work.display()))
       .arg("-w")
       .arg(&ghc)
-      .args(["--disable-tests", "--disable-benchmarks"])
+      .arg(if tests {
+         "--enable-tests"
+      } else {
+         "--disable-tests"
+      })
+      .arg("--disable-benchmarks")
       .args(&flags)
       .env("CABAL_DIR", &home)
       .output()?;
@@ -181,8 +193,14 @@ struct Locked {
 }
 
 /// The entries of the set the package at `src` needs.
-pub fn lock(src: &Path, sub: &str, options: &Value, old: &Entries) -> io::Result<Entries> {
-   let picks = solve(src, sub, options, old)?;
+pub fn lock(
+   src: &Path,
+   sub: &str,
+   options: &Value,
+   tests: bool,
+   old: &Entries,
+) -> io::Result<Entries> {
+   let picks = solve(src, sub, options, tests, old)?;
    let locked = parallel(&picks, |pick| {
       let id = pick.to_string();
       if let Some(fields) = old.get(&id) {
