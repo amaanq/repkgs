@@ -1,0 +1,13 @@
+track = "pypi:pytest-instafail"
+fetch = { url = "https://files.pythonhosted.org/packages/source/p/pytest-instafail/pytest-instafail-{version}.tar.gz" }
+with  = [ "python" ]
+deps  = [ "python-pytest" ]
+tools = [ "python-setuptools" ]
+
+[python]
+module = "pytest_instafail"
+pytest = true
+tests  = "test_instafail.py"
+
+[test]
+deps = [ "python-pexpect" ]
