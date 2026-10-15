@@ -1,0 +1,19 @@
+tag   = "lutok-{version}"
+track = "github:freebsd/lutok"
+fetch = { asset = "lutok-{version}.tar.gz" }
+with  = [ "autotools" ]
+deps  = [ "lua", "atf" ]
+tools = [ "pkgconf" ]
+
+[test]
+deps     = [ "kyua" ]
+separate = true
+
+[steps.replace]
+"autotools.test" = "lutok.test"
+
+[steps.after]
+"autotools.install" = [ "lutok.drop-tests" ]
+
+[autotools]
+flags = [ "--enable-atf" ]
