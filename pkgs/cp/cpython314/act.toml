@@ -7,6 +7,7 @@ patches = [
   "upstream-darwin-cross-xopen.patch",
   "cached-no-as-needed.patch",
   "tests-unmapped-ids.patch",
+  "tests-refused-setid.patch",
 ]
 
 [track]

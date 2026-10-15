@@ -1,0 +1,60 @@
+diff -ruN a/Lib/test/test_tarfile.py b/Lib/test/test_tarfile.py
+--- a/Lib/test/test_tarfile.py
++++ b/Lib/test/test_tarfile.py
+@@ -4596,6 +4596,7 @@
+         tmp_filename = os.path.join(TEMPDIR, "tmp.file")
+         with open(tmp_filename, 'w'):
+             pass
++        setid_refused = False
+         try:
+             new_mode = (os.stat(tmp_filename).st_mode
+                         | stat.S_ISVTX | stat.S_ISGID | stat.S_ISUID)
+@@ -4607,6 +4608,8 @@
+                     # the sticky bit.
+                     self.skipTest("chmod() failed with EFTYPE: "
+                                   "regular users cannot set sticky bit")
++                elif exc.errno == errno.EPERM:
++                    setid_refused = True
+                 else:
+                     raise
+ 
+@@ -4620,7 +4623,10 @@
+         os.mkdir(tmp_filename)
+         new_mode = (os.stat(tmp_filename).st_mode
+                     | stat.S_ISVTX | stat.S_ISGID | stat.S_ISUID)
+-        os.chmod(tmp_filename, new_mode)
++        try:
++            os.chmod(tmp_filename, new_mode)
++        except PermissionError:
++            setid_refused = True
+         got_mode = os.stat(tmp_filename).st_mode
+         _t_dir = 't' if (got_mode & stat.S_ISVTX) else 'x'
+         _suid_dir = 's' if (got_mode & stat.S_ISUID) else 'x'
+@@ -4628,15 +4634,22 @@
+         os.rmdir(tmp_filename)
+ 
+         with self.check_context(arc.open(), 'fully_trusted'):
+-            self.expect_file('all_bits',
+-                             mode=f'?rw{_suid_file}rw{_sgid_file}rw{_t_file}')
++            if setid_refused:
++                self.expect_file('all_bits')
++            else:
++                self.expect_file('all_bits',
++                                 mode=f'?rw{_suid_file}rw{_sgid_file}rw{_t_file}')
+             self.expect_file('perm_bits', mode='?rwxrwxrwx')
+             self.expect_file('exec_group_other', mode='?rw-rwxrwx')
+             self.expect_file('read_group_only', mode='?---r-----')
+             self.expect_file('no_bits', mode='?---------')
+-            self.expect_file('dir/', mode=f'?---rw{_sgid_dir}rw{_t_dir}')
+-            self.expect_file('dir_all_bits/',
+-                             mode=f'?rw{_suid_dir}rw{_sgid_dir}rw{_t_dir}')
++            if setid_refused:
++                self.expect_file('dir/')
++                self.expect_file('dir_all_bits/')
++            else:
++                self.expect_file('dir/', mode=f'?---rw{_sgid_dir}rw{_t_dir}')
++                self.expect_file('dir_all_bits/',
++                                 mode=f'?rw{_suid_dir}rw{_sgid_dir}rw{_t_dir}')
+ 
+         with self.check_context(arc.open(), 'tar'):
+             self.expect_file('all_bits', mode='?rwxr-xr-x')
