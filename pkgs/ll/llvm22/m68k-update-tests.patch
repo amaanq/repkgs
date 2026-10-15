@@ -1,0 +1,31 @@
+From 8834939829a3e3cfee2b98a3db6f12d068686ed8 Mon Sep 17 00:00:00 2001
+From: Nikita Popov <npopov@redhat.com>
+Date: Fri, 10 Jul 2026 17:04:59 +0200
+Subject: [PATCH] [M68k] Update tests (#208748)
+
+After f2dfbf06f7db1a3cace4beb9f65d5a7f6a8b6235.
+---
+ llvm/test/CodeGen/M68k/Control/cmp.ll | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/llvm/test/CodeGen/M68k/Control/cmp.ll b/llvm/test/CodeGen/M68k/Control/cmp.ll
+index ae78534df4cd..3ff19717fa04 100644
+--- a/llvm/test/CodeGen/M68k/Control/cmp.ll
++++ b/llvm/test/CodeGen/M68k/Control/cmp.ll
+@@ -188,13 +188,13 @@ entry:
+ 
+ define i32 @test13(i32 %mask, i32 %base, i32 %intra) {
+ ; CHECK-LABEL: test13:
+ ; CHECK:         .cfi_startproc
+ ; CHECK-NEXT:  ; %bb.0:
+-; CHECK-NEXT:    move.b (7,%sp), %d0
+-; CHECK-NEXT:    and.b #8, %d0
+-; CHECK-NEXT:    cmpi.b #0, %d0
++; CHECK-NEXT:    move.l (4,%sp), %d0
++; CHECK-NEXT:    and.l #8, %d0
++; CHECK-NEXT:    cmpi.l #0, %d0
+ ; CHECK-NEXT:    bne .LBB9_1
+ ; CHECK-NEXT:  ; %bb.2:
+ ; CHECK-NEXT:    lea (8,%sp), %a0
+ ; CHECK-NEXT:    move.l (%a0), %d0
+ ; CHECK-NEXT:    rts
