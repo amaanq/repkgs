@@ -745,6 +745,31 @@
       "doc": "a dev output, staged at (act).dev, for files only builds against the package read"
     },
     {
+      "name": "outputs",
+      "type": {
+        "kind": "map",
+        "value": {
+          "kind": "record",
+          "fields": {
+            "files": {
+              "kind": "list",
+              "element": {
+                "kind": "string"
+              }
+            },
+            "linked": {
+              "kind": "boolean"
+            }
+          },
+          "optional": [
+            "linked"
+          ]
+        }
+      },
+      "default": null,
+      "doc": "outputs carved from out by globs, out keeping a link to each path, `linked` for what sys resolves to"
+    },
+    {
       "name": "install",
       "type": {
         "kind": "map",

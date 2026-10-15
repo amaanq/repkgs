@@ -83,11 +83,14 @@ reason) to keep its hash when the version moves.
 | `[steps]`       | `after`, `before`, `skip` and `replace` around the systems' phases, or `phases` for all of them |
 | `[<system>]`    | a build system's options, `[cmake]`, `[cargo]`, …                       |
 | `extras`        | `"python"` gives the interpreter `.env` and `.project`                  |
+| `[outputs.<name>]` | `files` globs moved from `out` into their own output, `linked` for what `sys` resolves to |
 
 Every other key is a field of the package record as bigtop reads it (`install`, `exports`, `env`,
 `links`, `prebuilt`, `bootstrapTools`, …). Wherever a package is expected a string names one, from
-the build set for `tools` and a system's `tool`, from the target set everywhere else. Strings take
-the same placeholders as a source url, as in `ldflags = [ "-X main.version={version}" ]`, and these:
+the build set for `tools` and a system's `tool`, from the target set everywhere else, and
+`clang.lib` names one output. `out` keeps a link at every path an output took, so `out` still
+holds the whole package and the output alone is the smaller closure. Strings take the same
+placeholders as a source url, as in `ldflags = [ "-X main.version={version}" ]`, and these:
 
 | placeholder         | becomes                                                  |
 | ------------------- | -------------------------------------------------------- |

@@ -2,6 +2,7 @@ use std::iter::once;
 
 use crate::{
    attrs::{
+      Carved,
       Cc,
       Tests,
    },
@@ -74,7 +75,7 @@ fn completions() -> Type {
    )
 }
 
-fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 20] {
+fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 21] {
    let prebuilt = Type::Enum {
       values: vec!["ldso".to_owned()],
    };
@@ -163,6 +164,12 @@ fn optional(systems: Vec<String>) -> [(&'static str, Type, &'static str); 20] {
          "dev",
          Type::Boolean,
          "a dev output, staged at (act).dev, for files only builds against the package read",
+      ),
+      (
+         "outputs",
+         Type::map(Carved::kind()),
+         "outputs carved from out by globs, out keeping a link to each path, `linked` for what \
+          sys resolves to",
       ),
    ]
 }

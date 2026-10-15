@@ -10,11 +10,7 @@ use std::{
       HashMap,
       hash_map::Entry as Slot,
    },
-   env::{
-      current_exe,
-      var,
-      vars,
-   },
+   env,
    ffi::OsStr,
    fmt::{
       Display,
@@ -249,7 +245,7 @@ pub fn selected<T>() -> io::Result<Option<Vec<T>>>
 where
    T: FromStr<Err: Display>,
 {
-   let Ok(text) = var(SELECTED) else {
+   let Ok(text) = env::var(SELECTED) else {
       return Ok(None);
    };
    text
@@ -284,7 +280,7 @@ fn request(ctx: &Ctx, step: &Step, module: Option<&'static str>) -> io::Result<K
       step:        &step.name,
       kind:        &step.kind,
       spec:        &spec,
-      environment: vars().filter(|entry| inherited(&entry.0)).collect(),
+      environment: env::vars().filter(|entry| inherited(&entry.0)).collect(),
       runner:      RUNNER,
       module:      fingerprinted,
    };
@@ -420,7 +416,7 @@ impl Manifest {
    /// The files bigtop itself reads around a step.
    fn own(top: &str) -> io::Result<Vec<PathBuf>> {
       let mut own = vec![
-         current_exe()?,
+         env::current_exe()?,
          Path::new(top).join("ctx.json"),
          Path::new(top).join(".bigtop-modules"),
          Path::new(top).join("phase-env.json"),
@@ -428,7 +424,7 @@ impl Manifest {
       own.extend(
          ["NIX_ATTRS_JSON_FILE", "NIX_ATTRS_SH_FILE"]
             .into_iter()
-            .filter_map(|name| var(name).ok().map(PathBuf::from)),
+            .filter_map(|name| env::var(name).ok().map(PathBuf::from)),
       );
       Ok(own)
    }

@@ -34,6 +34,7 @@ let
     elemAt
     filter
     foldl'
+    head
     isAttrs
     isBool
     isList
@@ -254,7 +255,16 @@ let
 
   byName =
     set: entry:
-    if isString entry then set.${entry} or (throw "${where}: no package ${entry}") else entry;
+    let
+      parts = filter isString (split "[.]" entry);
+      found = set.${head parts} or (throw "${where}: no package ${head parts}");
+    in
+    if !isString entry then
+      entry
+    else if length parts == 1 then
+      found
+    else
+      found.${elemAt parts 1} or (throw "${where}: ${head parts} has no output ${elemAt parts 1}");
   inherit (builtins.fromJSON (builtins.readFile ../schema.json)) systems;
   resolved =
     fields

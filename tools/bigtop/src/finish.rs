@@ -9,9 +9,12 @@ use std::{
    fs::{
       File,
       create_dir_all,
+      read,
+      read_link,
       read_to_string,
       remove_dir_all,
       remove_file,
+      rename,
       symlink_metadata,
    },
    io::{
@@ -29,6 +32,7 @@ use std::{
 
 use mummer::{
    config::BinaryFormat,
+   elf::relative_from,
    files::{
       glob,
       remove_if_exists,
@@ -43,6 +47,8 @@ use mummer::{
    },
    store::normalize,
    tree::{
+      EntryKind,
+      find,
       note,
       prune,
       relativize,
@@ -89,6 +95,7 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    let out = ctx.out.as_path();
    let mut laps = Laps::new();
    install_map(&spec, out, exe)?;
+   let carvings = carve(&spec, out, &top)?;
    if keep_tree {
       let tree = attrs
          .outputs
@@ -150,6 +157,13 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
 
    laps.lap("move");
 
+   let placing = Placing {
+      attrs: &attrs,
+      spec: &spec,
+      platform: &platform,
+      debug,
+   };
+
    if let Some(staging) = ctx.dev.as_deref() {
       let dest = attrs
          .outputs
@@ -160,27 +174,152 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
       if !staging.exists() {
          return Err(io::Error::other("nothing was installed into (act).dev"));
       }
-      prune(staging)?;
-      shebangs(staging, true)?;
-      relocate(
-         &attrs,
-         &spec,
-         &platform,
-         debug,
-         staging,
-         Path::new(dest),
-         &mut laps,
-      )?;
-      succeed(Command::new("chmod").arg("-R").arg("u+w").arg(staging))?;
-      relativize(utf8(staging)?, dest)?;
-      succeed(Command::new("mv").arg(staging).arg(dest))?;
+      placing.place(staging, dest, &mut laps)?;
       laps.lap("dev");
+   }
+
+   for carving in carvings {
+      placing.carved(&request, &ctx.dest, carving, &mut laps)?;
+      laps.lap("outputs");
    }
 
    version_check(&spec, &ctx, &platform, &top)?;
    laps.lap("version");
    note("finish-steps", &laps.shown.join(", "));
    cache_summary()
+}
+
+/// What relocating an output staged apart from `out` needs.
+struct Placing<'build> {
+   attrs:    &'build Attrs,
+   spec:     &'build Spec,
+   platform: &'build Platform,
+   debug:    &'build str,
+}
+
+impl Placing<'_> {
+   /// Relocates `staging` for `dest` and moves it there.
+   fn place(&self, staging: &Path, dest: &str, laps: &mut Laps) -> io::Result<()> {
+      prune(staging)?;
+      shebangs(staging, true)?;
+      relocate(
+         self.attrs,
+         self.spec,
+         self.platform,
+         self.debug,
+         staging,
+         Path::new(dest),
+         laps,
+      )?;
+      succeed(Command::new("chmod").arg("-R").arg("u+w").arg(staging))?;
+      relativize(utf8(staging)?, dest)?;
+      succeed(Command::new("mv").arg(staging).arg(dest))
+   }
+
+   /// Places a carved output and links `out`'s paths to it.
+   fn carved(
+      &self,
+      request: &Request,
+      out: &Path,
+      carving: Carving,
+      laps: &mut Laps,
+   ) -> io::Result<()> {
+      let dest = self
+         .attrs
+         .outputs
+         .carved
+         .get(&carving.name)
+         .ok_or_else(|| io::Error::other(format!("no {} output", carving.name)))?;
+      write_request(&carving.staging, request)?;
+      self.place(&carving.staging, dest, laps)?;
+
+      if let Some(file) = naming(Path::new(dest), out)? {
+         return Err(io::Error::other(format!(
+            "outputs.{}: {file} refers to out, which links back to it",
+            carving.name
+         )));
+      }
+
+      for relative in carving.moved {
+         let link = out.join(&relative);
+         let directory = link.parent().unwrap_or(out);
+         symlink(
+            relative_from(directory, &Path::new(dest).join(&relative)),
+            &link,
+         )?;
+      }
+      Ok(())
+   }
+}
+
+/// An output a recipe's `outputs` names, its files moved out of `out`.
+struct Carving {
+   name:    String,
+   staging: PathBuf,
+   moved:   Vec<PathBuf>,
+}
+
+fn carve(spec: &Spec, out: &Path, top: &str) -> io::Result<Vec<Carving>> {
+   let mut carvings = Vec::new();
+   for (name, carved) in &spec.outputs {
+      let staging = Path::new(top).join("outputs").join(name);
+      let mut moved = Vec::new();
+
+      for pattern in &carved.files {
+         let found = glob(utf8(&out.join(pattern))?)?;
+         if found.is_empty() {
+            return Err(io::Error::other(format!(
+               "outputs.{name}: nothing matches {pattern}"
+            )));
+         }
+         for path in found {
+            let relative = path
+               .strip_prefix(out)
+               .map_err(|_outside| io::Error::other(format!("{} is outside out", path.display())))?
+               .to_path_buf();
+            let target = staging.join(&relative);
+
+            create_dir_all(target.parent().unwrap_or(&staging))?;
+            rename(&path, &target)?;
+            moved.push(relative);
+         }
+      }
+
+      carvings.push(Carving {
+         name: name.clone(),
+         staging,
+         moved,
+      });
+   }
+   Ok(carvings)
+}
+
+/// The first file under `root` naming `other`'s store path by its hash.
+fn naming(root: &Path, other: &Path) -> io::Result<Option<String>> {
+   let hash = other
+      .file_name()
+      .and_then(|name| name.to_str())
+      .and_then(|name| name.split_once('-'))
+      .map(|pair| pair.0)
+      .ok_or_else(|| io::Error::other(format!("{} is no store path", other.display())))?;
+
+   for entry in walk(root)? {
+      let named = match entry.kind {
+         EntryKind::File => find(&read(&entry.path)?, hash.as_bytes()).is_some(),
+         EntryKind::Link => {
+            read_link(&entry.path)?
+               .as_os_str()
+               .as_encoded_bytes()
+               .windows(hash.len())
+               .any(|window| window == hash.as_bytes())
+         },
+         EntryKind::Dir => false,
+      };
+      if named {
+         return Ok(Some(entry.rel));
+      }
+   }
+   Ok(None)
 }
 
 /// How long each step of finish took, which can pass a minute on large

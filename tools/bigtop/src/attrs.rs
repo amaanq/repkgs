@@ -118,13 +118,16 @@ pub enum Kind {
 
 #[derive(Deserialize)]
 pub struct Outputs {
-   pub out:   String,
+   pub out:    String,
    #[serde(default)]
-   pub debug: Option<String>,
+   pub debug:  Option<String>,
    #[serde(default)]
-   pub tree:  Option<String>,
+   pub tree:   Option<String>,
    #[serde(default)]
-   pub dev:   Option<String>,
+   pub dev:    Option<String>,
+   /// The outputs a recipe's `outputs` names, by name.
+   #[serde(flatten)]
+   pub carved: BTreeMap<String, String>,
 }
 
 impl Attrs {
@@ -167,8 +170,21 @@ pub struct Spec {
    pub uses:     Vec<String>,
    #[serde(default)]
    pub sys:      Option<Vec<String>>,
+   #[serde(default)]
+   pub outputs:  BTreeMap<String, Carved>,
    #[serde(flatten)]
    pub systems:  Map<String, Value>,
+}
+
+record! {
+   pub Carved {
+      required {
+         files ("files"): Vec<String>,
+      }
+      optional {
+         linked ("linked"): bool,
+      }
+   }
 }
 
 #[derive(Clone, Copy, Default, Deserialize, PartialEq, Eq)]

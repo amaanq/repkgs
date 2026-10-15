@@ -22,6 +22,7 @@
 let
   inherit (builtins)
     any
+    attrNames
     attrValues
     concatMap
     elem
@@ -124,6 +125,23 @@ let
   };
   supported = unsupportedReason == null;
 
+  carved =
+    let
+      outputs = valid.outputs or { };
+      taken = filter (
+        output:
+        elem output [
+          "out"
+          "debug"
+          "tree"
+          "dev"
+          "tests"
+        ]
+      ) (attrNames outputs);
+    in
+    if taken == [ ] then outputs else fail "outputs ${join ", " taken} are bigtop's own";
+  linked = filter (output: carved.${output}.linked or false) (attrNames carved);
+
   # tests.separate: the build skips the test phases and keeps its tree in output `tree`, and
   # `<pkg>.tests` runs them on that tree, so a failing test never fails the package
   separate = valid.tests.separate or false;
@@ -217,7 +235,7 @@ let
   # here are left to the locked package (vendored copy or feature off)
   dependencies =
     (valid.dependencies or [ ])
-    ++ map (library: pkgs.${library}) (
+    ++ map (library: pkgs.${library}.linked or pkgs.${library}) (
       filter (library: pkgs.${library}.supported or false) (if sys == null then [ ] else sys)
     )
     ++ concatMap (system: buildSystems.${system}.dependencies) uses;
@@ -248,7 +266,8 @@ let
         "debug"
       ]
       ++ (if separate then [ "tree" ] else [ ])
-      ++ (if valid.dev or false then [ "dev" ] else [ ]);
+      ++ (if valid.dev or false then [ "dev" ] else [ ])
+      ++ attrNames carved;
       args = [ "build" ];
     }
   );
@@ -305,4 +324,16 @@ drv
     ;
 }
 // (if separate then { tests = testsDrv; } else { })
+// (
+  if linked == [ ] then
+    { }
+  else if tail linked == [ ] then
+    {
+      linked = drv.${head linked} // {
+        pname = name;
+      };
+    }
+  else
+    fail "outputs ${join ", " linked} are all linked, sys resolves to one"
+)
 // (if supported then { } else refused)
