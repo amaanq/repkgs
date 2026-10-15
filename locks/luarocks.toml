@@ -1,4 +1,5 @@
 [luarocks]
 "argparse"      = { sha256 = "sha256-wSKiUiSHbpO9OAzrUa8ozYpyKW4Jiy7tTwbYX1TxoLQ=", version = "0.7.2-1" }
+"datafile"      = { sha256 = "sha256-BVbek0znNSYR+Q9tkKGnGr094uQqoDIwR8fMtEdR5cY=", version = "0.11-1" }
 "lpeg"          = { sha256 = "sha256-g20xW5IKXN1i4heGxsn61UfE+qEx1Vg+vKZPC2WV7nY=", version = "1.1.0-2" }
 "luafilesystem" = { sha256 = "sha256-PeaNYZ9q2Von9HKIFDdUR9khMFGUtwUN7mGZBXwxKC8=", version = "1.9.0-1" }

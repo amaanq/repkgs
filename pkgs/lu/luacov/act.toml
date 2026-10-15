@@ -1,0 +1,19 @@
+tag   = "v{version}"
+fetch = { archive = true }
+with  = [ "luarocks" ]
+deps  = [ "lua" ]
+
+[track]
+from = "github:lunarmodules/luacov"
+
+[track.locks]
+luarocks = "."
+
+[luarocks]
+rockspec = "rockspecs/luacov-{version}-1.rockspec"
+
+[test]
+version = "-h"
+
+[only]
+posix = true
