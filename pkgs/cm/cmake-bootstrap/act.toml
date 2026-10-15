@@ -3,6 +3,7 @@ track = "github:Kitware/CMake"
 fetch = { asset = "cmake-{version}.tar.gz" }
 with  = [ "make" ]
 
+# cmake from the same tarball runs the suite
 [test]
 bin = [ "cmake", "ctest", "cpack" ]
 run = false

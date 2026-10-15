@@ -8,6 +8,7 @@ patches = [ "legacy-root.patch" ]
 [only]
 os = [ "linux" ]
 
+# libxkbcommon from the same source runs the suite
 [test]
 bin = [  ]
 run = false

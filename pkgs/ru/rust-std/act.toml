@@ -3,6 +3,7 @@ deps    = [  ]
 tools   = [ "rust", "cpython" ]
 exports = false
 
+# std's tests are part of rust's x.py suite
 [test]
 bin = [  ]
 run = false
