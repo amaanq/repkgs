@@ -347,8 +347,8 @@ impl Invocation {
             invocation.refused.get_or_insert(Refusal::Sources(sources));
          }
          invocation.query |= invocation.action == Action::Preprocess && sources == 0_i32;
-         if invocation.action == Action::Preprocess
-            && (invocation.output.as_os_str().is_empty() || invocation.output == Path::new("-"))
+         if invocation.output == Path::new("-")
+            || invocation.action == Action::Preprocess && invocation.output.as_os_str().is_empty()
          {
             invocation.stdout = true;
          } else if invocation.output.as_os_str().is_empty() && header {
