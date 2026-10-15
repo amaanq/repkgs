@@ -4,7 +4,7 @@ fetch   = { archive = true }
 with    = [ "cmake" ]
 deps    = [ "openssl", "pcre2", "zlib", "libssh2" ]
 tools   = [ "pkgconf", "cpython" ]
-patches = [ "process-tests-path.patch" ]
+patches = [ "process-tests-path.patch", "setgid-tests.patch" ]
 
 [cmake.defs]
 BUILD_CLI     = false

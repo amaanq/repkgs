@@ -1,0 +1,65 @@
+--- a/tests/clar/clar_libgit2.c
++++ b/tests/clar/clar_libgit2.c
+@@ -269,6 +269,19 @@
+ 	return _is_supported;
+ }
+ 
++bool cl_is_setgid_supported(void)
++{
++	static int _is_supported = -1;
++
++	if (_is_supported < 0) {
++		cl_must_pass(p_mkdir("setgid.t", 0777));
++		_is_supported = p_chmod("setgid.t", 02777) == 0;
++		cl_must_pass(p_rmdir("setgid.t"));
++	}
++
++	return _is_supported;
++}
++
+ const char* cl_git_fixture_url(const char *fixturename)
+ {
+ 	return cl_git_path_url(cl_fixture(fixturename));
+--- a/tests/clar/clar_libgit2.h
++++ b/tests/clar/clar_libgit2.h
+@@ -206,6 +206,7 @@
+ 
+ bool cl_toggle_filemode(const char *filename);
+ bool cl_is_chmod_supported(void);
++bool cl_is_setgid_supported(void);
+ 
+ /* Environment wrappers */
+ char *cl_getenv(const char *name);
+--- a/tests/libgit2/repo/init.c
++++ b/tests/libgit2/repo/init.c
+@@ -427,7 +427,8 @@
+ 
+ 	opts.flags = GIT_REPOSITORY_INIT_MKPATH |
+ 		GIT_REPOSITORY_INIT_NO_DOTGIT_DIR;
+-	opts.mode = GIT_REPOSITORY_INIT_SHARED_GROUP;
++	if (cl_is_setgid_supported())
++		opts.mode = GIT_REPOSITORY_INIT_SHARED_GROUP;
+ 	opts.workdir_path = "../c_wd";
+ 	opts.description = "Awesomest test repository evah";
+ 	opts.initial_head = "development";
+@@ -444,7 +445,7 @@
+ 
+ 	cl_git_pass(git_fs_path_lstat(git_repository_path(g_repo), &st));
+ 	cl_assert(S_ISDIR(st.st_mode));
+-	if (cl_is_chmod_supported())
++	if (cl_is_chmod_supported() && cl_is_setgid_supported())
+ 		cl_assert((S_ISGID & st.st_mode) == S_ISGID);
+ 	else
+ 		cl_assert((S_ISGID & st.st_mode) == 0);
+--- a/tests/libgit2/repo/template.c
++++ b/tests/libgit2/repo/template.c
+@@ -228,6 +228,9 @@
+ 	const char *repo_path;
+ 	int filemode;
+ 
++	if (!cl_is_setgid_supported())
++		cl_skip();
++
+ 	opts.flags = GIT_REPOSITORY_INIT_MKPATH;
+ 	opts.template_path = "template";
+ 	opts.mode = GIT_REPOSITORY_INIT_SHARED_GROUP;
