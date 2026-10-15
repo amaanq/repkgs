@@ -260,7 +260,6 @@ pub const ESCAPES: &[(libc::c_long, &str)] = &[
    (libc::SYS_mount_setattr, "mount_setattr"),
    (libc::SYS_chroot, "chroot"),
    (libc::SYS_pivot_root, "pivot_root"),
-   (libc::SYS_unshare, "unshare"),
    (libc::SYS_setns, "setns"),
    (libc::SYS_open_by_handle_at, "open_by_handle_at"),
 ];

@@ -281,7 +281,6 @@ const COMMON: &[(libc::c_long, Call)] = &[
    (libc::SYS_mount_setattr, Call::Escape("mount_setattr")),
    (libc::SYS_chroot, Call::Escape("chroot")),
    (libc::SYS_pivot_root, Call::Escape("pivot_root")),
-   (libc::SYS_unshare, Call::Escape("unshare")),
    (libc::SYS_setns, Call::Escape("setns")),
 ];
 
