@@ -15,6 +15,7 @@ use std::{
       self,
       Write as _,
    },
+   iter,
    os::unix::fs::PermissionsExt as _,
    path::{
       Path,
@@ -332,6 +333,7 @@ pub fn install(ctx: &Ctx) -> io::Result<()> {
          0o644
       }
    })?;
+
    for (suffix, variable) in [(".a", "RANLIB_CMD"), (".dll", "STRIP_CMD")] {
       let matched = placed
          .iter()
@@ -353,10 +355,16 @@ pub fn install(ctx: &Ctx) -> io::Result<()> {
    install_files("share", Path::new(&make_value("datadir")?), |_| 0o644)?;
 
    let skipped = ["install_lib", "install_docs", "install_data"];
-   run("make", &[&skipped[..], &["FIND=true"]].concat(), &[])?;
-   let rest = skipped
-      .iter()
-      .flat_map(|&target| ["-o", target])
+   let jobs = format!("-j{}", ctx.njobs);
+
+   let first = iter::once(jobs.as_str())
+      .chain(skipped)
+      .chain(["FIND=true"])
+      .collect::<Vec<_>>();
+   run("make", &first, &[])?;
+
+   let rest = iter::once(jobs.as_str())
+      .chain(skipped.iter().flat_map(|&target| ["-o", target]))
       .chain(["install"])
       .collect::<Vec<_>>();
    run("make", &rest, &[])?;
@@ -369,6 +377,7 @@ pub fn install(ctx: &Ctx) -> io::Result<()> {
    .into_iter()
    .next()
    .ok_or_else(|| io::Error::other("the bindist installed no package.conf.d"))?;
+
    close_db(ctx, &db)
 }
 

@@ -333,26 +333,41 @@ impl Python {
       Ok(())
    }
 
-   /// runs after install, imports from $out, not from the source tree.
+   /// runs after install.
    fn test(ctx: &Ctx, options: &Options) -> io::Result<()> {
       let spec = ctx.spec()?;
       let module = options
          .module
          .clone()
          .unwrap_or_else(|| spec.name.replace('-', "_"));
+
       let mut path = Self::site_packages(&[utf8(&ctx.out)?.to_owned()]);
       path.push(var("PYTHONPATH").unwrap_or_default());
+
       let joined = path.join(":");
       let env = [("PYTHONPATH", joined.as_str())];
+
       set_current_dir(&ctx.build)?;
       run("python3", &["-c", &format!("import {module}")], &env)?;
+
       if options.pytest {
-         // suites read their config relative to the project, -P keeps the
-         // source tree from shadowing the installed module
          set_current_dir(&ctx.src)?;
          let tests = ctx.src.join(&options.tests);
-         run("python3", &["-P", "-m", "pytest", "-q", utf8(&tests)?], &env)?;
+         let mut args = vec!["-P", "-m", "pytest", "-q", utf8(&tests)?];
+         let xdist = Command::new("python3")
+            .args(["-c", "import xdist"])
+            .envs(env)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()?
+            .success();
+         let workers = ctx.test_jobs()?.to_string();
+         if xdist {
+            args.extend(["-n", &workers]);
+         }
+         run("python3", &args, &env)?;
       }
+
       Ok(())
    }
 }
