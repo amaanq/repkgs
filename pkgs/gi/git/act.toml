@@ -16,6 +16,23 @@ posix = true
 [autotools]
 flags = [ "--with-curl", "--with-expat", "--with-libpcre2", "--without-tcltk" ]
 outOfTree = false
+makeFlags = [
+  "RUNTIME_PREFIX=YesPlease",
+  "gitexecdir=libexec/git-core",
+  "template_dir=share/git-core/templates",
+  "sysconfdir=/etc",
+  "RUST_TARGET_DIR=$(CARGO_TARGET_DIR)/{platform:rustTriple}/release",
+  "CURL_LDFLAGS=-lcurl",
+  "NO_PERL=1",
+  "PERL_PATH=perl",
+  "NO_PYTHON=1",
+  "NO_GETTEXT=1",
+  "uname_S={platform:osNames.cmake}",
+  "uname_M={platform:cpu}",
+  "uname_R=",
+  "NO_INSTALL_HARDLINKS=1",
+  "INSTALL_SYMLINKS=1",
+]
 testScripts = { files = "t/t*.sh", variable = "T" }
 testTarget = [
   "-C",
@@ -25,6 +42,18 @@ testTarget = [
   "GIT_TEST_OPTS=--verbose-log",
   "TEST_SHELL_PATH={pkg:bash-interactive}/bin/bash",
 ]
+
+[cargo]
+tool = "rust-bootstrap"
+
+[on."!windows+!macos".autotools]
+makeFlags = [ "uname_O=GNU/Linux" ]
+
+[on.windows.autotools]
+makeFlags = [ "uname_O=windows" ]
+
+[on.macos.autotools]
+makeFlags = [ "uname_O=macos" ]
 
 [on.glibc.test]
 deps = [ "glibc-bin" ]
