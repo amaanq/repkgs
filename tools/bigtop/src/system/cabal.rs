@@ -1,8 +1,10 @@
 use std::{
+   collections::BTreeMap,
    env::{
       current_exe,
       var,
    },
+   ffi::OsString,
    fs::{
       File,
       copy,
@@ -22,8 +24,12 @@ use std::{
       ffi::OsStrExt as _,
       fs::symlink,
    },
-   path::Path,
+   path::{
+      Path,
+      PathBuf,
+   },
    process::Command,
+   sync::OnceLock,
    time::{
       Duration,
       SystemTime,
@@ -56,6 +62,8 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
+      Kind,
+      build_top,
    },
    prepare::succeed,
    probe,
@@ -76,6 +84,8 @@ use crate::{
       },
       dispatch::System,
    },
+   test_cache,
+   trace::Tests,
 };
 
 options! {
@@ -102,10 +112,16 @@ struct Plan {
 #[derive(Deserialize)]
 struct Unit {
    #[serde(rename = "type")]
-   kind:  UnitType,
+   kind:      UnitType,
    #[serde(default)]
-   style: Option<UnitStyle>,
-   id:    String,
+   style:     Option<UnitStyle>,
+   id:        String,
+   #[serde(rename = "pkg-name")]
+   package:   String,
+   #[serde(default, rename = "component-name")]
+   component: Option<String>,
+   #[serde(default, rename = "bin-file")]
+   bin_file:  Option<PathBuf>,
 }
 
 #[derive(Deserialize, PartialEq, Eq)]
@@ -116,7 +132,7 @@ enum UnitType {
    Installed,
 }
 
-#[derive(Deserialize, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 enum UnitStyle {
    Global,
@@ -127,6 +143,9 @@ enum UnitStyle {
 /// the same fixed path in every sandbox, so the paths inside cached units
 /// agree.
 const STORE: &str = "/build/cabal-store";
+
+/// Where `test-prepare` records each test-suite executable's target.
+const SUITES: &str = ".bigtop-cabal-tests.json";
 
 pub struct Cabal;
 
@@ -141,6 +160,10 @@ impl System for Cabal {
 
    fn options(&self) -> io::Result<Vec<Field>> {
       Options::schema(self.name())
+   }
+
+   fn tests(&self) -> Option<&'static dyn Tests> {
+      Some(&Self)
    }
 
    fn unsupported(&self) -> Option<Unsupported> {
@@ -242,12 +265,14 @@ impl System for Cabal {
       .into())
    }
 
-   fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
+   fn phase(&self, ctx: &Ctx, attrs: &Attrs, verb: &str, socket: &Path) -> io::Result<()> {
       let options = ctx.options::<Options>("cabal")?;
+      let testing = Self::testing(ctx, attrs);
       match verb {
-         "build" => Self::build(ctx, &options, socket),
+         "build" => Self::build(ctx, &options, testing, socket),
+         "test-prepare" => Self::prepare_tests(ctx, &options),
          "test" => Self::test(ctx, &options),
-         "install" => Self::install(ctx, &options),
+         "install" => Self::install(ctx, &options, testing),
          _ => Err(unknown("cabal", verb)),
       }
    }
@@ -272,9 +297,25 @@ impl Cabal {
       )
    }
 
-   /// flags go to every cabal subcommand, build, test and list-bin must agree.
-   fn targets(options: &Options) -> Vec<String> {
-      let mut args = options.flags.clone();
+   fn testing(ctx: &Ctx, attrs: &Attrs) -> bool {
+      ctx.tests_run
+         && attrs.plan.phases.iter().any(|step| {
+            matches!(step.kind, Kind::System { ref system, ref verb } if system == "cabal" && verb == "test")
+         })
+   }
+
+   /// flags go to every cabal subcommand, build, test and list-bin must agree
+   /// on one plan, so tests are enabled in all of them when the suite runs.
+   fn flags(options: &Options, testing: bool) -> Vec<String> {
+      let mut flags = options.flags.clone();
+      if testing {
+         flags.push("--enable-tests".to_owned());
+      }
+      flags
+   }
+
+   fn targets(options: &Options, testing: bool) -> Vec<String> {
+      let mut args = Self::flags(options, testing);
       args.extend(options.exes.iter().map(|exe| format!("exe:{exe}")));
       args
    }
@@ -295,7 +336,7 @@ impl Cabal {
    /// module by module, where the units cache only covers dependencies. It
    /// is keyed on the package's identity alone, not its sources or inputs,
    /// since ghc hashes every module against the tree it finds.
-   fn dist_key(ctx: &Ctx, options: &Options) -> io::Result<Key> {
+   fn dist_key(ctx: &Ctx, options: &Options, testing: bool) -> io::Result<Key> {
       let project = ctx.project_dir(&options.root);
       let mut cabals = Self::cabal_files(ctx, options)?
          .into_iter()
@@ -309,7 +350,7 @@ impl Cabal {
       cabals.sort();
       let record = serde_json::to_vec(&(
          cabals,
-         Self::targets(options),
+         Self::targets(options, testing),
          &options.project,
          &ctx.platform,
       ))?;
@@ -321,12 +362,12 @@ impl Cabal {
       .parse()
    }
 
-   fn plan() -> io::Result<Vec<Unit>> {
+   fn plan(style: UnitStyle) -> io::Result<Vec<Unit>> {
       let plan = serde_json::from_str::<Plan>(&read_to_string("dist-newstyle/cache/plan.json")?)?;
       Ok(plan
          .install_plan
          .into_iter()
-         .filter(|unit| unit.kind == UnitType::Configured && unit.style == Some(UnitStyle::Global))
+         .filter(|unit| unit.kind == UnitType::Configured && unit.style == Some(style))
          .collect())
    }
 
@@ -482,10 +523,10 @@ impl Cabal {
       })
    }
 
-   fn build(ctx: &Ctx, options: &Options, socket: &Path) -> io::Result<()> {
-      let targets = Self::targets(options);
+   fn build(ctx: &Ctx, options: &Options, testing: bool, socket: &Path) -> io::Result<()> {
+      let targets = Self::targets(options, testing);
       let dist = if ctx.cache {
-         let key = Self::dist_key(ctx, options)?;
+         let key = Self::dist_key(ctx, options, testing)?;
          let restored = probe::restore_dir(&key, Path::new("dist-newstyle"), socket)?;
          note("cabal-dist", if restored { "restored" } else { "cold" });
          if restored {
@@ -498,7 +539,7 @@ impl Cabal {
       let mut dry = vec!["build", "--dry-run"];
       dry.extend(strs(&targets));
       run("cabal", &dry, &[])?;
-      let planned = Self::plan()?;
+      let planned = Self::plan(UnitStyle::Global)?;
       if ctx.cache {
          let ids = planned
             .into_iter()
@@ -521,9 +562,9 @@ impl Cabal {
 
    /// cabal test errors out (Cabal-7043) when the package declares no
    /// test-suite, which executable-only packages often do not.
-   fn test(ctx: &Ctx, options: &Options) -> io::Result<()> {
+   fn declares_tests(ctx: &Ctx, options: &Options) -> io::Result<bool> {
       let cabals = Self::cabal_files(ctx, options)?;
-      let declares_tests = |path: &String| {
+      let declares = |path: &String| {
          read_to_string(path).is_ok_and(|text| {
             text.lines().any(|line| {
                let lowered = line.trim_start().to_ascii_lowercase();
@@ -533,28 +574,97 @@ impl Cabal {
             })
          })
       };
-      if !cabals.is_empty() && !cabals.iter().any(declares_tests) {
+      Ok(cabals.is_empty() || cabals.iter().any(declares))
+   }
+
+   /// Builds every test-suite outside the traced run and records which
+   /// target each executable is, so the test cache keeps one unit per suite.
+   fn prepare_tests(ctx: &Ctx, options: &Options) -> io::Result<()> {
+      let mut suites = BTreeMap::new();
+      if Self::declares_tests(ctx, options)? {
+         let flags = Self::flags(options, true);
+         let mut args = vec!["build"];
+         args.extend(strs(&flags));
+         args.push("all:tests");
+         run("cabal", &args, &[])?;
+         for unit in Self::plan(UnitStyle::Local)? {
+            if let (Some(component), Some(bin)) = (unit.component, unit.bin_file)
+               && component.starts_with("test:")
+            {
+               suites.insert(
+                  bin.components().collect::<PathBuf>(),
+                  format!("{}:{component}", unit.package),
+               );
+            }
+         }
+      }
+      write(
+         Path::new(&build_top()?).join(SUITES),
+         serde_json::to_vec(&suites)?,
+      )
+   }
+
+   fn test(ctx: &Ctx, options: &Options) -> io::Result<()> {
+      if !Self::declares_tests(ctx, options)? {
          note("cabal", "no test suites");
          return Ok(());
       }
-      let mut args = vec!["test", "--enable-tests"];
-      args.extend(strs(&options.flags));
-      args.push("all:tests");
+      let flags = Self::flags(options, true);
+      let chosen = test_cache::selected::<String>()?;
+      let mut args = vec!["test"];
+      args.extend(strs(&flags));
+      match chosen {
+         Some(ref names) => args.extend(strs(names)),
+         None => args.push("all:tests"),
+      }
       run("cabal", &args, &[])
    }
 
-   fn install(ctx: &Ctx, options: &Options) -> io::Result<()> {
+   fn install(ctx: &Ctx, options: &Options, testing: bool) -> io::Result<()> {
       let bin = ctx.out.join("bin");
       create_dir_all(&bin)?;
+      let flags = Self::flags(options, testing);
       for exe in &options.exes {
          let target = format!("exe:{exe}");
          let mut args = vec!["list-bin"];
-         args.extend(strs(&options.flags));
+         args.extend(strs(&flags));
          args.push(&target);
          let built = capture("cabal", &args)?;
          copy(built.trim(), bin.join(exe))?;
       }
       Ok(())
+   }
+}
+
+fn suites() -> Option<&'static BTreeMap<PathBuf, String>> {
+   static SUITES_READ: OnceLock<Option<BTreeMap<PathBuf, String>>> = OnceLock::new();
+   SUITES_READ
+      .get_or_init(|| {
+         let bytes = read(Path::new(&build_top().ok()?).join(SUITES)).ok()?;
+         serde_json::from_slice(&bytes).ok()
+      })
+      .as_ref()
+}
+
+/// A test-suite is its executable and what that starts.
+impl Tests for Cabal {
+   /// cabal execs a suite as `<project>/./dist-newstyle/…`, plan.json spells
+   /// it without the `.`.
+   fn unit(&self, exe: &Path, _args: &[OsString], _cwd: &Path) -> Option<String> {
+      suites()?
+         .get(&exe.components().collect::<PathBuf>())
+         .cloned()
+   }
+
+   fn prepares(&self) -> bool {
+      true
+   }
+
+   /// cabal rewrites its plan cache and each suite's log on every run.
+   fn state(&self, path: &Path) -> bool {
+      path.ancestors().any(|directory| {
+         directory.ends_with("dist-newstyle/cache") || directory.ends_with("dist-newstyle/test")
+      })
    }
 }
 
