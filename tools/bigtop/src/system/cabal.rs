@@ -18,7 +18,10 @@ use std::{
       self,
       Read as _,
    },
-   os::unix::fs::symlink,
+   os::unix::{
+      ffi::OsStrExt as _,
+      fs::symlink,
+   },
    path::Path,
    process::Command,
    time::{
@@ -574,25 +577,33 @@ pub fn ordered_ghc_pkg(args: &[String]) -> io::Result<i32> {
       .map(|directory| Path::new(directory).join("ghc-pkg"))
       .find(|candidate| candidate.canonicalize().is_ok_and(|found| found != own))
       .ok_or_else(|| io::Error::other("no ghc-pkg on PATH besides bigtop"))?;
-   if !args
+   let changes = args
       .iter()
-      .any(|arg| DATABASE_CHANGES.contains(&arg.as_str()))
-   {
-      return Ok(Command::new(&real).args(args).status()?.code().unwrap_or(1));
-   }
-   let databases = package_dbs(args);
+      .any(|arg| DATABASE_CHANGES.contains(&arg.as_str()));
+   let mut databases = package_dbs(args);
+   databases.sort();
    let top = var("NIX_BUILD_TOP").map_err(|_unset| io::Error::other("NIX_BUILD_TOP is not set"))?;
    let locks = databases
       .iter()
       .map(|db| {
+         let canonical = Path::new(db).canonicalize()?;
          let lock = File::create(format!(
             "{top}/.ghc-pkg-{}.lock",
-            blake3::hash(db.as_bytes())
+            blake3::hash(canonical.as_os_str().as_bytes())
          ))?;
-         lock.lock()?;
+         if changes {
+            lock.lock()?;
+         } else {
+            lock.lock_shared()?;
+         }
          Ok(lock)
       })
       .collect::<io::Result<Vec<File>>>()?;
+   if !changes {
+      let status = Command::new(&real).args(args).status()?;
+      drop(locks);
+      return Ok(status.code().unwrap_or(1));
+   }
    for db in &databases {
       in_name_order(Path::new(db))?;
    }
