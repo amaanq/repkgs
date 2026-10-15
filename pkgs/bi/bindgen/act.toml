@@ -9,3 +9,6 @@ bin = [ "bindgen" ]
 [cargo]
 root            = "bindgen-cli"
 withoutFeatures = [ "runtime" ]
+
+[on."!apple"]
+deps = [ "libobjc2" ]
