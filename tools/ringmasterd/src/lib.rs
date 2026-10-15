@@ -270,8 +270,6 @@ pub const ESCAPES: &[(libc::c_long, &str)] = &[
 pub enum Escape {
    /// A system call that changes what paths mean or reaches files by handle.
    Call(u32),
-   /// openat2 rooted at its descriptor.
-   InRoot,
    /// A call through a compat ABI.
    Foreign,
    /// A path the kernel half could not spell out.
@@ -282,7 +280,6 @@ impl From<u32> for Escape {
    #[inline]
    fn from(detail: u32) -> Self {
       match detail {
-         0xFFFF_0001 => Self::InRoot,
          0xFFFF_0002 => Self::Foreign,
          0xFFFF_0003 => Self::Unresolved,
          number => Self::Call(number),
@@ -301,7 +298,6 @@ impl Escape {
                .find(|entry| i64::from(number) == entry.0)
                .map_or("an escaping call", |entry| entry.1)
          },
-         Self::InRoot => "openat2 rooted at a descriptor",
          Self::Foreign => "a call through a compat ABI",
          Self::Unresolved => "a path the kernel could not spell out",
       }

@@ -147,7 +147,6 @@ enum kind {
 };
 
 /* Escapes that are no system call. */
-#define ESCAPE_IN_ROOT 0xFFFF0001U
 #define ESCAPE_FOREIGN 0xFFFF0002U
 #define ESCAPE_UNRESOLVED 0xFFFF0003U
 
@@ -562,6 +561,31 @@ INLINE void resolved(__u32 kind, __u32 detail, struct path* path) {
    finish(scratch);
 }
 
+/* A failed open resolved in a descriptor's root, which never leaves the
+ * directory, so it is sent as reaching paths under it, as a deep one is. */
+INLINE void rooted(int dfd) {
+   __u32 tgid = bpf_get_current_pid_tgid() >> 32;
+   __u64* session = session_of(tgid);
+   if (!session) {
+      return;
+   }
+   struct scratch* scratch = begin(*session, KIND_DEEP, tgid, 0);
+   if (!scratch) {
+      return;
+   }
+   long length = base_of(scratch, dfd);
+   if (length == NO_DIRECTORY) {
+      drop(scratch);
+      return;
+   }
+   if (length < 0) {
+      deep(*session, tgid, scratch);
+      return;
+   }
+   scratch->head.name = length;
+   finish(scratch);
+}
+
 /* The calls that can take a path away run as fexit programs, so one that
  * failed, as tests of error paths make them, counts only as the lookup it
  * was. The names stay valid until the system call that passed them returns. */
@@ -576,12 +600,8 @@ int open(__u64* context) {
    if (lookup_flags & LOOKUP_IN_ROOT) {
       if (file < (unsigned long)-MAX_ERRNO) {
          resolved(KIND_OPEN, open_flag, &((struct file*)file)->f_path);
-         return 0;
-      }
-      __u32 tgid = bpf_get_current_pid_tgid() >> 32;
-      __u64* session = session_of(tgid);
-      if (session) {
-         escape(*session, tgid, ESCAPE_IN_ROOT);
+      } else {
+         rooted((int)context[0]);
       }
       return 0;
    }
