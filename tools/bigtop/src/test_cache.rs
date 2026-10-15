@@ -417,6 +417,22 @@ fn names(directory: &Path, kept: &dyn Fn(&Path) -> bool) -> io::Result<String> {
 }
 
 impl Manifest {
+   /// The files bigtop itself reads around a step.
+   fn own(top: &str) -> io::Result<Vec<PathBuf>> {
+      let mut own = vec![
+         current_exe()?,
+         Path::new(top).join("ctx.json"),
+         Path::new(top).join(".bigtop-modules"),
+         Path::new(top).join("phase-env.json"),
+      ];
+      own.extend(
+         ["NIX_ATTRS_JSON_FILE", "NIX_ATTRS_SH_FILE"]
+            .into_iter()
+            .filter_map(|name| var(name).ok().map(PathBuf::from)),
+      );
+      Ok(own)
+   }
+
    /// What the step read and the build had made before it ran, or why the
    /// accesses cannot stand for that.
    fn build(
@@ -432,21 +448,15 @@ impl Manifest {
       if let Some(why) = accesses.escaped {
          return Ok(Err(why.to_owned()));
       }
-      if accesses.deep.iter().any(|directory| before.had(directory)) {
+      if accesses
+         .deep
+         .iter()
+         .any(|directory| before.had(Path::new(directory)))
+      {
          return Ok(Err(Escape::Unresolved.reason().to_owned()));
       }
       let top = build_top()?;
-      let mut own = vec![
-         current_exe()?,
-         Path::new(&top).join("ctx.json"),
-         Path::new(&top).join(".bigtop-modules"),
-         Path::new(&top).join("phase-env.json"),
-      ];
-      own.extend(
-         ["NIX_ATTRS_JSON_FILE", "NIX_ATTRS_SH_FILE"]
-            .into_iter()
-            .filter_map(|name| var(name).ok().map(PathBuf::from)),
-      );
+      let own = Self::own(&top)?;
       let ignored = |path: &Path| {
          own.iter().any(|mine| mine == path)
             || PSEUDO.iter().any(|root| path.starts_with(root))
@@ -456,9 +466,9 @@ impl Manifest {
       let mut paths = accesses.paths;
       let listed = accesses.listed;
       let mut prior = accesses.prior;
-      prior.retain(|path, _bytes| before.files.contains(path));
+      prior.retain(|path, _bytes| before.files.contains(Path::new(path)));
       let mut replaced = accesses.replaced;
-      replaced.retain(|path| before.files.contains(path) && !ignored(path));
+      replaced.retain(|path| before.files.contains(Path::new(path)) && !ignored(Path::new(path)));
       let forced = !replaced.is_empty() || !prior.is_empty();
       let units = paths
          .values()
@@ -468,12 +478,13 @@ impl Manifest {
          .into_iter()
          .collect::<Vec<_>>();
       let mut entries = Vec::new();
-      for path in accesses.looked_up {
+      for spelled in accesses.looked_up {
          if units.is_empty() {
-            paths.entry(path).or_default().shared = true;
+            paths.entry(spelled).or_default().shared = true;
             continue;
          }
-         if paths.contains_key(&path) || ignored(&path) || written(&path) {
+         let path = PathBuf::from(spelled);
+         if paths.contains_key(path.as_os_str()) || ignored(&path) || written(&path) {
             continue;
          }
          if let Some(fact) = Self::presence(&path, &mark) {
@@ -481,15 +492,16 @@ impl Manifest {
          }
       }
       let mut files = Vec::new();
-      for (path, readers) in paths {
+      for (spelled, readers) in paths {
+         let path = PathBuf::from(spelled);
          if ignored(&path) {
             continue;
          }
-         if replaced.remove(&path) {
+         if replaced.remove(path.as_os_str()) {
             entries.push(entry(store, &units, &path, Fact::Replaced, &readers));
             continue;
          }
-         if let Some(bytes) = prior.remove(&path) {
+         if let Some(bytes) = prior.remove(path.as_os_str()) {
             let fact = Fact::File(held(store, &path, bytes));
             entries.push(entry(store, &units, &path, fact, &readers));
             continue;
@@ -510,7 +522,8 @@ impl Manifest {
          }
       }
       entries.extend(Self::contents(client, store, &units, files)?);
-      for (path, readers) in listed {
+      for (spelled, readers) in listed {
+         let path = PathBuf::from(spelled);
          if ignored(&path) {
             continue;
          }

@@ -431,22 +431,22 @@ impl Readers {
 /// absolute.
 #[derive(Default)]
 pub struct Accesses {
-   pub paths:         BTreeMap<PathBuf, Readers>,
-   pub listed:        BTreeMap<PathBuf, Readers>,
+   pub paths:         BTreeMap<OsString, Readers>,
+   pub listed:        BTreeMap<OsString, Readers>,
    /// Paths only looked up outside any test, by a harness checking whether
    /// to rebuild what the build already made, which count for whether they
    /// exist and not what they hold, or every test would depend on every
    /// source.
-   pub looked_up:     BTreeSet<PathBuf>,
+   pub looked_up:     BTreeSet<OsString>,
    /// Files the build made, as they were when the run first took them away
    /// after reading them.
-   pub prior:         BTreeMap<PathBuf, Vec<u8>>,
+   pub prior:         BTreeMap<OsString, Vec<u8>>,
    /// Files the run read and then took away, which a tracer that learns of
    /// calls only after they return could not keep as they were.
-   pub replaced:      BTreeSet<PathBuf>,
+   pub replaced:      BTreeSet<OsString>,
    /// Directories the run reached paths too deep to spell out under, which
    /// it must have made itself for the paths to be complete.
-   pub deep:          BTreeSet<PathBuf>,
+   pub deep:          BTreeSet<OsString>,
    /// Why the paths may not be everything the run read.
    pub escaped:       Option<&'static str>,
    /// Whether a task installed a handler without `SA_RESTART`, the only kind
@@ -879,24 +879,34 @@ impl Lineage {
 pub fn record(accesses: &mut Accesses, event: Event, unit: Option<&str>, traced: bool, mark: Mark) {
    match event {
       Event::Looked(path) if unit.is_none() && traced => {
-         accesses.looked_up.insert(path);
+         accesses.looked_up.insert(path.into_os_string());
       },
       Event::Read(path) | Event::Exec(path) | Event::Looked(path) => {
-         accesses.paths.entry(path).or_default().add(unit);
+         accesses
+            .paths
+            .entry(path.into_os_string())
+            .or_default()
+            .add(unit);
       },
       Event::Clobbered(path) => {
          let made =
             symlink_metadata(&path).is_ok_and(|meta| meta.is_file() && !mark.written(&meta));
          if made
-            && accesses.paths.contains_key(&path)
-            && !accesses.prior.contains_key(&path)
+            && accesses.paths.contains_key(path.as_os_str())
+            && !accesses.prior.contains_key(path.as_os_str())
             && let Ok(bytes) = read(&path)
          {
-            accesses.prior.insert(path.clone(), bytes);
+            accesses.prior.insert(path.clone().into_os_string(), bytes);
          }
          record(accesses, Event::Looked(path), unit, traced, mark);
       },
-      Event::Listed(path) => accesses.listed.entry(path).or_default().add(unit),
+      Event::Listed(path) => {
+         accesses
+            .listed
+            .entry(path.into_os_string())
+            .or_default()
+            .add(unit);
+      },
    }
 }
 

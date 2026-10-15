@@ -85,7 +85,7 @@ struct Processes {
    forked:    HashMap<u32, Option<String>>,
    /// Programs a process opened to exec, read by whatever the exec makes it.
    loading:   HashMap<u32, Vec<PathBuf>>,
-   clobbered: BTreeSet<PathBuf>,
+   clobbered: BTreeSet<OsString>,
 }
 
 impl Processes {
@@ -110,8 +110,10 @@ impl Processes {
       (unit, traced): (Option<&str>, bool),
       mark: Mark,
    ) {
-      if self.clobbered.insert(path.clone()) && accesses.paths.contains_key(&path) {
-         accesses.replaced.insert(path.clone());
+      if self.clobbered.insert(path.clone().into_os_string())
+         && accesses.paths.contains_key(path.as_os_str())
+      {
+         accesses.replaced.insert(path.clone().into_os_string());
       }
       record(accesses, Event::Looked(path), unit, traced, mark);
    }
@@ -182,7 +184,7 @@ impl Processes {
             return;
          },
          Access::Deep(raw) => {
-            accesses.deep.insert(PathBuf::from(OsString::from_vec(raw)));
+            accesses.deep.insert(OsString::from_vec(raw));
             return;
          },
          Access::Escape(escape) => {
