@@ -4,7 +4,6 @@ use core.nu [act cue]
 export def submodules []: nothing -> nothing {
    let ext = $"((act).src)/ext"
 
-   cue cp -r $"($env.RAPIDCHECK_CATCH)/." $"($ext)/catch"
    cue cp -r $"($env.RAPIDCHECK_GOOGLETEST)/." $"($ext)/googletest"
    cue ln -s $env.RAPIDCHECK_BOOST $"($ext)/boost"
 }

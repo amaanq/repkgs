@@ -1,10 +1,9 @@
-with = [ "cmake" ]
+with    = [ "cmake" ]
+deps    = [ "catch2" ]
+patches = [ "tests.patch" ]
 
 [fetch.default]
 url = "https://github.com/emil-e/rapidcheck/archive/{rev}.tar.gz"
-
-[fetch.catch] # newer than the pinned submodule, since Catch 2.4.2 no longer builds on current glibc
-url = "https://github.com/catchorg/Catch2/archive/refs/tags/v{catch}.tar.gz"
 
 [fetch.googletest]
 url = "https://github.com/google/googletest/archive/{googletest}.tar.gz"
@@ -25,5 +24,4 @@ RC_INSTALL_ALL_EXTRAS = true
 
 [env]
 RAPIDCHECK_BOOST      = "{pkg:boost}/include"
-RAPIDCHECK_CATCH      = "{source:catch}"
 RAPIDCHECK_GOOGLETEST = "{source:googletest}"

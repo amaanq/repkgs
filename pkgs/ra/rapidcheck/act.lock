@@ -3,10 +3,8 @@ date    = "2026-10-05"
 rev     = "2c3c4365aca21ef4e612768fdc95b1ce8b39a651"
 
 [hash]
-catch      = "sha256-XnT2ziES94Y4uzWmaxSw7nWegJFQjAqFUG8PkwK5nLU="
 default    = "sha256-kfiDY6OjXt9C1EOdyHOfnSbaRP/ncNdoN6hKlVTRXJQ="
 googletest = "sha256-FewrBn5GEVDRbxyeYfTC8dafBmVX1yDhi0j+nl0T5eo="
 
 [vars]
-catch      = "2.13.10"
 googletest = "e38ef3be887afc0089005e394c5001002e313960"

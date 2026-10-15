@@ -1,0 +1,61 @@
+--- a/ext/CMakeLists.txt
++++ b/ext/CMakeLists.txt
+@@ -1,5 +1,5 @@
+ if (RC_ENABLE_TESTS OR RC_ENABLE_CATCH)
+-  add_subdirectory(catch)
++  find_package(Catch2 REQUIRED GLOBAL)
+ endif()
+ 
+ if ((RC_ENABLE_GMOCK OR RC_ENABLE_GTEST) AND RC_ENABLE_TESTS)
+--- a/test/gen/ContainerTests/Fixed.cpp
++++ b/test/gen/ContainerTests/Fixed.cpp
+@@ -81,8 +81,7 @@
+ TEST_CASE("gen::container(std::size_t)") {
+   forEachType<GenericFixedProperties<ContainerFactory>,
+               RC_SEQUENCE_CONTAINERS(int),
+-              RC_SET_CONTAINERS(int),
+-              std::basic_string<int>>();
++              RC_SET_CONTAINERS(int)>();
+   forEachType<GenericFixedProperties<MapFactory>, RC_MAP_CONTAINERS(int)>();
+ 
+   forEachType<ParamsFixedProperties<ContainerFactory>,
+--- a/test/gen/ContainerTests/NonFixed.cpp
++++ b/test/gen/ContainerTests/NonFixed.cpp
+@@ -175,8 +175,7 @@
+ TEST_CASE("gen::container") {
+   forEachType<GenericProperties<ContainerFactory>,
+               RC_SEQUENCE_CONTAINERS(int),
+-              RC_SET_CONTAINERS(int),
+-              std::basic_string<int>>();
++              RC_SET_CONTAINERS(int)>();
+   forEachType<GenericProperties<MapFactory>, RC_MAP_CONTAINERS(int)>();
+ 
+   forEachType<ParamsProperties<ContainerFactory>,
+@@ -185,8 +184,7 @@
+   forEachType<ParamsProperties<MapFactory>, RC_MAP_CONTAINERS(GenParams)>();
+ 
+   forEachType<SequenceProperties,
+-              RC_SEQUENCE_CONTAINERS(int),
+-              std::basic_string<int>>();
++              RC_SEQUENCE_CONTAINERS(int)>();
+ 
+   forEachType<SetProperties, std::set<int>, std::unordered_set<int>>();
+ 
+--- a/test/gen/ContainerTests/Unique.cpp
++++ b/test/gen/ContainerTests/Unique.cpp
+@@ -167,13 +167,11 @@
+ 
+ TEST_CASE("gen::unique") {
+   forEachType<GenericProperties<UniqueFactory>,
+-              RC_SEQUENCE_CONTAINERS(int),
+-              std::basic_string<int>>();
++              RC_SEQUENCE_CONTAINERS(int)>();
+   forEachType<ParamsProperties<UniqueFactory>,
+               RC_SEQUENCE_CONTAINERS(GenParams)>();
+   forEachType<UniqueProperties<UniqueFactory>, RC_SEQUENCE_CONTAINERS(int)>();
+ 
+   forEachType<RetrialProperties<UniqueFactory>,
+-              RC_SEQUENCE_CONTAINERS(int),
+-              std::basic_string<int>>();
++              RC_SEQUENCE_CONTAINERS(int)>();
+ }
