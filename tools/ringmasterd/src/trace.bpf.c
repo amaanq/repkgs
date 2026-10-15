@@ -143,6 +143,7 @@ enum kind {
    KIND_EXEC = 5,
    KIND_FORK = 6,
    KIND_ESCAPE = 7,
+   KIND_DEEP = 8,
 };
 
 /* Escapes that are no system call. */
@@ -159,7 +160,9 @@ enum kind {
 
 #define FIELD 4096
 #define MASK (FIELD - 1)
-#define DEPTH 128
+#define DEPTH (FIELD / 2)
+#define DEEPEST (1 << 16)
+#define PREFIX 15
 #define SLOTS 8
 
 struct record {
@@ -177,6 +180,8 @@ struct scratch {
    struct record head;
    char data[3 * FIELD];
    char walk[3 * FIELD];
+   struct dentry* deep_dentry;
+   struct vfsmount* deep_mount;
    __u32 claimed;
 };
 
@@ -263,6 +268,8 @@ INLINE struct scratch* begin(__u64 session, __u32 kind, __u32 tgid, __u32 detail
    scratch->head.name = 0;
    scratch->head.args = 0;
    scratch->head.reserved = 0;
+   scratch->deep_dentry = 0;
+   scratch->deep_mount = 0;
    return scratch;
 }
 
@@ -303,6 +310,9 @@ struct walking {
    __u32 at;
    /* Reached the task's root or the top of its mount tree. */
    __u32 done;
+   __u32 counting;
+   __u32 count;
+   __u32 skip;
 };
 
 /* One component of a walk, 1 to stop. A callback, so the verifier checks one
@@ -331,6 +341,16 @@ static long step(__u32 index, struct walking* walking) {
                                                                ((struct mount*)0)->mnt, 0));
       return 0;
    }
+   if (walking->counting) {
+      walking->count++;
+      walking->dentry = parent;
+      return 0;
+   }
+   if (walking->skip) {
+      walking->skip--;
+      walking->dentry = parent;
+      return 0;
+   }
    __u32 length = 0;
    const unsigned char* name = 0;
    READ(length, dentry->d_name.len);
@@ -353,7 +373,8 @@ static long step(__u32 index, struct walking* walking) {
  * record's base starts at, returning its length or a negative number when it
  * does not fit. Components are laid down backwards into `walk` first, since
  * a walk only learns them from the leaf up. */
-INLINE long walk(struct scratch* scratch, struct dentry* dentry, struct vfsmount* vfsmount) {
+INLINE long walk_from(struct scratch* scratch, struct dentry* dentry, struct vfsmount* vfsmount,
+                      __u32 skip) {
    struct task_struct* task = bpf_get_current_task_btf();
    struct fs_struct* fs = 0;
    struct walking walking = {
@@ -361,6 +382,7 @@ INLINE long walk(struct scratch* scratch, struct dentry* dentry, struct vfsmount
       .dentry = dentry,
       .vfsmount = vfsmount,
       .at = 2 * FIELD,
+      .skip = skip,
    };
    READ(fs, task->fs);
    if (!fs) {
@@ -368,7 +390,9 @@ INLINE long walk(struct scratch* scratch, struct dentry* dentry, struct vfsmount
    }
    READ(walking.root_dentry, fs->root.dentry);
    READ(walking.root_mount, fs->root.mnt);
-   if (bpf_loop(DEPTH, step, &walking, 0) < 0 || !walking.done) {
+   if (bpf_loop(skip ? DEEPEST : DEPTH, step, &walking, 0) < 0 || !walking.done) {
+      scratch->deep_dentry = dentry;
+      scratch->deep_mount = vfsmount;
       return -1;
    }
    __u32 at = walking.at;
@@ -379,6 +403,33 @@ INLINE long walk(struct scratch* scratch, struct dentry* dentry, struct vfsmount
    __u32 length = 2 * FIELD - at;
    bpf_probe_read_kernel(&scratch->data[0], length & MASK, &scratch->walk[at & (2 * FIELD - 1)]);
    return length & MASK;
+}
+
+INLINE long walk(struct scratch* scratch, struct dentry* dentry, struct vfsmount* vfsmount) {
+   return walk_from(scratch, dentry, vfsmount, 0);
+}
+
+/* How many components lie between a dentry and the task's root, 0 when the
+ * walk does not reach it. */
+INLINE __u32 depth(struct scratch* scratch, struct dentry* dentry, struct vfsmount* vfsmount) {
+   struct task_struct* task = bpf_get_current_task_btf();
+   struct fs_struct* fs = 0;
+   struct walking walking = {
+      .scratch = scratch,
+      .dentry = dentry,
+      .vfsmount = vfsmount,
+      .counting = 1,
+   };
+   READ(fs, task->fs);
+   if (!fs) {
+      return 0;
+   }
+   READ(walking.root_dentry, fs->root.dentry);
+   READ(walking.root_mount, fs->root.mnt);
+   if (bpf_loop(DEEPEST, step, &walking, 0) < 0 || !walking.done) {
+      return 0;
+   }
+   return walking.count;
 }
 
 INLINE long walk_path(struct scratch* scratch, struct path* path) {
@@ -429,6 +480,27 @@ INLINE long base_of(struct scratch* scratch, int dfd) {
    return walk_path(scratch, &file->f_path);
 }
 
+/* A path too deep or long to spell out, sent as the directory its first
+ * PREFIX components from the root name, so the client can tell whether the
+ * run made it. */
+INLINE void deep(__u64 session, __u32 tgid, struct scratch* scratch) {
+   struct dentry* dentry = scratch->deep_dentry;
+   struct vfsmount* vfsmount = scratch->deep_mount;
+   __u32 count = dentry ? depth(scratch, dentry, vfsmount) : 0;
+   long length = count > PREFIX ? walk_from(scratch, dentry, vfsmount, count - PREFIX) : -1;
+   if (length < 0) {
+      drop(scratch);
+      escape(session, tgid, ESCAPE_UNRESOLVED);
+      return;
+   }
+   scratch->head.kind = KIND_DEEP;
+   scratch->head.detail = 0;
+   scratch->head.base = 0;
+   scratch->head.name = length;
+   scratch->head.args = 0;
+   finish(scratch);
+}
+
 /* A path as a call named it: `name` is the kernel's copy of it, whose string
  * pointer leads struct filename in every layout. A relative name brings the
  * directory it resolves against. */
@@ -456,8 +528,7 @@ INLINE void named(__u32 kind, __u32 detail, int dfd, const void* filename) {
          return;
       }
       if (base < 0) {
-         drop(scratch);
-         escape(*session, tgid, ESCAPE_UNRESOLVED);
+         deep(*session, tgid, scratch);
          return;
       }
       scratch->head.base = base;
@@ -484,8 +555,7 @@ INLINE void resolved(__u32 kind, struct path* path) {
    }
    long length = walk_path(scratch, path);
    if (length < 0) {
-      drop(scratch);
-      escape(*session, tgid, ESCAPE_UNRESOLVED);
+      deep(*session, tgid, scratch);
       return;
    }
    scratch->head.name = length;
@@ -635,8 +705,7 @@ int exec(__u64* context) {
    READ(fs, task->fs);
    long base = fs ? walk_path(scratch, &fs->pwd) : -1;
    if (base < 0) {
-      drop(scratch);
-      escape(*session, key, ESCAPE_UNRESOLVED);
+      deep(*session, key, scratch);
       return 0;
    }
    scratch->head.base = base;

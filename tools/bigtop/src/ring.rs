@@ -181,6 +181,10 @@ impl Processes {
             self.units.insert(child, unit);
             return;
          },
+         Access::Deep(raw) => {
+            accesses.deep.insert(PathBuf::from(OsString::from_vec(raw)));
+            return;
+         },
          Access::Escape(escape) => {
             accesses.escaped.get_or_insert_with(|| escape.reason());
             return;

@@ -334,6 +334,9 @@ pub enum Access {
       child: u32,
    },
    Escape(Escape),
+   /// Reached a path too deep to spell out, under the directory named by
+   /// its first components from the root.
+   Deep(Vec<u8>),
 }
 
 /// An access by the process `tgid`, an id from outside any sandbox that only
@@ -405,6 +408,7 @@ impl TryFrom<&[u8]> for Record {
          },
          6 => Access::Fork { child: detail },
          7 => Access::Escape(Escape::from(detail)),
+         8 => Access::Deep(named()?.name),
          other => return Err(invalid(format!("unknown record kind {other}"))),
       };
       Ok(Self { tgid, access })

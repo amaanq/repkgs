@@ -444,6 +444,9 @@ pub struct Accesses {
    /// Files the run read and then took away, which a tracer that learns of
    /// calls only after they return could not keep as they were.
    pub replaced:      BTreeSet<PathBuf>,
+   /// Directories the run reached paths too deep to spell out under, which
+   /// it must have made itself for the paths to be complete.
+   pub deep:          BTreeSet<PathBuf>,
    /// Why the paths may not be everything the run read.
    pub escaped:       Option<&'static str>,
    /// Whether a task installed a handler without `SA_RESTART`, the only kind

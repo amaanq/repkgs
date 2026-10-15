@@ -58,6 +58,7 @@ use mummer::{
    },
    tree::note,
 };
+use ringmasterd::Escape;
 use serde::{
    Deserialize,
    Serialize,
@@ -430,6 +431,9 @@ impl Manifest {
    ) -> io::Result<Result<Self, String>> {
       if let Some(why) = accesses.escaped {
          return Ok(Err(why.to_owned()));
+      }
+      if accesses.deep.iter().any(|directory| before.had(directory)) {
+         return Ok(Err(Escape::Unresolved.reason().to_owned()));
       }
       let top = build_top()?;
       let mut own = vec![
