@@ -1,0 +1,56 @@
+fetch   = { from = "git" }
+with    = [ "autotools", "cargo" ]
+deps    = [ "zlib", "curl", "expat", "pcre2", "openssl", "perl" ]
+patches = [ "../git/relocatable.patch", "../git/sandbox-setgid-tests.patch" ]
+
+[test]
+deps = [ "perl" ]
+
+[steps.phases]
+
+[only]
+posix = true
+
+[autotools]
+flags = [ "--with-curl", "--with-expat", "--with-libpcre2", "--without-tcltk" ]
+outOfTree = false
+makeFlags = [
+  "RUNTIME_PREFIX=YesPlease",
+  "gitexecdir=libexec/git-core",
+  "template_dir=share/git-core/templates",
+  "sysconfdir=/etc",
+  "RUST_TARGET_DIR=$(CARGO_TARGET_DIR)/{platform:rustTriple}/release",
+  "CURL_LDFLAGS=-lcurl",
+  "PERL_PATH={pkg:perl}/bin/perl",
+  "NO_PYTHON=1",
+  "NO_GETTEXT=1",
+  "uname_S={platform:osNames.cmake}",
+  "uname_M={platform:cpu}",
+  "uname_R=",
+  "NO_INSTALL_HARDLINKS=1",
+  "INSTALL_SYMLINKS=1",
+]
+testScripts = { files = "t/t*.sh", variable = "T" }
+testTarget = [
+  "-C",
+  "t",
+  "DEFAULT_TEST_TARGET=prove",
+  "GIT_PROVE_OPTS=--jobs $(NIX_BUILD_CORES) --failures",
+  "GIT_TEST_OPTS=--verbose-log",
+  "TEST_SHELL_PATH={pkg:bash-interactive}/bin/bash",
+]
+
+[cargo]
+tool = "rust-bootstrap"
+
+[on."!windows+!macos".autotools]
+makeFlags = [ "uname_O=GNU/Linux" ]
+
+[on.windows.autotools]
+makeFlags = [ "uname_O=windows" ]
+
+[on.macos.autotools]
+makeFlags = [ "uname_O=macos" ]
+
+[on.glibc.test]
+deps = [ "glibc-bin" ]
