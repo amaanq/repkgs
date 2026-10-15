@@ -78,6 +78,14 @@ fn has_index(home: &Path) -> bool {
    })
 }
 
+fn project_file(options: &Value) -> &str {
+   options
+      .get("projectFile")
+      .and_then(Value::as_str)
+      .filter(|given| !given.is_empty())
+      .unwrap_or("cabal.project")
+}
+
 /// What cabal's solver picks for the project at `src`/`sub` with the
 /// package's cabal options, preferring `old`, its test-suites' dependencies
 /// included when it runs them. The whole source is copied, cabal.project may
@@ -101,7 +109,8 @@ fn solve(
       top.as_os_str(),
    ])?;
    let work = top.join(sub);
-   let project = work.join("cabal.project");
+   let file_name = project_file(options);
+   let project = work.join(file_name);
    let mut versions = BTreeMap::<String, Vec<String>>::new();
    for key in old.keys() {
       let package = key.parse::<PackageId>()?;
@@ -146,6 +155,7 @@ fn solve(
    let output = Command::new(&cabal)
       .arg("freeze")
       .arg(format!("--project-dir={}", work.display()))
+      .arg(format!("--project-file={}", project.display()))
       .arg("-w")
       .arg(&ghc)
       .arg(if tests {
@@ -158,7 +168,7 @@ fn solve(
       .env("CABAL_DIR", &home)
       .output()?;
    let frozen = if output.status.success() {
-      read_to_string(work.join("cabal.project.freeze")).unwrap_or_default()
+      read_to_string(work.join(format!("{file_name}.freeze"))).unwrap_or_default()
    } else {
       String::new()
    };
