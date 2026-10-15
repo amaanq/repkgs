@@ -1,12 +1,13 @@
 --- a/llvm/utils/lit/lit/main.py
 +++ b/llvm/utils/lit/lit/main.py
-@@ -82,6 +82,13 @@
+@@ -82,6 +82,14 @@
      if opts.filterFailed:
          selected_tests = [t for t in selected_tests if t.previous_failure]
  
 +    chosen = os.environ.get("BIGTOP_TESTS")
 +    if chosen is not None:
-+        names = set(chosen.splitlines())
++        with open(chosen, encoding="utf-8") as listing:
++            names = set(listing.read().splitlines())
 +        selected_tests = [t for t in selected_tests if t.getFullName() in names]
 +        if not selected_tests:
 +            sys.exit(0)

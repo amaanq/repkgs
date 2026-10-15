@@ -21,7 +21,9 @@ use std::{
       metadata,
       read,
       read_dir,
+      read_to_string,
       symlink_metadata,
+      write,
    },
    io::{
       self,
@@ -236,19 +238,22 @@ enum Found {
    Miss(Miss),
 }
 
-/// The environment variable a test phase reads the tests to run from, one
-/// per line, when only some need to.
+/// The environment variable naming the file a test phase reads the tests to
+/// run from, one per line, when only some need to. A file because a large
+/// selection overflows exec's 128 KiB limit on one environment string.
 const SELECTED: &str = "BIGTOP_TESTS";
+const SELECTED_FILE: &str = ".bigtop-tests";
 
 /// The tests a test phase should limit itself to, or none to run them all.
 pub fn selected<T>() -> io::Result<Option<Vec<T>>>
 where
    T: FromStr<Err: Display>,
 {
-   let Ok(text) = env::var(SELECTED) else {
+   let Ok(file) = env::var(SELECTED) else {
       return Ok(None);
    };
-   text
+   read_to_string(&file)
+      .map_err(|error| io::Error::other(format!("{file}: {error}")))?
       .lines()
       .map(|line| {
          line
@@ -420,6 +425,7 @@ impl Manifest {
          Path::new(top).join("ctx.json"),
          Path::new(top).join(".bigtop-modules"),
          Path::new(top).join("phase-env.json"),
+         Path::new(top).join(SELECTED_FILE),
       ];
       own.extend(
          ["NIX_ATTRS_JSON_FILE", "NIX_ATTRS_SH_FILE"]
@@ -812,12 +818,14 @@ fn attempt(
    let make = || {
       let mut built = command()?;
       if let Some(names) = selected {
+         let file = Path::new(&build_top()?).join(SELECTED_FILE);
          let list = names
             .iter()
             .map(String::as_str)
             .collect::<Vec<_>>()
             .join("\n");
-         built.env(SELECTED, list);
+         write(&file, list)?;
+         built.env(SELECTED, file);
       }
       Ok(built)
    };
