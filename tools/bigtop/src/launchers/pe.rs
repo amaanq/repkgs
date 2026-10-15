@@ -155,6 +155,7 @@ pub fn run(output: &Path, launch: &Path, sysroot: &Path, deps: &[String]) -> io:
          env:     &environment,
          program: format!("{{root}}/{}", rel.display()),
          args:    None,
+         after:   Vec::new(),
          argv0:   None,
       };
       let mut rendered = serde_json::to_vec(&record)?;

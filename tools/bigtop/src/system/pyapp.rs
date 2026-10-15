@@ -41,9 +41,19 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
+      nix_store,
    },
-   exports::Exports,
+   exports::{
+      Exports,
+      relative,
+   },
    implant,
+   launchers::entries::{
+      Record,
+      Variable,
+      place,
+      script_env,
+   },
    prepare::succeed,
    schema::{
       Field,
@@ -291,7 +301,7 @@ fn build(ctx: &Ctx, attrs: &Attrs, options: &Options) -> io::Result<()> {
          .ok_or_else(|| io::Error::other("python -m build produced no wheel"))?;
       install_wheel(ctx, utf8(&own)?, true)?;
    } else {
-      env_python(ctx, options.mode)?;
+      env_python(ctx, attrs, options.mode)?;
    }
 
    let platform = ctx.platform()?;
@@ -395,28 +405,33 @@ fn build_wheel(
    built
 }
 
-fn env_python(ctx: &Ctx, mode: Mode) -> io::Result<()> {
+fn env_python(ctx: &Ctx, attrs: &Attrs, mode: Mode) -> io::Result<()> {
    let python = cpython(ctx)?;
-   let dev = if mode == Mode::Dev {
-      "${MOTLEY_PROJECT:+$MOTLEY_PROJECT:$MOTLEY_PROJECT/src:}"
-   } else {
-      ""
-   };
-   let bin = format!("{}/bin", ctx.out.display());
-   create_dir_all(&bin)?;
-   let wrapper = format!("{bin}/python3");
-   let text = format!(
-      r#"#!/bin/sh
-here=$(cd "$(dirname "$0")" && pwd -P)
-export PYTHONPATH="{dev}$here/../lib/{}/site-packages${{PYTHONPATH:+:$PYTHONPATH}}"
-exec {}/bin/python3 "$@"
-"#,
-      ctx.spec()?.name,
-      python.root
+   let mut path = Vec::new();
+   if mode == Mode::Dev {
+      path.extend(["{env:MOTLEY_PROJECT}", "{env:MOTLEY_PROJECT}/src"].map(str::to_owned));
+   }
+   path.push(format!("{{root}}/lib/{}/site-packages", ctx.spec()?.name));
+   let mut env = script_env(ctx, &attrs.dependencies)?;
+   if env
+      .insert("PYTHONPATH".to_owned(), Variable::Prepend(path))
+      .is_some()
+   {
+      return Err(io::Error::other("a dependency exports PYTHONPATH"));
+   }
+   let program = relative(
+      &format!("{}/bin/python3", python.root),
+      utf8(&ctx.out)?,
+      &nix_store(),
    );
-   write_file(Path::new(&wrapper), text.as_bytes(), None)?;
-   set_permissions(&wrapper, PermissionsExt::from_mode(0o755))?;
-   symlink("python3", format!("{bin}/python"))
+   place(ctx, "python3", &Record {
+      env: &env,
+      program,
+      args: None,
+      after: Vec::new(),
+      argv0: None,
+   })?;
+   symlink("python3", ctx.out.join("bin/python"))
 }
 
 /// installer only knows prefix layouts, so the wheel is staged and moved.

@@ -71,6 +71,8 @@ pub struct Record<'env> {
    pub program: String,
    #[serde(skip_serializing_if = "Option::is_none")]
    pub args:    Option<Vec<String>>,
+   #[serde(skip_serializing_if = "Vec::is_empty")]
+   pub after:   Vec<String>,
    #[serde(skip_serializing_if = "Option::is_none")]
    pub argv0:   Option<&'static str>,
 }
@@ -106,10 +108,6 @@ pub fn write(
    let store_dir = nix_store();
    let root = utf8(&ctx.out)?;
    let rel = |path: &str| relative(path, root, &store_dir);
-   let bin = ctx.out.join("bin");
-   create_dir_all(&bin)?;
-   let platform = ctx.platform()?;
-   let executable = format!("{name}{}", platform.ext.exe);
    let env = vars
       .iter()
       .map(|(key, value)| (key.clone(), Variable::Set(rel(value))))
@@ -118,9 +116,20 @@ pub fn write(
       env:     &env,
       program: rel(program),
       args:    Some(args.iter().map(|arg| rel(arg)).collect()),
+      after:   Vec::new(),
       argv0:   None,
    };
-   let mut text = serde_json::to_string(&record)?;
+   place(ctx, name, &record)
+}
+
+/// bin/<name> as the launcher, reading `record`, whose paths are already
+/// package-relative.
+pub fn place(ctx: &Ctx, name: &str, record: &Record<'_>) -> io::Result<()> {
+   let bin = ctx.out.join("bin");
+   create_dir_all(&bin)?;
+   let platform = ctx.platform()?;
+   let executable = format!("{name}{}", platform.ext.exe);
+   let mut text = serde_json::to_string(record)?;
    text.push('\n');
    File::create(bin.join(format!(".{executable}.launch")))?.write_all(text.as_bytes())?;
    let link = bin.join(&executable);
@@ -133,7 +142,7 @@ pub fn write(
       symlink(&platform.launch, &link)?;
    }
 
-   note("launcher", &format!("bin/{name} -> {program}"));
+   note("launcher", &format!("bin/{name} -> {}", record.program));
    Ok(())
 }
 
@@ -186,6 +195,7 @@ pub fn run(
          env:     target.env,
          program: target.program.clone(),
          args:    target.args,
+         after:   Vec::new(),
          argv0:   target.argv0,
       };
       let mut text = serde_json::to_string(&record)?;
@@ -198,6 +208,12 @@ pub fn run(
 }
 
 pub type Env = BTreeMap<String, Variable>;
+
+/// What finish gives a script's launcher, kept by a record that replaces
+/// the script.
+pub fn script_env(ctx: &Ctx, deps: &[String]) -> io::Result<Env> {
+   Ok(runtime_env(deps, utf8(&ctx.out)?, &nix_store())?.0)
+}
 
 pub fn runtime_env(deps: &[String], out: &str, nix_store: &str) -> io::Result<(Env, Env)> {
    let mut binaries = BTreeMap::new();
