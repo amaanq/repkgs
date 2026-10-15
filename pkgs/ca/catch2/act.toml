@@ -1,0 +1,9 @@
+tag     = "v{version}"
+fetch   = { archive = true }
+with    = [ "cmake" ]
+tools   = [ "cpython" ]
+patches = [ "clang-fixes.patch" ]
+
+[track]
+from  = "github:catchorg/Catch2"
+allow = "<3"
