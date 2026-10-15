@@ -5,7 +5,6 @@ with  = [ "cargo" ]
 
 [test]
 bin = [ "bindgen" ]
-run = false
 
 [cargo]
 flags = [ "-p", "bindgen-cli" ]
