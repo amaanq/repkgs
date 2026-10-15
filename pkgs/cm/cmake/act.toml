@@ -1,6 +1,6 @@
 fetch   = { from = "cmake-bootstrap" }
 with    = [ "cmake" ]
-patches = [ "tests.patch" ]
+patches = [ "tests.patch", "test-costs.patch" ]
 
 [test]
 bin  = [ "cmake", "ctest", "cpack" ]

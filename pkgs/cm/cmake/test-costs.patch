@@ -1,0 +1,45 @@
+diff -ruN a/Tests/CMakeLib/CMakeLists.txt b/Tests/CMakeLib/CMakeLists.txt
+--- a/Tests/CMakeLib/CMakeLists.txt
++++ b/Tests/CMakeLib/CMakeLists.txt
+@@ -132,3 +132,7 @@
+     target_compile_definitions(testDebuggerNamedPipe PRIVATE WIN32_LEAN_AND_MEAN)
+   endif()
+ endif()
++
++if(TEST CMakeLib.testUVProcessChain)
++  set_property(TEST CMakeLib.testUVProcessChain PROPERTY COST 67)
++endif()
+diff -ruN a/Tests/CMakeLists.txt b/Tests/CMakeLists.txt
+--- a/Tests/CMakeLists.txt
++++ b/Tests/CMakeLists.txt
+@@ -3456,3 +3456,12 @@
+       )
+   endif()
+ endif()
++
++foreach(slow IN ITEMS CTestTestScheduler:33 CTestLimitDashJ:29 CTestTestStopTime:16)
++  string(REPLACE ":" ";" slow "${slow}")
++  list(GET slow 0 name)
++  list(GET slow 1 cost)
++  if(TEST ${name})
++    set_property(TEST ${name} PROPERTY COST ${cost})
++  endif()
++endforeach()
+diff -ruN a/Tests/RunCMake/CMakeLists.txt b/Tests/RunCMake/CMakeLists.txt
+--- a/Tests/RunCMake/CMakeLists.txt
++++ b/Tests/RunCMake/CMakeLists.txt
+@@ -1633,3 +1633,14 @@
+ if(CMake_TEST_BIN2C_LARGE_FILE)
+   set_property(TEST RunCMake.cmake-E-bin2c PROPERTY TIMEOUT ${CMAKE_LONG_TEST_TIMEOUT})
+ endif()
++
++foreach(slow IN ITEMS ExternalProject:104 CTestResourceAllocation:92 Ninja:83 CTestTimeout:48
++    GoogleTest:37 install:25 FileAPI:23 try_compile:21 BuildDepends:20 CheckModules:20
++    CXXModules:18 target_sources:18)
++  string(REPLACE ":" ";" slow "${slow}")
++  list(GET slow 0 name)
++  list(GET slow 1 cost)
++  if(TEST RunCMake.${name})
++    set_property(TEST RunCMake.${name} PROPERTY COST ${cost})
++  endif()
++endforeach()
