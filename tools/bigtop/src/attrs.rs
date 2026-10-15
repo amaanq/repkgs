@@ -315,6 +315,8 @@ record! {
          dlopen ("dlopen"): Vec<String>,
          dependencies ("dependencies"): Vec<PackagePath>,
          etc ("etc"): bool,
+         fhs ("fhs"): bool,
+         terminal ("terminal"): bool,
       }
    }
 }

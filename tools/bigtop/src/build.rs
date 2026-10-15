@@ -4,32 +4,52 @@ use std::{
    env::{
       VarError,
       args_os,
+      current_dir,
       current_exe,
       set_current_dir,
       var,
       var_os,
       vars,
    },
+   ffi::OsStr,
    fs::{
+      File,
+      OpenOptions,
       Permissions,
       create_dir_all,
+      metadata,
       read,
       read_dir,
       read_link,
       read_to_string,
+      remove_file,
       set_permissions,
+      symlink_metadata,
       write,
    },
-   io,
-   os::unix::{
-      fs::symlink,
-      process::CommandExt as _,
+   io::{
+      self,
+      ErrorKind,
+      Read as _,
+   },
+   os::{
+      fd::AsRawFd as _,
+      unix::{
+         ffi::OsStrExt as _,
+         fs::{
+            OpenOptionsExt as _,
+            PermissionsExt as _,
+            symlink,
+         },
+         process::CommandExt as _,
+      },
    },
    path::{
       Path,
       PathBuf,
    },
    process::Command,
+   thread,
    time::Instant,
 };
 
@@ -43,14 +63,32 @@ use mummer::{
    },
 };
 use rustix::{
+   io::Errno,
    mount::{
       MountFlags,
       mount,
+      mount_bind,
+      mount_bind_recursive,
       mount_remount,
    },
    process::{
+      chroot,
       getgid,
       getuid,
+      ioctl_tiocsctty,
+      setsid,
+   },
+   pty::{
+      OpenptFlags,
+      grantpt,
+      openpt,
+      ptsname,
+      unlockpt,
+   },
+   stdio::dup2_stdin,
+   termios::{
+      Winsize,
+      tcsetwinsize,
    },
    thread::{
       CapabilitySet,
@@ -188,12 +226,14 @@ fn handover(top: &str) -> io::Result<()> {
 pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<()> {
    let attrs = Attrs::load()?;
    let spec = attrs.spec()?;
-   if spec.tests.etc == Some(true) {
-      if var_os(PRIVATE_ETC).is_none() {
-         match private_etc()? {}
+   let etc = spec.tests.etc == Some(true);
+   let fhs = spec.tests.fhs == Some(true);
+   if etc || fhs {
+      if var_os(PRIVATE).is_none() {
+         match private(etc, fhs)? {}
       }
       let mut cleared = Env::default();
-      cleared.unset(PRIVATE_ETC);
+      cleared.unset(PRIVATE);
       cleared.apply();
       clear_ambient_capability_set()?;
    }
@@ -213,6 +253,8 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
    )?;
    let mut timings = vec![format!("prepare {:.1}s", started.elapsed().as_secs_f64())];
    let mut writable = false;
+   let mut furnished = false;
+   let mut controlled = false;
    let mut undo = None;
    let mut resolved = false;
    for (index, step) in attrs.plan.phases.iter().enumerate() {
@@ -223,7 +265,7 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
          !testing || (spec.tests.run.unwrap_or(true) && !attrs.plan.separate && ctx.tests_run)
       };
       if wanted {
-         let editing = spec.tests.etc == Some(true) && testing;
+         let editing = etc && testing;
          if editing != writable {
             etc_access(editing)?;
             writable = editing;
@@ -239,6 +281,14 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
             },
             (false, Some(previous)) => previous.apply(),
             (_, kept) => undo = kept,
+         }
+         if fhs && testing != furnished {
+            furnish(testing)?;
+            furnished = testing;
+         }
+         if spec.tests.terminal == Some(true) && testing && !controlled {
+            take_terminal()?;
+            controlled = true;
          }
          let begun = Instant::now();
          phase(&attrs, &mut ctx, index, socket)?;
@@ -271,12 +321,44 @@ enum Held {
    File(Vec<u8>, Permissions),
 }
 
-const PRIVATE_ETC: &str = "BIGTOP_PRIVATE_ETC";
+const PRIVATE: &str = "BIGTOP_PRIVATE";
 
-/// Moves the build into its own namespaces with a copy of /etc, then re-execs
-/// since /proc/self/exe no longer resolves there.
-fn private_etc() -> io::Result<Infallible> {
+/// Moves the build into its own namespaces, with a copy of /etc for `etc` and
+/// a root of its own for `fhs`, then re-execs since /proc/self/exe no longer
+/// resolves there.
+fn private(etc: bool, fhs: bool) -> io::Result<Infallible> {
    let exe = current_exe()?;
+   let entries = if etc { held_etc()? } else { Vec::new() };
+   let cwd = current_dir()?;
+
+   let (uid, gid) = (getuid().as_raw(), getgid().as_raw());
+   // SAFETY: without UnshareFlags::FILES every thread keeps the one descriptor
+   // table
+   unsafe { unshare_unsafe(UnshareFlags::NEWUSER | UnshareFlags::NEWNS) }?;
+   write("/proc/self/setgroups", "deny")?;
+   write("/proc/self/uid_map", format!("{uid} {uid} 1"))?;
+   write("/proc/self/gid_map", format!("{gid} {gid} 1"))?;
+   if fhs {
+      private_root()?;
+      set_current_dir(&cwd)?;
+   }
+   if etc {
+      private_etc(entries)?;
+   }
+   let mut sets = capabilities(None)?;
+   sets.inheritable |= CapabilitySet::SYS_ADMIN;
+   set_capabilities(None, sets)?;
+   configure_capability_in_ambient_set(CapabilitySet::SYS_ADMIN, true)?;
+   Err(
+      Command::new(exe)
+         .args(args_os().skip(1))
+         .env(PRIVATE, "1")
+         .exec(),
+   )
+}
+
+/// /etc as it is, to copy into the private one.
+fn held_etc() -> io::Result<Vec<(PathBuf, Held)>> {
    let etc = Path::new("/etc");
    let mut entries = Vec::new();
    let mut pending = vec![PathBuf::new()];
@@ -299,14 +381,11 @@ fn private_etc() -> io::Result<Infallible> {
       }
    }
    entries.sort_by(|left, right| left.0.cmp(&right.0));
+   Ok(entries)
+}
 
-   let (uid, gid) = (getuid().as_raw(), getgid().as_raw());
-   // SAFETY: without UnshareFlags::FILES every thread keeps the one descriptor
-   // table
-   unsafe { unshare_unsafe(UnshareFlags::NEWUSER | UnshareFlags::NEWNS) }?;
-   write("/proc/self/setgroups", "deny")?;
-   write("/proc/self/uid_map", format!("{uid} {uid} 1"))?;
-   write("/proc/self/gid_map", format!("{gid} {gid} 1"))?;
+fn private_etc(entries: Vec<(PathBuf, Held)>) -> io::Result<()> {
+   let etc = Path::new("/etc");
    mount(
       "tmpfs",
       etc,
@@ -326,17 +405,136 @@ fn private_etc() -> io::Result<Infallible> {
          },
       }
    }
-   etc_access(false)?;
-   let mut sets = capabilities(None)?;
-   sets.inheritable |= CapabilitySet::SYS_ADMIN;
-   set_capabilities(None, sets)?;
-   configure_capability_in_ambient_set(CapabilitySet::SYS_ADMIN, true)?;
-   Err(
-      Command::new(exe)
-         .args(args_os().skip(1))
-         .env(PRIVATE_ETC, "1")
-         .exec(),
-   )
+   etc_access(false)
+}
+
+/// The sandbox's root is not writable, so a tmpfs over /bin becomes the root,
+/// every other top-level entry bound into it. The sandbox has no /usr, so the
+/// new root gets an empty one for `furnish` to fill.
+fn private_root() -> io::Result<()> {
+   let shell = OpenOptions::new()
+      .read(true)
+      .custom_flags(libc::O_PATH)
+      .open("/bin/sh")?;
+   let listed = read_dir("/")?
+      .map(|listing| {
+         let entry = listing?;
+         Ok((entry.file_name(), entry.file_type()?))
+      })
+      .collect::<io::Result<Vec<_>>>()?;
+   let root = Path::new("/bin");
+   mount(
+      "tmpfs",
+      root,
+      "tmpfs",
+      MountFlags::NOSUID | MountFlags::NODEV,
+      c"mode=0755",
+   )?;
+   for (name, kind) in listed {
+      if name == "bin" || name == "usr" {
+         continue;
+      }
+      let original = Path::new("/").join(&name);
+      let placed = root.join(&name);
+      if kind.is_symlink() {
+         symlink(read_link(&original)?, &placed)?;
+         continue;
+      }
+      if kind.is_dir() {
+         create_dir_all(&placed)?;
+      } else {
+         write(&placed, [])?;
+      }
+      mount_bind_recursive(&original, &placed)?;
+   }
+   create_dir_all(root.join("usr/bin"))?;
+   create_dir_all(root.join("bin"))?;
+   let sh = root.join("bin/sh");
+   write(&sh, [])?;
+   mount_bind(format!("/proc/self/fd/{}", shell.as_raw_fd()), &sh)?;
+   chroot(root)?;
+   Ok(())
+}
+
+/// Links every program on PATH into /bin and /usr/bin, for tests that name
+/// them there, or takes the links away again.
+fn furnish(on: bool) -> io::Result<()> {
+   const BINS: [&str; 2] = ["/bin", "/usr/bin"];
+   for bin in BINS {
+      for entry in read_dir(bin)? {
+         let path = entry?.path();
+         if symlink_metadata(&path)?.is_symlink() {
+            remove_file(&path)?;
+         }
+      }
+   }
+   if !on {
+      return Ok(());
+   }
+   let path = var("PATH").map_err(|error| io::Error::other(format!("PATH: {error}")))?;
+   for dir in path.split(':').filter(|dir| !dir.is_empty()) {
+      let listed = match read_dir(dir) {
+         Ok(listed) => listed,
+         Err(error) if error.kind() == ErrorKind::NotFound => continue,
+         Err(error) => return Err(error),
+      };
+      for listing in listed {
+         let entry = listing?;
+         let program = entry.path();
+         let runs = metadata(&program)
+            .is_ok_and(|found| found.is_file() && found.permissions().mode() & 0o111 != 0);
+         if !runs {
+            continue;
+         }
+         for bin in BINS {
+            let link = Path::new(bin).join(entry.file_name());
+            if symlink_metadata(&link).is_err() {
+               symlink(&program, &link)?;
+            }
+         }
+      }
+   }
+   Ok(())
+}
+
+/// Makes a pseudo-terminal the session's controlling terminal and stdin, for
+/// tests that open /dev/tty, check `test -t 0` or start shells with job
+/// control. Output to it is drained and dropped, and nothing is ever typed, so
+/// a read from it never returns. Under the pid 1 reaper the build leads no
+/// session, and only a leader can take a terminal.
+fn take_terminal() -> io::Result<()> {
+   match setsid() {
+      Ok(_) | Err(Errno::PERM) => {},
+      Err(error) => return Err(error.into()),
+   }
+   let master = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY | OpenptFlags::CLOEXEC)?;
+   grantpt(&master)?;
+   unlockpt(&master)?;
+   let name = ptsname(&master, Vec::new())?;
+   let terminal = OpenOptions::new()
+      .read(true)
+      .write(true)
+      .custom_flags(libc::O_NOCTTY | libc::O_CLOEXEC)
+      .open(OsStr::from_bytes(name.to_bytes()))?;
+   tcsetwinsize(&terminal, Winsize {
+      ws_row:    24,
+      ws_col:    80,
+      ws_xpixel: 0,
+      ws_ypixel: 0,
+   })?;
+   ioctl_tiocsctty(&terminal).map_err(|error| {
+      io::Error::other(format!(
+         "a terminal needs bigtop to lead a session without one: {error}"
+      ))
+   })?;
+   dup2_stdin(&terminal)?;
+   let mut reader = File::from(master);
+   thread::spawn(move || {
+      let _held = terminal;
+      let mut buffer = [0; 4096];
+      while reader.read(&mut buffer).is_ok_and(|read| read > 0) {}
+   });
+   Ok(())
 }
 
 /// Puts `env` over this process's environment and returns what undoes it.

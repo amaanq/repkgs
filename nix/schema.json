@@ -473,6 +473,9 @@
           "etc": {
             "kind": "boolean"
           },
+          "fhs": {
+            "kind": "boolean"
+          },
           "parallel": {
             "kind": "boolean"
           },
@@ -480,6 +483,9 @@
             "kind": "boolean"
           },
           "separate": {
+            "kind": "boolean"
+          },
+          "terminal": {
             "kind": "boolean"
           },
           "version": {
@@ -501,7 +507,9 @@
           "version",
           "dlopen",
           "dependencies",
-          "etc"
+          "etc",
+          "fhs",
+          "terminal"
         ]
       },
       "default": null,
