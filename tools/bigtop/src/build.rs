@@ -81,6 +81,7 @@ use crate::{
       prepare,
    },
    progress,
+   ring::Announced,
    system::{
       command::{
          Env,
@@ -484,7 +485,7 @@ fn tested(
             Ok(command)
          };
          if matches!(
-            test_cache::run(client, ctx, step, None, None, &command)?,
+            test_cache::run(client, ctx, step, None, Some(&Announced), &command)?,
             Ran::Passed
          ) {
             handover(&top)?;

@@ -63,6 +63,48 @@ use crate::trace::{
    writes,
 };
 
+/// Where a harness announces each test it starts, by opening the test's
+/// name spelled in hex under it, in components of up to 128 digits.
+const MARKS: &str = "/.bigtop-test-marks";
+
+/// Tests that announce themselves as they start, which patched lit does,
+/// keeping its test times in `.lit_test_times.txt`.
+pub struct Announced;
+
+impl Tests for Announced {
+   fn unit(&self, _exe: &Path, _args: &[OsString], _cwd: &Path) -> Option<String> {
+      None
+   }
+
+   fn state(&self, path: &Path) -> bool {
+      path
+         .file_name()
+         .is_some_and(|name| name == ".lit_test_times.txt")
+   }
+}
+
+/// The test an open under `MARKS` announces, none for any other path, and
+/// an error for a name that is not hex of UTF-8.
+fn announced(path: &Path) -> Option<Result<String, ()>> {
+   let spelled = path.strip_prefix(MARKS).ok()?;
+   let digits = spelled
+      .components()
+      .map(|part| part.as_os_str().as_bytes())
+      .collect::<Vec<_>>()
+      .concat();
+   if digits.is_empty() || digits.len() % 2 != 0 {
+      return Some(Err(()));
+   }
+   let bytes = digits
+      .chunks(2)
+      .map(|pair| {
+         let text = str::from_utf8(pair).map_err(drop)?;
+         u8::from_str_radix(text, 16).map_err(drop)
+      })
+      .collect::<Result<Vec<u8>, ()>>();
+   Some(bytes.and_then(|name| String::from_utf8(name).map_err(drop)))
+}
+
 /// `__FMODE_EXEC` from linux/fs.h, which the kernel's own opens of a program
 /// and its interpreter carry.
 const FMODE_EXEC: u32 = 0x20;
@@ -146,6 +188,19 @@ impl Processes {
             if flags & FMODE_EXEC != 0 {
                self.loading.entry(tgid).or_default().push(path);
                return;
+            }
+            match announced(&path) {
+               Some(Ok(test)) => {
+                  self.units.insert(tgid, Some(test));
+                  return;
+               },
+               Some(Err(())) => {
+                  accesses
+                     .escaped
+                     .get_or_insert("an announced test name not hex of UTF-8");
+                  return;
+               },
+               None => {},
             }
             if writes(u64::from(flags)) {
                self.clobber(accesses, path.clone(), (unit.as_deref(), traced), mark);
@@ -314,6 +369,7 @@ impl Session {
       let reading = self.stream.try_clone()?;
       let collector = spawn(move || collect(reading, tests, mark));
       let mut command = make()?;
+      command.env("BIGTOP_TEST_MARKS", MARKS);
       // SAFETY: `join` makes only raw system calls and allocates nothing
       let spawned = unsafe { command.pre_exec(move || join(&address, token)) }.spawn();
       let waited = spawned.map(|mut child| child.wait());
