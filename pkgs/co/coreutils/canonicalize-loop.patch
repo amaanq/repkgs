@@ -1,0 +1,43 @@
+From b18879b9ed0df8a9539488022a128d9f89c83c18 Mon Sep 17 00:00:00 2001
+From: Collin Funk <collin.funk1@gmail.com>
+Date: Fri, 25 Sep 2026 00:51:05 -0700
+Subject: [PATCH] canonicalize: Fix a missing check for symlink loops.
+
+Reported by Brian Foster in:
+<https://bugs.launchpad.net/ubuntu/+source/coreutils/+bug/2161155>
+
+* lib/canonicalize.c: Include min-eloop-threshold.h.
+(canonicalize_filename_mode_stk): Set errno to ELOOP and exit if we see
+MIN_ELOOP_THRESHOLD links.
+* modules/canonicalize (Depends-on): Add eloop-threshold.
+* tests/test-canonicalize.c (main): Add a test case that would
+previously loop until the system ran out of memory. Clean up the created
+sylink.
+---
+diff --git a/lib/canonicalize.c b/lib/canonicalize.c
+index 7da95d920c..b86011284a 100644
+--- a/lib/canonicalize.c
++++ b/lib/canonicalize.c
+@@ -32,6 +32,7 @@
+ #include "attribute.h"
+ #include "file-set.h"
+ #include "hashcode-file.h"
++#include "min-eloop-threshold.h"
+ #include "xalloc.h"
+ 
+ #ifndef DOUBLE_SLASH_IS_DISTINCT_ROOT
+@@ -337,9 +338,11 @@ canonicalize_filename_mode_stk (const char *name, canonicalize_mode_t can_mode,
+           if (0 <= n)
+             {
+               /* A physical traversal and RNAME is a symbolic link.  */
+-
+-              if (num_links < 20)
+-                num_links++;
++              if (++num_links > MIN_ELOOP_THRESHOLD)
++                {
++                  errno = ELOOP;
++                  goto error;
++                }
+               else if (*start)
+                 {
+                   /* Enough symlinks have been seen that it is time to

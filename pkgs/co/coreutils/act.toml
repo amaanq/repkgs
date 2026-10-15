@@ -1,8 +1,18 @@
-track          = "gnu:coreutils"
-fetch          = { url = "https://ftp.gnu.org/gnu/coreutils/coreutils-{version}.tar.xz" }
-with           = [ "autotools" ]
+track = "gnu:coreutils"
+fetch = { url = "https://ftp.gnu.org/gnu/coreutils/coreutils-{version}.tar.xz" }
+with = [ "autotools" ]
 bootstrapTools = true
-patches        = [ "relocatable.patch", "setgid-install-test.patch", "env-quote-terminals.patch" ]
+patches = [
+  "relocatable.patch",
+  "setgid-install-test.patch",
+  "env-quote-terminals.patch",
+  "unexpand-overflow.patch",
+  "canonicalize-loop.patch",
+  "realpath-loop-test.patch",
+  "wc-mb-span.patch",
+  "wc-boundary.patch",
+  "help-markup-tty.patch",
+]
 
 [test]
 bin      = [ "ls", "cp", "install", "sort" ]

@@ -1,0 +1,43 @@
+From b66f3e4e271f6729844549ae7cb5756ba79e06b3 Mon Sep 17 00:00:00 2001
+From: Collin Funk <collin.funk1@gmail.com>
+Date: Fri, 25 Sep 2026 20:17:12 -0700
+Subject: [PATCH] realpath: fix an infinite loop when resolving symbolic links
+
+Reported by Brian Foster in:
+<https://bugs.launchpad.net/ubuntu/+source/coreutils/+bug/2161155>
+
+* gnulib: Update to get commit b18879b9ed (canonicalize: Fix a missing
+check for symlink loops., 2026-09-25)
+* tests/misc/realpath.sh: Add a call to getlimits_. Add a test case.
+* NEWS: Mention the bug fix.
+---
+diff --git a/tests/misc/realpath.sh b/tests/misc/realpath.sh
+index 418ff2ffa9..393ab1424f 100755
+--- a/tests/misc/realpath.sh
++++ b/tests/misc/realpath.sh
+@@ -18,6 +18,7 @@
+ 
+ . "${srcdir=.}/tests/init.sh"; path_prepend_ ./src
+ print_ver_ realpath
++getlimits_
+ 
+ stat_single=$(stat -c %d:%i /) || framework_failure_
+ stat_double=$(stat -c %d:%i //) || framework_failure_
+@@ -134,4 +135,17 @@ mkdir noread && chmod a-r noread || framework_failure_
+ test "$(realpath noread/)" = "$(realpath .)/noread" || fail=1
+ test "$(realpath -e noread/)" = "$(realpath .)/noread" || fail=1
+ 
++# From coreutils 9.0 to 9.12, the following would loop until the
++# system ran out of memory.
++ln -s loop/a loop || framework_failure_
++vm=$(get_min_ulimit_v_ realpath .) && {
++  (ulimit -v $(($vm+6000)) &&
++     returns_ 1 timeout 10 realpath loop >out 2>err) || fail=1
++  cat <<EOF >exp || framework_failure_
++realpath: loop: $ELOOP
++EOF
++  compare /dev/null out || fail=1
++  compare exp err || fail=1
++}
++
+ Exit $fail

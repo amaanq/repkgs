@@ -1,0 +1,29 @@
+From 52e5694f4136b34e12e5e7997949bbc63430cbba Mon Sep 17 00:00:00 2001
+From: Ismail Ramzi <ismail@bugqore.com>
+Date: Sat, 3 Oct 2026 16:03:17 +0100
+Subject: [PATCH] unexpand: fix heap overflow on negative-width whitespace
+
+* src/unexpand.c (unexpand): Clamp a negative c32width() to 1 when
+accumulating a blank, matching the sibling non-blank path and expand
+and fold.  A separator whose display width is negative (e.g. U+0085
+where c32issep() accepts it) left 'column' un-advanced, so the pending
+blank buffer, sized for one byte of advance per blank, grew without
+bound.
+* NEWS: Mention the bug fix.
+
+Link: https://github.com/coreutils/coreutils/pull/361
+---
+diff --git a/src/unexpand.c b/src/unexpand.c
+index 6a9881c215..630be36135 100644
+--- a/src/unexpand.c
++++ b/src/unexpand.c
+@@ -199,7 +199,8 @@ unexpand (void)
+                         }
+                       else
+                         {
+-                          column += c32width (g.ch);
++                          int width = c32width (g.ch);
++                          column += width < 0 ? 1 : width;
+ 
+                           if (! (prev_blank && column >= next_tab_column))
+                             {

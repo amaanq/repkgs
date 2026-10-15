@@ -1,0 +1,57 @@
+From 700d8235a391fdc8aa0fcdcf58ebc22bc6800ef0 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?P=C3=A1draig=20Brady?= <P@draigBrady.com>
+Date: Sat, 10 Oct 2026 11:33:58 +0100
+Subject: [PATCH] all: only markup --help when outputting to tty
+
+Since v9.10 (Feb 2026) --help always outputs bold and hyperlinks
+even when output was not a tty, as this was thought more useful
+with pagers and grep etc.  This change makes the more conservative
+choice of only outputting markup to tty so that users who do not
+have less setup to display color (-R), or users who enable color
+by default in grep, get improved output (though without URLs etc.)
+
+* src/system.h (oputs_): Call isatty() when not
+forcing markup with $IN_HELP2MAN.  Also reverse the
+double negatives to a more natural form.
+* man/local.mk: Remove redundant assignment of $TERM.
+* doc/coreutils.texi (common options): Mention that --help markup
+requires output to be a tty, and that $IN_HELP2MAN overrides that.
+* NEWS: Mention the change in behavior.
+---
+diff --git a/src/system.h b/src/system.h
+index 84be742ff8..bbe8f09a85 100644
+--- a/src/system.h
++++ b/src/system.h
+@@ -584,20 +584,22 @@ is_nul (void const *buf, size_t length)
+ static inline void
+ oputs_ (MAYBE_UNUSED char const *program, char const *option)
+ {
+-  static int help_no_sgr =
+-#if ! defined MANUAL_URL && ! defined BOLD_MAN_REFS
+-    1;   /* Disable.  */
+-#else
++  static int help_markup =
++#if defined MANUAL_URL || defined BOLD_MAN_REFS
+     -1;  /* Lookup.  */
++#else
++    0;   /* Disable.  */
+ #endif
+-  if (help_no_sgr == -1)
++  if (help_markup == -1)
+     {
+-      /* Note we don't consult isatty() since usually you
+-         would want markup when piping to grep/less etc.  */
+-      char const *term = getenv ("TERM");
+-      help_no_sgr = (!term || !*term || streq (term, "dumb"));
++      /* Note one generally would want markup when piping to grep/less etc.
++         but we're conservative here for now, and only markup to tty.  */
++      char const *te;
++      help_markup = (isatty (STDOUT_FILENO)
++                     ? ((te = getenv ("TERM")) && *te && !streq (te, "dumb"))
++                     : getenv ("IN_HELP2MAN") != NULL);
+     }
+-  if (help_no_sgr)
++  if (! help_markup)
+     {
+       fputs (option, stdout);
+       return;

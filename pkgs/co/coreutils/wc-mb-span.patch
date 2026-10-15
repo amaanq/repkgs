@@ -1,0 +1,61 @@
+From 5ef76b9ac8dcd8da4d7e53633ad65547579de269 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?P=C3=A1draig=20Brady?= <P@draigBrady.com>
+Date: Tue, 29 Sep 2026 16:07:42 +0100
+Subject: [PATCH] wc: fix handling of multi-byte chars spanning buffers
+
+Commit v9.4-43-ga6064bb86 introduced this edge case
+in handling multi-byte characters spanning the input buffer.
+
+* src/wc.c (wc): Ensure we include the bytes previously read
+but as yet unprocessed.
+* tests/wc/mb-non-utf8.sh: Add a new test for miscounted GB118030 chars.
+* tests/local.mk: Reference the new test.
+* tests/wc/wc.pl: Add a new check for word count with a
+UTF-8 space spanning a buffer boundary.
+* NEWS: Mention the bug fix.
+---
+diff --git a/src/wc.c b/src/wc.c
+index 057b710d61..3bf6dcbc45 100644
+--- a/src/wc.c
++++ b/src/wc.c
+@@ -511,6 +511,7 @@ wc (int fd, char const *file_x, struct fstatus *fstatus)
+                 }
+               else
+                 {
++                  idx_t prev_bytes = prev;
+                   idx_t scanbytes = plim - (p + prev);
+                   size_t n = mbrtoc32 (&wide_char, p + prev, scanbytes, &state);
+                   prev = 0;
+@@ -550,7 +551,9 @@ wc (int fd, char const *file_x, struct fstatus *fstatus)
+                       continue;
+                     }
+ 
+-                  charbytes = n + !n;
++                  /* Include bytes already consumed into STATE in an earlier
++                     read, but still present at P in the buffer.  */
++                  charbytes = prev_bytes + n + !n;
+                   single_byte = charbytes == !in_shift;
+                   in_shift = !mbsinit (&state);
+                 }
+diff --git a/tests/wc/wc.pl b/tests/wc/wc.pl
+index b57cd51451..a1b25b0b81 100755
+--- a/tests/wc/wc.pl
++++ b/tests/wc/wc.pl
+@@ -103,6 +103,17 @@
+     push @Tests, @new;
+   };
+ 
++# A split EM SPACE must not leave continuation bytes to start another word.
++# Separated here so we read from file and thus exercise IO_BUFSIZE.
++if (defined $mb_locale && $mb_locale ne 'none')
++  {
++    my $bufsize = getlimits ()->{IO_BUFSIZE};
++    push @Tests,
++      ['mb-split-space', '-w', '<',
++       {IN=>('a' x ($bufsize - 1)) . "\xe2\x80\x83"},
++       {OUT=>"1\n"}, {ENV=>"LC_ALL=$mb_locale"}];
++  }
++
+ my $save_temps = $ENV{DEBUG};
+ my $verbose = $ENV{VERBOSE};
+ 
