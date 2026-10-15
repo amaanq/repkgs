@@ -293,6 +293,20 @@ struct MetadataPackage {
    name:          String,
    manifest_path: PathBuf,
    features:      BTreeMap<String, Vec<String>>,
+   targets:       Vec<MetadataTarget>,
+}
+
+#[derive(Deserialize)]
+struct MetadataTarget {
+   name: String,
+   kind: Vec<String>,
+}
+
+/// A workspace's root package that has other members beside it, and the
+/// crate name its doctests run under.
+pub struct RootPackage {
+   pub name:       String,
+   pub crate_name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -345,6 +359,45 @@ fn metadata(dir: &Path, flags: &[String], build: &CargoBuild) -> io::Result<Meta
    Ok(serde_json::from_slice(&output.stdout)?)
 }
 
+fn root_of(packages: Vec<MetadataPackage>, dir: &Path) -> io::Result<Option<MetadataPackage>> {
+   let manifest = canonicalize(dir.join("Cargo.toml"))?;
+   Ok(packages
+      .into_iter()
+      .find(|package| package.manifest_path == manifest))
+}
+
+/// The package at `dir` when its workspace has other members, none for a
+/// virtual manifest or a lone package.
+///
+/// # Errors
+///
+/// When cargo cannot read the workspace.
+#[inline]
+pub fn workspace_root(dir: &Path, build: &CargoBuild) -> io::Result<Option<RootPackage>> {
+   let found = metadata(dir, &["--no-deps".to_owned()], build)?;
+   if found.workspace_members.len() < 2 {
+      return Ok(None);
+   }
+   let Some(root) = root_of(found.packages, dir)? else {
+      return Ok(None);
+   };
+
+   let crate_name = root
+      .targets
+      .iter()
+      .find(|target| {
+         target
+            .kind
+            .iter()
+            .any(|kind| matches!(kind.as_str(), "lib" | "rlib" | "dylib" | "proc-macro"))
+      })
+      .map(|target| target.name.replace('-', "_"));
+   Ok(Some(RootPackage {
+      name: root.name,
+      crate_name,
+   }))
+}
+
 /// cargo's flags for `build`, `without` taken out of the package's own
 /// default set as cargo reads it.
 ///
@@ -360,15 +413,13 @@ pub fn feature_flags(dir: &Path, build: &CargoBuild) -> io::Result<Vec<String>> 
       flags.push("--no-default-features".to_owned());
    }
    if !build.without.is_empty() {
-      let manifest = canonicalize(dir.join("Cargo.toml"))?;
       let found = metadata(dir, &["--no-deps".to_owned()], build)?;
-      let package = found
-         .packages
-         .into_iter()
-         .find(|package| package.manifest_path == manifest)
-         .ok_or_else(|| {
-            io::Error::other(format!("cargo metadata lists no {}", manifest.display()))
-         })?;
+      let package = root_of(found.packages, dir)?.ok_or_else(|| {
+         io::Error::other(format!(
+            "cargo metadata lists no package at {}",
+            dir.display()
+         ))
+      })?;
       let defaults = package.features.get("default").cloned().unwrap_or_default();
       if let Some(missing) = build.without.iter().find(|name| !defaults.contains(name)) {
          return Err(io::Error::other(format!(

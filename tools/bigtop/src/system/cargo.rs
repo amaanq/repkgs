@@ -52,6 +52,7 @@ use mummer::{
       CargoBuild,
       Ecosystem,
       feature_flags,
+      workspace_root,
    },
    tree::note,
 };
@@ -156,52 +157,87 @@ impl System for Cargo {
 
    fn phase(&self, ctx: &Ctx, _attrs: &Attrs, verb: &str, _socket: &Path) -> io::Result<()> {
       let options = ctx.options::<Options>(self.name())?;
-      let extra = Self::arguments(ctx, &options)?;
       match verb {
          "build" => {
             let mut args = vec!["build", "--release", "--offline"];
+            let extra = Self::arguments(ctx, &options)?;
             args.extend(strs(&extra));
             run("cargo", &args, &[])
          },
-         "test-prepare" => Self::prepare_tests(&extra),
+         "test-prepare" => Self::prepare_tests(&Self::runs(ctx, &options)?),
          "test" => {
+            let runs = Self::runs(ctx, &options)?;
             let threads = ctx.test_jobs()?.to_string();
             let mut harness = vec!["--".to_owned(), "--test-threads".to_owned(), threads];
             for skipped in &options.skip_tests {
                harness.extend(["--skip".to_owned(), skipped.clone()]);
             }
+
             let Some(selected) = test_cache::selected::<CargoTest>()? else {
-               return Self::test(&extra, &[], &harness);
+               for args in runs.args.iter().map(|run| &run.1) {
+                  Self::test(args, &[], &harness)?;
+               }
+               return Ok(());
             };
+
             let noted = read(Path::new(&build_top()?).join(TARGETS))?;
-            let targets = serde_json::from_slice::<BTreeMap<String, Target>>(&noted)?;
-            let mut chosen = BTreeSet::new();
-            let mut doc = false;
+            let targets = serde_json::from_slice::<BTreeMap<String, (Run, Target)>>(&noted)?;
+            let mut chosen = BTreeMap::<Run, BTreeSet<Vec<String>>>::new();
+            let mut docs = BTreeSet::new();
             for test in selected {
                match test {
-                  CargoTest::Doc(_) => doc = true,
+                  CargoTest::Doc(name) => {
+                     docs.insert(runs.doc_run(&name));
+                  },
                   CargoTest::Binary(file) => {
-                     let target = targets.get(&file).ok_or_else(|| {
+                     let &(run, ref target) = targets.get(&file).ok_or_else(|| {
                         io::Error::other(format!("{file} is no test binary cargo built"))
                      })?;
-                     chosen.insert(target.selector());
+                     chosen.entry(run).or_default().insert(target.selector());
                   },
                }
             }
-            if !chosen.is_empty() {
-               Self::test(
-                  &extra,
-                  &chosen.into_iter().flatten().collect::<Vec<_>>(),
-                  &harness,
-               )?;
-            }
-            if doc {
-               Self::test(&extra, &["--doc".to_owned()], &harness)?;
+
+            for &(run, ref args) in &runs.args {
+               if let Some(selectors) = chosen.remove(&run) {
+                  Self::test(
+                     args,
+                     &selectors.into_iter().flatten().collect::<Vec<_>>(),
+                     &harness,
+                  )?;
+               }
+               if docs.contains(&run) {
+                  Self::test(args, &["--doc".to_owned()], &harness)?;
+               }
             }
             Ok(())
          },
          "install" => Self::install(ctx),
          _ => Err(unknown(self.name(), verb)),
+      }
+   }
+}
+
+/// Which packages a `cargo test` covers. The recipe's features belong to the
+/// root package, so the other workspace members test separately with their own.
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+enum Run {
+   Whole,
+   Root,
+   Members,
+}
+
+struct Runs {
+   args:       Vec<(Run, Vec<String>)>,
+   root_crate: Option<String>,
+}
+
+impl Runs {
+   fn doc_run(&self, name: &str) -> Run {
+      match self.root_crate {
+         _ if self.args.len() == 1 => Run::Whole,
+         Some(ref root) if root == name => Run::Root,
+         _ => Run::Members,
       }
    }
 }
@@ -314,18 +350,32 @@ impl Tests for Cargo {
 }
 
 impl Cargo {
-   fn test(extra: &[String], selectors: &[String], harness: &[String]) -> io::Result<()> {
+   fn test(run_args: &[String], selectors: &[String], harness: &[String]) -> io::Result<()> {
       let mut args = vec!["test", "--release", "--offline"];
-      args.extend(Self::scope(extra));
-      args.extend(strs(extra));
+      args.extend(strs(run_args));
       args.extend(strs(selectors));
       args.extend(strs(harness));
       run("cargo", &args, &[])
    }
 
-   /// Builds the test binaries and notes each one's target, so the traced
-   /// run compiles nothing and can be limited to some of them.
-   fn prepare_tests(extra: &[String]) -> io::Result<()> {
+   /// Builds the test binaries and notes each one's run and target, so the
+   /// traced run compiles nothing and can be limited to some of them.
+   fn prepare_tests(runs: &Runs) -> io::Result<()> {
+      let mut targets = BTreeMap::new();
+      for &(run, ref run_args) in &runs.args {
+         Self::note_targets(run, run_args, &mut targets)?;
+      }
+      write(
+         Path::new(&build_top()?).join(TARGETS),
+         serde_json::to_vec(&targets)?,
+      )
+   }
+
+   fn note_targets(
+      run: Run,
+      run_args: &[String],
+      targets: &mut BTreeMap<String, (Run, Target)>,
+   ) -> io::Result<()> {
       let mut args = vec![
          "test",
          "--release",
@@ -333,8 +383,7 @@ impl Cargo {
          "--no-run",
          "--message-format=json-render-diagnostics",
       ];
-      args.extend(Self::scope(extra));
-      args.extend(strs(extra));
+      args.extend(strs(run_args));
       let output = Command::new("cargo")
          .args(&args)
          .stderr(Stdio::inherit())
@@ -345,7 +394,6 @@ impl Cargo {
             output.status
          )));
       }
-      let mut targets = BTreeMap::new();
       for line in output.stdout.split(|byte| *byte == b'\n') {
          let Ok(Message::CompilerArtifact { target, executable }) =
             serde_json::from_slice::<Message>(line)
@@ -366,21 +414,52 @@ impl Cargo {
             "example" => Target::Example(target.name),
             _ => Target::Lib,
          };
-         targets.insert(file, built);
+         targets.insert(file, (run, built));
       }
-      write(
-         Path::new(&build_top()?).join(TARGETS),
-         serde_json::to_vec(&targets)?,
-      )
+      Ok(())
    }
 
-   /// Every member unless the flags pick packages, since `--workspace`
-   /// overrides `-p`.
-   fn scope(extra: &[String]) -> Option<&'static str> {
-      let picks = extra
+   fn runs(ctx: &Ctx, options: &Options) -> io::Result<Runs> {
+      let dir = ctx.project_dir(&options.root);
+      let build = Self::build(options, Some(ctx.build.join("cargo-home")));
+      let features = feature_flags(&dir, &build)?;
+      let flags = &options.flags;
+      let picks = flags
          .iter()
          .any(|arg| arg == "--package" || arg.starts_with("--package=") || arg.starts_with("-p"));
-      (!picks).then_some("--workspace")
+      let whole = |scope: &[&str]| {
+         let mut args = scope
+            .iter()
+            .map(|arg| (*arg).to_owned())
+            .collect::<Vec<_>>();
+         args.extend(features.iter().cloned());
+         args.extend(flags.iter().cloned());
+         Runs {
+            args:       vec![(Run::Whole, args)],
+            root_crate: None,
+         }
+      };
+
+      if picks {
+         return Ok(whole(&[]));
+      }
+      if features.is_empty() {
+         return Ok(whole(&["--workspace"]));
+      }
+
+      let Some(root) = workspace_root(&dir, &build)? else {
+         return Ok(whole(&["--workspace"]));
+      };
+
+      let mut root_args = vec!["--package".to_owned(), root.name.clone()];
+      root_args.extend(features.iter().cloned());
+      root_args.extend(flags.iter().cloned());
+      let mut member_args = vec!["--workspace".to_owned(), "--exclude".to_owned(), root.name];
+      member_args.extend(flags.iter().cloned());
+      Ok(Runs {
+         args:       vec![(Run::Root, root_args), (Run::Members, member_args)],
+         root_crate: root.crate_name,
+      })
    }
 
    fn build(options: &Options, home: Option<PathBuf>) -> CargoBuild {
