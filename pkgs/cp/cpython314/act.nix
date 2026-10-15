@@ -70,7 +70,10 @@
       "cpython.drop-test-modules"
       "cpython.build-details"
     ];
-    test.bin = [ "python3" ];
+    test = {
+      bin = [ "python3" ];
+      deps = [ "bzip2" ];
+    };
     deps = [
       "zlib"
       "xz"
