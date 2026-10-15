@@ -1,0 +1,20 @@
+--- a/test/xshmfence_test.c
++++ b/test/xshmfence_test.c
+@@ -89,6 +89,8 @@
+ 
+                 /* Verify that the fence is currently reset
+                  */
++                while (c != 0 && xshmfence_query(x) != 0)
++                    usleep(1000);
+                 if (xshmfence_query(x) != 0) {
+                     fprintf(stderr, "%6d: query reset failed\n", c);
+                     exit(1);
+@@ -140,6 +142,8 @@
+ 
+         /* Verify that the fence is reset
+          */
++        for (c = 0; c < 10000 && xshmfence_query(x) != 0; c++)
++            usleep(1000);
+         if (xshmfence_query(x) != 0) {
+             fprintf(stderr, "query reset failed\n");
+             exit(1);

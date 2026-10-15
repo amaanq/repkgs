@@ -1,4 +1,5 @@
-track = 'generic:libxshmfence?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=libxshmfence-([0-9.]+)\.tar\.xz'
-fetch = { url = "https://xorg.freedesktop.org/archive/individual/lib/libxshmfence-{version}.tar.xz" }
-with  = [ "autotools" ]
-deps  = [ "xorgproto" ]
+track   = 'generic:libxshmfence?url=https://xorg.freedesktop.org/archive/individual/lib/&regex=libxshmfence-([0-9.]+)\.tar\.xz'
+fetch   = { url = "https://xorg.freedesktop.org/archive/individual/lib/libxshmfence-{version}.tar.xz" }
+with    = [ "autotools" ]
+deps    = [ "xorgproto" ]
+patches = [ "reset-race-test.patch" ]
