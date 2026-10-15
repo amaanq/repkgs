@@ -455,12 +455,12 @@ pub struct Ctx {
    pub test_env:  BTreeMap<String, TestVar>,
 }
 
-/// A variable test phases change. A list such as PATH gains the test
-/// dependencies' entries after whatever a setup or step left in it.
+/// A variable test phases change. A list such as PATH gets the test
+/// dependencies' entries in front, so their tools win over the build's.
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TestVar {
-   Append {
+   Prepend {
       separator: String,
       entries:   Vec<String>,
    },
@@ -498,7 +498,7 @@ impl TestVar {
       if !listed || !old.iter().all(|entry| new.contains(entry)) {
          return Some(Self::Set(wanted));
       }
-      Some(Self::Append {
+      Some(Self::Prepend {
          separator: separator.to_owned(),
          entries:   new
             .into_iter()

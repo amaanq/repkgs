@@ -351,15 +351,17 @@ fn overlay(env: &BTreeMap<String, TestVar>) -> io::Result<Env> {
       };
       match *change {
          TestVar::Set(ref value) => export(name, value),
-         TestVar::Append {
+         TestVar::Prepend {
             ref separator,
             ref entries,
          } => {
             let kept = current
                .split(separator.as_str())
                .filter(|entry| !entry.is_empty());
-            let joined = kept
-               .chain(entries.iter().map(String::as_str))
+            let joined = entries
+               .iter()
+               .map(String::as_str)
+               .chain(kept)
                .collect::<Vec<_>>()
                .join(separator);
             export(name, &joined);
