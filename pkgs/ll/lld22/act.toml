@@ -5,18 +5,17 @@ tools = [ "cpython", "llvm22" ]
 
 [test]
 bin     = [ "ld.lld", "lld" ]
-run     = false
 version = "lld -flavor gnu --version" # under wine ld.lld.exe resolves to lld.exe
 
-[steps]
-skip = [ "cmake.test" ]
+[steps.replace]
+"cmake.test" = [ "llvm22.test" ]
 
 [cmake]
 root = "lld"
 
 [cmake.defs]
 BUILD_SHARED_LIBS     = false
-LLVM_INCLUDE_TESTS    = false
+LLVM_INCLUDE_TESTS    = true
 LLVM_LINK_LLVM_DYLIB  = true
 LLVM_DIR              = "{pkg:llvm22}/lib/cmake/llvm"
 LLVM_TABLEGEN_EXE     = "{tool:llvm22}/bin/llvm-tblgen"
