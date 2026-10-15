@@ -1,0 +1,23 @@
+diff -ruN a/atf-sh/atf-sh.cpp b/atf-sh/atf-sh.cpp
+--- a/atf-sh/atf-sh.cpp
++++ b/atf-sh/atf-sh.cpp
+@@ -38,6 +38,7 @@
+ #include "atf-c++/detail/env.hpp"
+ #include "atf-c++/detail/fs.hpp"
+ #include "atf-c++/detail/sanity.hpp"
++#include "reloc.h"
+ 
+ // ------------------------------------------------------------------------
+ // Auxiliary functions.
+@@ -61,9 +62,9 @@
+ construct_script(const char* filename)
+ {
+     const std::string libexecdir = atf::env::get(
+-        "ATF_LIBEXECDIR", ATF_LIBEXECDIR);
++        "ATF_LIBEXECDIR", RELOC("../libexec"));
+     const std::string pkgdatadir = atf::env::get(
+-        "ATF_PKGDATADIR", ATF_PKGDATADIR);
++        "ATF_PKGDATADIR", RELOC("../share/atf"));
+     const std::string shell = atf::env::get("ATF_SHELL", ATF_SHELL);
+ 
+     std::string command;

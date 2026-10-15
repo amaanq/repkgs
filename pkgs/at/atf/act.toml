@@ -1,0 +1,17 @@
+tag     = "atf-{version}"
+track   = "github:freebsd/atf"
+fetch   = { asset = "atf-{version}.tar.gz" }
+with    = [ "autotools" ]
+patches = [ "relocatable.patch", "egid-group.patch", "cc-flags-require.patch" ]
+
+[test]
+bin      = [ "atf-sh" ]
+version  = false
+deps     = [ "kyua" ]
+separate = true
+
+[steps.replace]
+"autotools.test" = "atf.test"
+
+[steps.after]
+"autotools.install" = [ "atf.stash-tests" ]

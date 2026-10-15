@@ -1,0 +1,29 @@
+diff -ruN a/atf-c/detail/test_helpers.h b/atf-c/detail/test_helpers.h
+--- a/atf-c/detail/test_helpers.h
++++ b/atf-c/detail/test_helpers.h
+@@ -30,6 +30,7 @@
+ #endif
+ 
+ #include <stdbool.h>
++#include <string.h>
+ 
+ #include <atf-c.h>
+ 
+@@ -51,7 +52,7 @@
+         atf_tc_set_md_var(tc, "descr", "Tests that the " hdrname " file can " \
+             "be included on its own, without any prerequisites"); \
+         cc = atf_env_get_with_default("ATF_BUILD_CC", ATF_BUILD_CC); \
+-        atf_tc_set_md_var(tc, "require.progs", cc); \
++        atf_tc_set_md_var(tc, "require.progs", "%.*s", (int)strcspn(cc, " "), cc); \
+     } \
+     ATF_TC_BODY(name, tc) \
+     { \
+@@ -65,7 +66,7 @@
+         const char *cc; \
+         atf_tc_set_md_var(tc, "descr", descr); \
+         cc = atf_env_get_with_default("ATF_BUILD_CC", ATF_BUILD_CC); \
+-        atf_tc_set_md_var(tc, "require.progs", cc); \
++        atf_tc_set_md_var(tc, "require.progs", "%.*s", (int)strcspn(cc, " "), cc); \
+     } \
+     ATF_TC_BODY(name, tc) \
+     { \

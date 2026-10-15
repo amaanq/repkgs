@@ -1,0 +1,12 @@
+diff -ruN a/atf-c/detail/user.c b/atf-c/detail/user.c
+--- a/atf-c/detail/user.c
++++ b/atf-c/detail/user.c
+@@ -55,7 +55,7 @@
+         INV(ngroups >= 0);
+     }
+ 
+-    found = false;
++    found = gid == getegid();
+     for (i = 0; !found && i < ngroups; i++)
+         if (groups[i] == gid)
+             found = true;
