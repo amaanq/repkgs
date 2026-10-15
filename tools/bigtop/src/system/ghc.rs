@@ -2,11 +2,13 @@
 //! hadrian's for ghc, or Debian's unpacked .deb where upstream has none.
 
 use std::{
+   collections::BTreeMap,
    fs::{
       Permissions,
       copy,
       create_dir_all,
       read_to_string,
+      remove_file,
       set_permissions,
       symlink_metadata,
       write,
@@ -15,12 +17,16 @@ use std::{
       self,
       Write as _,
    },
-   iter,
+   iter::{
+      self,
+      Peekable,
+   },
    os::unix::fs::PermissionsExt as _,
    path::{
       Path,
       PathBuf,
    },
+   str::Chars,
 };
 
 use glob::glob;
@@ -41,9 +47,16 @@ use crate::{
    attrs::{
       Attrs,
       Ctx,
+      nix_store,
       text,
    },
+   exports::relative,
    implant,
+   launchers::entries::{
+      Record,
+      place,
+      script_env,
+   },
    system::{
       cabal::in_name_order,
       command::{
@@ -54,10 +67,6 @@ use crate::{
 };
 
 pub const MODULE: &str = module_path!();
-
-/// One shell line the bin/ wrappers start with, so they can derive the
-/// prefix from their own location, sh builtins only since PATH may be empty.
-const LOCATE_TOP: &str = "#!/bin/sh\ntop=$(cd \"${0%/*}/..\" && pwd)";
 
 const LIBRARY_DIRS: [&str; 4] = [
    "library-dirs:",
@@ -268,11 +277,259 @@ fn our_tools(text: &str) -> String {
    })
 }
 
-fn wrappers(ctx: &Ctx, pairs: &[(&str, &str)]) -> io::Result<()> {
-   for file in matching(&format!("{}/bin/*", ctx.out.display()), Kind::Regular)? {
-      rewrite(&file, |text| replace_all(text, pairs))?;
+fn wrappers(ctx: &Ctx, attrs: &Attrs, moved: &[(&str, &str)]) -> io::Result<()> {
+   let out = utf8(&ctx.out)?;
+   let store = nix_store();
+   let env = script_env(ctx, &attrs.dependencies)?;
+   for file in matching(&format!("{out}/bin/*"), Kind::Regular)? {
+      let text = replace_all(read_to_string(&file)?, moved);
+      if !text.starts_with("#!") {
+         continue;
+      }
+      let wrapper = Wrapper::read(&text)
+         .map_err(|error| io::Error::other(format!("{}: {error}", file.display())))?;
+      let name = file
+         .file_name()
+         .and_then(|name| name.to_str())
+         .ok_or_else(|| io::Error::other(format!("{} is not UTF-8", file.display())))?;
+      let rel = |paths: Vec<String>| {
+         paths
+            .iter()
+            .map(|path| relative(path, out, &store))
+            .collect::<Vec<_>>()
+      };
+      remove_file(&file)?;
+      place(ctx, name, &Record {
+         env:     &env,
+         program: relative(&wrapper.program, out, &store),
+         args:    Some(rel(wrapper.args)),
+         after:   rel(wrapper.after),
+         argv0:   None,
+      })?;
    }
    Ok(())
+}
+
+struct Wrapper {
+   program: String,
+   args:    Vec<String>,
+   after:   Vec<String>,
+}
+
+enum Field {
+   Text(String),
+   Callers,
+}
+
+impl Wrapper {
+   /// Evaluates the few sh forms the wrappers use, assignments, loops over
+   /// words, and the exec. The hsc2hs wrapper's loop over its arguments only
+   /// drops its default --template when the caller gives one, which hsc2hs,
+   /// taking the last --template, already does, so that loop and the
+   /// function it calls are skipped.
+   fn read(text: &str) -> Result<Self, String> {
+      let mut vars = BTreeMap::new();
+      let mut lines = text.lines().skip(1).map(str::trim);
+      while let Some(line) = lines.next() {
+         if line.is_empty() || line.starts_with('#') {
+            continue;
+         }
+         if line == "for arg do" {
+            lines.by_ref().find(|inner| *inner == "done");
+            continue;
+         }
+         if line.ends_with("() {") {
+            lines.by_ref().find(|inner| *inner == "}");
+            continue;
+         }
+         if let Some(header) = line.strip_prefix("for ") {
+            let (name, words) = header
+               .strip_suffix("; do")
+               .and_then(|list| list.split_once(" in "))
+               .ok_or_else(|| format!("unexpected loop {line:?}"))?;
+            let body = lines
+               .by_ref()
+               .take_while(|inner| *inner != "done")
+               .map(str::to_owned)
+               .collect::<Vec<_>>();
+            for field in Self::fields(words, &vars)? {
+               let Field::Text(word) = field else {
+                  return Err(format!("loop over the caller's arguments {line:?}"));
+               };
+               vars.insert(name.to_owned(), word);
+               for assignment in &body {
+                  Self::assign(assignment, &mut vars)?;
+               }
+            }
+            continue;
+         }
+         if let Some(command) = line.strip_prefix("exec ") {
+            return Self::exec(command, &vars);
+         }
+         Self::assign(line, &mut vars)?;
+      }
+      Err("no exec".to_owned())
+   }
+
+   fn assign(line: &str, vars: &mut BTreeMap<String, String>) -> Result<(), String> {
+      let (name, raw) = line
+         .split_once('=')
+         .filter(|&(left, _)| is_name(left))
+         .ok_or_else(|| format!("unexpected line {line:?}"))?;
+      let value = Self::expand(&mut raw.chars().peekable(), vars, false)?
+         .into_iter()
+         .map(|field| {
+            match field {
+               Field::Text(text) => Ok(text),
+               Field::Callers => Err(format!("{name} takes the caller's arguments")),
+            }
+         })
+         .collect::<Result<Vec<_>, _>>()?
+         .join(" ");
+      vars.insert(name.to_owned(), value);
+      Ok(())
+   }
+
+   fn exec(command: &str, vars: &BTreeMap<String, String>) -> Result<Self, String> {
+      let mut fields = Self::fields(command, vars)?.into_iter();
+      let Some(Field::Text(program)) = fields.next() else {
+         return Err(format!("exec of no program {command:?}"));
+      };
+      let mut args = Vec::new();
+      let mut behind = None;
+      for field in fields {
+         match (field, behind.as_mut()) {
+            (Field::Callers, None) => behind = Some(Vec::new()),
+            (Field::Text(text), None) => args.push(text),
+            (Field::Text(text), Some(trailing)) => trailing.push(text),
+            (Field::Callers, Some(_)) => return Err(format!("two \"$@\" in {command:?}")),
+         }
+      }
+      let after = behind.ok_or_else(|| format!("exec without \"$@\" {command:?}"))?;
+      Ok(Self {
+         program,
+         args,
+         after,
+      })
+   }
+
+   fn fields(line: &str, vars: &BTreeMap<String, String>) -> Result<Vec<Field>, String> {
+      Self::expand(&mut line.chars().peekable(), vars, true)
+   }
+
+   fn expand(
+      chars: &mut Peekable<Chars<'_>>,
+      vars: &BTreeMap<String, String>,
+      split: bool,
+   ) -> Result<Vec<Field>, String> {
+      let mut fields = Vec::new();
+      let mut current: Option<String> = None;
+      let mut quoted = false;
+      while let Some(chr) = chars.next() {
+         match chr {
+            '"' if !quoted && chars.clone().take(3).eq("$@\"".chars()) => {
+               chars.nth(2);
+               fields.extend(current.take().map(Field::Text));
+               fields.push(Field::Callers);
+            },
+            '"' => {
+               quoted = !quoted;
+               current.get_or_insert_default();
+            },
+            ' ' | '\t' if split && !quoted => {
+               if let Some(text) = current.take() {
+                  fields.push(Field::Text(text));
+               }
+            },
+            '$' => {
+               let expansion = Self::expansion(chars)?;
+               if expansion == "1+\"$@\"" {
+                  fields.extend(current.take().map(Field::Text));
+                  fields.push(Field::Callers);
+                  continue;
+               }
+               let value = if let Some((name, word)) = expansion.split_once(":+") {
+                  if vars.get(name).is_some_and(|value| !value.is_empty()) {
+                     let inner = Self::expand(&mut word.chars().peekable(), vars, false)?;
+                     inner
+                        .into_iter()
+                        .filter_map(|field| {
+                           match field {
+                              Field::Text(text) => Some(text),
+                              Field::Callers => None,
+                           }
+                        })
+                        .collect::<String>()
+                  } else {
+                     String::new()
+                  }
+               } else if is_name(&expansion) {
+                  vars.get(&expansion).cloned().unwrap_or_default()
+               } else {
+                  return Err(format!("unsupported expansion ${{{expansion}}}"));
+               };
+               if quoted || !split {
+                  current.get_or_insert_default().push_str(&value);
+                  continue;
+               }
+               let mut pieces = value.split_whitespace();
+               if let Some(first) = pieces.next() {
+                  current.get_or_insert_default().push_str(first);
+               }
+               for piece in pieces {
+                  if let Some(text) = current.take() {
+                     fields.push(Field::Text(text));
+                  }
+                  current = Some(piece.to_owned());
+               }
+            },
+            other => current.get_or_insert_default().push(other),
+         }
+      }
+      if quoted {
+         return Err("unterminated quote".to_owned());
+      }
+      if let Some(text) = current {
+         fields.push(Field::Text(text));
+      }
+      Ok(fields)
+   }
+
+   fn expansion(chars: &mut Peekable<Chars<'_>>) -> Result<String, String> {
+      if chars.next_if_eq(&'{').is_none() {
+         let mut name = String::new();
+         while let Some(chr) = chars.next_if(|chr| chr.is_ascii_alphanumeric() || *chr == '_') {
+            name.push(chr);
+         }
+         return Ok(name);
+      }
+      let mut inner = String::new();
+      let mut depth = 1_u32;
+      for chr in chars.by_ref() {
+         match chr {
+            '{' => depth += 1,
+            '}' => {
+               depth -= 1;
+               if depth == 0 {
+                  return Ok(inner);
+               }
+            },
+            _ => {},
+         }
+         inner.push(chr);
+      }
+      Err("unterminated ${".to_owned())
+   }
+}
+
+fn is_name(text: &str) -> bool {
+   text
+      .chars()
+      .next()
+      .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+      && text
+         .chars()
+         .all(|chr| chr.is_ascii_alphanumeric() || chr == '_')
 }
 
 /// A make variable as the bindist's `show` target prints it, `NAME="value"`.
@@ -315,7 +572,7 @@ fn install_files(
 }
 
 /// from the unpacked bindist in the working directory.
-pub fn install(ctx: &Ctx) -> io::Result<()> {
+pub fn install(ctx: &Ctx, attrs: &Attrs) -> io::Result<()> {
    let prefix = format!("--prefix={}", ctx.out.display());
    let settings = toolchain(ctx);
    let mut configure = vec!["./configure", prefix.as_str()];
@@ -369,7 +626,7 @@ pub fn install(ctx: &Ctx) -> io::Result<()> {
       .collect::<Vec<_>>();
    run("make", &rest, &[])?;
 
-   wrappers(ctx, &[("#!/bin/sh", LOCATE_TOP), (utf8(&ctx.out)?, "$top")])?;
+   wrappers(ctx, attrs, &[])?;
    let db = matching(
       &format!("{}/lib/ghc-*/lib/package.conf.d", ctx.out.display()),
       Kind::Directories,
@@ -426,10 +683,10 @@ pub fn install_deb(ctx: &Ctx, attrs: &Attrs) -> io::Result<()> {
    rewrite(Path::new(&format!("{lib}/settings")), |text| {
       our_tools(&text)
    })?;
-   wrappers(ctx, &[
-      ("#!/bin/bash", LOCATE_TOP),
-      ("/usr/lib/ghc", "$top/lib/ghc"),
-      ("\"/usr/bin\"", "\"$top/bin\""),
+   let out = utf8(&ctx.out)?;
+   wrappers(ctx, attrs, &[
+      ("/usr/lib/ghc", &format!("{out}/lib/ghc")),
+      ("\"/usr/bin\"", &format!("\"{out}/bin\"")),
    ])?;
    close_db(ctx, Path::new(&format!("{lib}/package.conf.d")))
 }

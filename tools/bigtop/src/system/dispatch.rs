@@ -197,7 +197,7 @@ pub fn mode(operation: SystemOperation, socket: &Path) -> io::Result<()> {
          if deb {
             ghc::install_deb(&ctx, &Attrs::load()?)
          } else {
-            ghc::install(&ctx)
+            ghc::install(&ctx, &Attrs::load()?)
          }
       },
    }
