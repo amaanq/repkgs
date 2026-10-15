@@ -3,9 +3,11 @@
 // way it reads bin/.foo.launch, which bigtop's launchers wrote, and runs what that names.
 //
 // The record is JSON, every string in it may use {root} (the package), {store} (its parent),
-// {self} (bin/foo) and {argv0} (what we were invoked as):
+// {self} (bin/foo), {argv0} (what we were invoked as) and {env:NAME} (that variable's value). A
+// prepend entry naming an unset or empty variable is left out:
 //   {"env": {"PATH": {"prepend": ["{store}/…/bin"]}, "TZDIR": {"default": "…"}, "X": {"set": "…"}},
-//    "program": "{root}/bin/.foo", "args": ["…"], "argv0": "{argv0}"}
+//    "program": "{root}/bin/.foo", "args": ["…"], "after": ["…"], "argv0": "{argv0}"}
+// args go before the caller's arguments, after behind them.
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -74,7 +76,28 @@ struct context {
    const char* argv0;
 };
 
-static char* expand(const char* text, const struct context* ctx) {
+static char* get_env(const char* name);
+
+struct buffer {
+   char* text;
+   size_t used;
+   size_t capacity;
+};
+
+static void put(struct buffer* out, const char* text, size_t length) {
+   if (out->used + length + 1 > out->capacity) {
+      out->capacity = (out->used + length + 1) * 2;
+      out->text = realloc(out->text, out->capacity);
+      if (!out->text) {
+         fail("out of memory", NULL);
+      }
+   }
+   memcpy(out->text + out->used, text, length);
+   out->used += length;
+   out->text[out->used] = 0;
+}
+
+static char* expand(const char* text, const struct context* ctx, int* unset) {
    const struct {
       const char* name;
       const char* value;
@@ -82,34 +105,40 @@ static char* expand(const char* text, const struct context* ctx) {
                 {"{store}", ctx->store},
                 {"{self}", ctx->self},
                 {"{argv0}", ctx->argv0}};
-   size_t capacity = strlen(text) + 1;
-   for (const char* cursor = text; *cursor; cursor++) {
-      for (size_t hole = 0; hole < sizeof holes / sizeof *holes; hole++) {
-         if (strncmp(cursor, holes[hole].name, strlen(holes[hole].name)) == 0) {
-            capacity += strlen(holes[hole].value);
-         }
-      }
-   }
-
-   char* expanded = allocate(capacity);
-   char* out = expanded;
+   struct buffer out = {0};
+   put(&out, "", 0);
+   *unset = 0;
    while (*text) {
+      if (strncmp(text, "{env:", 5) == 0 && strchr(text, '}')) {
+         const char* close = strchr(text, '}');
+         size_t length = (size_t)(close - text - 5);
+         char* name = allocate(length + 1);
+         memcpy(name, text + 5, length);
+         name[length] = 0;
+         char* value = get_env(name);
+         if (value && *value) {
+            put(&out, value, strlen(value));
+         } else {
+            *unset = 1;
+         }
+         free(value);
+         free(name);
+         text = close + 1;
+         continue;
+      }
       size_t hole = 0;
       while (hole < sizeof holes / sizeof *holes &&
              strncmp(text, holes[hole].name, strlen(holes[hole].name)) != 0) {
          hole++;
       }
       if (hole == sizeof holes / sizeof *holes) {
-         *out++ = *text++;
+         put(&out, text++, 1);
          continue;
       }
-      size_t length = strlen(holes[hole].value);
-      memcpy(out, holes[hole].value, length);
-      out += length;
+      put(&out, holes[hole].value, strlen(holes[hole].value));
       text += strlen(holes[hole].name);
    }
-   *out = 0;
-   return expanded;
+   return out.text;
 }
 
 // serde_json writes records with objects, arrays and strings only
@@ -247,7 +276,7 @@ struct list {
    size_t count;
 };
 
-static struct list read_strings(struct reader* in, const struct context* ctx) {
+static struct list read_strings(struct reader* in, const struct context* ctx, int keep_unset) {
    struct list list = {0};
    size_t capacity = 0;
    expect(in, '[');
@@ -263,8 +292,14 @@ static struct list read_strings(struct reader* in, const struct context* ctx) {
          }
       }
       char* raw = read_string(in);
-      list.items[list.count++] = expand(raw, ctx);
+      int unset = 0;
+      char* item = expand(raw, ctx, &unset);
       free(raw);
+      if (unset && !keep_unset) {
+         free(item);
+         continue;
+      }
+      list.items[list.count++] = item;
    } while (next_is(in, ','));
    expect(in, ']');
    return list;
@@ -272,7 +307,8 @@ static struct list read_strings(struct reader* in, const struct context* ctx) {
 
 static char* read_expanded(struct reader* in, const struct context* ctx) {
    char* raw = read_string(in);
-   char* expanded = expand(raw, ctx);
+   int unset = 0;
+   char* expanded = expand(raw, ctx, &unset);
    free(raw);
    return expanded;
 }
@@ -407,8 +443,8 @@ static const wchar_t* user_args(void) {
 
 // No execve here. The child runs in a kill-on-close job so it cannot outlive us, Ctrl-C reaches it
 // through the console, and its exit code becomes ours.
-static void run(const char* program, const char* argv0, const struct list* pre, int argc,
-                char** argv) {
+static void run(const char* program, const char* argv0, const struct list* pre,
+                const struct list* post, int argc, char** argv) {
    (void)argc;
    (void)argv;
    wchar_t* line = NULL;
@@ -423,6 +459,10 @@ static void run(const char* program, const char* argv0, const struct list* pre, 
       fail("out of memory", NULL);
    }
    wcscpy(line + used, tail);
+   used += wcslen(tail);
+   for (size_t index = 0; index < post->count; index++) {
+      append_arg(&line, &used, post->items[index]);
+   }
 
    HANDLE job = CreateJobObjectW(NULL, NULL);
    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit = {0};
@@ -535,9 +575,9 @@ static char* invoked_path(const char* argv0) {
    return NULL;
 }
 
-static void run(const char* program, const char* argv0, const struct list* pre, int argc,
-                char** argv) {
-   char** args = allocate((pre->count + (size_t)argc + 1) * sizeof *args);
+static void run(const char* program, const char* argv0, const struct list* pre,
+                const struct list* post, int argc, char** argv) {
+   char** args = allocate((pre->count + post->count + (size_t)argc + 1) * sizeof *args);
    size_t count = 0;
    args[count++] = (char*)argv0;
    for (size_t index = 0; index < pre->count; index++) {
@@ -545,6 +585,9 @@ static void run(const char* program, const char* argv0, const struct list* pre, 
    }
    for (int index = 1; index < argc; index++) {
       args[count++] = argv[index];
+   }
+   for (size_t index = 0; index < post->count; index++) {
+      args[count++] = post->items[index];
    }
    args[count] = NULL;
    execv(program, args);
@@ -581,7 +624,7 @@ static void apply_variable(struct reader* in, const char* name, const struct con
    expect(in, ':');
    char* current = get_env(name);
    if (strcmp(verb, "prepend") == 0) {
-      struct list parts = read_strings(in, ctx);
+      struct list parts = read_strings(in, ctx, 0);
       set_env(name, join(&parts, current && *current ? current : NULL));
    } else if (strcmp(verb, "default") == 0) {
       char* value = read_expanded(in, ctx);
@@ -644,6 +687,7 @@ int main(int argc, char** argv) {
    char* program = NULL;
    char* argv0 = NULL;
    struct list pre = {0};
+   struct list post = {0};
    expect(&in, '{');
    if (!next_is(&in, '}')) {
       do {
@@ -654,7 +698,9 @@ int main(int argc, char** argv) {
          } else if (strcmp(key, "argv0") == 0) {
             argv0 = read_expanded(&in, &ctx);
          } else if (strcmp(key, "args") == 0) {
-            pre = read_strings(&in, &ctx);
+            pre = read_strings(&in, &ctx, 1);
+         } else if (strcmp(key, "after") == 0) {
+            post = read_strings(&in, &ctx, 1);
          } else if (strcmp(key, "env") == 0) {
             expect(&in, '{');
             if (!next_is(&in, '}')) {
@@ -677,6 +723,6 @@ int main(int argc, char** argv) {
       fail("record lacks program", record);
    }
 
-   run(program, argv0 ? argv0 : program, &pre, argc, argv);
+   run(program, argv0 ? argv0 : program, &pre, &post, argc, argv);
    return LAUNCH_FAILED;
 }
