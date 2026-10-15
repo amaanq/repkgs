@@ -436,6 +436,7 @@ impl Manifest {
          current_exe()?,
          Path::new(&top).join("ctx.json"),
          Path::new(&top).join(".bigtop-modules"),
+         Path::new(&top).join("phase-env.json"),
       ];
       own.extend(
          ["NIX_ATTRS_JSON_FILE", "NIX_ATTRS_SH_FILE"]
