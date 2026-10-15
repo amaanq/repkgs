@@ -37,6 +37,20 @@ pub struct Config {
    pub fc:         Option<String>,
    #[serde(default, skip_serializing_if = "Vec::is_empty")]
    pub fflags:     Vec<String>,
+   /// The programs `bin/ld` and its kin run, by the name they are called as.
+   #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+   pub tools:      BTreeMap<String, Tool>,
+}
+
+/// A program a tool name runs, with the caller's arguments between `before`
+/// and `after`.
+#[derive(Deserialize, Serialize)]
+pub struct Tool {
+   pub program: String,
+   #[serde(default, skip_serializing_if = "Vec::is_empty")]
+   pub before:  Vec<String>,
+   #[serde(default, skip_serializing_if = "Vec::is_empty")]
+   pub after:   Vec<String>,
 }
 
 /// How an ELF toolchain links executables.

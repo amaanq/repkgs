@@ -51,7 +51,10 @@ use crate::{
       CacheOperation,
       Mode,
    },
-   driver::Language,
+   driver::{
+      Driver,
+      Language,
+   },
 };
 
 fn dispatch() -> Result<i32> {
@@ -84,6 +87,10 @@ fn slot_mode(args: &[OsString], socket: &Path) -> Result<i32> {
    Ok(process::run_slotted(program, rest, Some(socket))?.status)
 }
 
+fn tool_mode(name: &str, args: &[OsString]) -> Result<i32> {
+   match Driver::load()?.exec_tool(name, args)? {}
+}
+
 fn run(mode: Mode, args: &[OsString], socket: &Path) -> Result<i32> {
    match mode {
       Mode::Cc => return Ok(cc::run_cc(Language::Cc, &text_arguments(args)?, socket)?),
@@ -109,6 +116,9 @@ fn run(mode: Mode, args: &[OsString], socket: &Path) -> Result<i32> {
          path,
       } => return cache_mode(operation, &key, &path, socket),
       Mode::Slot => return slot_mode(args, socket),
+      Mode::Ld => return tool_mode("ld", args),
+      Mode::Windres => return tool_mode("windres", args),
+      Mode::Dlltool => return tool_mode("dlltool", args),
       Mode::Gocacheprog => gocache::run(socket)?,
       Mode::HeaderKey => return header::lookup(&text_arguments(args)?, socket),
       Mode::RelocFixup {

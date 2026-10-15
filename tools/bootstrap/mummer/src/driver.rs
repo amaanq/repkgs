@@ -1,8 +1,10 @@
 use std::{
+   convert::Infallible,
    env::{
       current_exe,
       var,
    },
+   ffi::OsString,
    fs::{
       File,
       canonicalize,
@@ -12,7 +14,9 @@ use std::{
       self,
       Read as _,
    },
+   os::unix::process::CommandExt as _,
    path::Path,
+   process::Command,
 };
 
 use mummer::{
@@ -120,6 +124,21 @@ impl Driver {
          Self::Bare(_) => None,
          Self::Configured(ref toolchain) => Some(toolchain),
       }
+   }
+
+   /// Replaces this process with the program the toolchain runs as `name`.
+   pub fn exec_tool(&self, name: &str, args: &[OsString]) -> io::Result<Infallible> {
+      let tool = self
+         .toolchain()
+         .and_then(|toolchain| toolchain.config.tools.get(name))
+         .ok_or_else(|| io::Error::other(format!("mummer.json names no {name}")))?;
+      Err(
+         Command::new(&tool.program)
+            .args(&tool.before)
+            .args(args)
+            .args(&tool.after)
+            .exec(),
+      )
    }
 
    /// The libc a configured ELF toolchain builds against, its sysroot.

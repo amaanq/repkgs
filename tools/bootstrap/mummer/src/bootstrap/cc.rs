@@ -1,4 +1,5 @@
 use std::{
+   collections::BTreeMap,
    env::{
       consts::ARCH,
       set_current_dir,
@@ -23,6 +24,7 @@ use mummer::{
       BinaryFormat,
       Config,
       ElfPolicy,
+      Tool,
    },
    files::write_file,
 };
@@ -78,58 +80,90 @@ impl Cc {
       Self::llvm_bin(stage, stage.profile.lld())
    }
 
-   fn script(path: &Path, command: &str) -> io::Result<()> {
-      write_file(
-         path,
-         format!("#!/bin/sh\nexec {command} \"$@\"\n").as_bytes(),
-         Some(0o755),
-      )
+   /// The `-L` flags the driver hands lld, whose directories lld run as `ld`
+   /// would not search, unlike GNU ld with its built-in ones.
+   fn search_flags(stage: &Stage, flags: &[String]) -> io::Result<Vec<String>> {
+      write_file(Path::new("search.o"), b"", None)?;
+      let output = Command::new(Self::llvm_bin(stage, "clang"))
+         .args(flags)
+         .args(["-###", "search.o"])
+         .output()?;
+      let jobs = String::from_utf8(output.stderr).map_err(io::Error::other)?;
+      if !output.status.success() {
+         return Err(io::Error::other(format!("clang -### failed\n{jobs}")));
+      }
+      let link = jobs
+         .lines()
+         .last()
+         .ok_or_else(|| io::Error::other("clang -### printed no link job"))?;
+      Ok(link
+         .split_whitespace()
+         .map(|token| token.trim_matches('"'))
+         .filter(|token| token.starts_with("-L"))
+         .map(str::to_owned)
+         .collect())
    }
 
-   fn linker_tools(stage: &Stage, sysroot: &Path) -> io::Result<()> {
-      let bin = stage.out.join("bin");
+   /// What `bin/ld` and, for Mingw, `windres` and `dlltool` run, each a
+   /// link to mummer that execs the program mummer.json gives its name.
+   fn linker_tools(
+      stage: &Stage,
+      sysroot: &Path,
+      flags: &[String],
+   ) -> io::Result<BTreeMap<String, Tool>> {
       // lld picks its personality from argv[0], and "ld" means ELF, spell the
       // flavour out elsewhere
-      let ldargs = match (stage.profile.ld_flavor(), stage.profile) {
+      let ld = match (stage.profile.ld_flavor(), stage.profile) {
          (Some(flavor), _) => {
-            Some(format!(
-               "{} -flavor {flavor}",
-               Self::llvm_bin(stage, "lld").display()
-            ))
+            Tool {
+               program: text(Self::llvm_bin(stage, "lld"))?,
+               before:  vec!["-flavor".to_owned(), flavor.to_owned()],
+               after:   Vec::new(),
+            }
          },
          (None, Profile::Mingw(machine)) => {
-            Some(format!(
-               "{} -m {}",
-               Self::lld(stage).display(),
-               machine.emulation()
-            ))
+            Tool {
+               program: text(Self::lld(stage))?,
+               before:  vec!["-m".to_owned(), machine.emulation().to_owned()],
+               after:   Vec::new(),
+            }
          },
-         (None, Profile::Elf | Profile::Macho | Profile::Msvc) => None,
+         (None, Profile::Elf) => {
+            Tool {
+               program: text(Self::lld(stage))?,
+               before:  Vec::new(),
+               after:   Self::search_flags(stage, flags)?,
+            }
+         },
+         (None, Profile::Macho | Profile::Msvc) => {
+            Tool {
+               program: text(Self::lld(stage))?,
+               before:  Vec::new(),
+               after:   Vec::new(),
+            }
+         },
       };
-      match ldargs {
-         Some(args) => Self::script(&bin.join("ld"), &args)?,
-         None => symlink(Self::lld(stage), bin.join("ld"))?,
-      }
+      let mut tools = BTreeMap::from([("ld".to_owned(), ld)]);
       if let Profile::Mingw(machine) = stage.profile {
-         Self::script(
-            &bin.join("windres"),
-            &format!(
-               "{} --target={} --preprocessor-arg=--sysroot={}",
-               Self::llvm_bin(stage, "llvm-windres").display(),
-               machine.bfd(),
-               sysroot.display()
-            ),
-         )?;
-         Self::script(
-            &bin.join("dlltool"),
-            &format!(
-               "{} -m {}",
-               Self::llvm_bin(stage, "llvm-dlltool").display(),
-               machine.dlltool()
-            ),
-         )?;
+         tools.insert("windres".to_owned(), Tool {
+            program: text(Self::llvm_bin(stage, "llvm-windres"))?,
+            before:  vec![
+               format!("--target={}", machine.bfd()),
+               format!("--preprocessor-arg=--sysroot={}", sysroot.display()),
+            ],
+            after:   Vec::new(),
+         });
+         tools.insert("dlltool".to_owned(), Tool {
+            program: text(Self::llvm_bin(stage, "llvm-dlltool"))?,
+            before:  vec!["-m".to_owned(), machine.dlltool().to_owned()],
+            after:   Vec::new(),
+         });
       }
-      Ok(())
+      let bin = stage.out.join("bin");
+      for name in tools.keys() {
+         symlink("mummer", bin.join(name))?;
+      }
+      Ok(tools)
    }
 
    fn driver_flags(stage: &Stage, sysroot: &Path) -> io::Result<Driver> {
@@ -293,7 +327,6 @@ impl Recipe for Cc {
       ] {
          symlink("mummer", out.join("bin").join(name))?;
       }
-      Self::linker_tools(stage, sysroot)?;
 
       // CC_FOR_BUILD when cross, mummer locates its conf via /proc/self/exe
       if let Some(ref native) = attrs.native {
@@ -306,6 +339,7 @@ impl Recipe for Cc {
       }
       Self::roots(stage, sysroot)?;
       let driver = Self::driver_flags(stage, sysroot)?;
+      let tools = Self::linker_tools(stage, sysroot, &driver.flags)?;
 
       let include = out.join("include");
       create_dir_all(&include)?;
@@ -342,6 +376,7 @@ impl Recipe for Cc {
          policy,
          fc: None,
          fflags: Vec::new(),
+         tools,
       };
       write_file(
          &out.join("etc/mummer.json"),

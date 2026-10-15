@@ -52,6 +52,13 @@ pub enum Mode {
    Rustcwrap,
    /// ghc with the module cache in front, `mummer ghcwrap <ghc> <args...>`.
    Ghcwrap,
+   /// the toolchain's linker, the program and flags its mummer.json gives
+   /// `ld`.
+   Ld,
+   /// the Windows resource compiler mummer.json gives `windres`.
+   Windres,
+   /// the import library tool mummer.json gives `dlltool`.
+   Dlltool,
    /// a custom build command, cached when it is a tablegen run, `mummer
    /// tblgenwrap <program> <args...>`.
    Tblgenwrap,
@@ -121,6 +128,9 @@ impl Mode {
          "tblgenwrap" => return Ok(Self::Tblgenwrap),
          "slot" => return Ok(Self::Slot),
          "header-key" => return Ok(Self::HeaderKey),
+         "ld" => return Ok(Self::Ld),
+         "windres" => return Ok(Self::Windres),
+         "dlltool" => return Ok(Self::Dlltool),
          _ => {},
       }
 
