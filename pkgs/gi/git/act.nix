@@ -17,7 +17,7 @@ in
       "RUST_TARGET_DIR=$(CARGO_TARGET_DIR)/${platform.rustTriple}/release"
       "CURL_LDFLAGS=-lcurl"
       "NO_PERL=1"
-      "PERL_PATH="
+      "PERL_PATH=perl"
       "NO_PYTHON=1"
       "NO_GETTEXT=1"
       "uname_S=${platform.osNames.cmake}"
