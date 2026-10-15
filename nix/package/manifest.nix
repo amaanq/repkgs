@@ -28,6 +28,7 @@ let
   inherit (builtins)
     all
     attrNames
+    attrValues
     concatMap
     concatStringsSep
     elem
@@ -251,6 +252,27 @@ let
       mapAttrs (_: expand) value
     else
       value;
+  # what a `{pkg:}` or `{tool:}` names, which `dependencies` never lists
+  referenced =
+    value:
+    if isString value then
+      concatMap (
+        part:
+        let
+          set = if elemAt part 0 == "pkg" then pkgs else buildPkgs;
+          wanted = elemAt part 1;
+        in
+        if isString part || wanted == name then
+          [ ]
+        else
+          [ set.${wanted} or (throw "${where}: no package ${wanted}") ]
+      ) (split "[{](pkg|tool):([^.}]+)[^}]*[}]" value)
+    else if isList value then
+      concatMap referenced value
+    else if isAttrs value then
+      concatMap referenced (attrValues value)
+    else
+      [ ];
   fields = foldl' merge (internal (expand base)) (map internal (map expand overlays ++ changes));
 
   byName =
@@ -314,6 +336,9 @@ let
   # a build system's table is emptied where `uses` does not list the system
   made = package (
     resolved
+    // {
+      referenced = referenced ([ base ] ++ overlays);
+    }
     // listToAttrs (
       map
         (system: {

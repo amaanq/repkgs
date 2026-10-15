@@ -92,7 +92,10 @@ in
 }:
 written:
 let
-  resolved = resolve { inherit sources written; };
+  resolved = resolve {
+    inherit sources;
+    written = removeAttrs written [ "referenced" ];
+  };
   inherit (resolved) args;
   pinned = resolved.sources;
   inherit (args) name;
@@ -123,7 +126,9 @@ let
     dependencies =
       common.dependencies
       ++ (args.buildDependencies or [ ])
-      ++ concatMap (system: buildSystems.${system}.tools spec) uses;
+      ++ concatMap (system: buildSystems.${system}.tools spec) uses
+      ++ (if separate then [ ] else testDependencies)
+      ++ (written.referenced or [ ]);
   };
   supported = unsupportedReason == null;
 
@@ -304,21 +309,40 @@ let
       ];
     }
   );
-  refused = listToAttrs (
-    map
-      (attribute: {
+  refuse =
+    reason: attributes:
+    listToAttrs (
+      map (attribute: {
         name = attribute;
-        value = throw unsupportedReason;
-      })
-      (
-        [
-          "drvPath"
-          "outPath"
-          "tests"
-        ]
-        ++ drv.outputs
-      )
+        value = throw reason;
+      }) attributes
+    );
+  refused = refuse unsupportedReason (
+    [
+      "drvPath"
+      "outPath"
+      "tests"
+    ]
+    ++ drv.outputs
   );
+  untestable = filter (dependency: !(dependency.supported or true)) testDependencies;
+  tests =
+    if untestable == [ ] then
+      testsDrv
+    else
+      let
+        reason = "${name} tests -> ${(head untestable).unsupportedReason}";
+      in
+      testsDrv
+      // {
+        supported = false;
+        unsupportedReason = reason;
+      }
+      // refuse reason [
+        "drvPath"
+        "outPath"
+        "out"
+      ];
 in
 assert checks;
 drv
@@ -339,7 +363,7 @@ drv
     unsupportedReason
     ;
 }
-// (if separate then { tests = testsDrv; } else { })
+// (if separate then { inherit tests; } else { })
 // (
   if linked == [ ] then
     { }

@@ -27,7 +27,7 @@ let
     rename (name: if platform == system then "pkg-${name}" else "${platform}-${name}") (usable platform)
   ) platforms;
   testSuites = rename (name: "tests-${name}") (
-    lib.mapAttrs (_: p: p.tests) (lib.filterAttrs (_: p: p ? tests) native)
+    lib.mapAttrs (_: p: p.tests) (lib.filterAttrs (_: p: p ? tests && p.tests.supported or true) native)
   );
   builderTests = rename (name: "builder-${name}") (import ../tests/builder { inherit system; });
 
