@@ -1,7 +1,8 @@
-track = "pypi:greenlet"
-fetch = { sdist = true }
-with  = [ "python" ]
-tools = [ "python-setuptools" ]
+track   = "pypi:greenlet"
+fetch   = { sdist = true }
+with    = [ "python" ]
+tools   = [ "python-setuptools" ]
+patches = [ "uss-counts-swap.patch" ]
 
 [test]
 deps = [ "python-objgraph", "python-psutil" ]

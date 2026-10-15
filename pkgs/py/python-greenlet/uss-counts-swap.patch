@@ -1,0 +1,12 @@
+--- a/src/greenlet/tests/__init__.py
++++ b/src/greenlet/tests/__init__.py
+@@ -209,7 +209,8 @@
+         :exc:`unittest.SkipTest` exception.
+         """
+         try:
+-            return psutil.Process().memory_full_info().uss
++            info = psutil.Process().memory_full_info()
++            return info.uss + getattr(info, "swap", 0)
+         except AttributeError as e:
+             raise unittest.SkipTest("uss not supported") from e
+ 
