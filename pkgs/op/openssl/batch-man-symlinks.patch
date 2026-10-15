@@ -1,0 +1,161 @@
+--- a/Configurations/unix-Makefile.tmpl
++++ b/Configurations/unix-Makefile.tmpl
+@@ -1034,69 +1034,77 @@
+ 	@$(PERL) $(SRCDIR)/util/mkdir-p.pl "$(DESTDIR)$(MANDIR)/man5"
+ 	@$(PERL) $(SRCDIR)/util/mkdir-p.pl "$(DESTDIR)$(MANDIR)/man7"
+ 	@$(ECHO) "*** Installing manpages"
+-	@set -e; for x in dummy $(MANDOCS1); do \
++	@set -e; names=; for x in dummy $(MANDOCS1); do \
+ 		if [ "$$x" = "dummy" ]; then continue; fi; \
+ 		fn=`basename $$x`; \
+ 		$(ECHO) "install $$x -> $(DESTDIR)$(MANDIR)/man1/$${fn}$(MANSUFFIX)"; \
+ 		cp $$x "$(DESTDIR)$(MANDIR)/man1/$${fn}$(MANSUFFIX)"; \
+ 		chmod 644 "$(DESTDIR)$(MANDIR)/man1/$${fn}$(MANSUFFIX)"; \
+-		$(PERL) $(SRCDIR)/util/write-man-symlinks install $(SRCDIR)/doc/man1 $(BLDDIR)/doc/man1 $${fn}$(MANSUFFIX) "$(DESTDIR)$(MANDIR)/man1"; \
+-	done
+-	@set -e; for x in dummy $(MANDOCS3); do \
++		names="$$names $${fn}$(MANSUFFIX)"; \
++	done; \
++	$(PERL) $(SRCDIR)/util/write-man-symlinks install $(SRCDIR)/doc/man1 $(BLDDIR)/doc/man1 "$(DESTDIR)$(MANDIR)/man1" $$names
++	@set -e; names=; for x in dummy $(MANDOCS3); do \
+ 		if [ "$$x" = "dummy" ]; then continue; fi; \
+ 		fn=`basename $$x`; \
+ 		$(ECHO) "install $$x -> $(DESTDIR)$(MANDIR)/man3/$${fn}$(MANSUFFIX)"; \
+ 		cp $$x "$(DESTDIR)$(MANDIR)/man3/$${fn}$(MANSUFFIX)"; \
+ 		chmod 644 "$(DESTDIR)$(MANDIR)/man3/$${fn}$(MANSUFFIX)"; \
+-		$(PERL) $(SRCDIR)/util/write-man-symlinks install $(SRCDIR)/doc/man3 $(BLDDIR)/doc/man3 $${fn}$(MANSUFFIX) "$(DESTDIR)$(MANDIR)/man3"; \
+-	done
+-	@set -e; for x in dummy $(MANDOCS5); do \
++		names="$$names $${fn}$(MANSUFFIX)"; \
++	done; \
++	$(PERL) $(SRCDIR)/util/write-man-symlinks install $(SRCDIR)/doc/man3 $(BLDDIR)/doc/man3 "$(DESTDIR)$(MANDIR)/man3" $$names
++	@set -e; names=; for x in dummy $(MANDOCS5); do \
+ 		if [ "$$x" = "dummy" ]; then continue; fi; \
+ 		fn=`basename $$x`; \
+ 		$(ECHO) "install $$x -> $(DESTDIR)$(MANDIR)/man5/$${fn}$(MANSUFFIX)"; \
+ 		cp $$x "$(DESTDIR)$(MANDIR)/man5/$${fn}$(MANSUFFIX)"; \
+ 		chmod 644 "$(DESTDIR)$(MANDIR)/man5/$${fn}$(MANSUFFIX)"; \
+-		$(PERL) $(SRCDIR)/util/write-man-symlinks install $(SRCDIR)/doc/man5 $(BLDDIR)/doc/man5 $${fn}$(MANSUFFIX) "$(DESTDIR)$(MANDIR)/man5"; \
+-	done
+-	@set -e; for x in dummy $(MANDOCS7); do \
++		names="$$names $${fn}$(MANSUFFIX)"; \
++	done; \
++	$(PERL) $(SRCDIR)/util/write-man-symlinks install $(SRCDIR)/doc/man5 $(BLDDIR)/doc/man5 "$(DESTDIR)$(MANDIR)/man5" $$names
++	@set -e; names=; for x in dummy $(MANDOCS7); do \
+ 		if [ "$$x" = "dummy" ]; then continue; fi; \
+ 		fn=`basename $$x`; \
+ 		$(ECHO) "install $$x -> $(DESTDIR)$(MANDIR)/man7/$${fn}$(MANSUFFIX)"; \
+ 		cp $$x "$(DESTDIR)$(MANDIR)/man7/$${fn}$(MANSUFFIX)"; \
+ 		chmod 644 "$(DESTDIR)$(MANDIR)/man7/$${fn}$(MANSUFFIX)"; \
+-		$(PERL) $(SRCDIR)/util/write-man-symlinks install $(SRCDIR)/doc/man7 $(BLDDIR)/doc/man7 $${fn}$(MANSUFFIX) "$(DESTDIR)$(MANDIR)/man7"; \
+-	done
++		names="$$names $${fn}$(MANSUFFIX)"; \
++	done; \
++	$(PERL) $(SRCDIR)/util/write-man-symlinks install $(SRCDIR)/doc/man7 $(BLDDIR)/doc/man7 "$(DESTDIR)$(MANDIR)/man7" $$names
+ 
+ uninstall_man_docs: build_man_docs
+ 	@$(ECHO) "*** Uninstalling manpages"
+-	@set -e; for x in dummy $(MANDOCS1); do \
++	@set -e; names=; for x in dummy $(MANDOCS1); do \
+ 		if [ "$$x" = "dummy" ]; then continue; fi; \
+ 		fn=`basename $$x`; \
+ 		$(ECHO) "$(RM) $(DESTDIR)$(MANDIR)/man1/$${fn}$(MANSUFFIX)"; \
+ 		$(RM) "$(DESTDIR)$(MANDIR)/man1/$${fn}$(MANSUFFIX)"; \
+-		$(PERL) $(SRCDIR)/util/write-man-symlinks uninstall $(SRCDIR)/doc/man1 $(BLDDIR)/doc/man1 $${fn}$(MANSUFFIX) "$(DESTDIR)$(MANDIR)/man1"; \
+-	done
+-	@set -e; for x in dummy $(MANDOCS3); do \
++		names="$$names $${fn}$(MANSUFFIX)"; \
++	done; \
++	$(PERL) $(SRCDIR)/util/write-man-symlinks uninstall $(SRCDIR)/doc/man1 $(BLDDIR)/doc/man1 "$(DESTDIR)$(MANDIR)/man1" $$names
++	@set -e; names=; for x in dummy $(MANDOCS3); do \
+ 		if [ "$$x" = "dummy" ]; then continue; fi; \
+ 		fn=`basename $$x`; \
+ 		$(ECHO) "$(RM) $(DESTDIR)$(MANDIR)/man3/$${fn}$(MANSUFFIX)"; \
+ 		$(RM) "$(DESTDIR)$(MANDIR)/man3/$${fn}$(MANSUFFIX)"; \
+-		$(PERL) $(SRCDIR)/util/write-man-symlinks uninstall $(SRCDIR)/doc/man3 $(BLDDIR)/doc/man3 $${fn}$(MANSUFFIX) "$(DESTDIR)$(MANDIR)/man3"; \
+-	done
+-	@set -e; for x in dummy $(MANDOCS5); do \
++		names="$$names $${fn}$(MANSUFFIX)"; \
++	done; \
++	$(PERL) $(SRCDIR)/util/write-man-symlinks uninstall $(SRCDIR)/doc/man3 $(BLDDIR)/doc/man3 "$(DESTDIR)$(MANDIR)/man3" $$names
++	@set -e; names=; for x in dummy $(MANDOCS5); do \
+ 		if [ "$$x" = "dummy" ]; then continue; fi; \
+ 		fn=`basename $$x`; \
+ 		$(ECHO) "$(RM) $(DESTDIR)$(MANDIR)/man5/$${fn}$(MANSUFFIX)"; \
+ 		$(RM) "$(DESTDIR)$(MANDIR)/man5/$${fn}$(MANSUFFIX)"; \
+-		$(PERL) $(SRCDIR)/util/write-man-symlinks uninstall $(SRCDIR)/doc/man5 $(BLDDIR)/doc/man5 $${fn}$(MANSUFFIX) "$(DESTDIR)$(MANDIR)/man5"; \
+-	done
+-	@set -e; for x in dummy $(MANDOCS7); do \
++		names="$$names $${fn}$(MANSUFFIX)"; \
++	done; \
++	$(PERL) $(SRCDIR)/util/write-man-symlinks uninstall $(SRCDIR)/doc/man5 $(BLDDIR)/doc/man5 "$(DESTDIR)$(MANDIR)/man5" $$names
++	@set -e; names=; for x in dummy $(MANDOCS7); do \
+ 		if [ "$$x" = "dummy" ]; then continue; fi; \
+ 		fn=`basename $$x`; \
+ 		$(ECHO) "$(RM) $(DESTDIR)$(MANDIR)/man7/$${fn}$(MANSUFFIX)"; \
+ 		$(RM) "$(DESTDIR)$(MANDIR)/man7/$${fn}$(MANSUFFIX)"; \
+-		$(PERL) $(SRCDIR)/util/write-man-symlinks uninstall $(SRCDIR)/doc/man7 $(BLDDIR)/doc/man7 $${fn}$(MANSUFFIX) "$(DESTDIR)$(MANDIR)/man7"; \
+-	done
++		names="$$names $${fn}$(MANSUFFIX)"; \
++	done; \
++	$(PERL) $(SRCDIR)/util/write-man-symlinks uninstall $(SRCDIR)/doc/man7 $(BLDDIR)/doc/man7 "$(DESTDIR)$(MANDIR)/man7" $$names
+ 
+ install_html_docs: install_image_docs build_html_docs
+ 	@[ -n "$(INSTALLTOP)" ] || (echo INSTALLTOP should not be empty; exit 1)
+--- a/util/write-man-symlinks
++++ b/util/write-man-symlinks
+@@ -16,33 +16,31 @@
+ 
+ use OpenSSL::Util::Pod;
+ 
+-if ($#ARGV + 1 != 5 || $ARGV[0] !~ /^(un)?install$/) {
+-    print "Usage: write-man-symlinks [install|uninstall] src-dir build-dir man-page-name target-dir\n";
++if ($#ARGV + 1 < 4 || $ARGV[0] !~ /^(un)?install$/) {
++    print "Usage: write-man-symlinks [install|uninstall] src-dir build-dir target-dir man-page-name...\n";
+     exit;
+ }
+ 
+-my $action = $ARGV[0];
+-my $srcdir = $ARGV[1];
+-my $builddir = $ARGV[2];
+-my $manname = $ARGV[3];
+-my $targetdir = $ARGV[4];
++my ($action, $srcdir, $builddir, $targetdir, @mannames) = @ARGV;
+ 
+-$manname =~ m|(.+)\.(.+)|;
+-my $mainf = $1;
+-my $section = $2;
+-die "Bad src file" if !defined $mainf;
+-my $podfile = "$srcdir/$mainf.pod";
+-#Some pod files are generated and are in the build dir
+-unless (-e $podfile) {
+-    $podfile = "$builddir/$mainf.pod";
+-}
+-my %podinfo = extract_pod_info($podfile);
++for my $manname (@mannames) {
++    $manname =~ m|(.+)\.(.+)|;
++    my $mainf = $1;
++    my $section = $2;
++    die "Bad src file" if !defined $mainf;
++    my $podfile = "$srcdir/$mainf.pod";
++    #Some pod files are generated and are in the build dir
++    unless (-e $podfile) {
++        $podfile = "$builddir/$mainf.pod";
++    }
++    my %podinfo = extract_pod_info($podfile);
+ 
+-for my $name (@{$podinfo{names}}) {
+-    next if $name eq $mainf;
+-    if ($action eq "install") {
+-        symlink "$manname", "$targetdir/$name.$section";
+-    } else {
+-        unlink "$targetdir/$name.$section";
++    for my $name (@{$podinfo{names}}) {
++        next if $name eq $mainf;
++        if ($action eq "install") {
++            symlink "$manname", "$targetdir/$name.$section";
++        } else {
++            unlink "$targetdir/$name.$section";
++        }
+     }
+ }
