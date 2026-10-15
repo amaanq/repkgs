@@ -1,45 +1,197 @@
 diff -ruN a/Lib/sysconfig/__main__.py b/Lib/sysconfig/__main__.py
 --- a/Lib/sysconfig/__main__.py
 +++ b/Lib/sysconfig/__main__.py
-@@ -153,10 +153,13 @@
+@@ -1,5 +1,6 @@
+ import json
+ import os
++import re
+ import sys
+ import types
+ from sysconfig import (
+@@ -153,10 +154,13 @@
      return vars
  
  
 -def _print_config_dict(d, stream):
-+def _print_config_dict(d, stream, prefix=None):
++def _print_config_dict(d, stream, anchored=None):
      print ("{", file=stream)
      for k, v in sorted(d.items()):
 -        print(f"    {k!r}: {v!r},", file=stream)
-+        if prefix and isinstance(v, str) and prefix in v:
-+            print(f"    {k!r}: _p.join({v.split(prefix)!r}),", file=stream)
++        if anchored and isinstance(v, str) and anchored.search(v):
++            print(f"    {k!r}: _p.join({anchored.split(v)!r}),", file=stream)
 +        else:
 +            print(f"    {k!r}: {v!r},", file=stream)
      print ("}", file=stream)
  
  
-@@ -227,8 +230,9 @@
+@@ -224,11 +228,14 @@
+     os.makedirs(pybuilddir, exist_ok=True)
+     destfile = os.path.join(pybuilddir, name + '.py')
+ 
++    prefix = vars.get('prefix')
++    anchored = re.compile(re.escape(prefix) + r'(?=/|\s|$)') if prefix else None
      with open(destfile, 'w', encoding='utf8') as f:
          f.write('# system configuration generated and used by'
                  ' the sysconfig module\n')
 +        f.write('import sys\n_p = sys.base_prefix\n')
          f.write('build_time_vars = ')
 -        _print_config_dict(vars, stream=f)
-+        _print_config_dict(vars, stream=f, prefix=vars.get('prefix'))
++        _print_config_dict(vars, stream=f, anchored=anchored)
  
      print(f'Written {destfile}')
  
-@@ -236,6 +240,11 @@
+@@ -236,6 +243,10 @@
      # Fix config vars to match the values after install (of the default environment)
      install_vars['projectbase'] = install_vars['BINDIR']
      install_vars['srcdir'] = install_vars['LIBPL']
-+    prefix = vars.get('prefix')
-+    if prefix:
++    if anchored:
 +        relative = os.path.relpath(prefix, install_vars['LIBDEST'])
-+        install_vars = {k: v.replace(prefix, relative) if isinstance(v, str) else v
++        install_vars = {k: anchored.sub(lambda _: relative, v) if isinstance(v, str) else v
 +                        for k, v in install_vars.items()}
      # Write a JSON file with the output of sysconfig.get_config_vars
      jsonfile = os.path.join(pybuilddir, _get_json_data_name())
      with open(jsonfile, 'w') as f:
+diff -ruN a/Lib/test/test_embed.py b/Lib/test/test_embed.py
+--- a/Lib/test/test_embed.py
++++ b/Lib/test/test_embed.py
+@@ -1411,7 +1411,7 @@
+             executable = self.test_exe
+         else:
+             program_name = 'python3'
+-            if MACOS:
++            if MACOS or sys.platform == 'linux':
+                 executable = self.test_exe
+             else:
+                 executable = shutil.which(program_name) or ''
+@@ -1644,14 +1644,17 @@
+             with open(filename, "w", encoding="utf8") as fp:
+                 fp.write(subdir)
+ 
+-            module_search_paths = self.module_search_paths()
++            build_prefix = os.path.normpath(os.path.join(tmpdir, vpath))
++            module_search_paths = self.module_search_paths(prefix=build_prefix)
+             module_search_paths[-2] = stdlibdir
+             module_search_paths[-1] = libdir
+ 
+             executable = self.test_exe
+             config = {
+-                'base_exec_prefix': sysconfig.get_config_var("exec_prefix"),
+-                'base_prefix': sysconfig.get_config_var("prefix"),
++                'base_exec_prefix': build_prefix,
++                'base_prefix': build_prefix,
++                'exec_prefix': build_prefix,
++                'prefix': build_prefix,
+                 'base_executable': executable,
+                 'executable': executable,
+                 'module_search_paths': module_search_paths,
+@@ -1709,7 +1712,7 @@
+              tempfile.TemporaryDirectory() as pyvenv_home:
+ 
+             ver = sys.version_info
+-            base_prefix = sysconfig.get_config_var("prefix")
++            base_prefix = tmpdir
+ 
+             # gh-128690: base_exec_prefix depends if PLATSTDLIB_LANDMARK exists
+             platstdlib = os.path.join(base_prefix, PLATSTDLIB_LANDMARK)
+@@ -1735,7 +1738,7 @@
+                 print("home = %s" % pyvenv_home, file=fp)
+                 print("include-system-site-packages = false", file=fp)
+ 
+-            paths = self.module_search_paths()
++            paths = self.module_search_paths(prefix=base_prefix)
+             if not MS_WINDOWS:
+                 if change_exec_prefix:
+                     paths[-1] = lib_dynload
+diff -ruN a/Lib/test/test_getpath.py b/Lib/test/test_getpath.py
+--- a/Lib/test/test_getpath.py
++++ b/Lib/test/test_getpath.py
+@@ -308,14 +308,14 @@
+         ns.add_known_dir("/home/cpython/lib-dynload")
+         expected = dict(
+             executable="/home/cpython/python",
+-            prefix="/usr/local",
+-            exec_prefix="/usr/local",
++            prefix="/home/cpython",
++            exec_prefix="/home/cpython",
+             base_executable="/home/cpython/python",
+             build_prefix="/home/cpython",
+             _is_python_build=1,
+             module_search_paths_set=1,
+             module_search_paths=[
+-                "/usr/local/lib/python98.zip",
++                "/home/cpython/lib/python98.zip",
+                 "/home/cpython/Lib",
+                 "/home/cpython/build/lib.linux-x86_64-9.8",
+             ],
+@@ -364,6 +364,7 @@
+         ns.add_known_xfile("/usr/bin/python3")
+         ns.add_known_xfile("/venv/bin/python3")
+         ns.add_known_link("/venv/bin/python3", "/usr/bin/python3")
++        ns.add_known_file("/usr/lib/python9.8/os.py")
+         ns.add_known_file("/venv/pyvenv.cfg", [
+             # home = key intentionally omitted
+         ])
+@@ -517,14 +518,14 @@
+         ns.add_known_dir("/home/cpython/lib-dynload")
+         expected = dict(
+             executable="/linkfrom/python",
+-            prefix="/usr/local",
+-            exec_prefix="/usr/local",
++            prefix="/home/cpython",
++            exec_prefix="/home/cpython",
+             base_executable="/linkfrom/python",
+             build_prefix="/home/cpython",
+             _is_python_build=1,
+             module_search_paths_set=1,
+             module_search_paths=[
+-                "/usr/local/lib/python98.zip",
++                "/home/cpython/lib/python98.zip",
+                 "/home/cpython/Lib",
+                 "/home/cpython/build/lib.linux-x86_64-9.8",
+             ],
+@@ -540,6 +541,7 @@
+             PLATLIBDIR="lib64",
+         )
+         ns.add_known_xfile("/usr/bin/python")
++        ns.add_known_link("/linkfrom/python", "/usr/bin/python")
+         ns.add_known_file("/usr/lib64/python9.8/os.py")
+         ns.add_known_dir("/usr/lib64/python9.8/lib-dynload")
+         expected = dict(
+@@ -824,14 +826,14 @@
+         ns.add_known_dir("/home/cpython/lib-dynload")
+         expected = dict(
+             executable="/linkfrom/python",
+-            prefix="/usr/local",
+-            exec_prefix="/usr/local",
++            prefix="/home/cpython",
++            exec_prefix="/home/cpython",
+             base_executable="/linkfrom/python",
+             build_prefix="/home/cpython",
+             _is_python_build=1,
+             module_search_paths_set=1,
+             module_search_paths=[
+-                "/usr/local/lib/python98.zip",
++                "/home/cpython/lib/python98.zip",
+                 "/home/cpython/Lib",
+                 "/home/cpython/build/lib.macos-9.8",
+             ],
+diff -ruN a/Lib/test/test_sysconfig.py b/Lib/test/test_sysconfig.py
+--- a/Lib/test/test_sysconfig.py
++++ b/Lib/test/test_sysconfig.py
+@@ -706,6 +706,13 @@
+             json_config_vars = json.load(f)
+ 
+         system_config_vars = get_config_vars()
++        prefix = system_config_vars['prefix']
++        relative = os.path.relpath(prefix, system_config_vars['LIBDEST'])
++        anchored = re.compile(r'(?<!/)' + re.escape(relative) + r'(?=/|\s|$)')
++        json_config_vars = {
++            key: anchored.sub(lambda _: prefix, value) if isinstance(value, str) else value
++            for key, value in json_config_vars.items()
++        }
+ 
+         # Keys dependent on uncontrollable external context
+         ignore_keys = {'userbase'}
 diff -ruN a/Makefile.pre.in b/Makefile.pre.in
 --- a/Makefile.pre.in
 +++ b/Makefile.pre.in
@@ -128,6 +280,15 @@ diff -ruN a/Modules/getpath.c b/Modules/getpath.c
 diff -ruN a/Modules/getpath.py b/Modules/getpath.py
 --- a/Modules/getpath.py
 +++ b/Modules/getpath.py
+@@ -269,7 +269,7 @@
+     # All platforms default to real_executable if known at this
+     # stage. POSIX does not set this value.
+     executable = real_executable
+-elif os_name == 'darwin':
++elif os_name != 'nt':
+     # QUIRK: On macOS we may know the real executable path, but
+     # if our caller has lied to us about it (e.g. most of
+     # test_embed), we need to use their path in order to detect
 @@ -598,11 +598,6 @@
          if prefix and not stdlib_dir:
              stdlib_dir = joinpath(prefix, STDLIB_SUBDIR)
