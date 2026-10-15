@@ -1,7 +1,13 @@
 track = "generic:tzdb?url=https://data.iana.org/time-zones/releases/"
 fetch = { url = "https://data.iana.org/time-zones/releases/tzdb-{version}.tar.lz" }
 with  = [ "make" ]
-test  = false
+
+# the man pages are rendered to text for the character set checks
+[test]
+deps = [ "mandoc", "util-linux" ]
+
+[steps.before]
+"make.test" = [ "tzdata.test" ]
 
 [only]
 os = [ "linux", "macos" ]
