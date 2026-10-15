@@ -1,0 +1,112 @@
+--- a/libarchive/test/test_write_disk_perms.c
++++ b/libarchive/test/test_write_disk_perms.c
+@@ -39,6 +39,18 @@
+ static long _invalid_gid = -1;
+ static long _alt_gid = -1;
+ 
++static int
++setid_allowed(void)
++{
++	int fd = open("setid_probe", O_WRONLY | O_CREAT, 0700);
++	int allowed = fd >= 0 && fchmod(fd, S_ISUID | S_ISGID | 0700) == 0;
++
++	if (fd >= 0)
++		close(fd);
++	unlink("setid_probe");
++	return allowed;
++}
++
+ /*
+  * To fully test SGID restores, we need three distinct GIDs to work
+  * with:
+@@ -139,8 +152,12 @@
+ 	struct stat st;
+ 	uid_t original_uid;
+ 	uid_t try_to_change_uid;
++	int setid;
+ 
+ 	assertUmask(UMASK);
++	setid = setid_allowed();
++	if (!setid)
++		skipping("setting S_ISUID and S_ISGID");
+ 
+ 	/*
+ 	 * Set ownership of the current directory to the group of this
+@@ -257,13 +274,15 @@
+ 	assertEqualIntA(a, ARCHIVE_OK, archive_write_finish_entry(a));
+ 
+ 	/* Write a regular file with ARCHIVE_EXTRACT_PERM & SUID bit */
+-	assert(archive_entry_clear(ae) != NULL);
+-	archive_entry_copy_pathname(ae, "file_4742");
+-	archive_entry_set_mode(ae, S_IFREG | S_ISUID | 0742);
+-	archive_entry_set_uid(ae, getuid());
+-	archive_write_disk_set_options(a, ARCHIVE_EXTRACT_PERM);
+-	assertEqualIntA(a, ARCHIVE_OK, archive_write_header(a, ae));
+-	assertEqualIntA(a, ARCHIVE_OK, archive_write_finish_entry(a));
++	if (setid) {
++		assert(archive_entry_clear(ae) != NULL);
++		archive_entry_copy_pathname(ae, "file_4742");
++		archive_entry_set_mode(ae, S_IFREG | S_ISUID | 0742);
++		archive_entry_set_uid(ae, getuid());
++		archive_write_disk_set_options(a, ARCHIVE_EXTRACT_PERM);
++		assertEqualIntA(a, ARCHIVE_OK, archive_write_header(a, ae));
++		assertEqualIntA(a, ARCHIVE_OK, archive_write_finish_entry(a));
++	}
+ 
+ 	/*
+ 	 * Write a regular file with ARCHIVE_EXTRACT_PERM & SUID bit,
+@@ -299,14 +318,16 @@
+ 	}
+ 
+ 	/* Write a regular file with ARCHIVE_EXTRACT_PERM & SGID bit */
+-	assert(archive_entry_clear(ae) != NULL);
+-	archive_entry_copy_pathname(ae, "file_perm_sgid");
+-	archive_entry_set_mode(ae, S_IFREG | S_ISGID | 0742);
+-	archive_entry_set_gid(ae, defaultgid());
+-	archive_write_disk_set_options(a, ARCHIVE_EXTRACT_PERM);
+-	assertEqualIntA(a, ARCHIVE_OK, archive_write_header(a, ae));
+-	failure("Setting SGID bit should succeed here.");
+-	assertEqualIntA(a, 0, archive_write_finish_entry(a));
++	if (setid) {
++		assert(archive_entry_clear(ae) != NULL);
++		archive_entry_copy_pathname(ae, "file_perm_sgid");
++		archive_entry_set_mode(ae, S_IFREG | S_ISGID | 0742);
++		archive_entry_set_gid(ae, defaultgid());
++		archive_write_disk_set_options(a, ARCHIVE_EXTRACT_PERM);
++		assertEqualIntA(a, ARCHIVE_OK, archive_write_header(a, ae));
++		failure("Setting SGID bit should succeed here.");
++		assertEqualIntA(a, 0, archive_write_finish_entry(a));
++	}
+ 
+ 	if (altgid() == -1) {
+ 		/*
+@@ -433,9 +454,11 @@
+ 	assertEqualInt(st.st_mode & 07777, 0777);
+ 
+ 	/* SUID bit should get set here. */
+-	assertEqualInt(0, stat("file_4742", &st));
+-	failure("file_4742: st.st_mode=%o", st.st_mode);
+-	assertEqualInt(st.st_mode & 07777, S_ISUID | 0742);
++	if (setid) {
++		assertEqualInt(0, stat("file_4742", &st));
++		failure("file_4742: st.st_mode=%o", st.st_mode);
++		assertEqualInt(st.st_mode & 07777, S_ISUID | 0742);
++	}
+ 
+ 	/* SUID bit should NOT have been set here. */
+ 	assertEqualInt(0, stat("file_bad_suid", &st));
+@@ -451,9 +474,11 @@
+ 	}
+ 
+ 	/* SGID should be set here. */
+-	assertEqualInt(0, stat("file_perm_sgid", &st));
+-	failure("file_perm_sgid: st.st_mode=%o", st.st_mode);
+-	assertEqualInt(st.st_mode & 07777, S_ISGID | 0742);
++	if (setid) {
++		assertEqualInt(0, stat("file_perm_sgid", &st));
++		failure("file_perm_sgid: st.st_mode=%o", st.st_mode);
++		assertEqualInt(st.st_mode & 07777, S_ISGID | 0742);
++	}
+ 
+ 	if (altgid() != -1) {
+ 		/* SGID should not be set here. */
