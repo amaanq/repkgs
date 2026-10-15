@@ -29,6 +29,11 @@ export def build []: nothing -> nothing {
    cue ninja -C $c.build $"-j($c.njobs)"
 }
 
+export def test []: nothing -> nothing {
+   let c = (act)
+   cue make -C $c.build $"-j($c.njobs)" check
+}
+
 export def install []: nothing -> nothing {
    let c      = (act)
    let staged = $"($c.build)/dest"
