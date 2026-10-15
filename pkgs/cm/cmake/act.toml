@@ -1,16 +1,20 @@
-fetch = { from = "cmake-bootstrap" }
-with  = [ "cmake" ]
+fetch   = { from = "cmake-bootstrap" }
+with    = [ "cmake" ]
+patches = [ "tests.patch" ]
 
 [test]
-bin = [ "cmake", "ctest", "cpack" ]
-run = false
+bin  = [ "cmake", "ctest", "cpack" ]
+deps = [ "openssl", "cpython314", "file" ]
+
+[steps.before]
+"cmake.test" = [ "test-tools.path" ]
 
 [cmake]
 tool = "cmake-bootstrap"
 
 [cmake.defs]
-BUILD_TESTING                       = false
 CMAKE_USE_OPENSSL                   = false
+CMake_TEST_NO_NETWORK               = true
 CMAKE_USE_SYSTEM_LIBRARY_BZIP2      = true
 CMAKE_USE_SYSTEM_LIBRARY_CPPDAP     = true
 CMAKE_USE_SYSTEM_LIBRARY_CURL       = true

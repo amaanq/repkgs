@@ -1,0 +1,104 @@
+--- a/Tests/BootstrapTest.cmake
++++ b/Tests/BootstrapTest.cmake
+@@ -7,9 +7,12 @@
+ if(NOT nproc EQUAL 0)
+   set(parallel_arg --parallel=${nproc})
+ endif()
++if(DEFINED ENV{PKGS_SYSROOT})
++  set(sysroot_arg -- -DCMAKE_SYSTEM_PREFIX_PATH=$ENV{PKGS_SYSROOT})
++endif()
+ message(STATUS "running bootstrap: ${bootstrap} ${ninja_arg} ${parallel_arg}")
+ execute_process(
+-  COMMAND ${bootstrap} ${ninja_arg} ${parallel_arg}
++  COMMAND ${bootstrap} ${ninja_arg} ${parallel_arg} ${sysroot_arg}
+   WORKING_DIRECTORY "${bin_dir}"
+   RESULT_VARIABLE result
+   )
+--- a/Tests/BundleUtilities/bundleutils.cmake
++++ b/Tests/BundleUtilities/bundleutils.cmake
+@@ -33,6 +33,12 @@
+   set(path "@executable_path" PARENT_SCOPE)
+ endfunction()
+ 
++function(gp_resolved_file_type_override file type)
++  if(DEFINED ENV{PKGS_SYSROOT} AND file MATCHES "^$ENV{PKGS_SYSROOT}/")
++    set(${type} system PARENT_SCOPE)
++  endif()
++endfunction()
++
+ include(BundleUtilities)
+ fixup_bundle("${OUTPUT}" "${OUTPUT_MODULE}" "${INPUTDIR}")
+ 
+--- a/Tests/RunCMake/file-RPATH/Common.cmake
++++ b/Tests/RunCMake/file-RPATH/Common.cmake
+@@ -1,6 +1,16 @@
+ if(CMAKE_HOST_UNIX)
++  file(TOUCH setuid-probe)
++  execute_process(COMMAND chmod 4700 setuid-probe RESULT_VARIABLE setuid_refused ERROR_QUIET)
++  file(REMOVE setuid-probe)
++  if(setuid_refused)
++    set(setuid "")
++    set(mode 700)
++  else()
++    set(setuid SETUID)
++    set(mode 4700)
++  endif()
+   function(permissions_set f)
+-    file(CHMOD ${f} FILE_PERMISSIONS OWNER_WRITE OWNER_READ OWNER_EXECUTE SETUID)
++    file(CHMOD ${f} FILE_PERMISSIONS OWNER_WRITE OWNER_READ OWNER_EXECUTE ${setuid})
+   endfunction()
+   function(permissions_check f)
+     execute_process(COMMAND sh -c "stat -c %a \"${f}\""
+@@ -9,8 +19,8 @@
+       RESULT_VARIABLE stat_res
+       )
+     if(stat_res EQUAL 0)
+-      if(NOT stat_out STREQUAL "4700")
+-        message(FATAL_ERROR "Expected permissions 4700 but got ${stat_out}:\n ${f}")
++      if(NOT stat_out STREQUAL "${mode}")
++        message(FATAL_ERROR "Expected permissions ${mode} but got ${stat_out}:\n ${f}")
+       endif()
+     endif()
+   endfunction()
+--- a/Tests/RunCMake/RuntimePath/GenexCheck.cmake
++++ b/Tests/RunCMake/RuntimePath/GenexCheck.cmake
+@@ -2,6 +2,6 @@
+ 
+ foreach(file IN LISTS files)
+   if(file MATCHES "/(build|install)(no)?ge$")
+-    file(RPATH_CHANGE FILE "${file}" OLD_RPATH "/opt/foo/lib" NEW_RPATH "/opt/bar/lib")
++    file(RPATH_CHANGE FILE "${file}" OLD_RPATH "/foo/lib" NEW_RPATH "/bar/lib")
+   endif()
+ endforeach()
+--- a/Tests/RunCMake/RuntimePath/Genex.cmake
++++ b/Tests/RunCMake/RuntimePath/Genex.cmake
+@@ -5,25 +5,25 @@
+ add_executable(buildge main.c)
+ target_link_libraries(buildge A)
+ set_target_properties(buildge PROPERTIES
+-  BUILD_RPATH $<1:/opt/foo/lib>
++  BUILD_RPATH $<1:/foo/lib>
+   )
+ 
+ add_executable(buildnoge main.c)
+ target_link_libraries(buildnoge A)
+ set_target_properties(buildnoge PROPERTIES
+-  BUILD_RPATH /opt/foo/lib
++  BUILD_RPATH /foo/lib
+   )
+ 
+ add_executable(installge main.c)
+ target_link_libraries(installge A)
+ set_target_properties(installge PROPERTIES
+-  INSTALL_RPATH $<1:/opt/foo/lib>
++  INSTALL_RPATH $<1:/foo/lib>
+   BUILD_WITH_INSTALL_RPATH 1
+   )
+ 
+ add_executable(installnoge main.c)
+ target_link_libraries(installnoge A)
+ set_target_properties(installnoge PROPERTIES
+-  INSTALL_RPATH /opt/foo/lib
++  INSTALL_RPATH /foo/lib
+   BUILD_WITH_INSTALL_RPATH 1
+   )
