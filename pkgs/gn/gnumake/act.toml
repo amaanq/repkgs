@@ -7,9 +7,7 @@ patches        = [ "relocatable.patch" ]
 [test]
 bin      = [ "make" ]
 separate = true
-
-[steps.before]
-"autotools.test" = [ "gnumake.drop-general4" ]
+fhs      = true
 
 [autotools]
 flags     = [ "--without-guile" ]
