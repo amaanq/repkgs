@@ -1,3 +1,14 @@
+diff -ruN a/src/config/pre.in b/src/config/pre.in
+--- a/src/config/pre.in
++++ b/src/config/pre.in
+@@ -221,6 +221,7 @@
+ KRB5_AD_MODULE_DIR = $(MODULE_DIR)/authdata
+ KRB5_LIBKRB5_MODULE_DIR = $(MODULE_DIR)/libkrb5
+ KRB5_TLS_MODULE_DIR = $(MODULE_DIR)/tls
++localedir = @localedir@
+ KRB5_LOCALEDIR = @localedir@
+ GSS_MODULE_DIR = @libdir@/gss
+ KRB5_INCSUBDIRS = \
 diff -ruN a/src/include/osconf.hin b/src/include/osconf.hin
 --- a/src/include/osconf.hin
 +++ b/src/include/osconf.hin
@@ -138,6 +149,18 @@ diff -ruN a/src/lib/kdb/kdb5.c b/src/lib/kdb/kdb5.c
      char **profpath = NULL;
      char **path = NULL;
  
+diff -ruN a/src/lib/krb5/Makefile.in b/src/lib/krb5/Makefile.in
+--- a/src/lib/krb5/Makefile.in
++++ b/src/lib/krb5/Makefile.in
+@@ -2,7 +2,7 @@
+ BUILDTOP=$(REL)..$(S)..
+ LOCALINCLUDES = -I$(srcdir)/ccache -I$(srcdir)/keytab -I$(srcdir)/rcache -I$(srcdir)/os -I$(srcdir)/unicode
+ SUBDIRS= error_tables asn.1 ccache keytab krb os rcache unicode
+-DEFINES=-DLOCALEDIR=\"$(KRB5_LOCALEDIR)\"
++DEFINES=-DLOCALEDIR=\"$(localedir)\"
+ 
+ ##DOSBUILDTOP = ..\..
+ ##DOSLIBNAME=$(OUTPRE)krb5.lib
 diff -ruN a/src/lib/krb5/krb/authdata.c b/src/lib/krb5/krb/authdata.c
 --- a/src/lib/krb5/krb/authdata.c
 +++ b/src/lib/krb5/krb/authdata.c
@@ -169,6 +192,18 @@ diff -ruN a/src/lib/krb5/krb/authdata.c b/src/lib/krb5/krb/authdata.c
  
      *pcontext = NULL;
      memset(&plugins, 0, sizeof(plugins));
+diff -ruN a/src/lib/krb5/os/Makefile.in b/src/lib/krb5/os/Makefile.in
+--- a/src/lib/krb5/os/Makefile.in
++++ b/src/lib/krb5/os/Makefile.in
+@@ -259,8 +259,6 @@
+ 
+ check-unix-expand: t_expand_path
+ 	$(RUN_TEST) ./t_expand_path '%{null}' ''
+-	$(RUN_TEST) ./t_expand_path ' %{BINDIR}%{LIBDIR} ' \
+-		' $(CLIENT_BINDIR)$(KRB5_LIBDIR) '
+ 	$(RUN_TEST) ./t_expand_path \
+ 		'the %{animal}%{s} on the %{place}%{s}' \
+ 		'the frogs on the pads'
 diff -ruN a/src/lib/krb5/os/expand_path.c b/src/lib/krb5/os/expand_path.c
 --- a/src/lib/krb5/os/expand_path.c
 +++ b/src/lib/krb5/os/expand_path.c
@@ -229,18 +264,6 @@ diff -ruN a/src/lib/krb5/os/locate_kdc.c b/src/lib/krb5/os/locate_kdc.c
  
      Tprintf("in module_locate_server\n");
      cbdata.list = serverlist;
-diff -ruN a/src/lib/krb5/os/Makefile.in b/src/lib/krb5/os/Makefile.in
---- a/src/lib/krb5/os/Makefile.in
-+++ b/src/lib/krb5/os/Makefile.in
-@@ -259,8 +259,6 @@
- 
- check-unix-expand: t_expand_path
- 	$(RUN_TEST) ./t_expand_path '%{null}' ''
--	$(RUN_TEST) ./t_expand_path ' %{BINDIR}%{LIBDIR} ' \
--		' $(CLIENT_BINDIR)$(KRB5_LIBDIR) '
- 	$(RUN_TEST) ./t_expand_path \
- 		'the %{animal}%{s} on the %{place}%{s}' \
- 		'the frogs on the pads'
 diff -ruN a/src/util/profile/prof_init.c b/src/util/profile/prof_init.c
 --- a/src/util/profile/prof_init.c
 +++ b/src/util/profile/prof_init.c
