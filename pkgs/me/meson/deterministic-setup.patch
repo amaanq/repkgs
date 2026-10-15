@@ -1,0 +1,135 @@
+diff --git a/mesonbuild/compilers/compilers.py b/mesonbuild/compilers/compilers.py
+--- a/mesonbuild/compilers/compilers.py
++++ b/mesonbuild/compilers/compilers.py
+@@ -538,6 +538,20 @@
+     output_name: T.Optional[str] = field(default=None, init=False)
+     cached: bool = field(default=False, init=False)
+ 
++
++_check_dirs = itertools.count(1)
++
++
++@contextlib.contextmanager
++def _numbered_dir(parent: str) -> T.Iterator[str]:
++    name = os.path.join(parent, f'check{next(_check_dirs)}')
++    mesonlib.windows_proof_rmtree(name)
++    os.mkdir(name)
++    try:
++        yield name
++    finally:
++        mesonlib.windows_proof_rmtree(name)
++
+ class Compiler(HoldableObject, metaclass=SimpleABC):
+ 
+     # Libraries to ignore in find_library() since they are provided by the
+@@ -929,7 +943,7 @@
+         if extra_args is None:
+             extra_args = []
+ 
+-        with TemporaryDirectoryWinProof(dir=temp_dir if temp_dir else None) as tmpdirname:
++        with (_numbered_dir(temp_dir) if temp_dir else TemporaryDirectoryWinProof()) as tmpdirname:
+             no_ccache = False
+             if isinstance(code, str):
+                 srcname = os.path.join(tmpdirname,
+diff --git a/mesonbuild/coredata.py b/mesonbuild/coredata.py
+--- a/mesonbuild/coredata.py
++++ b/mesonbuild/coredata.py
+@@ -223,9 +223,9 @@
+             'test': '3AC096D0-A1C2-E12C-1390-A8335801FDAB',
+             'directory': '2150E333-8FDC-42A3-9474-1A3956D46DE8',
+         }
+-        self.test_guid = str(uuid.uuid4()).upper()
+-        self.regen_guid = str(uuid.uuid4()).upper()
+-        self.install_guid = str(uuid.uuid4()).upper()
++        self.test_guid = str(uuid.uuid5(uuid.NAMESPACE_URL, 'meson-test')).upper()
++        self.regen_guid = str(uuid.uuid5(uuid.NAMESPACE_URL, 'meson-regen')).upper()
++        self.install_guid = str(uuid.uuid5(uuid.NAMESPACE_URL, 'meson-install')).upper()
+         self.meson_command = meson_command
+         self.target_guids: T.Dict[str, str] = {}
+         self.version = version
+diff --git a/mesonbuild/dependencies/base.py b/mesonbuild/dependencies/base.py
+--- a/mesonbuild/dependencies/base.py
++++ b/mesonbuild/dependencies/base.py
+@@ -12,7 +12,6 @@
+ import collections
+ import itertools
+ import typing as T
+-import uuid
+ from enum import Enum
+ 
+ from .. import mlog, mesonlib
+@@ -130,6 +129,14 @@
+ 
+ DependencyTypeName = T.NewType('DependencyTypeName', str)
+ 
++_next_id = 1
++
++
++def _new_id() -> int:
++    global _next_id
++    _next_id += 1
++    return _next_id - 1
++
+ 
+ class Dependency(HoldableObject):
+ 
+@@ -138,7 +145,7 @@
+     def __init__(self, kwargs: DependencyObjectKWs) -> None:
+         # This allows two Dependencies to be compared even after being copied.
+         # The purpose is to allow the name to be changed, but still have a proper comparison
+-        self._id = uuid.uuid4().int
++        self._id = _new_id()
+         self.name = f'dep{self._id}'
+         self.version:  T.Optional[str] = None
+         self.language: T.Optional[Language] = kwargs.get('language') # None means C-like
+@@ -165,6 +172,11 @@
+     def __hash__(self) -> int:
+         return self._id
+ 
++    def __setstate__(self, state: T.Dict[str, T.Any]) -> None:
++        global _next_id
++        self.__dict__.update(state)
++        _next_id = max(_next_id, state['_id'] + 1)
++
+     def __repr__(self) -> str:
+         return f'<{self.__class__.__name__} {self.name}: {self.is_found}>'
+ 
+@@ -446,7 +458,7 @@
+                                link_args: bool = False, links: bool = False,
+                                includes: bool = False, sources: bool = False) -> Dependency:
+         new = copy.copy(self)
+-        new._id = uuid.uuid4().int
++        new._id = _new_id()
+         if not compile_args:
+             new.compile_args = []
+         if not link_args:
+@@ -523,7 +535,7 @@
+                                link_args: bool = False, links: bool = False,
+                                includes: bool = False, sources: bool = False) -> 'NotFoundDependency':
+         new = copy.copy(self)
+-        new._id = uuid.uuid4().int
++        new._id = _new_id()
+         return new
+ 
+ 
+@@ -565,7 +577,7 @@
+         # External library only has link_args, so ignore the rest of the
+         # interface.
+         new = copy.copy(self)
+-        new._id = uuid.uuid4().int
++        new._id = _new_id()
+         if not link_args:
+             new.link_args = []
+         return new
+diff --git a/mesonbuild/interpreter/interpreter.py b/mesonbuild/interpreter/interpreter.py
+--- a/mesonbuild/interpreter/interpreter.py
++++ b/mesonbuild/interpreter/interpreter.py
+@@ -3502,7 +3502,7 @@
+         if isinstance(tobj, build.Executable):
+             self.build.targetnames.update([namedir])
+         if idname not in self.coredata.target_guids:
+-            self.coredata.target_guids[idname] = str(uuid.uuid4()).upper()
++            self.coredata.target_guids[idname] = str(uuid.uuid5(uuid.NAMESPACE_URL, 'meson-target:' + idname)).upper()
+ 
+     @FeatureNew('both_libraries', '0.46.0')
+     def build_both_libraries(self, node: mparser.BaseNode, args: T.Tuple[str, SourcesVarargsType], kwargs: kwtypes.Library) -> build.BothLibraries:

@@ -1,8 +1,9 @@
-track = "pypi:meson"
-fetch = { sdist = true }
-with  = [ "python" ]
-deps  = [ "cpython" ]
-tools = [ "python-setuptools" ]
+track   = "pypi:meson"
+fetch   = { sdist = true }
+with    = [ "python" ]
+deps    = [ "cpython" ]
+tools   = [ "python-setuptools" ]
+patches = [ "deterministic-setup.patch" ]
 
 [python]
 module = "mesonbuild"
