@@ -1,0 +1,38 @@
+diff -ruN a/Lib/test/test_os.py b/Lib/test/test_os.py
+--- a/Lib/test/test_os.py
++++ b/Lib/test/test_os.py
+@@ -2088,9 +2088,10 @@
+     def test_chown_without_permission(self):
+         uid_1, uid_2 = all_users[:2]
+         gid = os.stat(os_helper.TESTFN).st_gid
+-        with self.assertRaises(PermissionError):
++        with self.assertRaises(OSError) as raised:
+             os.chown(os_helper.TESTFN, uid_1, gid)
+             os.chown(os_helper.TESTFN, uid_2, gid)
++        self.assertIn(raised.exception.errno, (errno.EPERM, errno.EINVAL))
+ 
+     @classmethod
+     def tearDownClass(cls):
+diff -ruN a/Lib/test/test_subprocess.py b/Lib/test/test_subprocess.py
+--- a/Lib/test/test_subprocess.py
++++ b/Lib/test/test_subprocess.py
+@@ -2241,6 +2241,9 @@
+                             self.assertEqual(e.filename, sys.executable)
+                         else:
+                             self.assertIsNone(e.filename)
++                    except OSError as e:
++                        self.assertEqual(e.errno, errno.EINVAL)
++                        self.assertIsNone(e.filename)
+                     else:
+                         if isinstance(user, str):
+                             user_uid = pwd.getpwnam(user).pw_uid
+@@ -2286,6 +2289,9 @@
+                                 close_fds=close_fds)
+                     except PermissionError as e:  # (EACCES, EPERM)
+                         self.assertIsNone(e.filename)
++                    except OSError as e:
++                        self.assertEqual(e.errno, errno.EINVAL)
++                        self.assertIsNone(e.filename)
+                     else:
+                         if isinstance(group, str):
+                             group_gid = grp.getgrnam(group).gr_gid
