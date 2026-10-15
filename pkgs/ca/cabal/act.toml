@@ -1,16 +1,35 @@
-fetch = { url = "https://hackage.haskell.org/package/cabal-install-{version}/cabal-install-{version}.tar.gz" }
-with  = [ "cabal" ]
+tag     = "cabal-install-v{version}"
+fetch   = { archive = true }
+with    = [ "cabal" ]
+patches = [ "system-zlib.patch" ]
 
 [track]
-from = "hackage:cabal-install"
+from = "github:haskell/cabal"
 
 [track.locks]
 hackage = "."
 
 [test]
-run     = false
+deps    = [ "git" ]
 version = "--numeric-version"
 
+[steps.before]
+"cabal.test" = [ "hackage.index" ]
+
 [cabal]
-exes = [ "cabal" ]
-tool = "cabal-bootstrap"
+exes        = [ "cabal" ]
+tool        = "cabal-bootstrap"
+projectFile = "cabal.release.project"
+
+[cabal.testOptions]
+"cabal-install:test:integration-tests2" = [
+  [
+    "--num-threads",
+    "1",
+    "--with-ghc={tool:ghc-bootstrap}/bin/ghc",
+  ],
+]
+"cabal-install:test:mem-use-tests" = [ [ "--num-threads", "1" ] ]
+"cabal-install:test:unit-tests" = [ [ "--num-threads", "1" ] ]
+"Cabal-tests:test:unit-tests" = [ [ "--with-ghc={tool:ghc-bootstrap}/bin/ghc" ] ]
+"Cabal-tests:test:hackage-tests" = [ [ "read-fields" ], [ "parsec" ], [ "roundtrip" ] ]
