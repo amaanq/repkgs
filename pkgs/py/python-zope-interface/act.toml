@@ -3,6 +3,9 @@ fetch = { url = "https://files.pythonhosted.org/packages/source/z/zope_interface
 with  = [ "python" ]
 tools = [ "python-setuptools" ]
 
+[test]
+deps = [ "python-zope-testing" ]
+
 [steps.after]
 "python.test" = [ "python-zope-interface.test" ]
 
