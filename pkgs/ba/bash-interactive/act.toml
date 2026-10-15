@@ -1,7 +1,11 @@
-fetch   = { from = "bash" }
-with    = [ "autotools" ]
-patches = [ "../bash/relocatable.patch", "../bash/tests-select.patch" ]
-deps    = [ "readline", "ncurses" ]
+fetch = { from = "bash" }
+with = [ "autotools" ]
+patches = [
+  "../bash/relocatable.patch",
+  "../bash/fail-tests.patch",
+  "../bash/tests-select.patch",
+]
+deps = [ "readline", "ncurses" ]
 
 [test]
 bin      = [ "bash" ]

@@ -1,9 +1,9 @@
 --- a/tests/run-all
 +++ b/tests/run-all
-@@ -58,7 +58,7 @@
+@@ -60,7 +60,7 @@
  
- echo Any output from any test, unless otherwise noted, indicates a possible anomaly
- 
+ passed=0
+ total=0
 -for x in run-*
 +for x in ${BASH_TEST_SCRIPTS:-run-*}
  do
