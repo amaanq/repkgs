@@ -1,0 +1,16 @@
+tag   = "v{version}"
+fetch = { archive = true }
+with  = [ "luarocks" ]
+deps  = [ "lua" ]
+
+[track]
+from = "github:leafo/moonscript"
+
+[track.locks]
+luarocks = "."
+
+[test]
+version = true
+
+[only]
+posix = true
