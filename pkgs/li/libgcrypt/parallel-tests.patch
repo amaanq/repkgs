@@ -1,0 +1,984 @@
+--- a/configure.ac
++++ b/configure.ac
+@@ -78,7 +78,7 @@
+ 
+ AC_CONFIG_AUX_DIR([build-aux])
+ AC_CONFIG_SRCDIR([src/libgcrypt.vers])
+-AM_INIT_AUTOMAKE([serial-tests dist-bzip2])
++AM_INIT_AUTOMAKE([dist-bzip2])
+ AC_CONFIG_HEADERS([config.h])
+ AC_CONFIG_MACRO_DIR([m4])
+ AC_CONFIG_LIBOBJ_DIR([compat])
+--- a/tests/Makefile.am
++++ b/tests/Makefile.am
+@@ -57,9 +57,12 @@
+ TESTS = $(tests_bin) $(tests_sh) $(tests_bin_last) $(tests_sh_last)
+ 
+ # Force sequential run of some tests.
+-bench-slope.log:    benchmark.log
+-hashtest-6g.log:    bench-slope.log
+-hashtest-256g.log:  hashtest-6g.log
++bench_slope_log   = bench-slope.log
++hashtest_6g_log   = hashtest-6g.log
++hashtest_256g_log = hashtest-256g.log
++$(bench_slope_log):   benchmark.log
++$(hashtest_6g_log):   bench-slope.log
++$(hashtest_256g_log): hashtest-6g.log
+ 
+ 
+ TESTS_ENVIRONMENT = GCRYPT_IN_REGRESSION_TEST=1
+--- a/tests/Makefile.in
++++ b/tests/Makefile.in
+@@ -479,10 +479,193 @@
+     std='[m'; \
+   fi; \
+ }
++am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
++am__vpath_adj = case $$p in \
++    $(srcdir)/*) f=`echo "$$p" | sed "s|^$$srcdirstrip/||"`;; \
++    *) f=$$p;; \
++  esac;
++am__strip_dir = f=`echo $$p | sed -e 's|^.*/||'`;
++am__install_max = 40
++am__nobase_strip_setup = \
++  srcdirstrip=`echo "$(srcdir)" | sed 's/[].[^$$\\*|]/\\\\&/g'`
++am__nobase_strip = \
++  for p in $$list; do echo "$$p"; done | sed -e "s|$$srcdirstrip/||"
++am__nobase_list = $(am__nobase_strip_setup); \
++  for p in $$list; do echo "$$p $$p"; done | \
++  sed "s| $$srcdirstrip/| |;"' / .*\//!s/ .*/ ./; s,\( .*\)/[^/]*$$,\1,' | \
++  $(AWK) 'BEGIN { files["."] = "" } { files[$$2] = files[$$2] " " $$1; \
++    if (++n[$$2] == $(am__install_max)) \
++      { print $$2, files[$$2]; n[$$2] = 0; files[$$2] = "" } } \
++    END { for (dir in files) print dir, files[dir] }'
++am__base_list = \
++  sed '$$!N;$$!N;$$!N;$$!N;$$!N;$$!N;$$!N;s/\n/ /g' | \
++  sed '$$!N;$$!N;$$!N;$$!N;s/\n/ /g'
++am__uninstall_files_from_dir = { \
++  test -z "$$files" \
++    || { test ! -d "$$dir" && test ! -f "$$dir" && test ! -r "$$dir"; } \
++    || { echo " ( cd '$$dir' && rm -f" $$files ")"; \
++         $(am__cd) "$$dir" && rm -f $$files; }; \
++  }
++am__recheck_rx = ^[ 	]*:recheck:[ 	]*
++am__global_test_result_rx = ^[ 	]*:global-test-result:[ 	]*
++am__copy_in_global_log_rx = ^[ 	]*:copy-in-global-log:[ 	]*
++# A command that, given a newline-separated list of test names on the
++# standard input, print the name of the tests that are to be re-run
++# upon "make recheck".
++am__list_recheck_tests = $(AWK) '{ \
++  recheck = 1; \
++  while ((rc = (getline line < ($$0 ".trs"))) != 0) \
++    { \
++      if (rc < 0) \
++        { \
++          if ((getline line2 < ($$0 ".log")) < 0) \
++	    recheck = 0; \
++          break; \
++        } \
++      else if (line ~ /$(am__recheck_rx)[nN][Oo]/) \
++        { \
++          recheck = 0; \
++          break; \
++        } \
++      else if (line ~ /$(am__recheck_rx)[yY][eE][sS]/) \
++        { \
++          break; \
++        } \
++    }; \
++  if (recheck) \
++    print $$0; \
++  close ($$0 ".trs"); \
++  close ($$0 ".log"); \
++}'
++# A command that, given a newline-separated list of test names on the
++# standard input, create the global log from their .trs and .log files.
++am__create_global_log = $(AWK) ' \
++function fatal(msg) \
++{ \
++  print "fatal: making $@: " msg | "cat >&2"; \
++  exit 1; \
++} \
++function rst_section(header) \
++{ \
++  print header; \
++  len = length(header); \
++  for (i = 1; i <= len; i = i + 1) \
++    printf "="; \
++  printf "\n\n"; \
++} \
++{ \
++  copy_in_global_log = 1; \
++  global_test_result = "RUN"; \
++  while ((rc = (getline line < ($$0 ".trs"))) != 0) \
++    { \
++      if (rc < 0) \
++         fatal("failed to read from " $$0 ".trs"); \
++      if (line ~ /$(am__global_test_result_rx)/) \
++        { \
++          sub("$(am__global_test_result_rx)", "", line); \
++          sub("[ 	]*$$", "", line); \
++          global_test_result = line; \
++        } \
++      else if (line ~ /$(am__copy_in_global_log_rx)[nN][oO]/) \
++        copy_in_global_log = 0; \
++    }; \
++  if (copy_in_global_log) \
++    { \
++      rst_section(global_test_result ": " $$0); \
++      while ((rc = (getline line < ($$0 ".log"))) != 0) \
++      { \
++        if (rc < 0) \
++          fatal("failed to read from " $$0 ".log"); \
++        print line; \
++      }; \
++      printf "\n"; \
++    }; \
++  close ($$0 ".trs"); \
++  close ($$0 ".log"); \
++}'
++# Restructured Text title.
++am__rst_title = { sed 's/.*/   &   /;h;s/./=/g;p;x;s/ *$$//;p;g' && echo; }
++# Solaris 10 'make', and several other traditional 'make' implementations,
++# pass "-e" to $(SHELL), and POSIX 2008 even requires this.  Work around it
++# by disabling -e (using the XSI extension "set +e") if it's set.
++am__sh_e_setup = case $$- in *e*) set +e;; esac
++# Default flags passed to test drivers.
++am__common_driver_flags = \
++  --color-tests "$$am__color_tests" \
++  --enable-hard-errors "$$am__enable_hard_errors" \
++  --expect-failure "$$am__expect_failure"
++# To be inserted before the command running the test.  Creates the
++# directory for the log if needed.  Stores in $dir the directory
++# containing $f, in $tst the test, in $log the log.  Executes the
++# developer- defined test setup AM_TESTS_ENVIRONMENT (if any), and
++# passes TESTS_ENVIRONMENT.  Set up options for the wrapper that
++# will run the test scripts (or their associated LOG_COMPILER, if
++# thy have one).
++am__check_pre = \
++$(am__sh_e_setup);					\
++$(am__vpath_adj_setup) $(am__vpath_adj)			\
++$(am__tty_colors);					\
++srcdir=$(srcdir); export srcdir;			\
++case "$@" in						\
++  */*) am__odir=`echo "./$@" | sed 's|/[^/]*$$||'`;;	\
++    *) am__odir=.;; 					\
++esac;							\
++test "x$$am__odir" = x"." || test -d "$$am__odir" 	\
++  || $(MKDIR_P) "$$am__odir" || exit $$?;		\
++if test -f "./$$f"; then dir=./;			\
++elif test -f "$$f"; then dir=;				\
++else dir="$(srcdir)/"; fi;				\
++tst=$$dir$$f; log='$@'; 				\
++if test -n '$(DISABLE_HARD_ERRORS)'; then		\
++  am__enable_hard_errors=no; 				\
++else							\
++  am__enable_hard_errors=yes; 				\
++fi; 							\
++case " $(XFAIL_TESTS) " in				\
++  *[\ \	]$$f[\ \	]* | *[\ \	]$$dir$$f[\ \	]*) \
++    am__expect_failure=yes;;				\
++  *)							\
++    am__expect_failure=no;;				\
++esac; 							\
++$(AM_TESTS_ENVIRONMENT) $(TESTS_ENVIRONMENT)
++# A shell command to get the names of the tests scripts with any registered
++# extension removed (i.e., equivalently, the names of the test logs, with
++# the '.log' extension removed).  The result is saved in the shell variable
++# '$bases'.  This honors runtime overriding of TESTS and TEST_LOGS.  Sadly,
++# we cannot use something simpler, involving e.g., "$(TEST_LOGS:.log=)",
++# since that might cause problem with VPATH rewrites for suffix-less tests.
++# See also 'test-harness-vpath-rewrite.sh' and 'test-trs-basic.sh'.
++am__set_TESTS_bases = \
++  bases='$(TEST_LOGS)'; \
++  bases=`for i in $$bases; do echo $$i; done | sed 's/\.log$$//'`; \
++  bases=`echo $$bases`
++AM_TESTSUITE_SUMMARY_HEADER = ' for $(PACKAGE_STRING)'
++RECHECK_LOGS = $(TEST_LOGS)
++AM_RECURSIVE_TARGETS = check recheck
++TEST_SUITE_LOG = test-suite.log
++TEST_EXTENSIONS = @EXEEXT@ .test
++LOG_DRIVER = $(SHELL) $(top_srcdir)/build-aux/test-driver
++LOG_COMPILE = $(LOG_COMPILER) $(AM_LOG_FLAGS) $(LOG_FLAGS)
++am__set_b = \
++  case '$@' in \
++    */*) \
++      case '$*' in \
++        */*) b='$*';; \
++          *) b=`echo '$@' | sed 's/\.log$$//'`; \
++       esac;; \
++    *) \
++      b='$*';; \
++  esac
++am__test_logs1 = $(TESTS:=.log)
++am__test_logs2 = $(am__test_logs1:@EXEEXT@.log=.log)
++TEST_LOGS = $(am__test_logs2:.test.log=.log)
++TEST_LOG_DRIVER = $(SHELL) $(top_srcdir)/build-aux/test-driver
++TEST_LOG_COMPILE = $(TEST_LOG_COMPILER) $(AM_TEST_LOG_FLAGS) \
++	$(TEST_LOG_FLAGS)
+ am__DIST_COMMON = $(srcdir)/Makefile.in \
+ 	$(srcdir)/basic-disable-all-hwf.in $(srcdir)/hashtest-256g.in \
+ 	$(srcdir)/hashtest-6g.in $(top_srcdir)/build-aux/depcomp \
+-	README
++	$(top_srcdir)/build-aux/test-driver README
+ DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
+ ACLOCAL = @ACLOCAL@
+ AMTAR = @AMTAR@
+@@ -667,6 +850,11 @@
+ tests_bin_last = benchmark bench-slope
+ tests_sh = basic-disable-all-hwf
+ tests_sh_last = hashtest-6g hashtest-256g
++
++# Force sequential run of some tests.
++bench_slope_log = bench-slope.log
++hashtest_6g_log = hashtest-6g.log
++hashtest_256g_log = hashtest-256g.log
+ TESTS_ENVIRONMENT = GCRYPT_IN_REGRESSION_TEST=1
+ 
+ # Need to include ../src in addition to top_srcdir because gcrypt.h is
+@@ -715,7 +903,7 @@
+ all: all-am
+ 
+ .SUFFIXES:
+-.SUFFIXES: .c .lo .o .obj
++.SUFFIXES: .c .lo .log .o .obj .test .test$(EXEEXT) .trs
+ $(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am  $(am__configure_deps)
+ 	@for dep in $?; do \
+ 	  case '$(am__configure_deps)' in \
+@@ -1158,98 +1346,462 @@
+ distclean-tags:
+ 	-rm -f TAGS ID GTAGS GRTAGS GSYMS GPATH tags
+ 
+-check-TESTS: $(TESTS)
+-	@failed=0; all=0; xfail=0; xpass=0; skip=0; \
+-	srcdir=$(srcdir); export srcdir; \
+-	list=' $(TESTS) '; \
+-	$(am__tty_colors); \
+-	if test -n "$$list"; then \
+-	  for tst in $$list; do \
+-	    if test -f ./$$tst; then dir=./; \
+-	    elif test -f $$tst; then dir=; \
+-	    else dir="$(srcdir)/"; fi; \
+-	    if $(TESTS_ENVIRONMENT) $${dir}$$tst $(AM_TESTS_FD_REDIRECT); then \
+-	      all=`expr $$all + 1`; \
+-	      case " $(XFAIL_TESTS) " in \
+-	      *[\ \	]$$tst[\ \	]*) \
+-		xpass=`expr $$xpass + 1`; \
+-		failed=`expr $$failed + 1`; \
+-		col=$$red; res=XPASS; \
+-	      ;; \
+-	      *) \
+-		col=$$grn; res=PASS; \
+-	      ;; \
+-	      esac; \
+-	    elif test $$? -ne 77; then \
+-	      all=`expr $$all + 1`; \
+-	      case " $(XFAIL_TESTS) " in \
+-	      *[\ \	]$$tst[\ \	]*) \
+-		xfail=`expr $$xfail + 1`; \
+-		col=$$lgn; res=XFAIL; \
+-	      ;; \
+-	      *) \
+-		failed=`expr $$failed + 1`; \
+-		col=$$red; res=FAIL; \
+-	      ;; \
+-	      esac; \
+-	    else \
+-	      skip=`expr $$skip + 1`; \
+-	      col=$$blu; res=SKIP; \
+-	    fi; \
+-	    echo "$${col}$$res$${std}: $$tst"; \
+-	  done; \
+-	  if test "$$all" -eq 1; then \
+-	    tests="test"; \
+-	    All=""; \
+-	  else \
+-	    tests="tests"; \
+-	    All="All "; \
++# Recover from deleted '.trs' file; this should ensure that
++# "rm -f foo.log; make foo.trs" re-run 'foo.test', and re-create
++# both 'foo.log' and 'foo.trs'.  Break the recipe in two subshells
++# to avoid problems with "make -n".
++.log.trs:
++	rm -f $< $@
++	$(MAKE) $(AM_MAKEFLAGS) $<
++
++# Leading 'am--fnord' is there to ensure the list of targets does not
++# expand to empty, as could happen e.g. with make check TESTS=''.
++am--fnord $(TEST_LOGS) $(TEST_LOGS:.log=.trs): $(am__force_recheck)
++am--force-recheck:
++	@:
++
++$(TEST_SUITE_LOG): $(TEST_LOGS)
++	@$(am__set_TESTS_bases); \
++	am__f_ok () { test -f "$$1" && test -r "$$1"; }; \
++	redo_bases=`for i in $$bases; do \
++	              am__f_ok $$i.trs && am__f_ok $$i.log || echo $$i; \
++	            done`; \
++	if test -n "$$redo_bases"; then \
++	  redo_logs=`for i in $$redo_bases; do echo $$i.log; done`; \
++	  redo_results=`for i in $$redo_bases; do echo $$i.trs; done`; \
++	  if $(am__make_dryrun); then :; else \
++	    rm -f $$redo_logs && rm -f $$redo_results || exit 1; \
+ 	  fi; \
+-	  if test "$$failed" -eq 0; then \
+-	    if test "$$xfail" -eq 0; then \
+-	      banner="$$All$$all $$tests passed"; \
+-	    else \
+-	      if test "$$xfail" -eq 1; then failures=failure; else failures=failures; fi; \
+-	      banner="$$All$$all $$tests behaved as expected ($$xfail expected $$failures)"; \
+-	    fi; \
+-	  else \
+-	    if test "$$xpass" -eq 0; then \
+-	      banner="$$failed of $$all $$tests failed"; \
++	fi; \
++	if test -n "$$am__remaking_logs"; then \
++	  echo "fatal: making $(TEST_SUITE_LOG): possible infinite" \
++	       "recursion detected" >&2; \
++	elif test -n "$$redo_logs"; then \
++	  am__remaking_logs=yes $(MAKE) $(AM_MAKEFLAGS) $$redo_logs; \
++	fi; \
++	if $(am__make_dryrun); then :; else \
++	  st=0;  \
++	  errmsg="fatal: making $(TEST_SUITE_LOG): failed to create"; \
++	  for i in $$redo_bases; do \
++	    test -f $$i.trs && test -r $$i.trs \
++	      || { echo "$$errmsg $$i.trs" >&2; st=1; }; \
++	    test -f $$i.log && test -r $$i.log \
++	      || { echo "$$errmsg $$i.log" >&2; st=1; }; \
++	  done; \
++	  test $$st -eq 0 || exit 1; \
++	fi
++	@$(am__sh_e_setup); $(am__tty_colors); $(am__set_TESTS_bases); \
++	ws='[ 	]'; \
++	results=`for b in $$bases; do echo $$b.trs; done`; \
++	test -n "$$results" || results=/dev/null; \
++	all=`  grep "^$$ws*:test-result:"           $$results | wc -l`; \
++	pass=` grep "^$$ws*:test-result:$$ws*PASS"  $$results | wc -l`; \
++	fail=` grep "^$$ws*:test-result:$$ws*FAIL"  $$results | wc -l`; \
++	skip=` grep "^$$ws*:test-result:$$ws*SKIP"  $$results | wc -l`; \
++	xfail=`grep "^$$ws*:test-result:$$ws*XFAIL" $$results | wc -l`; \
++	xpass=`grep "^$$ws*:test-result:$$ws*XPASS" $$results | wc -l`; \
++	error=`grep "^$$ws*:test-result:$$ws*ERROR" $$results | wc -l`; \
++	if test `expr $$fail + $$xpass + $$error` -eq 0; then \
++	  success=true; \
++	else \
++	  success=false; \
++	fi; \
++	br='==================='; br=$$br$$br$$br$$br; \
++	result_count () \
++	{ \
++	    if test x"$$1" = x"--maybe-color"; then \
++	      maybe_colorize=yes; \
++	    elif test x"$$1" = x"--no-color"; then \
++	      maybe_colorize=no; \
+ 	    else \
+-	      if test "$$xpass" -eq 1; then passes=pass; else passes=passes; fi; \
+-	      banner="$$failed of $$all $$tests did not behave as expected ($$xpass unexpected $$passes)"; \
++	      echo "$@: invalid 'result_count' usage" >&2; exit 4; \
+ 	    fi; \
+-	  fi; \
+-	  dashes="$$banner"; \
+-	  skipped=""; \
+-	  if test "$$skip" -ne 0; then \
+-	    if test "$$skip" -eq 1; then \
+-	      skipped="($$skip test was not run)"; \
++	    shift; \
++	    desc=$$1 count=$$2; \
++	    if test $$maybe_colorize = yes && test $$count -gt 0; then \
++	      color_start=$$3 color_end=$$std; \
+ 	    else \
+-	      skipped="($$skip tests were not run)"; \
++	      color_start= color_end=; \
+ 	    fi; \
+-	    test `echo "$$skipped" | wc -c` -le `echo "$$banner" | wc -c` || \
+-	      dashes="$$skipped"; \
+-	  fi; \
+-	  report=""; \
+-	  if test "$$failed" -ne 0 && test -n "$(PACKAGE_BUGREPORT)"; then \
+-	    report="Please report to $(PACKAGE_BUGREPORT)"; \
+-	    test `echo "$$report" | wc -c` -le `echo "$$banner" | wc -c` || \
+-	      dashes="$$report"; \
+-	  fi; \
+-	  dashes=`echo "$$dashes" | sed s/./=/g`; \
+-	  if test "$$failed" -eq 0; then \
+-	    col="$$grn"; \
+-	  else \
+-	    col="$$red"; \
+-	  fi; \
+-	  echo "$${col}$$dashes$${std}"; \
+-	  echo "$${col}$$banner$${std}"; \
+-	  test -z "$$skipped" || echo "$${col}$$skipped$${std}"; \
+-	  test -z "$$report" || echo "$${col}$$report$${std}"; \
+-	  echo "$${col}$$dashes$${std}"; \
+-	  test "$$failed" -eq 0; \
+-	else :; fi
++	    echo "$${color_start}# $$desc $$count$${color_end}"; \
++	}; \
++	create_testsuite_report () \
++	{ \
++	  result_count $$1 "TOTAL:" $$all   "$$brg"; \
++	  result_count $$1 "PASS: " $$pass  "$$grn"; \
++	  result_count $$1 "SKIP: " $$skip  "$$blu"; \
++	  result_count $$1 "XFAIL:" $$xfail "$$lgn"; \
++	  result_count $$1 "FAIL: " $$fail  "$$red"; \
++	  result_count $$1 "XPASS:" $$xpass "$$red"; \
++	  result_count $$1 "ERROR:" $$error "$$mgn"; \
++	}; \
++	{								\
++	  echo "$(PACKAGE_STRING): $(subdir)/$(TEST_SUITE_LOG)" |	\
++	    $(am__rst_title);						\
++	  create_testsuite_report --no-color;				\
++	  echo;								\
++	  echo ".. contents:: :depth: 2";				\
++	  echo;								\
++	  for b in $$bases; do echo $$b; done				\
++	    | $(am__create_global_log);					\
++	} >$(TEST_SUITE_LOG).tmp || exit 1;				\
++	mv $(TEST_SUITE_LOG).tmp $(TEST_SUITE_LOG);			\
++	if $$success; then						\
++	  col="$$grn";							\
++	 else								\
++	  col="$$red";							\
++	  test x"$$VERBOSE" = x || cat $(TEST_SUITE_LOG);		\
++	fi;								\
++	echo "$${col}$$br$${std}"; 					\
++	echo "$${col}Testsuite summary"$(AM_TESTSUITE_SUMMARY_HEADER)"$${std}";	\
++	echo "$${col}$$br$${std}"; 					\
++	create_testsuite_report --maybe-color;				\
++	echo "$$col$$br$$std";						\
++	if $$success; then :; else					\
++	  echo "$${col}See $(subdir)/$(TEST_SUITE_LOG)$${std}";		\
++	  if test -n "$(PACKAGE_BUGREPORT)"; then			\
++	    echo "$${col}Please report to $(PACKAGE_BUGREPORT)$${std}";	\
++	  fi;								\
++	  echo "$$col$$br$$std";					\
++	fi;								\
++	$$success || exit 1
++
++check-TESTS: 
++	@list='$(RECHECK_LOGS)';           test -z "$$list" || rm -f $$list
++	@list='$(RECHECK_LOGS:.log=.trs)'; test -z "$$list" || rm -f $$list
++	@test -z "$(TEST_SUITE_LOG)" || rm -f $(TEST_SUITE_LOG)
++	@set +e; $(am__set_TESTS_bases); \
++	log_list=`for i in $$bases; do echo $$i.log; done`; \
++	trs_list=`for i in $$bases; do echo $$i.trs; done`; \
++	log_list=`echo $$log_list`; trs_list=`echo $$trs_list`; \
++	$(MAKE) $(AM_MAKEFLAGS) $(TEST_SUITE_LOG) TEST_LOGS="$$log_list"; \
++	exit $$?;
++recheck: all 
++	@test -z "$(TEST_SUITE_LOG)" || rm -f $(TEST_SUITE_LOG)
++	@set +e; $(am__set_TESTS_bases); \
++	bases=`for i in $$bases; do echo $$i; done \
++	         | $(am__list_recheck_tests)` || exit 1; \
++	log_list=`for i in $$bases; do echo $$i.log; done`; \
++	log_list=`echo $$log_list`; \
++	$(MAKE) $(AM_MAKEFLAGS) $(TEST_SUITE_LOG) \
++	        am__force_recheck=am--force-recheck \
++	        TEST_LOGS="$$log_list"; \
++	exit $$?
++version.log: version$(EXEEXT)
++	@p='version$(EXEEXT)'; \
++	b='version'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-secmem.log: t-secmem$(EXEEXT)
++	@p='t-secmem$(EXEEXT)'; \
++	b='t-secmem'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++mpitests.log: mpitests$(EXEEXT)
++	@p='mpitests$(EXEEXT)'; \
++	b='mpitests'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-sexp.log: t-sexp$(EXEEXT)
++	@p='t-sexp$(EXEEXT)'; \
++	b='t-sexp'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-convert.log: t-convert$(EXEEXT)
++	@p='t-convert$(EXEEXT)'; \
++	b='t-convert'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-mpi-bit.log: t-mpi-bit$(EXEEXT)
++	@p='t-mpi-bit$(EXEEXT)'; \
++	b='t-mpi-bit'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-mpi-point.log: t-mpi-point$(EXEEXT)
++	@p='t-mpi-point$(EXEEXT)'; \
++	b='t-mpi-point'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-lock.log: t-lock$(EXEEXT)
++	@p='t-lock$(EXEEXT)'; \
++	b='t-lock'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++prime.log: prime$(EXEEXT)
++	@p='prime$(EXEEXT)'; \
++	b='prime'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++basic.log: basic$(EXEEXT)
++	@p='basic$(EXEEXT)'; \
++	b='basic'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++keygen.log: keygen$(EXEEXT)
++	@p='keygen$(EXEEXT)'; \
++	b='keygen'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++pubkey.log: pubkey$(EXEEXT)
++	@p='pubkey$(EXEEXT)'; \
++	b='pubkey'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++hmac.log: hmac$(EXEEXT)
++	@p='hmac$(EXEEXT)'; \
++	b='hmac'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++hashtest.log: hashtest$(EXEEXT)
++	@p='hashtest$(EXEEXT)'; \
++	b='hashtest'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-kdf.log: t-kdf$(EXEEXT)
++	@p='t-kdf$(EXEEXT)'; \
++	b='t-kdf'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++keygrip.log: keygrip$(EXEEXT)
++	@p='keygrip$(EXEEXT)'; \
++	b='keygrip'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++aeswrap.log: aeswrap$(EXEEXT)
++	@p='aeswrap$(EXEEXT)'; \
++	b='aeswrap'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++random.log: random$(EXEEXT)
++	@p='random$(EXEEXT)'; \
++	b='random'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-kem.log: t-kem$(EXEEXT)
++	@p='t-kem$(EXEEXT)'; \
++	b='t-kem'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-thread-local.log: t-thread-local$(EXEEXT)
++	@p='t-thread-local$(EXEEXT)'; \
++	b='t-thread-local'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-fips-service-ind.log: t-fips-service-ind$(EXEEXT)
++	@p='t-fips-service-ind$(EXEEXT)'; \
++	b='t-fips-service-ind'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-cipher-internal.log: t-cipher-internal$(EXEEXT)
++	@p='t-cipher-internal$(EXEEXT)'; \
++	b='t-cipher-internal'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-sntrup761.log: t-sntrup761$(EXEEXT)
++	@p='t-sntrup761$(EXEEXT)'; \
++	b='t-sntrup761'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++pkcs1v2.log: pkcs1v2$(EXEEXT)
++	@p='pkcs1v2$(EXEEXT)'; \
++	b='pkcs1v2'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-rsa-pss.log: t-rsa-pss$(EXEEXT)
++	@p='t-rsa-pss$(EXEEXT)'; \
++	b='t-rsa-pss'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-rsa-15.log: t-rsa-15$(EXEEXT)
++	@p='t-rsa-15$(EXEEXT)'; \
++	b='t-rsa-15'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-rsa-testparm.log: t-rsa-testparm$(EXEEXT)
++	@p='t-rsa-testparm$(EXEEXT)'; \
++	b='t-rsa-testparm'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++fips186-dsa.log: fips186-dsa$(EXEEXT)
++	@p='fips186-dsa$(EXEEXT)'; \
++	b='fips186-dsa'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++dsa-rfc6979.log: dsa-rfc6979$(EXEEXT)
++	@p='dsa-rfc6979$(EXEEXT)'; \
++	b='dsa-rfc6979'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-dsa.log: t-dsa$(EXEEXT)
++	@p='t-dsa$(EXEEXT)'; \
++	b='t-dsa'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++curves.log: curves$(EXEEXT)
++	@p='curves$(EXEEXT)'; \
++	b='curves'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-ecdsa.log: t-ecdsa$(EXEEXT)
++	@p='t-ecdsa$(EXEEXT)'; \
++	b='t-ecdsa'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-ed25519.log: t-ed25519$(EXEEXT)
++	@p='t-ed25519$(EXEEXT)'; \
++	b='t-ed25519'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-cv25519.log: t-cv25519$(EXEEXT)
++	@p='t-cv25519$(EXEEXT)'; \
++	b='t-cv25519'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-x448.log: t-x448$(EXEEXT)
++	@p='t-x448$(EXEEXT)'; \
++	b='t-x448'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-ed448.log: t-ed448$(EXEEXT)
++	@p='t-ed448$(EXEEXT)'; \
++	b='t-ed448'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-mlkem.log: t-mlkem$(EXEEXT)
++	@p='t-mlkem$(EXEEXT)'; \
++	b='t-mlkem'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++t-mldsa.log: t-mldsa$(EXEEXT)
++	@p='t-mldsa$(EXEEXT)'; \
++	b='t-mldsa'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++basic-disable-all-hwf.log: basic-disable-all-hwf
++	@p='basic-disable-all-hwf'; \
++	b='basic-disable-all-hwf'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++benchmark.log: benchmark$(EXEEXT)
++	@p='benchmark$(EXEEXT)'; \
++	b='benchmark'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++bench-slope.log: bench-slope$(EXEEXT)
++	@p='bench-slope$(EXEEXT)'; \
++	b='bench-slope'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++hashtest-6g.log: hashtest-6g
++	@p='hashtest-6g'; \
++	b='hashtest-6g'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++hashtest-256g.log: hashtest-256g
++	@p='hashtest-256g'; \
++	b='hashtest-256g'; \
++	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++.test.log:
++	@p='$<'; \
++	$(am__set_b); \
++	$(am__check_pre) $(TEST_LOG_DRIVER) --test-name "$$f" \
++	--log-file $$b.log --trs-file $$b.trs \
++	$(am__common_driver_flags) $(AM_TEST_LOG_DRIVER_FLAGS) $(TEST_LOG_DRIVER_FLAGS) -- $(TEST_LOG_COMPILE) \
++	"$$tst" $(AM_TESTS_FD_REDIRECT)
++@am__EXEEXT_TRUE@.test$(EXEEXT).log:
++@am__EXEEXT_TRUE@	@p='$<'; \
++@am__EXEEXT_TRUE@	$(am__set_b); \
++@am__EXEEXT_TRUE@	$(am__check_pre) $(TEST_LOG_DRIVER) --test-name "$$f" \
++@am__EXEEXT_TRUE@	--log-file $$b.log --trs-file $$b.trs \
++@am__EXEEXT_TRUE@	$(am__common_driver_flags) $(AM_TEST_LOG_DRIVER_FLAGS) $(TEST_LOG_DRIVER_FLAGS) -- $(TEST_LOG_COMPILE) \
++@am__EXEEXT_TRUE@	"$$tst" $(AM_TESTS_FD_REDIRECT)
+ distdir: $(BUILT_SOURCES)
+ 	$(MAKE) $(AM_MAKEFLAGS) distdir-am
+ 
+@@ -1308,6 +1860,9 @@
+ 	    "INSTALL_PROGRAM_ENV=STRIPPROG='$(STRIP)'" install; \
+ 	fi
+ mostlyclean-generic:
++	-test -z "$(TEST_LOGS)" || rm -f $(TEST_LOGS)
++	-test -z "$(TEST_LOGS:.log=.trs)" || rm -f $(TEST_LOGS:.log=.trs)
++	-test -z "$(TEST_SUITE_LOG)" || rm -f $(TEST_SUITE_LOG)
+ 
+ clean-generic:
+ 	-test -z "$(CLEANFILES)" || rm -f $(CLEANFILES)
+@@ -1496,15 +2051,14 @@
+ 	install-strip installcheck installcheck-am installdirs \
+ 	maintainer-clean maintainer-clean-generic mostlyclean \
+ 	mostlyclean-compile mostlyclean-generic mostlyclean-libtool \
+-	pdf pdf-am ps ps-am tags tags-am uninstall uninstall-am
++	pdf pdf-am ps ps-am recheck tags tags-am uninstall \
++	uninstall-am
+ 
+ .PRECIOUS: Makefile
+ 
+-
+-# Force sequential run of some tests.
+-bench-slope.log:    benchmark.log
+-hashtest-6g.log:    bench-slope.log
+-hashtest-256g.log:  hashtest-6g.log
++$(bench_slope_log):   benchmark.log
++$(hashtest_6g_log):   bench-slope.log
++$(hashtest_256g_log): hashtest-6g.log
+ 
+ # Build a version of the test driver for the build platform.
+ testdrv-build: testdrv.c
+--- a/build-aux/test-driver
++++ b/build-aux/test-driver
+@@ -0,0 +1,153 @@
++#! /bin/sh
++# test-driver - basic testsuite driver script.
++
++scriptversion=2018-03-07.03; # UTC
++
++# Copyright (C) 2011-2021 Free Software Foundation, Inc.
++#
++# This program is free software; you can redistribute it and/or modify
++# it under the terms of the GNU General Public License as published by
++# the Free Software Foundation; either version 2, or (at your option)
++# any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program.  If not, see <https://www.gnu.org/licenses/>.
++
++# As a special exception to the GNU General Public License, if you
++# distribute this file as part of a program that contains a
++# configuration script generated by Autoconf, you may include it under
++# the same distribution terms that you use for the rest of that program.
++
++# This file is maintained in Automake, please report
++# bugs to <bug-automake@gnu.org> or send patches to
++# <automake-patches@gnu.org>.
++
++# Make unconditional expansion of undefined variables an error.  This
++# helps a lot in preventing typo-related bugs.
++set -u
++
++usage_error ()
++{
++  echo "$0: $*" >&2
++  print_usage >&2
++  exit 2
++}
++
++print_usage ()
++{
++  cat <<END
++Usage:
++  test-driver --test-name NAME --log-file PATH --trs-file PATH
++              [--expect-failure {yes|no}] [--color-tests {yes|no}]
++              [--enable-hard-errors {yes|no}] [--]
++              TEST-SCRIPT [TEST-SCRIPT-ARGUMENTS]
++
++The '--test-name', '--log-file' and '--trs-file' options are mandatory.
++See the GNU Automake documentation for information.
++END
++}
++
++test_name= # Used for reporting.
++log_file=  # Where to save the output of the test script.
++trs_file=  # Where to save the metadata of the test run.
++expect_failure=no
++color_tests=no
++enable_hard_errors=yes
++while test $# -gt 0; do
++  case $1 in
++  --help) print_usage; exit $?;;
++  --version) echo "test-driver $scriptversion"; exit $?;;
++  --test-name) test_name=$2; shift;;
++  --log-file) log_file=$2; shift;;
++  --trs-file) trs_file=$2; shift;;
++  --color-tests) color_tests=$2; shift;;
++  --expect-failure) expect_failure=$2; shift;;
++  --enable-hard-errors) enable_hard_errors=$2; shift;;
++  --) shift; break;;
++  -*) usage_error "invalid option: '$1'";;
++   *) break;;
++  esac
++  shift
++done
++
++missing_opts=
++test x"$test_name" = x && missing_opts="$missing_opts --test-name"
++test x"$log_file"  = x && missing_opts="$missing_opts --log-file"
++test x"$trs_file"  = x && missing_opts="$missing_opts --trs-file"
++if test x"$missing_opts" != x; then
++  usage_error "the following mandatory options are missing:$missing_opts"
++fi
++
++if test $# -eq 0; then
++  usage_error "missing argument"
++fi
++
++if test $color_tests = yes; then
++  # Keep this in sync with 'lib/am/check.am:$(am__tty_colors)'.
++  red='[0;31m' # Red.
++  grn='[0;32m' # Green.
++  lgn='[1;32m' # Light green.
++  blu='[1;34m' # Blue.
++  mgn='[0;35m' # Magenta.
++  std='[m'     # No color.
++else
++  red= grn= lgn= blu= mgn= std=
++fi
++
++do_exit='rm -f $log_file $trs_file; (exit $st); exit $st'
++trap "st=129; $do_exit" 1
++trap "st=130; $do_exit" 2
++trap "st=141; $do_exit" 13
++trap "st=143; $do_exit" 15
++
++# Test script is run here. We create the file first, then append to it,
++# to ameliorate tests themselves also writing to the log file. Our tests
++# don't, but others can (automake bug#35762).
++: >"$log_file"
++"$@" >>"$log_file" 2>&1
++estatus=$?
++
++if test $enable_hard_errors = no && test $estatus -eq 99; then
++  tweaked_estatus=1
++else
++  tweaked_estatus=$estatus
++fi
++
++case $tweaked_estatus:$expect_failure in
++  0:yes) col=$red res=XPASS recheck=yes gcopy=yes;;
++  0:*)   col=$grn res=PASS  recheck=no  gcopy=no;;
++  77:*)  col=$blu res=SKIP  recheck=no  gcopy=yes;;
++  99:*)  col=$mgn res=ERROR recheck=yes gcopy=yes;;
++  *:yes) col=$lgn res=XFAIL recheck=no  gcopy=yes;;
++  *:*)   col=$red res=FAIL  recheck=yes gcopy=yes;;
++esac
++
++# Report the test outcome and exit status in the logs, so that one can
++# know whether the test passed or failed simply by looking at the '.log'
++# file, without the need of also peaking into the corresponding '.trs'
++# file (automake bug#11814).
++echo "$res $test_name (exit status: $estatus)" >>"$log_file"
++
++# Report outcome to console.
++echo "${col}${res}${std}: $test_name"
++
++# Register the test result, and other relevant metadata.
++echo ":test-result: $res" > $trs_file
++echo ":global-test-result: $res" >> $trs_file
++echo ":recheck: $recheck" >> $trs_file
++echo ":copy-in-global-log: $gcopy" >> $trs_file
++
++# Local Variables:
++# mode: shell-script
++# sh-indentation: 2
++# eval: (add-hook 'before-save-hook 'time-stamp)
++# time-stamp-start: "scriptversion="
++# time-stamp-format: "%:y-%02m-%02d.%02H"
++# time-stamp-time-zone: "UTC0"
++# time-stamp-end: "; # UTC"
++# End:
