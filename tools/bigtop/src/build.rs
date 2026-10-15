@@ -39,6 +39,7 @@ use mummer::{
    tree::{
       note,
       set_phase,
+      shebangs,
    },
 };
 use rustix::{
@@ -212,6 +213,7 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
    let mut timings = vec![format!("prepare {:.1}s", started.elapsed().as_secs_f64())];
    let mut writable = false;
    let mut undo = None;
+   let mut resolved = false;
    for (index, step) in attrs.plan.phases.iter().enumerate() {
       let testing = step.role != Role::Build;
       let wanted = if tests {
@@ -226,7 +228,14 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
             writable = editing;
          }
          match (testing, undo.take()) {
-            (true, None) => undo = Some(overlay(&ctx.test_env)?),
+            (true, None) => {
+               undo = Some(overlay(&ctx.test_env)?);
+               // test tools like perl only reach PATH here
+               if !resolved {
+                  shebangs(&ctx.src, false)?;
+                  resolved = true;
+               }
+            },
             (false, Some(previous)) => previous.apply(),
             (_, kept) => undo = kept,
          }
