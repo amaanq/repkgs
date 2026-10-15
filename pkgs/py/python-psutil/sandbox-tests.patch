@@ -1,0 +1,171 @@
+--- a/tests/test_linux.py
++++ b/tests/test_linux.py
+@@ -136,7 +136,7 @@
+     """Parse 'free' cmd and return swap memory's s total, used and free
+     values.
+     """
+-    out = sh(["free", "-b"], env={"LANG": "C.UTF-8"})
++    out = sh(["free", "-b"], env={**os.environ, "LANG": "C.UTF-8"})
+     lines = out.split('\n')
+     for line in lines:
+         if line.startswith('Swap'):
+@@ -154,7 +154,7 @@
+     # and 'cached' memory which may have different positions so we
+     # do not return them.
+     # https://github.com/giampaolo/psutil/issues/538#issuecomment-57059946
+-    out = sh(["free", "-b"], env={"LANG": "C.UTF-8"})
++    out = sh(["free", "-b"], env={**os.environ, "LANG": "C.UTF-8"})
+     lines = out.split('\n')
+     for line in lines:
+         if line.startswith('Mem'):
+@@ -167,7 +167,7 @@
+ 
+ 
+ def vmstat(stat):
+-    out = sh(["vmstat", "-s"], env={"LANG": "C.UTF-8"})
++    out = sh(["vmstat", "-s"], env={**os.environ, "LANG": "C.UTF-8"})
+     for line in out.split("\n"):
+         line = line.strip()
+         if stat in line:
+@@ -673,6 +673,9 @@
+     @pytest.mark.skipif(
+         not shutil.which("lscpu"), reason="lscpu utility not available"
+     )
++    @pytest.mark.skipif(
++        not os.path.exists("/sys/devices/system/cpu"), reason="no sysfs"
++    )
+     def test_against_lscpu(self):
+         out = sh("lscpu -p")
+         num = len([x for x in out.split('\n') if not x.startswith('#')])
+@@ -720,6 +723,9 @@
+     @pytest.mark.skipif(
+         not shutil.which("lscpu"), reason="lscpu utility not available"
+     )
++    @pytest.mark.skipif(
++        not os.path.exists("/sys/devices/system/cpu"), reason="no sysfs"
++    )
+     def test_against_lscpu(self):
+         out = sh("lscpu -p")
+         core_ids = set()
+@@ -993,6 +999,9 @@
+                     re.findall(r'(?i)MTU[: ](\d+)', out)[0]
+                 )
+ 
++    @pytest.mark.skipif(
++        not os.path.exists("/sys/class/net"), reason="no sysfs"
++    )
+     def test_mtu(self):
+         for name, stats in psutil.net_if_stats().items():
+             with open(f"/sys/class/net/{name}/mtu") as f:
+@@ -1335,6 +1344,10 @@
+         finder.ask_sys_class_block()
+ 
+     @pytest.mark.skipif(GITHUB_ACTIONS, reason="unsupported on GITHUB_ACTIONS")
++    @pytest.mark.skipif(
++        LINUX and RootFsDeviceFinder().find() is None,
++        reason="no device node for /",
++    )
+     def test_comparisons(self):
+         finder = RootFsDeviceFinder()
+         assert finder.find() is not None
+@@ -1358,11 +1371,19 @@
+         not shutil.which("findmnt"), reason="findmnt utility not available"
+     )
+     @pytest.mark.skipif(GITHUB_ACTIONS, reason="unsupported on GITHUB_ACTIONS")
++    @pytest.mark.skipif(
++        LINUX and RootFsDeviceFinder().find() is None,
++        reason="no device node for /",
++    )
+     def test_against_findmnt(self):
+         psutil_value = RootFsDeviceFinder().find()
+         findmnt_value = sh("findmnt -o SOURCE -rn /")
+         assert psutil_value == findmnt_value
+ 
++    @pytest.mark.skipif(
++        LINUX and RootFsDeviceFinder().find() is None,
++        reason="no device node for /",
++    )
+     def test_disk_partitions_mocked(self):
+         with mock.patch(
+             'psutil._pslinux.cext.disk_partitions',
+--- a/tests/test_posix.py
++++ b/tests/test_posix.py
+@@ -48,7 +48,7 @@
+     cmd = ['ps']
+ 
+     if LINUX:
+-        cmd.append('--no-headers')
++        cmd.extend(['--no-headers', 'ww'])
+ 
+     if pid is not None:
+         cmd.extend(['-p', str(pid)])
+--- a/tests/test_process.py
++++ b/tests/test_process.py
+@@ -16,6 +16,7 @@
+ import os
+ import random
+ import select
++import shutil
+ import signal
+ import socket
+ import stat
+@@ -235,7 +236,10 @@
+ 
+         p = psutil.Process()
+         if not CI_TESTING:
+-            assert p.ionice()[0] == psutil.IOPRIO_CLASS_NONE
++            out = sh(["ionice", "-p", str(p.pid)])
++            ioclass = out.split(":")[0]
++            names = {"none": 0, "realtime": 1, "best-effort": 2, "idle": 3}
++            assert p.ionice()[0] == names[ioclass]
+         assert psutil.IOPRIO_CLASS_NONE == 0
+         assert psutil.IOPRIO_CLASS_RT == 1  # high
+         assert psutil.IOPRIO_CLASS_BE == 2  # normal
+@@ -1436,7 +1440,7 @@
+                     return 0;
+                 return execve("/bin/cat", argv, envp);
+             }
+-            """)
++            """).replace("/bin/cat", shutil.which("cat"))
+         cexe = create_c_exe(self.get_testfn(), c_code=code)
+         sproc = self.spawn_subproc(
+             [cexe], stdin=subprocess.PIPE, stderr=subprocess.PIPE
+--- a/tests/test_scripts.py
++++ b/tests/test_scripts.py
+@@ -103,7 +103,7 @@
+     def test_procinfo(self):
+         self.assert_stdout('procinfo.py', str(os.getpid()))
+ 
+-    @pytest.mark.skipif(CI_TESTING and not psutil.users(), reason="no users")
++    @pytest.mark.skipif(not psutil.users(), reason="no users")
+     def test_who(self):
+         self.assert_stdout('who.py')
+ 
+@@ -200,6 +200,7 @@
+     @pytest.mark.skipif(not LINUX, reason="not on LINUX")
+     @pytest.mark.skipif(CI_TESTING, reason="not on CI")
+     def test_import_all(self):
++        pytest.importorskip("pypinfo")
+         for path in self.ls():
+             try:
+                 import_module_by_path(path)
+--- a/tests/test_system.py
++++ b/tests/test_system.py
+@@ -239,7 +239,7 @@
+         assert bt < time.time()
+ 
+     @pytest.mark.skipif(
+-        CI_TESTING and not psutil.users(), reason="unreliable on CI"
++        not psutil.users(), reason="no users"
+     )
+     def test_users(self):
+         users = psutil.users()
+@@ -724,7 +724,7 @@
+         reason="/proc/diskstats not available on this linux version",
+     )
+     @pytest.mark.skipif(
+-        CI_TESTING and not psutil.disk_io_counters(), reason="unreliable on CI"
++        not psutil.disk_io_counters(), reason="no disks"
+     )  # no visible disks
+     def test_disk_io_counters(self):
+         def check_ntuple(nt):

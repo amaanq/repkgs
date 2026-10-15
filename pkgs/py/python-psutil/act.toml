@@ -1,10 +1,23 @@
-track = "pypi:psutil"
-fetch = { url = "https://files.pythonhosted.org/packages/source/p/psutil/psutil-{version}.tar.gz" }
-with  = [ "python" ]
-tools = [ "python-setuptools" ]
+track   = "pypi:psutil"
+fetch   = { url = "https://files.pythonhosted.org/packages/source/p/psutil/psutil-{version}.tar.gz" }
+with    = [ "python" ]
+tools   = [ "python-setuptools" ]
+patches = [ "no-sysfs-battery.patch", "sandbox-tests.patch" ]
 
+# pytest-xdist and psleak depend on psutil
 [test]
-deps = [ "python-pytest" ]
+deps = [
+  "python-pytest",
+  "python-pytest-instafail",
+  "python-pytest-xdist",
+  "python-psleak",
+  "procps",
+  "util-linux",
+]
+separate = true
+
+[steps.before]
+"python.test" = [ "python-psutil.test" ]
 
 [python]
 module = "psutil"
