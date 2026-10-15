@@ -1,7 +1,7 @@
 track   = "gnu:ncurses"
 fetch   = { url = "https://ftpmirror.gnu.org/ncurses/ncurses-{version}.tar.gz" }
 with    = [ "autotools" ]
-patches = [ "relocatable.patch", "cached-default-source.patch" ]
+patches = [ "relocatable.patch", "cached-default-source.patch", "get-wch-buffer-lifetime.patch" ]
 
 # make check prints "no unit-test implemented", and test/ holds interactive demos
 [test]

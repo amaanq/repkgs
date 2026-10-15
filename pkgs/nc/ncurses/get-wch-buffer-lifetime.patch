@@ -1,0 +1,15 @@
+diff -ruN a/ncurses/widechar/lib_get_wch.c b/ncurses/widechar/lib_get_wch.c
+--- a/ncurses/widechar/lib_get_wch.c
++++ b/ncurses/widechar/lib_get_wch.c
+@@ -64,10 +64,9 @@
+ 
+     if (sp != NULL) {
+ 	size_t count = 0;
++	char buffer[(MB_LEN_MAX * 9) + 1];	/* allow some redundant shifts */
+ 
+ 	for (;;) {
+-	    char buffer[(MB_LEN_MAX * 9) + 1];	/* allow some redundant shifts */
+-
+ 	    T(("reading %d of %d", (int) count + 1, (int) sizeof(buffer)));
+ 	    code = _nc_wgetch(win, &value, TRUE EVENTLIST_2nd((_nc_eventlist
+ 							       *) 0));
