@@ -1,0 +1,64 @@
+diff -ruN a/Config/installfns.sh b/Config/installfns.sh
+--- a/Config/installfns.sh
++++ b/Config/installfns.sh
+@@ -2,6 +2,15 @@
+ 
+ fndir=$DESTDIR$fndir
+ scriptdir=$DESTDIR$scriptdir
++runhelpdir=$DESTDIR$runhelpdir
++
++relpath() {
++  from=$1 to=$2 up=
++  while test "${to#"$from"/}" = "$to"; do
++    from=${from%/*} up=../$up
++  done
++  echo "$up${to#"$from"/}"
++}
+ 
+ /bin/sh $sdir_top/mkinstalldirs $fndir || exit 1;
+ 
+@@ -49,7 +58,7 @@
+     basename=`basename $file`
+     ok=0
+     if test -d $instdir || /bin/sh $sdir_top/mkinstalldirs $instdir; then
+-      if sed "s|@runhelpdir@|$runhelpdir|" <$sdir_top/$file \
++      if sed "s|@runhelpdir@|\${\${(%):-%x}:A:h}/`relpath $instdir $runhelpdir`|" <$sdir_top/$file \
+         >installfnsdir/$basename; then
+ 	if $INSTALL_DATA installfnsdir/$basename $instdir; then
+ 	  ok=1
+diff -ruN a/Src/zsh.mdd b/Src/zsh.mdd
+--- a/Src/zsh.mdd
++++ b/Src/zsh.mdd
+@@ -74,21 +74,27 @@
+ 	fi
+ 
+ zshpaths.h: Makemod $(CONFIG_INCS)
+-	@echo '#define MODULE_DIR "'$(MODDIR)'"' > zshpaths.h.tmp
++	@echo '#include <reloc.h>' > zshpaths.h.tmp
++	@echo '#ifdef MODULE' >> zshpaths.h.tmp
++	@echo '#define ZSH_PREFIX "'`echo $(MODDIR)/zsh | sed -e 's%^$(prefix)/%%' -e 's%[^/][^/]*%..%g'`'/"' >> zshpaths.h.tmp
++	@echo '#else' >> zshpaths.h.tmp
++	@echo '#define ZSH_PREFIX "'`echo $(bindir) | sed -e 's%^$(prefix)/%%' -e 's%[^/][^/]*%..%g'`'/"' >> zshpaths.h.tmp
++	@echo '#endif' >> zshpaths.h.tmp
++	@echo '#define MODULE_DIR RELOC(ZSH_PREFIX "'`echo $(MODDIR) | sed -e 's%^$(prefix)/%%'`'")' >> zshpaths.h.tmp
+ 	@if test x$(sitescriptdir) != xno; then \
+-	  echo '#define SITESCRIPT_DIR "'$(sitescriptdir)'"' >> zshpaths.h.tmp; \
++	  echo '#define SITESCRIPT_DIR RELOC(ZSH_PREFIX "'`echo $(sitescriptdir) | sed -e 's%^$(prefix)/%%'`'")' >> zshpaths.h.tmp; \
+ 	fi
+ 	@if test x$(scriptdir) != xno; then \
+-	  echo '#define SCRIPT_DIR "'$(scriptdir)'"' >> zshpaths.h.tmp; \
++	  echo '#define SCRIPT_DIR RELOC(ZSH_PREFIX "'`echo $(scriptdir) | sed -e 's%^$(prefix)/%%'`'")' >> zshpaths.h.tmp; \
+ 	fi
+ 	@if test x$(sitefndir) != xno; then \
+-	  echo '#define SITEFPATH_DIR "'$(sitefndir)'"' >> zshpaths.h.tmp; \
++	  echo '#define SITEFPATH_DIR RELOC(ZSH_PREFIX "'`echo $(sitefndir) | sed -e 's%^$(prefix)/%%'`'")' >> zshpaths.h.tmp; \
+ 	fi
+ 	@if test x$(fixed_sitefndir) != x; then \
+ 	  echo '#define FIXED_FPATH_DIR "'$(fixed_sitefndir)'"' >> zshpaths.h.tmp; \
+         fi
+ 	@if test x$(fndir) != xno; then \
+-	  echo '#define FPATH_DIR "'$(fndir)'"' >> zshpaths.h.tmp; \
++	  echo '#define FPATH_DIR RELOC(ZSH_PREFIX "'`echo $(fndir) | sed -e 's%^$(prefix)/%%'`'")' >> zshpaths.h.tmp; \
+ 	  if test x$(FUNCTIONS_SUBDIRS) != x && \
+ 	     test x$(FUNCTIONS_SUBDIRS) != xno; then \
+ 	    fpath_tmp="`grep ' functions=.' \

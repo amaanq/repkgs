@@ -1,0 +1,39 @@
+tag     = "zsh-{version}"
+track   = "github:zsh-users/zsh"
+fetch   = { url = "https://www.zsh.org/pub/zsh-{version}.tar.xz" }
+with    = [ "autotools" ]
+deps    = [ "ncurses", "pcre2" ]
+patches = [ "relocatable.patch" ]
+
+[test]
+bin = [ "zsh" ]
+
+[on.glibc.test]
+deps = [ "glibc-bin" ]
+
+[only]
+posix = true
+
+[autotools]
+flags = [
+  "--enable-maildir-support",
+  "--enable-multibyte",
+  "--with-tcsetpgrp",
+  "--enable-pcre",
+  "--disable-site-fndir",
+]
+
+[on.cross.autotools]
+flags = [
+  "zsh_cv_shared_environ=yes",
+  "zsh_cv_shared_tgetent=yes",
+  "zsh_cv_shared_tigetstr=yes",
+  "zsh_cv_sys_dynamic_clash_ok=yes",
+  "zsh_cv_sys_dynamic_rtld_global=yes",
+  "zsh_cv_sys_dynamic_execsyms=yes",
+  "zsh_cv_sys_dynamic_strip_exe=yes",
+  "zsh_cv_sys_dynamic_strip_lib=yes",
+]
+
+[env]
+PCRE_CONFIG = "{pkg:pcre2}/bin/pcre2-config"
