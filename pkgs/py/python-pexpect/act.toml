@@ -9,7 +9,7 @@ patches = [
 ]
 
 [test]
-deps = [ "python-pytest", "openssl", "bash-interactive" ]
+deps = [ "python-pytest", "openssl", "bash-interactive", "zsh" ]
 
 [python]
 module = "pexpect"
