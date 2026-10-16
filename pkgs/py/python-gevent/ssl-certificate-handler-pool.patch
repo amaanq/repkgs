@@ -1,0 +1,12 @@
+--- a/src/gevent/tests/test__server.py
++++ b/src/gevent/tests/test__server.py
+@@ -525,7 +525,8 @@
+     def _create_server(self): # pylint:disable=arguments-differ
+         return self.ServerSubClass((greentest.DEFAULT_BIND_ADDR, 0),
+                                    keyfile=_file('server.key'),
+-                                   certfile=_file('server.crt'))
++                                   certfile=_file('server.crt'),
++                                   spawn=1)
+ 
+     def get_spawn(self):
+         return gevent.spawn

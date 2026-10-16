@@ -12,7 +12,11 @@ deps = [
 ]
 tools = [ "python-cffi", "python-cython", "python-setuptools", "pkgconf" ]
 env = { GEVENTSETUP_EMBED = "0" }
-patches = [ "getaddrinfo-import-localhost.patch", "timer-resolution-quiet-socket.patch" ]
+patches = [
+  "getaddrinfo-import-localhost.patch",
+  "ssl-certificate-handler-pool.patch",
+  "timer-resolution-quiet-socket.patch",
+]
 
 [test]
 deps = [ "python-objgraph", "python-psutil" ]
