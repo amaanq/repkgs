@@ -3,7 +3,7 @@ track   = "github:zsh-users/zsh"
 fetch   = { url = "https://www.zsh.org/pub/zsh-{version}.tar.xz" }
 with    = [ "autotools" ]
 deps    = [ "ncurses", "pcre2" ]
-patches = [ "relocatable.patch" ]
+patches = [ "relocatable.patch", "setid-tests.patch" ]
 
 [test]
 bin = [ "zsh" ]

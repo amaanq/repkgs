@@ -1,0 +1,44 @@
+--- a/Test/C02cond.ztst
++++ b/Test/C02cond.ztst
+@@ -35,8 +35,13 @@
+   mkdir modish
+   chgrp $EGID modish
+ 
+-  chmod 7710 modish  # g+xs,u+s,+t
+-  chmod g+s modish   # two lines combined work around chmod bugs
++  typeset -gi setid
++  if chmod 7710 modish 2>/dev/null; then  # g+xs,u+s,+t
++    chmod g+s modish   # two lines combined work around chmod bugs
++    setid=1
++  else
++    chmod 1710 modish
++  fi
+ 
+   touch unmodish
+   chmod 000 unmodish
+@@ -77,7 +82,11 @@
+   fi
+ 0:-f cond
+ 
+-  [[ -g modish && ! -g zerolength ]]
++  if (( setid )); then
++    [[ -g modish && ! -g zerolength ]]
++  else
++    ZTST_skip="chmod cannot set the setgid bit"
++  fi
+ 0:-g cond
+ 
+   ln -s zerolength link
+@@ -125,7 +134,11 @@
+ 
+ # no simple way of guaranteeing test for -t
+ 
+-  [[ -u modish && ! -u zerolength ]]
++  if (( setid )); then
++    [[ -u modish && ! -u zerolength ]]
++  else
++    ZTST_skip="chmod cannot set the setuid bit"
++  fi
+ 0:-u cond
+ 
+   [[ -x cmd.exe && ! -x zerolength ]]
