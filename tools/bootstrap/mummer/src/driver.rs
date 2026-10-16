@@ -86,6 +86,11 @@ pub fn canonical(arg: &str) -> &str {
    }
 }
 
+pub fn link_tool(arg: &str) -> Option<&str> {
+   arg.strip_prefix("--ld-path=")
+      .or_else(|| arg.strip_prefix("-Wl,-plugin,"))
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Language {
    Cc,

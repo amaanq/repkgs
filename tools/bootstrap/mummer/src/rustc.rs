@@ -68,6 +68,7 @@ use tightrope::{
 use crate::{
    driver::{
       Driver,
+      link_tool,
       replayed_link,
    },
    manifest::{
@@ -535,8 +536,8 @@ fn linker_identity(store: &Store, cache: &mut Client, linker: &str) -> io::Resul
    );
    for flag in driver.ldflags() {
       identity.push_str(&store.key(flag));
-      if let Some(program) = flag.strip_prefix("--ld-path=") {
-         identity.push_str(&store.tool_identity(cache, program)?);
+      if let Some(tool) = link_tool(flag) {
+         identity.push_str(&store.tool_identity(cache, tool)?);
       }
    }
    Ok(identity)

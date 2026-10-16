@@ -87,6 +87,7 @@ use crate::{
       Language,
       Settled,
       canonical,
+      link_tool,
       replayed_link,
       reserve,
       settle_runpath,
@@ -592,12 +593,8 @@ impl Invocation {
    ) -> io::Result<String> {
       let mut identities = store.tool_identity(cache, compiler)?;
       if self.links() {
-         for linker in self
-            .args
-            .iter()
-            .filter_map(|arg| arg.strip_prefix("--ld-path="))
-         {
-            identities.push_str(&store.tool_identity(cache, linker)?);
+         for tool in self.args.iter().filter_map(|arg| link_tool(arg)) {
+            identities.push_str(&store.tool_identity(cache, tool)?);
          }
       }
       Ok(identities)
