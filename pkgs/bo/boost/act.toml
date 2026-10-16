@@ -3,7 +3,11 @@ track   = "github:boostorg/boost"
 fetch   = { asset = "boost-{version}-cmake.tar.xz" }
 with    = [ "cmake" ]
 deps    = [ "zlib", "bzip2", "zstd", "openssl" ]
-patches = [ "upstream-redis-cmath.patch", "upstream-cobalt-win32-libs.patch" ]
+patches = [
+  "upstream-redis-cmath.patch",
+  "upstream-cobalt-win32-libs.patch",
+  "upstream-url-ipv6-zone-id.patch",
+]
 test    = false
 
 [cc]

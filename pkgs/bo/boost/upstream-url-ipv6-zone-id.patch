@@ -1,0 +1,137 @@
+--- a/libs/url/include/boost/url/impl/authority_view.hpp
++++ b/libs/url/include/boost/url/impl/authority_view.hpp
+@@ -203,9 +203,6 @@ encoded_host_address() const noexcept
+     case urls::host_type::ipv6:
+     case urls::host_type::ipvfuture:
+     {
+-        BOOST_ASSERT(
+-            u_.decoded_[id_host] ==
+-                s.size());
+         BOOST_ASSERT(s.size() >= 2);
+         BOOST_ASSERT(s.front() == '[');
+         BOOST_ASSERT(s.back() == ']');
+--- a/libs/url/include/boost/url/impl/url_base.hpp
++++ b/libs/url/include/boost/url/impl/url_base.hpp
+@@ -346,6 +346,10 @@ remove_authority()
+         resize_impl(
+             id_user, id_path, 0, op);
+     }
++    impl_.decoded_[id_user] = 0;
++    impl_.decoded_[id_pass] = 0;
++    impl_.decoded_[id_host] = 0;
++    impl_.decoded_[id_port] = 0;
+     impl_.host_type_ =
+         urls::host_type::none;
+     return *this;
+--- a/libs/url/include/boost/url/impl/url_view_base.hpp
++++ b/libs/url/include/boost/url/impl/url_view_base.hpp
+@@ -191,14 +191,16 @@ encoded_authority() const noexcept
+         BOOST_ASSERT(has_authority());
+         s.remove_prefix(2);
+     }
++    // [ user [ ":" pass ] "@" ] host [ ":" port ]
+     return make_pct_string_view_unsafe(
+         s.data(),
+         s.size(),
+         impl().decoded_[id_user] +
++            has_password() +
+             impl().decoded_[id_pass] +
++            has_userinfo() +
+             impl().decoded_[id_host] +
+-            impl().decoded_[id_port] +
+-            has_password());
++            impl().len(id_port));
+ }
+ 
+ //------------------------------------------------
+@@ -361,10 +363,6 @@ encoded_host_address() const noexcept
+     case urls::host_type::ipv6:
+     case urls::host_type::ipvfuture:
+     {
+-        BOOST_ASSERT(
+-            impl().decoded_[id_host] ==
+-                s.size() ||
+-            !this->encoded_zone_id().empty());
+         BOOST_ASSERT(s.size() >= 2);
+         BOOST_ASSERT(s.front() == '[');
+         BOOST_ASSERT(s.back() == ']');
+--- a/libs/url/include/boost/url/rfc/detail/impl/host_rule.hpp
++++ b/libs/url/include/boost/url/rfc/detail/impl/host_rule.hpp
+@@ -62,8 +62,17 @@ parse(
+                 b.size());
+             t.host_type =
+                 urls::host_type::ipv6;
++            // "[" IPv6address [ "%25" ZoneID ] "]"
++            // decodes to
++            // "[" IPv6address [ "%" zone_id ] "]"
++            auto dn = static_cast<
++                std::size_t>(it - it0);
++            if(! v.zone_id.empty())
++                dn = dn
++                    - (3 + v.zone_id.size())
++                    + (1 + v.zone_id.decoded_size());
+             t.match = make_pct_string_view_unsafe(
+-                it0, it - it0, it - it0);
++                it0, it - it0, dn);
+             return t;
+         }
+ 
+--- a/libs/url/include/boost/url/rfc/detail/impl/ip_literal_rule.hpp
++++ b/libs/url/include/boost/url/rfc/detail/impl/ip_literal_rule.hpp
+@@ -71,6 +71,7 @@ parse(
+             if(! rv2)
+                 return rv2.error();
+             t.ipv6 = rv2->ipv6;
++            t.zone_id = rv2->zone_id;
+             t.is_ipv6 = true;
+             return t;
+         }
+--- a/libs/url/include/boost/url/rfc/detail/ip_literal_rule.hpp
++++ b/libs/url/include/boost/url/rfc/detail/ip_literal_rule.hpp
+@@ -13,6 +13,7 @@
+ 
+ #include <boost/url/detail/config.hpp>
+ #include <boost/url/ipv6_address.hpp>
++#include <boost/url/pct_string_view.hpp>
+ #include <boost/url/error_types.hpp>
+ #include <boost/core/detail/string_view.hpp>
+ 
+@@ -41,6 +42,7 @@ struct ip_literal_rule_t
+         bool is_ipv6 = false;
+         ipv6_address ipv6;
+         core::string_view ipvfuture;
++        pct_string_view zone_id;
+     };
+ 
+     BOOST_URL_CXX20_CONSTEXPR
+--- a/libs/url/src/detail/pattern.cpp
++++ b/libs/url/src/detail/pattern.cpp
+@@ -180,7 +180,7 @@ apply(
+                 u.impl_.decoded_[parts::id_pass] =
+                     detail::to_size_type(
+                         pct_string_view({destp, dest1})
+-                            ->decoded_size() + 1);
++                            ->decoded_size());
+             }
+         }
+         auto dest = u.set_host_impl(
+@@ -196,7 +196,7 @@ apply(
+             *dest1++ = ']';
+             u.impl_.decoded_[parts::id_host] =
+                 detail::to_size_type(
+-                    pct_string_view(dest - 1, dest1 - dest)
++                    pct_string_view(dest - 1, dest1 - dest + 1)
+                         ->decoded_size());
+         }
+         else
+@@ -224,10 +224,6 @@ apply(
+             fctx.advance_to(dest);
+             char const* dest1 = pct_vformat(
+                 grammar::digit_chars, pctx, fctx);
+-            u.impl_.decoded_[parts::id_port] =
+-                detail::to_size_type(
+-                    pct_string_view(dest, dest1 - dest)
+-                        ->decoded_size() + 1);
+             core::string_view up = {dest - 1, dest1};
+             auto p = grammar::parse(up, detail::port_part_rule).value();
+             if (p.has_port)
