@@ -1,0 +1,66 @@
+Define _GLOBAL_OFFSET_TABLE_, .TOC., _DYNAMIC and _TLS_MODULE_BASE_ as hidden, as lld does,
+so they stay out of .dynsym and are local in .symtab. As globals they showed up in nm -g of
+every shared library, and libdrm's symbols-check rejected _DYNAMIC as an unknown export.
+
+--- a/libwild/src/elf.rs
++++ b/libwild/src/elf.rs
+@@ -1410,7 +1410,9 @@
+             .section_start(crate::output_section_id::FILE_HEADER, "__ehdr_start")
+             .hide();
+ 
+-        symbols.section_start(output_section_id::GOT, "_GLOBAL_OFFSET_TABLE_");
++        symbols
++            .section_start(output_section_id::GOT, "_GLOBAL_OFFSET_TABLE_")
++            .hide();
+ 
+         // .rela.plt start/stop symbols are only emitted for non-relocatable executables. Emitting
+         // them for relocatable binaries causes glibc to try to call the resolver functions without
+@@ -1477,7 +1479,9 @@
+         }
+ 
+         if args.arch == Architecture::Ppc64 {
+-            symbols.section_start(output_section_id::GOT, crate::elf::TOC_SYMBOL_NAME);
++            symbols
++                .section_start(output_section_id::GOT, crate::elf::TOC_SYMBOL_NAME)
++                .hide();
+         }
+ 
+         symbols
+@@ -1492,7 +1496,9 @@
+             .hide();
+ 
+         if output_kind != OutputKind::StaticExecutable(RelocationModel::NonRelocatable) {
+-            symbols.section_start(output_section_id::DYNAMIC, "_DYNAMIC");
++            symbols
++                .section_start(output_section_id::DYNAMIC, "_DYNAMIC")
++                .hide();
+         }
+ 
+         symbols
+@@ -1507,15 +1513,17 @@
+         // See https://www.fsfla.org/~lxoliva/writeups/TLS/RFC-TLSDESC-x86.txt for more details.
+         let mut elf_symbol = SymtabEntry::<C>::default();
+         elf_symbol.set_binding_and_type(object::elf::STB_GLOBAL, object::elf::STT_TLS);
+-        symbols.add_symbol(InternalSymDefInfo {
+-            placement: if output_kind == OutputKind::SharedObject {
+-                SymbolPlacement::SectionStart(output_section_id::TDATA)
+-            } else {
+-                SymbolPlacement::SectionEnd(output_section_id::TBSS)
+-            },
+-            name: b"_TLS_MODULE_BASE_",
+-            symbol: elf_symbol,
+-        });
++        symbols
++            .add_symbol(InternalSymDefInfo {
++                placement: if output_kind == OutputKind::SharedObject {
++                    SymbolPlacement::SectionStart(output_section_id::TDATA)
++                } else {
++                    SymbolPlacement::SectionEnd(output_section_id::TBSS)
++                },
++                name: b"_TLS_MODULE_BASE_",
++                symbol: elf_symbol,
++            })
++            .hide();
+     }
+ 
+     fn built_in_section_infos<'data>()

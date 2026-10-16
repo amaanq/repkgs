@@ -21,6 +21,7 @@ patches = [
   "no-gc-default.patch",
   "rela-plt-link.patch",
   "comdat-discard.patch",
+  "linker-symbols-hidden.patch",
 ]
 
 [test]
