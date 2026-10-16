@@ -5,6 +5,7 @@ deps = [ "robin-map" ]
 patches = [
   "https://github.com/gnustep/libobjc2/commit/129c5ba8bd5df8aa1c9d3aaafde6068e796d80eb.patch",
   "https://github.com/gnustep/libobjc2/commit/0e027650d960626b2119efabaebde20bb003a3db.patch",
+  "eh-trampoline-landing-pad.patch",
 ]
 
 [cmake.defs]

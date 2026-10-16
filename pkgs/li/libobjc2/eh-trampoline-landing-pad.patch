@@ -1,0 +1,16 @@
+Keep the cleanup landing pad in eh_trampoline when the compiler optimizes. Its only purpose is
+to make the personality routine run so objcxx_eh.cc can measure __cxa_exception, and at -O1 and
+above clang drops the call to the empty destructor along with the landing pad. The size is then
+never found and C++ exceptions thrown through Objective-C corrupt the heap.
+
+--- a/eh_trampoline.cc
++++ b/eh_trampoline.cc
+@@ -3,7 +3,7 @@
+ __attribute((visibility("hidden")))
+ int eh_trampoline()
+ {
+-	struct X { ~X() {} } x;
++	struct X { ~X() { __asm__ volatile(""); } } x;
+ 	cxx_throw();
+ 	return 0;
+ }
