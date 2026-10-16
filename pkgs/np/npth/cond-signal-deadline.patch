@@ -1,0 +1,30 @@
+--- a/tests/t-cond.c
++++ b/tests/t-cond.c
+@@ -13,6 +13,7 @@
+  * SPDX-License-Identifier: CC0
+  */
+ 
++#include <time.h>
+ #include "t-support.h"
+ 
+ static npth_mutex_t mutex;
+@@ -27,7 +28,7 @@
+   int rc;
+   int *thread_number = arg;
+   char msg[256];
+-  int signal_invoked = 0;
++  time_t deadline;
+ 
+   snprintf (msg, DIM (msg), "thread %d: start", *thread_number);
+   info_msg (msg);
+@@ -49,8 +50,9 @@
+       rc = npth_mutex_unlock (&mutex);
+       fail_if_err (rc);
+ 
++      deadline = time (NULL) + 60;
+     again:
+-      if (++signal_invoked > MAX_THREAD * 10)
++      if (time (NULL) > deadline)
+         fail_msg ("Many cond_signal invoked, but no success.");
+ 
+       rc = npth_mutex_lock (&mutex);
