@@ -1,0 +1,49 @@
+--- a/tests/run-test
++++ b/tests/run-test
+@@ -1,4 +1,17 @@
+ unset GROUPS 2>/dev/null
+ 
++touch /tmp/test.setid
++chmod u+s,g+s /tmp/test.setid 2>/dev/null
++setid=$?
++rm -f /tmp/test.setid
++if [ $setid -ne 0 ]; then
++	echo "warning: chmod cannot set setuid and setgid bits here, so -u and -g" >&2
++	echo "warning: are not tested on files that have them" >&2
++fi
++
+ ${THIS_SH} ./test.tests >${BASH_TSTOUT} 2>&1
+-diff ${BASH_TSTOUT} test.right && rm -f ${BASH_TSTOUT}
++if [ $setid -eq 0 ]; then
++	diff ${BASH_TSTOUT} test.right
++else
++	sed '/^t -[ug] \/tmp\/test\.set[ug]id$/,+1d' test.right | diff ${BASH_TSTOUT} -
++fi && rm -f ${BASH_TSTOUT}
+--- a/tests/test.tests
++++ b/tests/test.tests
+@@ -72,9 +72,9 @@
+ touch /tmp/test.setgid
+ chgrp ${GROUPS[0]} /tmp/test.setgid
+ chmod ug+x /tmp/test.setgid
+-chmod g+s /tmp/test.setgid
+-echo 't -g /tmp/test.setgid'
+-t -g /tmp/test.setgid
++chmod g+s /tmp/test.setgid 2>/dev/null &&
++	echo 't -g /tmp/test.setgid' &&
++	t -g /tmp/test.setgid
+ rm -f /tmp/test.setgid
+ 
+ echo 't -k run-all'
+@@ -125,9 +125,9 @@
+ 
+ touch /tmp/test.setuid
+ chmod u+x /tmp/test.setuid	# some systems require this to turn on setuid bit
+-chmod u+s /tmp/test.setuid
+-echo 't -u /tmp/test.setuid'
+-t -u /tmp/test.setuid
++chmod u+s /tmp/test.setuid 2>/dev/null &&
++	echo 't -u /tmp/test.setuid' &&
++	t -u /tmp/test.setuid
+ rm -f /tmp/test.setuid
+ 
+ echo 't -w noexist'

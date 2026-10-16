@@ -10,6 +10,7 @@ patches = [
   "printf-precision-overflow.patch",
   "trap-order.patch",
   "run-test-uid.patch",
+  "setid-tests.patch",
 ]
 
 [test]

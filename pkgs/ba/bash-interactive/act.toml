@@ -8,6 +8,7 @@ patches = [
   "../bash/printf-precision-overflow.patch",
   "../bash/trap-order.patch",
   "../bash/run-test-uid.patch",
+  "../bash/setid-tests.patch",
 ]
 deps = [ "readline", "ncurses" ]
 
