@@ -4,4 +4,5 @@ sys     = [ "zstd" ]
 hash    = "sha256-jIkeR68C41jn0A3DjEpbrEYCwuqIS3n0bRed2K6c5iY="
 
 [patches]
+"https://github.com/wild-linker/wild/commit/9ff20eaac96b17d87ae38cc6c06d3f8082f6bda5.patch" = "9ff20eaac96b.patch"
 "https://github.com/wild-linker/wild/commit/b9c0dd643196aa628cd92ca34b93a3d177e5f526.patch" = "b9c0dd643196.patch"

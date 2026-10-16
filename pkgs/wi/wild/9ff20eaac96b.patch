@@ -1,0 +1,52 @@
+From 9ff20eaac96b17d87ae38cc6c06d3f8082f6bda5 Mon Sep 17 00:00:00 2001
+From: lapla <me@lapla.dev>
+Date: Fri, 14 Aug 2026 08:22:45 +0900
+Subject: [PATCH] fix: Don't consume the next argument for `--trace` / `-t`
+ (#2394)
+
+---
+ libwild/src/args/elf.rs                        | 4 ++--
+ wild/tests/external_tests/mold_skip_tests.toml | 4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/libwild/src/args/elf.rs b/libwild/src/args/elf.rs
+index 36a3b3224..d64442561 100644
+--- a/libwild/src/args/elf.rs
++++ b/libwild/src/args/elf.rs
+@@ -1603,11 +1603,11 @@ fn setup_argument_parser() -> ArgumentParser<ElfArgs> {
+         });
+ 
+     parser
+-        .declare_with_param()
++        .declare()
+         .short("t")
+         .long("trace")
+         .help("Print opened input files")
+-        .execute(|args, _modifier_stack, _value| {
++        .execute(|args, _modifier_stack| {
+             args.trace = true;
+             Ok(())
+         });
+diff --git a/wild/tests/external_tests/mold_skip_tests.toml b/wild/tests/external_tests/mold_skip_tests.toml
+index d94a7b8ca..640cb7012 100644
+--- a/wild/tests/external_tests/mold_skip_tests.toml
++++ b/wild/tests/external_tests/mold_skip_tests.toml
+@@ -41,9 +41,7 @@ tests = [
+   "sort-debug-info-merged.sh",             # `-Map`
+   "sort-debug-info.sh",                    # `-Map`
+   "spare-program-headers.sh",
+-  "static-archive.sh",                     # error: Undefined symbol main, passes with GNU ld
+   "synthetic-symbols.sh",                  # `--image-base`
+-  "thin-archive.sh",                       # error: Undefined symbol main, passes with GNU ld
+   "trace-symbol-symver.sh",
+   "trace-symbol.sh",
+   "undefined-glob-gc-sections.sh",
+@@ -198,6 +196,8 @@ tests = [
+   "warn-unresolved-symbols.sh",     # Different message formats
+   "whole-archive.sh",               # Passes when `--no-gc-sections` is passed.
+   "z-defs.sh",                      # Different message formats
++  "thin-archive.sh",                # Different `--trace` output formats
++  "static-archive.sh",              # Different `--trace` output formats
+ ]
+ 
+ [skipped_groups.lto]
