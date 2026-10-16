@@ -161,30 +161,59 @@ pub enum Refusal {
 /// Applies `patches` in order to a copy of `src` as the build does, with no
 /// fuzz.
 pub fn check(src: &Path, patches: &[PathBuf]) -> io::Result<Result<(), Refusal>> {
-   let work = temp_dir().join(format!("spieler-patch-{}", id()));
+   let work = copied(src, "spieler-patch")?;
+   let outcome = apply(&work, patches);
+   remove_dir_all(&work)?;
+   outcome
+}
+
+/// A copy of `src` with `patches` applied, which the caller removes.
+pub fn patched(src: &Path, patches: &[PathBuf]) -> io::Result<PathBuf> {
+   let work = copied(src, "spieler-patched")?;
+   match apply(&work, patches) {
+      Ok(Ok(())) => Ok(work),
+      Ok(Err(Refusal::Contained(file) | Refusal::Conflict(file))) => {
+         remove_dir_all(&work)?;
+         Err(io::Error::other(format!(
+            "{} does not apply",
+            file.display()
+         )))
+      },
+      Err(error) => {
+         remove_dir_all(&work)?;
+         Err(error)
+      },
+   }
+}
+
+fn copied(src: &Path, prefix: &str) -> io::Result<PathBuf> {
+   let work = temp_dir().join(format!("{prefix}-{}", id()));
    if work.exists() {
       remove_dir_all(&work)?;
    }
    create_dir_all(&work)?;
-   let copied = Command::new("cp")
+   let status = Command::new("cp")
       .args(["-r", "--no-preserve=mode,ownership", "-T"])
       .arg(src)
       .arg(&work)
       .status()?;
-   if !copied.success() {
+   if !status.success() {
       remove_dir_all(&work)?;
       return Err(io::Error::other(format!(
          "could not copy {}",
          src.display()
       )));
    }
+   Ok(work)
+}
 
+fn apply(work: &Path, patches: &[PathBuf]) -> io::Result<Result<(), Refusal>> {
    let run = |file: &Path, extra: &[&str]| -> io::Result<bool> {
       Ok(Command::new("patch")
          .args(["-p1", "-F0", "--batch", "--quiet"])
          .args(extra)
          .arg("-d")
-         .arg(&work)
+         .arg(work)
          .arg("-i")
          .arg(file)
          .stdout(Stdio::null())
@@ -192,18 +221,15 @@ pub fn check(src: &Path, patches: &[PathBuf]) -> io::Result<Result<(), Refusal>>
          .status()?
          .success())
    };
-   let mut outcome = Ok(());
    for file in patches {
       if run(file, &["--dry-run"])? && run(file, &[])? {
          continue;
       }
-      outcome = Err(if run(file, &["-R", "--dry-run"])? {
+      return Ok(Err(if run(file, &["-R", "--dry-run"])? {
          Refusal::Contained(file.clone())
       } else {
          Refusal::Conflict(file.clone())
-      });
-      break;
+      }));
    }
-   remove_dir_all(&work)?;
-   Ok(outcome)
+   Ok(Ok(()))
 }

@@ -11,6 +11,7 @@ use std::{
    fs::{
       create_dir_all,
       read_to_string,
+      remove_dir_all,
       write,
    },
    io,
@@ -35,6 +36,7 @@ use crate::{
    hackage,
    luarocks,
    nix,
+   patch,
    pipeline::{
       self,
       root,
@@ -174,7 +176,28 @@ pub fn add(package: &Package) -> io::Result<Vec<Used>> {
    if package.locks.is_empty() {
       return Ok(Vec::new());
    }
-   let src = source_of(package)?;
+   let fetched = source_of(package)?;
+   let files = package
+      .patches
+      .iter()
+      .map(|entry| {
+         package
+            .dir
+            .join(package.vendored.get(entry).unwrap_or(entry))
+      })
+      .collect::<Vec<PathBuf>>();
+   if files.is_empty() {
+      return add_from(package, &fetched);
+   }
+   let patched = patch::patched(&fetched, &files)?;
+   let added = add_from(package, &patched);
+   remove_dir_all(&patched)?;
+   added
+}
+
+/// The lock entries of `src`, the package's source with its patches applied,
+/// since those may change what a solver or lock file reads.
+fn add_from(package: &Package, src: &Path) -> io::Result<Vec<Used>> {
    let mut used = Vec::new();
    for (eco, sub) in &package.locks {
       let old = read(&dir(), eco)?;
@@ -189,7 +212,7 @@ pub fn add(package: &Package) -> io::Result<Vec<Used>> {
             let options = spec
                .get("cabal")
                .ok_or_else(|| io::Error::other(format!("{} has no [cabal] spec", package.name)))?;
-            hackage::lock(&src, sub, options, tests, &old)?
+            hackage::lock(src, sub, options, tests, &old)?
          },
          "luarocks" => luarocks::lock(&src.join(sub), &old)?,
          other => {
