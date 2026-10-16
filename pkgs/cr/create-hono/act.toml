@@ -15,7 +15,14 @@ GIGET_STARTER_REF = "v{major}.{minor}"
 
 [test]
 deps    = [ "nodejs" ]
+fhs     = true
 version = true
+
+[steps]
+skip = [ "bun.build" ]
 
 [steps.before]
 "bun.test" = [ "create-hono.giget-cache" ]
+
+[steps.after]
+"bun.test" = [ "bun.build" ]
