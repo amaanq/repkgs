@@ -12,6 +12,7 @@ patches = [
   "https://github.com/wild-linker/wild/commit/b9c0dd643196aa628cd92ca34b93a3d177e5f526.patch",
   "binary-format.patch",
   "input-build-id.patch",
+  "gotpcrel-addend.patch",
 ]
 
 [test]

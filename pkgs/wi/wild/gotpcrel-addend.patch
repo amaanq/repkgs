@@ -1,0 +1,139 @@
+Relax a GOTPCREL load only when its addend is -4, as lld does. With another addend the
+instruction reads part of the GOT entry, e.g. clang loads the high half of a pointer with
+movl sym@GOTPCREL+4(%rip), so rewriting it to lea gave erlang's JIT corrupt pointers.
+
+--- a/libwild/src/elf.rs
++++ b/libwild/src/elf.rs
+@@ -6092,6 +6092,7 @@
+         r_type,
+         object.object.raw_section_data(section)?,
+         rel_offset,
++        rel.addend(),
+         flags,
+         symbol_db.output_kind,
+         section_flags,
+--- a/libwild/src/elf_aarch64.rs
++++ b/libwild/src/elf_aarch64.rs
+@@ -158,6 +158,7 @@
+         relocation_kind: object::elf::RelocationType,
+         section_bytes: &[u8],
+         offset_in_section: u64,
++        _addend: i64,
+         flags: crate::value_flags::ValueFlags,
+         output_kind: crate::output_kind::OutputKind,
+         section_flags: linker_utils::elf::SectionFlags,
+--- a/libwild/src/elf_loongarch64.rs
++++ b/libwild/src/elf_loongarch64.rs
+@@ -113,6 +113,7 @@
+         relocation_kind: object::elf::RelocationType,
+         section_bytes: &[u8],
+         offset_in_section: u64,
++        _addend: i64,
+         flags: crate::value_flags::ValueFlags,
+         output_kind: crate::output_kind::OutputKind,
+         section_flags: linker_utils::elf::SectionFlags,
+--- a/libwild/src/elf_ppc64.rs
++++ b/libwild/src/elf_ppc64.rs
+@@ -90,6 +90,7 @@
+         relocation_kind: object::elf::RelocationType,
+         section_bytes: &[u8],
+         offset_in_section: u64,
++        _addend: i64,
+         flags: crate::value_flags::ValueFlags,
+         output_kind: crate::output_kind::OutputKind,
+         section_flags: linker_utils::elf::SectionFlags,
+--- a/libwild/src/elf_riscv64.rs
++++ b/libwild/src/elf_riscv64.rs
+@@ -189,6 +189,7 @@
+         relocation_kind: object::elf::RelocationType,
+         section_bytes: &[u8],
+         offset_in_section: u64,
++        _addend: i64,
+         flags: crate::value_flags::ValueFlags,
+         output_kind: crate::output_kind::OutputKind,
+         section_flags: linker_utils::elf::SectionFlags,
+--- a/libwild/src/elf_writer.rs
++++ b/libwild/src/elf_writer.rs
+@@ -3153,6 +3153,7 @@
+         r_type,
+         out,
+         offset_in_section,
++        rel.addend(),
+         flags,
+         output_kind,
+         section_info.section_flags,
+--- a/libwild/src/elf_x86_64.rs
++++ b/libwild/src/elf_x86_64.rs
+@@ -149,6 +149,7 @@
+         relocation_kind: object::elf::RelocationType,
+         section_bytes: &[u8],
+         offset_in_section: u64,
++        addend: i64,
+         flags: ValueFlags,
+         output_kind: OutputKind,
+         section_flags: SectionFlags,
+@@ -186,6 +187,18 @@
+ 
+         let offset = offset_in_section as usize;
+ 
++        if addend != -4
++            && matches!(
++                relocation_kind,
++                object::elf::R_X86_64_GOTPCREL
++                    | object::elf::R_X86_64_GOTPCRELX
++                    | object::elf::R_X86_64_REX_GOTPCRELX
++                    | object::elf::R_X86_64_CODE_4_GOTPCRELX
++            )
++        {
++            return None;
++        }
++
+         match relocation_kind {
+             object::elf::R_X86_64_REX_GOTPCRELX | object::elf::R_X86_64_CODE_4_GOTPCRELX
+                 if (relocation_kind == object::elf::R_X86_64_CODE_4_GOTPCRELX
+@@ -597,6 +610,7 @@
+             relocation_kind,
+             bytes_in,
+             offset,
++            -4,
+             ValueFlags::empty(),
+             OutputKind::StaticExecutable(RelocationModel::Relocatable),
+             shf::EXECINSTR,
+@@ -614,6 +628,7 @@
+             relocation_kind,
+             bytes_in,
+             offset,
++            -4,
+             ValueFlags::ABSOLUTE,
+             OutputKind::StaticExecutable(RelocationModel::Relocatable),
+             shf::EXECINSTR,
+--- a/libwild/src/macho_aarch64.rs
++++ b/libwild/src/macho_aarch64.rs
+@@ -212,6 +212,7 @@
+         relocation_kind: object::macho::RelocationInfo,
+         section_bytes: &[u8],
+         offset_in_section: u64,
++        _addend: i64,
+         flags: crate::value_flags::ValueFlags,
+         output_kind: crate::output_kind::OutputKind,
+         section_flags: <Self::Platform as crate::platform::Platform>::SectionFlags,
+--- a/libwild/src/platform.rs
++++ b/libwild/src/platform.rs
+@@ -193,6 +193,7 @@
+         relocation_kind: <Self::Platform as Platform>::RelocationInfo,
+         section_bytes: &[u8],
+         offset_in_section: u64,
++        addend: i64,
+         flags: ValueFlags,
+         output_kind: OutputKind,
+         section_flags: <Self::Platform as Platform>::SectionFlags,
+--- a/libwild/src/wasm_wasm32.rs
++++ b/libwild/src/wasm_wasm32.rs
+@@ -94,6 +94,7 @@
+         _relocation_kind: RelocationType,
+         _section_bytes: &[u8],
+         _offset_in_section: u64,
++        _addend: i64,
+         _flags: crate::value_flags::ValueFlags,
+         _output_kind: crate::output_kind::OutputKind,
+         _section_flags: <Self::Platform as crate::platform::Platform>::SectionFlags,
