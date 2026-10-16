@@ -133,7 +133,13 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
       .as_deref()
       .ok_or_else(|| io::Error::other("no debug output"))?;
    create_dir_all(debug)?;
-   relocate(&attrs, &spec, &platform, debug, out, &ctx.dest, &mut laps)?;
+   let placing = Placing {
+      attrs: &attrs,
+      spec: &spec,
+      platform: &platform,
+      debug,
+   };
+   relocate(&placing, out, &ctx.dest, &carvings, &mut laps)?;
    let request = Request {
       name:    spec.name.clone(),
       ext:     platform.ext.clone(),
@@ -156,13 +162,6 @@ pub fn run(keep_tree: bool) -> io::Result<()> {
    }
 
    laps.lap("move");
-
-   let placing = Placing {
-      attrs: &attrs,
-      spec: &spec,
-      platform: &platform,
-      debug,
-   };
 
    if let Some(staging) = ctx.dev.as_deref() {
       let dest = attrs
@@ -202,15 +201,7 @@ impl Placing<'_> {
    fn place(&self, staging: &Path, dest: &str, laps: &mut Laps) -> io::Result<()> {
       prune(staging)?;
       shebangs(staging, true)?;
-      relocate(
-         self.attrs,
-         self.spec,
-         self.platform,
-         self.debug,
-         staging,
-         Path::new(dest),
-         laps,
-      )?;
+      relocate(self, staging, Path::new(dest), &[], laps)?;
       succeed(Command::new("chmod").arg("-R").arg("u+w").arg(staging))?;
       relativize(utf8(staging)?, dest)?;
       succeed(Command::new("mv").arg(staging).arg(dest))
@@ -465,14 +456,18 @@ fn layout_check(out: &Path) -> io::Result<()> {
 }
 
 fn relocate(
-   attrs: &Attrs,
-   spec: &Spec,
-   platform: &Platform,
-   debug: &str,
+   placing: &Placing,
    out: &Path,
    dest: &Path,
+   carvings: &[Carving],
    laps: &mut Laps,
 ) -> io::Result<()> {
+   let Placing {
+      attrs,
+      spec,
+      platform,
+      debug,
+   } = *placing;
    let implanted = spec.prebuilt == Prebuilt::Implanted;
    let ldso = spec.prebuilt == Prebuilt::Ldso;
    match platform.binfmt {
@@ -557,9 +552,34 @@ fn relocate(
          dest.display(),
          shown.join(" ")
       ));
-      fixup::run(out, Some(dest), sdk, loader, &denied, &libraries)?;
+      lent(out, carvings, || {
+         fixup::run(out, Some(dest), sdk, loader, &denied, &libraries)
+      })?;
    }
    Ok(())
+}
+
+/// Runs `relocating` with each carved path linked into `out` from its staging,
+/// as `out` links it once placed, so what files in `out` load from a carving
+/// resolves.
+fn lent(
+   out: &Path,
+   carvings: &[Carving],
+   relocating: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+   let mut links = Vec::new();
+   for carving in carvings {
+      for relative in &carving.moved {
+         let link = out.join(relative);
+         symlink(carving.staging.join(relative), &link)?;
+         links.push(link);
+      }
+   }
+   let relocated = relocating();
+   for link in links {
+      remove_file(link)?;
+   }
+   relocated
 }
 
 struct Probe<'check> {
