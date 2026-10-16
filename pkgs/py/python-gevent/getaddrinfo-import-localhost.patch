@@ -1,0 +1,8 @@
+--- a/src/gevent/tests/getaddrinfo_module.py
++++ b/src/gevent/tests/getaddrinfo_module.py
+@@ -1,4 +1,4 @@
+ import socket
+ import gevent.socket as gevent_socket
+ 
+-gevent_socket.getaddrinfo(u'gevent.org', None, socket.AF_INET)
++gevent_socket.getaddrinfo(u'localhost', None, socket.AF_INET)
