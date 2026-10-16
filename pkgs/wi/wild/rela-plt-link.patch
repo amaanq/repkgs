@@ -1,0 +1,17 @@
+Link .rela.plt only to .dynsym and leave sh_link 0 when there is none, as lld does. In
+static executables it pointed at .symtab, which llvm-objcopy rejects for an allocated
+relocation section, so splitting debug info out of dash-static failed.
+
+Merged as wild-linker/wild#2750 (cf90616) after 0.10.0, which it does not apply to as is.
+
+--- a/libwild/src/elf.rs
++++ b/libwild/src/elf.rs
+@@ -5517,7 +5517,7 @@
+             ty: sht::RELA,
+             section_flags: shf::ALLOC.with(shf::INFO_LINK),
+             element_size: C::RELA_ENTRY_SIZE,
+-            link: &[output_section_id::DYNSYM, output_section_id::SYMTAB_LOCAL],
++            link: &[output_section_id::DYNSYM],
+             min_alignment: C::RELA_ENTRY_ALIGNMENT,
+             ..Self::DEFAULT_DEFS
+         };

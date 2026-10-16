@@ -19,6 +19,7 @@ patches = [
   "note-alignment.patch",
   "ehdr-symbols.patch",
   "no-gc-default.patch",
+  "rela-plt-link.patch",
 ]
 
 [test]
