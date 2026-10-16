@@ -1,0 +1,131 @@
+--- a/meson.build
++++ b/meson.build
+@@ -307,9 +307,9 @@
+ conf.set_quoted('SYSTEMD_VERITYSETUP_PATH',                   libexecdir / 'systemd-veritysetup')
+ conf.set_quoted('SYSTEMD_CLONESETUP_PATH',                    libexecdir / 'systemd-clonesetup')
+ conf.set_quoted('SYSTEM_CONFIG_UNIT_DIR',                     pkgsysconfdir / 'system')
+-conf.set_quoted('SYSTEM_DATA_UNIT_DIR',                       systemunitdir)
+-conf.set_quoted('SYSTEM_ENV_GENERATOR_DIR',                   systemenvgeneratordir)
+-conf.set_quoted('SYSTEM_GENERATOR_DIR',                       systemgeneratordir)
++conf.set_quoted('SYSTEM_DATA_UNIT_DIR',                       '/usr/lib/systemd/system')
++conf.set_quoted('SYSTEM_ENV_GENERATOR_DIR',                   '/usr/lib/systemd/system-environment-generators')
++conf.set_quoted('SYSTEM_GENERATOR_DIR',                       '/usr/lib/systemd/system-generators')
+ conf.set_quoted('SYSTEM_PRESET_DIR',                          systempresetdir)
+ conf.set_quoted('SYSTEM_SHUTDOWN_PATH',                       systemshutdowndir)
+ conf.set_quoted('SYSTEM_SLEEP_PATH',                          systemsleepdir)
+@@ -320,13 +320,13 @@
+ conf.set_quoted('UDEV_HWDB_DIR',                              udevhwdbdir)
+ conf.set_quoted('UDEV_RULES_DIR',                             udevrulesdir)
+ conf.set_quoted('USER_CONFIG_UNIT_DIR',                       pkgsysconfdir / 'user')
+-conf.set_quoted('USER_DATA_UNIT_DIR',                         userunitdir)
+-conf.set_quoted('USER_ENV_GENERATOR_DIR',                     userenvgeneratordir)
+-conf.set_quoted('USER_GENERATOR_DIR',                         usergeneratordir)
++conf.set_quoted('USER_DATA_UNIT_DIR',                         '/usr/lib/systemd/user')
++conf.set_quoted('USER_ENV_GENERATOR_DIR',                     '/usr/lib/systemd/user-environment-generators')
++conf.set_quoted('USER_GENERATOR_DIR',                         '/usr/lib/systemd/user-generators')
+ conf.set_quoted('USER_KEYRING_PATH',                          pkgsysconfdir / 'import-pubring.pgp')
+ conf.set_quoted('USER_KEYRING_PATH_LEGACY',                   pkgsysconfdir / 'import-pubring.gpg')
+ conf.set_quoted('USER_PRESET_DIR',                            userpresetdir)
+-conf.set_quoted('VARLINK_BRIDGES_DIR',                        varlinkbridgesdir)
++conf.set_quoted('VARLINK_BRIDGES_DIR',                        '/usr/lib/systemd/varlink-bridges')
+ conf.set_quoted('VENDOR_KEYRING_PATH',                        libexecdir / 'import-pubring.pgp')
+ 
+ conf.set('ANSI_OK_COLOR',                                     'ANSI_' + get_option('ok-color').underscorify().to_upper())
+--- a/src/libsystemd/sd-hwdb/hwdb-internal.h
++++ b/src/libsystemd/sd-hwdb/hwdb-internal.h
+@@ -85,4 +85,4 @@
+         "/etc/systemd/hwdb/hwdb.bin\0"          \
+         "/etc/udev/hwdb.bin\0"                  \
+         "/usr/lib/systemd/hwdb/hwdb.bin\0"      \
+-        UDEVLIBEXECDIR "/hwdb.bin\0"
++        "/usr/lib/udev/hwdb.bin\0"
+--- a/src/libsystemd/sd-path/sd-path.c
++++ b/src/libsystemd/sd-path/sd-path.c
+@@ -183,7 +183,7 @@
+                 return 0;
+ 
+         case SD_PATH_SYSTEM_LIBRARY_ARCH:
+-                *ret = LIBDIR;
++                *ret = "/usr/lib";
+                 return 0;
+ 
+         case SD_PATH_SYSTEM_SHARED:
+@@ -286,7 +286,7 @@
+                 return from_xdg_user_dir("XDG_PROJECTS_DIR", buffer, ret);
+ 
+         case SD_PATH_SYSTEMD_UTIL:
+-                *ret = PREFIX_NOSLASH "/lib/systemd";
++                *ret = "/usr/lib/systemd";
+                 return 0;
+ 
+         case SD_PATH_SYSTEMD_SYSTEM_UNIT:
+@@ -294,7 +294,7 @@
+                 return 0;
+ 
+         case SD_PATH_SYSTEMD_SYSTEM_PRESET:
+-                *ret = PREFIX_NOSLASH "/lib/systemd/system-preset";
++                *ret = "/usr/lib/systemd/system-preset";
+                 return 0;
+ 
+         case SD_PATH_SYSTEMD_USER_UNIT:
+@@ -302,11 +302,11 @@
+                 return 0;
+ 
+         case SD_PATH_SYSTEMD_USER_PRESET:
+-                *ret = PREFIX_NOSLASH "/lib/systemd/user-preset";
++                *ret = "/usr/lib/systemd/user-preset";
+                 return 0;
+ 
+         case SD_PATH_SYSTEMD_INITRD_PRESET:
+-                *ret = PREFIX_NOSLASH "/lib/systemd/initrd-preset";
++                *ret = "/usr/lib/systemd/initrd-preset";
+                 return 0;
+ 
+         case SD_PATH_SYSTEMD_SYSTEM_CONF:
+@@ -326,11 +326,11 @@
+                 return 0;
+ 
+         case SD_PATH_SYSTEMD_SLEEP:
+-                *ret = PREFIX_NOSLASH "/lib/systemd/system-sleep";
++                *ret = "/usr/lib/systemd/system-sleep";
+                 return 0;
+ 
+         case SD_PATH_SYSTEMD_SHUTDOWN:
+-                *ret = PREFIX_NOSLASH "/lib/systemd/system-shutdown";
++                *ret = "/usr/lib/systemd/system-shutdown";
+                 return 0;
+ 
+         case SD_PATH_TMPFILES:
+@@ -338,19 +338,19 @@
+                 return 0;
+ 
+         case SD_PATH_SYSUSERS:
+-                *ret = PREFIX_NOSLASH "/lib/sysusers.d";
++                *ret = "/usr/lib/sysusers.d";
+                 return 0;
+ 
+         case SD_PATH_SYSCTL:
+-                *ret = PREFIX_NOSLASH "/lib/sysctl.d";
++                *ret = "/usr/lib/sysctl.d";
+                 return 0;
+ 
+         case SD_PATH_BINFMT:
+-                *ret = PREFIX_NOSLASH "/lib/binfmt.d";
++                *ret = "/usr/lib/binfmt.d";
+                 return 0;
+ 
+         case SD_PATH_MODULES_LOAD:
+-                *ret = PREFIX_NOSLASH "/lib/modules-load.d";
++                *ret = "/usr/lib/modules-load.d";
+                 return 0;
+ 
+         case SD_PATH_CATALOG:
+@@ -556,7 +556,7 @@
+                                                ".local/lib/" LIB_ARCH_TUPLE,
+                                                "LD_LIBRARY_PATH",
+                                                true,
+-                                               LIBDIR,
++                                               "/usr/lib",
+                                                NULL);
+ 
+         case SD_PATH_SEARCH_SHARED:

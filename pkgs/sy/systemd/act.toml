@@ -1,0 +1,81 @@
+tag     = "v{version}"
+track   = "github:systemd/systemd"
+fetch   = { archive = true }
+with    = [ "meson" ]
+deps    = [ "util-linux" ]
+tools   = [ "bash", "gperf", "cpython314", "python-jinja2" ]
+patches = [ "relocatable.patch", "journal-tests-tmpdir.patch" ]
+
+[only]
+os = [ "linux" ]
+
+[test]
+etc = true
+
+[steps.before]
+"meson.test" = [ "systemd.machine-id" ]
+
+[meson]
+installTags = [ "devel", "libsystemd", "libudev" ]
+suites      = [ "libsystemd", "libudev" ]
+
+[meson.defs]
+analyze                = false
+backlight              = false
+binfmt                 = false
+compat-sysv-interfaces = false
+coredump               = false
+create-log-dirs        = false
+efi                    = false
+environment-d          = false
+firstboot              = false
+fuzz-tests             = false
+hibernate              = false
+hostnamed              = false
+hwdb                   = false
+idn                    = false
+ima                    = false
+initrd                 = false
+install-sysconfdir     = false
+ipe                    = false
+kernel-install         = false
+ldconfig               = false
+libmount               = "enabled"
+localed                = false
+logind                 = false
+machined               = false
+mode                   = "release"
+mountfsd               = false
+networkd               = false
+nss-myhostname         = false
+nss-systemd            = false
+nsresourced            = false
+oomd                   = false
+portabled              = false
+pstore                 = false
+quotacheck             = false
+randomseed             = false
+resolve                = false
+rfkill                 = false
+rpmmacrosdir           = "no"
+smack                  = false
+split-bin              = "false"
+sshconfdir             = "no"
+sshdconfdir            = "no"
+storagetm              = false
+sysext                 = false
+sysinstall             = false
+sysusers               = false
+timedated              = false
+timesyncd              = false
+tmpfiles               = false
+tpm                    = false
+translations           = false
+userdb                 = false
+utmp                   = false
+vconsole               = false
+vcs-tag                = false
+xdg-autostart          = false
+
+[bindings]
+cargo = [ "libsystemd-sys", "libudev-sys" ]
