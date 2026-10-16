@@ -12,7 +12,10 @@ use std::{
       self,
       Write as _,
    },
-   os::unix::ffi::OsStrExt as _,
+   os::unix::{
+      ffi::OsStrExt as _,
+      fs::symlink,
+   },
    path::{
       Path,
       PathBuf,
@@ -157,7 +160,7 @@ impl Glibc {
                linux_headers.display()
             ))
             .args([
-               "--enable-kernel=5.10",
+               "--enable-kernel=3.10",
                "--disable-werror",
                "--disable-nscd",
                "--enable-bind-now",
@@ -210,6 +213,19 @@ impl Glibc {
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?
             .replace(&format!("{PREFIX}/lib/"), "");
          write_file(&library, text.as_bytes(), None)?;
+      }
+      let lib = out.join("lib");
+      // glibc 2.34 folded these into libc and stopped installing the
+      // linker names that -ldl and ctypes find_library still look up
+      for (name, soname) in [
+         ("libdl.so", "libdl.so.2"),
+         ("libpthread.so", "libpthread.so.0"),
+         ("librt.so", "librt.so.1"),
+         ("libutil.so", "libutil.so.1"),
+      ] {
+         if lib.join(soname).exists() {
+            symlink(soname, lib.join(name))?;
+         }
       }
       Ok(())
    }
