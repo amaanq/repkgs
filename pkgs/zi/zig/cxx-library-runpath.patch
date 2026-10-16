@@ -1,0 +1,17 @@
+Give the compiler a RUNPATH entry for a shared C++ library it links by path, so the
+stage3 binary in the build tree loads it from outside the default search path.
+
+--- a/build.zig
++++ b/build.zig
+@@ -1136,6 +1136,11 @@
+     // an explicit path to libc++.
+     exe.allow_so_scripts = true;
+     exe.root_module.addObjectFile(.{ .cwd_relative = path_unpadded });
++    if (mem.endsWith(u8, path_unpadded, exe.rootModuleTarget().dynamicLibSuffix())) {
++        const dir = fs.path.dirname(path_unpadded).?;
++        const real = try Io.Dir.realPathFileAbsoluteAlloc(b.graph.io, dir, arena);
++        exe.root_module.addRPath(.{ .cwd_relative = real });
++    }
+ 
+     // TODO a way to integrate with system c++ include files here
+     // c++ -E -Wp,-v -xc++ /dev/null

@@ -8,6 +8,7 @@ patches = [
   "ld-script-relative-members.patch",
   "native-interp-without-env.patch",
   "cache-input-digest.patch",
+  "cxx-library-runpath.patch",
 ]
 
 [test]
