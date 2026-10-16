@@ -2078,6 +2078,30 @@
           "default": [],
           "doc": "substrings of `meson test --list` names",
           "system": "meson"
+        },
+        {
+          "name": "suites",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "the `meson test --suite` names that run, every suite when empty",
+          "system": "meson"
+        },
+        {
+          "name": "installTags",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          },
+          "default": [],
+          "doc": "the `meson install --tags` that install, every tag when empty",
+          "system": "meson"
         }
       ]
     },

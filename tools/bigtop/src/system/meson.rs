@@ -70,6 +70,10 @@ options! {
          => "extra arguments for meson setup",
       skip_tests ("skipTests"): Vec<String> = Vec::new()
          => "substrings of `meson test --list` names",
+      suites ("suites"): Vec<String> = Vec::new()
+         => "the `meson test --suite` names that run, every suite when empty",
+      install_tags ("installTags"): Vec<String> = Vec::new()
+         => "the `meson install --tags` that install, every tag when empty",
    }
 }
 
@@ -132,9 +136,9 @@ impl System for Meson {
       match verb {
          "configure" => Self::configure(ctx, &options),
          "build" => run("ninja", &[&format!("-j{}", ctx.njobs)], &[]),
-         "test-prepare" => Self::list_tests(ctx),
+         "test-prepare" => Self::list_tests(ctx, &options),
          "test" => Self::test(ctx, &options),
-         "install" => run("meson", &["install", "--no-rebuild"], &[]),
+         "install" => Self::install(&options),
          _ => Err(unknown(self.name(), verb)),
       }
    }
@@ -286,13 +290,14 @@ impl Meson {
 
    /// Each test's command and working directory, a test without one running
    /// in the build directory, written where the test phase's tracer reads it.
-   fn list_tests(ctx: &Ctx) -> io::Result<()> {
+   fn list_tests(ctx: &Ctx, options: &Options) -> io::Result<()> {
       let output = Command::new("meson")
          .args(["introspect", "--tests"])
          .checked_output()?;
       let root = utf8(&ctx.build)?;
       let listed = serde_json::from_slice::<Vec<Introspected>>(&output)?
          .into_iter()
+         .filter(|test| options.runs(&test.suite))
          .map(|test| {
             Listed {
                cwd:  test.workdir.unwrap_or_else(|| root.to_owned()),
@@ -317,12 +322,19 @@ impl Meson {
          "--num-processes",
          &jobs,
       ];
+      let suites = options
+         .suites
+         .iter()
+         .flat_map(|suite| ["--suite", suite])
+         .collect::<Vec<&str>>();
+      args.extend(&suites);
       let mut kept = Vec::new();
       if let Some(selected) = test_cache::selected::<TestNames>()? {
          kept.extend(selected.into_iter().flat_map(|unit| unit.names));
       } else if !options.skip_tests.is_empty() {
          let listed = Command::new("meson")
             .args(["test", "--list"])
+            .args(&suites)
             .checked_output()?;
          kept.extend(
             strict(&listed, "meson test --list")?
@@ -338,6 +350,30 @@ impl Meson {
       args.extend(strs(&kept));
       run("meson", &args, &[])
    }
+
+   fn install(options: &Options) -> io::Result<()> {
+      let tags = options.install_tags.join(",");
+      let mut args = vec!["install", "--no-rebuild"];
+      if !tags.is_empty() {
+         args.extend(["--tags", &tags]);
+      }
+      run("meson", &args, &[])
+   }
+}
+
+impl Options {
+   /// meson names a suite `project:suite` in introspection and takes either
+   /// spelling on the command line.
+   fn runs(&self, suites: &[String]) -> bool {
+      self.suites.is_empty()
+         || suites.iter().any(|suite| {
+            let bare = suite.rsplit_once(':').map_or(suite.as_str(), |pair| pair.1);
+            self
+               .suites
+               .iter()
+               .any(|wanted| wanted == suite || wanted == bare)
+         })
+   }
 }
 
 /// Where `test-prepare` leaves meson's tests.
@@ -348,6 +384,7 @@ struct Introspected {
    name:    String,
    cmd:     Vec<String>,
    workdir: Option<String>,
+   suite:   Vec<String>,
 }
 
 #[derive(Deserialize, Serialize)]
