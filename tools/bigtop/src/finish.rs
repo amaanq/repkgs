@@ -610,6 +610,12 @@ fn version_check(spec: &Spec, ctx: &Ctx, platform: &Platform, top: &str) -> io::
    {
       return Ok(());
    }
+   if bins.is_empty() && line == VersionCheck::Enabled(true) {
+      return Err(io::Error::other(format!(
+         "version check: there is no bin/{}{exe}, name the programs with [test] bin",
+         spec.name
+      )));
+   }
 
    let given = match line {
       VersionCheck::Enabled(_) => vec!["--version".to_owned()],
