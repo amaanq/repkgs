@@ -340,7 +340,13 @@ impl Meson {
             strict(&listed, "meson test --list")?
                .lines()
                .filter(|name| !options.skip_tests.iter().any(|skip| name.contains(skip)))
-               .map(str::to_owned),
+               // `--list` prefixes the suites, `suite+suite - project:name`
+               .map(|line| {
+                  line
+                     .split_once(" - ")
+                     .map_or(line, |(_, name)| name)
+                     .to_owned()
+               }),
          );
          if kept.is_empty() {
             note("meson-test", "every test matches meson.skipTests");
