@@ -289,7 +289,7 @@ diff -ruN a/Modules/getpath.py b/Modules/getpath.py
      # QUIRK: On macOS we may know the real executable path, but
      # if our caller has lied to us about it (e.g. most of
      # test_embed), we need to use their path in order to detect
-@@ -598,11 +598,6 @@
+@@ -598,11 +598,11 @@
          if prefix and not stdlib_dir:
              stdlib_dir = joinpath(prefix, STDLIB_SUBDIR)
  
@@ -297,11 +297,15 @@ diff -ruN a/Modules/getpath.py b/Modules/getpath.py
 -        prefix = PREFIX
 -        if not any(isfile(joinpath(prefix, f)) for f in STDLIB_LANDMARKS):
 -            warn('Could not find platform independent libraries <prefix>')
--
++    if STDLIB_SUBDIR and STDLIB_LANDMARKS and library and not prefix:
++        prefix = search_up(dirname(library), *STDLIB_LANDMARKS)
++        if prefix and not stdlib_dir:
++            stdlib_dir = joinpath(prefix, STDLIB_SUBDIR)
+ 
      if not prefix:
          prefix = abspath('')
          warn('Could not find platform independent libraries <prefix>')
-@@ -619,8 +614,6 @@
+@@ -619,8 +619,6 @@
              exec_prefix = prefix
          if not exec_prefix and executable_dir:
              exec_prefix = search_up(executable_dir, PLATSTDLIB_LANDMARK, test=isdir)
@@ -310,7 +314,7 @@ diff -ruN a/Modules/getpath.py b/Modules/getpath.py
          if not exec_prefix or not isdir(joinpath(exec_prefix, PLATSTDLIB_LANDMARK)):
              if os_name == 'nt':
                  # QUIRK: If DLLs is missing on Windows, don't warn, just assume
-@@ -693,7 +686,7 @@
+@@ -693,7 +691,7 @@
          pythonpath.append(joinpath(library_dir, ZIP_LANDMARK))
      elif build_prefix:
          # QUIRK: POSIX uses the default prefix when in the build directory
@@ -319,7 +323,7 @@ diff -ruN a/Modules/getpath.py b/Modules/getpath.py
      else:
          pythonpath.append(joinpath(base_prefix, ZIP_LANDMARK))
  
-@@ -769,10 +762,10 @@
+@@ -769,10 +767,10 @@
  # Virtual environments using the build directory Python still keep their prefix.
  if os_name != 'nt' and build_prefix:
      if not venv_prefix:
