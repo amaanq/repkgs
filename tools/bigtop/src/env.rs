@@ -20,6 +20,7 @@ use std::{
 use mummer::{
    config::{
       BinaryFormat,
+      Config,
       PackageFlags,
    },
    files::{
@@ -301,6 +302,12 @@ fn package_cc(
       .collect::<Vec<String>>();
    ldflags.extend(harden(Line::Link));
    ldflags.extend(given(|found| found.ldflags.as_deref().unwrap_or_default()));
+   let cc_path = find_tool(bins, "cc").ok_or_else(|| io::Error::other("cc not on PATH"))?;
+   let resolved = canonicalize(&cc_path)?;
+   let installation = resolved
+      .parent()
+      .and_then(Path::parent)
+      .ok_or_else(|| io::Error::other("cc has no installation root"))?;
    match cc.and_then(|found| found.linker) {
       None | Some(Linker::Lld) => {},
       Some(Linker::Wild) => {
@@ -312,14 +319,21 @@ fn package_cc(
          let wild = find_tool(bins, "wild")
             .ok_or_else(|| io::Error::other("[cc] linker = \"wild\" needs wild in tools"))?;
          ldflags.push(format!("--ld-path={}", wild.display()));
+         // the toolchain's -fuse-ld=lld keeps clang from passing -plugin
+         // itself, and wild loads the plugin only once an input holds
+         // LLVM IR
+         let config = read_to_string(installation.join("etc/mummer.json"))?;
+         let clang = serde_json::from_str::<Config>(&config)
+            .map_err(|error| io::Error::other(format!("invalid mummer.json, {error}")))?
+            .cc;
+         let plugin = Path::new(&clang)
+            .parent()
+            .and_then(Path::parent)
+            .ok_or_else(|| io::Error::other("the toolchain's clang has no installation root"))?
+            .join("lib/LLVMgold.so");
+         ldflags.push(format!("-Wl,-plugin,{}", utf8(&plugin)?));
       },
    }
-   let cc_path = find_tool(bins, "cc").ok_or_else(|| io::Error::other("cc not on PATH"))?;
-   let resolved = canonicalize(&cc_path)?;
-   let installation = resolved
-      .parent()
-      .and_then(Path::parent)
-      .ok_or_else(|| io::Error::other("cc has no installation root"))?;
    let root = utf8(installation)?.to_owned();
    let flags = BTreeMap::from([(root, PackageFlags {
       cflags,
