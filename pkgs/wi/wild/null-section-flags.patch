@@ -1,0 +1,38 @@
+Write zero flags and address for section header 0. It took the SHF_ALLOC flag and, in
+non-PIE executables, the load address of the file header, which shares its output section
+id, and eu-elflint rejects a null section with either.
+
+--- a/libwild/src/elf_writer.rs
++++ b/libwild/src/elf_writer.rs
+@@ -5722,7 +5722,11 @@
+         };
+         entry.set_type(sh_type);
+ 
+-        let mut flags = output_sections.section_flags(section_id);
++        let mut flags = if section_type == sht::NULL {
++            object::elf::SectionFlags(0)
++        } else {
++            output_sections.section_flags(section_id)
++        };
+ 
+         if layout.compressed_debug_sections.get(section_id).is_some() {
+             flags = flags.with(shf::COMPRESSED);
+@@ -5759,11 +5763,13 @@
+             }
+         }
+ 
+-        entry.set_address(if layout.symbol_db.args.should_output_partial_object() {
+-            0
+-        } else {
+-            section_layout.mem_offset
+-        })?;
++        entry.set_address(
++            if section_type == sht::NULL || layout.symbol_db.args.should_output_partial_object() {
++                0
++            } else {
++                section_layout.mem_offset
++            },
++        )?;
+         entry.set_offset(section_layout.file_offset as u64)?;
+         entry.set_size(size)?;
+         entry.set_link(link);
