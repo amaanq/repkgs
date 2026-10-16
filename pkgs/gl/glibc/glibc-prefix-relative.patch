@@ -139,8 +139,8 @@
 +/* PATH with the prefix glibc was configured for replaced by the one libc.so
 +   is installed under now, kept in *CACHE once known.  A static program
 +   cannot know where it was copied and gets /dev/null instead.  */
-+extern const char *__libc_prefix_path (const char *path, const char **cache)
-+  attribute_hidden;
++extern const char *__libc_prefix_path (const char *path, const char **cache);
++libc_hidden_proto (__libc_prefix_path)
 +
 +#define LIBC_PREFIX_PATH(path)						      \
 +  ({ static const char *libc_prefix_cache;				      \
@@ -149,7 +149,7 @@
 +#endif /* libc-prefix.h */
 --- /dev/null
 +++ b/misc/libc-prefix.c
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,89 @@
 +/* Rewriting configured data paths for the prefix libc.so runs from.  */
 +
 +#include <atomic.h>
@@ -238,6 +238,7 @@
 +      }
 +  return rewritten;
 +}
++libc_hidden_def (__libc_prefix_path)
 --- a/misc/Makefile
 +++ b/misc/Makefile
 @@ -128,6 +128,7 @@
@@ -469,3 +470,384 @@
  	{
  	  __libc_rwlock_unlock (__libc_setlocale_lock);
  	  return NULL;
+--- a/misc/Versions
++++ b/misc/Versions
+@@ -173,5 +173,6 @@
+     __sched_get_priority_min; __sched_get_priority_max;
+     __libc_allocate_once_slow;
+     __libc_unwind_link_get;
++    __libc_prefix_path;
+   }
+ }
+--- a/iconv/iconvconfig.c
++++ b/iconv/iconvconfig.c
+@@ -36,6 +36,7 @@
+ 
+ #include "iconvconfig.h"
+ #include <gconv_parseconfdir.h>
++#include <libc-prefix.h>
+ 
+ /* Get libc version number.  */
+ #include "../version.h"
+@@ -309,7 +310,8 @@
+   if (! nostdlib)
+     {
+       /* In any case also handle the standard directory.  */
+-      char *path = strdupa (GCONV_PATH), *tp = strsep (&path, ":");
++      char *path = strdupa (LIBC_PREFIX_PATH (GCONV_PATH));
++      char *tp = strsep (&path, ":");
+       while (tp != NULL)
+ 	{
+ 	  status |= handle_dir (tp);
+@@ -1012,18 +1014,18 @@
+   struct iovec iov[6];
+   static const gidx_t null_word;
+   size_t total;
+-  char finalname[prefix_len + sizeof GCONV_MODULES_CACHE];
++  const char *cache_name = LIBC_PREFIX_PATH (GCONV_MODULES_CACHE);
++  char finalname[prefix_len + strlen (cache_name) + 1];
+   char tmpfname[(output_file == NULL ? sizeof finalname : output_file_len + 1)
+ 		+ strlen (".XXXXXX")];
+ 
+   /* Open the output file.  */
+   if (output_file == NULL)
+     {
+-      assert (GCONV_MODULES_CACHE[0] == '/');
+-      strcpy (stpcpy (mempcpy (tmpfname, prefix, prefix_len),
+-		      GCONV_MODULES_CACHE),
++      assert (cache_name[0] == '/');
++      strcpy (stpcpy (mempcpy (tmpfname, prefix, prefix_len), cache_name),
+ 	      ".XXXXXX");
+-      strcpy (mempcpy (finalname, prefix, prefix_len), GCONV_MODULES_CACHE);
++      strcpy (mempcpy (finalname, prefix, prefix_len), cache_name);
+     }
+   else
+     strcpy (mempcpy (tmpfname, output_file, output_file_len), ".XXXXXX");
+--- a/locale/Makefile
++++ b/locale/Makefile
+@@ -163,11 +163,6 @@
+ 	$(PYTHON) gen-translit.py < $< > $@.tmp
+ 	mv -f $@.tmp $@
+ 
+-# The path to the compiled binary locale archive or compiled locales,
+-# along with the parent path to the source locales and source
+-# charmaps.
+-localepath = "$(complocaledir):$(i18ndir)"
+-
+ # -Iprograms doesn't really belong here, but this gets it at the head
+ # of the list instead of the tail, where CPPFLAGS-$(lib) gets added.
+ # We need it before the standard -I's to see programs/config.h first.
+@@ -175,7 +170,7 @@
+ 		  -DLOCALE_ALIAS_PATH='"$(localedir)"' \
+ 		  -Iprograms
+ 
+-CPPFLAGS-locale-programs = -DLOCALE_PATH='$(localepath)' \
++CPPFLAGS-locale-programs = -DI18NDIR='"$(i18ndir)"' \
+ 			   -DCHARMAP_PATH='"$(i18ndir)/charmaps"' \
+ 			   -DREPERTOIREMAP_PATH='"$(i18ndir)/repertoiremaps"' \
+ 			   -DLOCSRCDIR='"$(i18ndir)/locales"'
+--- a/locale/programs/charmap.c
++++ b/locale/programs/charmap.c
+@@ -33,6 +33,7 @@
+ #include "charmap-dir.h"
+ 
+ #include <assert.h>
++#include <libc-prefix.h>
+ 
+ 
+ /* Define the lookup function.  */
+@@ -89,6 +90,7 @@
+ 	      int be_quiet, int use_default)
+ {
+   struct charmap_t *result = NULL;
++  const char *charmap_path = LIBC_PREFIX_PATH (CHARMAP_PATH);
+ 
+   if (filename != NULL)
+     {
+@@ -125,7 +127,7 @@
+ 
+ 	      if (cmfile == NULL)
+ 		/* Try the default directory.  */
+-		cmfile = cmlr_open (CHARMAP_PATH, filename, charmap_hash);
++		cmfile = cmlr_open (charmap_path, filename, charmap_hash);
+ 	    }
+ 	}
+ 
+@@ -145,7 +147,7 @@
+ 	 file name.  */
+       CHARMAP_DIR *dir;
+ 
+-      dir = charmap_opendir (CHARMAP_PATH);
++      dir = charmap_opendir (charmap_path);
+       if (dir != NULL)
+ 	{
+ 	  const char *dirent;
+@@ -156,7 +158,7 @@
+ 	      char **p;
+ 	      int found;
+ 
+-	      aliases = charmap_aliases (CHARMAP_PATH, dirent);
++	      aliases = charmap_aliases (charmap_path, dirent);
+ 	      found = 0;
+ 	      for (p = aliases; *p; p++)
+ 		if (strcasecmp (*p, filename) == 0)
+@@ -170,7 +172,7 @@
+ 		{
+ 		  struct linereader *cmfile;
+ 
+-		  cmfile = cmlr_open (CHARMAP_PATH, dirent, charmap_hash);
++		  cmfile = cmlr_open (charmap_path, dirent, charmap_hash);
+ 		  if (cmfile != NULL)
+ 		    result = parse_charmap (cmfile, verbose, be_quiet);
+ 
+@@ -186,7 +188,7 @@
+     {
+       struct linereader *cmfile;
+ 
+-      cmfile = cmlr_open (CHARMAP_PATH, DEFAULT_CHARMAP, charmap_hash);
++      cmfile = cmlr_open (charmap_path, DEFAULT_CHARMAP, charmap_hash);
+       if (cmfile != NULL)
+ 	result = parse_charmap (cmfile, verbose, be_quiet);
+ 
+--- a/locale/programs/locale.c
++++ b/locale/programs/locale.c
+@@ -44,8 +44,9 @@
+ #include "charmap-dir.h"
+ #include "../locarchive.h"
+ #include <programs/xmalloc.h>
++#include <libc-prefix.h>
+ 
+-#define ARCHIVE_NAME COMPLOCALEDIR "/locale-archive"
++#define ARCHIVE_NAME LIBC_PREFIX_PATH (COMPLOCALEDIR "/locale-archive")
+ 
+ /* If set print the name of the category.  */
+ static int show_category_name;
+@@ -321,10 +322,11 @@
+       else
+ 	{
+ 	  struct stat64 st;
+-	  char buf[sizeof (COMPLOCALEDIR)
++	  const char *complocaledir = LIBC_PREFIX_PATH (COMPLOCALEDIR);
++	  char buf[strlen (complocaledir) + 1
+ 		   + strlen (dirent->d_name) + 1];
+ 
+-	  stpcpy (stpcpy (stpcpy (buf, COMPLOCALEDIR), "/"),
++	  stpcpy (stpcpy (stpcpy (buf, complocaledir), "/"),
+ 		  dirent->d_name);
+ 
+ 	  if (stat64 (buf, &st) == 0)
+@@ -442,20 +444,21 @@
+     first_locale = 0;
+ 
+   /* Now we can look for all files in the directory.  */
+-  ndirents = scandir (COMPLOCALEDIR, &dirents, select_dirs,
++  const char *complocaledir = LIBC_PREFIX_PATH (COMPLOCALEDIR);
++  ndirents = scandir (complocaledir, &dirents, select_dirs,
+ 		      alphasort);
+   for (cnt = 0; cnt < ndirents; ++cnt)
+     {
+       /* Test whether at least the LC_CTYPE data is there.  Some
+ 	 directories only contain translations.  */
+-      char buf[sizeof (COMPLOCALEDIR)
++      char buf[strlen (complocaledir) + 1
+ 	       + strlen (dirents[cnt]->d_name)
+ 	       + sizeof "/LC_IDENTIFICATION"];
+       char *enddir;
+       struct stat64 st;
+ 
+       stpcpy (enddir = stpcpy (stpcpy (stpcpy (buf,
+-					       COMPLOCALEDIR),
++					       complocaledir),
+ 					       "/"),
+ 			       dirents[cnt]->d_name),
+ 	      "/LC_IDENTIFICATION");
+@@ -517,7 +520,8 @@
+     free (dirents);
+ 
+   /* Now read the locale.alias files.  */
+-  if (argz_create_sep (LOCALE_ALIAS_PATH, ':', &alias_path, &alias_path_len))
++  if (argz_create_sep (LIBC_PREFIX_PATH (LOCALE_ALIAS_PATH), ':', &alias_path,
++		       &alias_path_len))
+     error (1, errno, gettext ("while preparing output"));
+ 
+   entry = NULL;
+@@ -699,8 +703,8 @@
+ 	  if (cnt)
+ 	    putchar_unlocked ('\n');
+ 
+-	  printf ("locale: %-15.15s archive: " ARCHIVE_NAME "\n%s\n",
+-		  names[cnt].name, linebuf);
++	  printf ("locale: %-15.15s archive: %s\n%s\n",
++		  names[cnt].name, ARCHIVE_NAME, linebuf);
+ 
+ 	  locrec = (struct locrecent *) (addr + names[cnt].locrec_offset);
+ 
+@@ -735,7 +739,7 @@
+   const char *dirent;
+ 
+   /* Look for all files in the charmap directory.  */
+-  dir = charmap_opendir (CHARMAP_PATH);
++  dir = charmap_opendir (LIBC_PREFIX_PATH (CHARMAP_PATH));
+   if (dir == NULL)
+     return;
+ 
+@@ -746,7 +750,7 @@
+ 
+       PUT (xstrdup (dirent));
+ 
+-      aliases = charmap_aliases (CHARMAP_PATH, dirent);
++      aliases = charmap_aliases (LIBC_PREFIX_PATH (CHARMAP_PATH), dirent);
+ 
+ #if 0
+       /* Add the code_set_name and the aliases.  */
+--- a/locale/programs/localedef.c
++++ b/locale/programs/localedef.c
+@@ -40,6 +40,7 @@
+ /* Undefine the following line in the production version.  */
+ /* #define NDEBUG 1 */
+ #include <assert.h>
++#include <libc-prefix.h>
+ 
+ 
+ /* List of copied locales.  */
+@@ -429,6 +430,7 @@
+ {
+   char *cp;
+   char *tp;
++  char *locale_path;
+ 
+   switch (key)
+     {
+@@ -437,12 +439,16 @@
+       tp = xasprintf (gettext ("\
+ For bug reporting instructions, please see:\n\
+ %s.\n"), REPORT_BUGS_TO);
++      locale_path = xasprintf ("%s:%s", LIBC_PREFIX_PATH (COMPLOCALEDIR),
++			       LIBC_PREFIX_PATH (I18NDIR));
+       cp = xasprintf (gettext ("\
+ System's directory for character maps : %s\n\
+ 		       repertoire maps: %s\n\
+ 		       locale path    : %s\n\
+ %s"),
+-		    CHARMAP_PATH, REPERTOIREMAP_PATH, LOCALE_PATH, tp);
++		    LIBC_PREFIX_PATH (CHARMAP_PATH),
++		    LIBC_PREFIX_PATH (REPERTOIREMAP_PATH), locale_path, tp);
++      free (locale_path);
+       free (tp);
+       return cp;
+     default:
+@@ -513,10 +519,10 @@
+ 
+       if (normal == NULL)
+ 	result = xasprintf ("%s%s/%s/", output_prefix ?: "",
+-			    COMPLOCALEDIR, path);
++			    LIBC_PREFIX_PATH (COMPLOCALEDIR), path);
+       else
+ 	result = xasprintf ("%s%s/%.*s%s%s/",
+-			    output_prefix ?: "", COMPLOCALEDIR,
++			    output_prefix ?: "", LIBC_PREFIX_PATH (COMPLOCALEDIR),
+ 			    (int) (startp - path), path, normal, endp ?: "");
+       /* Free the allocated normalized codeset name.  */
+       free (normal);
+--- a/locale/programs/locarchive.c
++++ b/locale/programs/locarchive.c
+@@ -46,6 +46,7 @@
+ #include "../locarchive.h"
+ #include "localedef.h"
+ #include "locfile.h"
++#include <libc-prefix.h>
+ 
+ /* Define the hash function.  We define the function as static inline.
+    We must change the name so as not to conflict with simple-hash.h.  */
+@@ -56,7 +57,7 @@
+ 
+ extern const char *output_prefix;
+ 
+-#define ARCHIVE_NAME COMPLOCALEDIR "/locale-archive"
++#define ARCHIVE_NAME LIBC_PREFIX_PATH (COMPLOCALEDIR "/locale-archive")
+ 
+ static const char *locnames[] =
+   {
+@@ -339,12 +340,13 @@
+   struct namehashent *oldnamehashtab;
+   struct locarhandle new_ah;
+   size_t prefix_len = output_prefix ? strlen (output_prefix) : 0;
+-  char archivefname[prefix_len + sizeof (ARCHIVE_NAME)];
+-  char fname[prefix_len + sizeof (ARCHIVE_NAME) + sizeof (".XXXXXX") - 1];
++  const char *archive_name = ARCHIVE_NAME;
++  char archivefname[prefix_len + strlen (archive_name) + 1];
++  char fname[prefix_len + strlen (archive_name) + sizeof (".XXXXXX")];
+ 
+   if (output_prefix)
+     memcpy (archivefname, output_prefix, prefix_len);
+-  strcpy (archivefname + prefix_len, ARCHIVE_NAME);
++  strcpy (archivefname + prefix_len, archive_name);
+   strcpy (stpcpy (fname, archivefname), ".XXXXXX");
+ 
+   /* Not all of the old file has to be mapped.  Change this now this
+@@ -562,7 +564,8 @@
+   struct locarhead head;
+   int retry = 0;
+   size_t prefix_len = output_prefix ? strlen (output_prefix) : 0;
+-  char default_fname[prefix_len + sizeof (ARCHIVE_NAME)];
++  const char *archive_name = ARCHIVE_NAME;
++  char default_fname[prefix_len + strlen (archive_name) + 1];
+   const char *archivefname = ah->fname;
+ 
+   /* If ah has a non-NULL fname open that otherwise open the default.  */
+@@ -571,7 +574,7 @@
+       archivefname = default_fname;
+       if (output_prefix)
+         memcpy (default_fname, output_prefix, prefix_len);
+-      strcpy (default_fname + prefix_len, ARCHIVE_NAME);
++      strcpy (default_fname + prefix_len, archive_name);
+     }
+ 
+   while (1)
+--- a/locale/programs/locfile.c
++++ b/locale/programs/locfile.c
+@@ -37,6 +37,7 @@
+ 
+ #include "locfile-kw.h"
+ #include "md5.h"
++#include <libc-prefix.h>
+ 
+ #define obstack_chunk_alloc xmalloc
+ #define obstack_chunk_free free
+@@ -93,9 +94,10 @@
+ 	  /* Test in the default directory.  */
+ 	  if (ldfile == NULL)
+ 	    {
+-	      char path[strlen (filename) + 1 + sizeof (LOCSRCDIR)];
++	      const char *dir = LIBC_PREFIX_PATH (LOCSRCDIR);
++	      char path[strlen (filename) + 1 + strlen (dir) + 1];
+ 
+-	      stpcpy (stpcpy (stpcpy (path, LOCSRCDIR), "/"), filename);
++	      stpcpy (stpcpy (stpcpy (path, dir), "/"), filename);
+ 	      ldfile = lr_open (path, locfile_hash);
+ 	    }
+ 	}
+--- a/locale/programs/repertoire.c
++++ b/locale/programs/repertoire.c
+@@ -32,6 +32,7 @@
+ #include "charmap.h"
+ #include "repertoire.h"
+ #include "simple-hash.h"
++#include <libc-prefix.h>
+ 
+ 
+ /* Simple keyword hashing for the repertoiremap.  */
+@@ -104,10 +105,10 @@
+ 	  if (repfile == NULL)
+ 	    {
+ 	      /* Look in the systems charmap directory.  */
+-	      char *buf = xmalloc (strlen (filename) + 1
+-				   + sizeof (REPERTOIREMAP_PATH));
++	      const char *dir = LIBC_PREFIX_PATH (REPERTOIREMAP_PATH);
++	      char *buf = xmalloc (strlen (filename) + 1 + strlen (dir) + 1);
+ 
+-	      stpcpy (stpcpy (stpcpy (buf, REPERTOIREMAP_PATH), "/"),
++	      stpcpy (stpcpy (stpcpy (buf, dir), "/"),
+ 		      filename);
+ 	      repfile = lr_open (buf, repertoiremap_hash);
+ 
