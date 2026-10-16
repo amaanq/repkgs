@@ -2,7 +2,7 @@ track   = "pypi:greenlet"
 fetch   = { sdist = true }
 with    = [ "python" ]
 tools   = [ "python-setuptools" ]
-patches = [ "uss-counts-swap.patch" ]
+patches = [ "uss-counts-swap.patch", "uss-trims-malloc.patch" ]
 
 [test]
 deps = [ "python-objgraph", "python-psutil" ]

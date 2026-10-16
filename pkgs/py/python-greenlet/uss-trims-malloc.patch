@@ -1,0 +1,18 @@
+--- a/src/greenlet/tests/__init__.py
++++ b/src/greenlet/tests/__init__.py
+@@ -3,6 +3,7 @@
+ Tests for greenlet.
+ 
+ """
++import ctypes
+ import os
+ import sys
+ import sysconfig
+@@ -208,6 +209,7 @@
+         If this is not supported by ``psutil``, this raises the
+         :exc:`unittest.SkipTest` exception.
+         """
++        getattr(ctypes.CDLL(None), "malloc_trim", lambda pad: 0)(0)
+         try:
+             info = psutil.Process().memory_full_info()
+             return info.uss + getattr(info, "swap", 0)
