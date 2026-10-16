@@ -37,10 +37,17 @@ from = "github:Mic92/nix-1?branch=repkgs"
 base = "2.36.0"
 
 [meson.defs]
-doc-gen            = false
-functional-tests   = false
-json-schema-checks = false
-"nix:mimalloc"     = "enabled"
+doc-gen                = false
+functional-tests       = false
+json-schema-checks     = false
+"libstore:s3-aws-auth" = "disabled"
+"nix:mimalloc"         = "enabled"
+
+[on.cross.meson.defs]
+"libutil:cpuid" = "disabled"
+
+[on."!linux".meson.defs]
+"libstore:seccomp-sandboxing" = "disabled"
 
 [test]
 deps     = [ "bash", "bzip2", "git", "gnutar", "grep-full", "jq", "openssh", "openssl", "sqlite", "util-linux", "xz" ]

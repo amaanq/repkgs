@@ -5,6 +5,7 @@ with = [ "meson" ]
 deps = [
   "elfutils",
   "expat",
+  "libdisplay-info",
   "libdrm",
   "libx11",
   "libxcb",
@@ -37,24 +38,30 @@ os = [ "linux" ]
 version = false
 
 [meson.defs]
-allow-kcmp      = "enabled"
-amd-use-llvm    = false
-build-tests     = false
-egl             = "enabled"
-expat           = "enabled"
-gallium-drivers = "radeonsi,softpipe"
-gallium-va      = "disabled"
-gbm             = "enabled"
-gles1           = "disabled"
-gles2           = "enabled"
-glvnd           = "disabled"
-libunwind       = "disabled"
-llvm            = "disabled"
-lmsensors       = "disabled"
-platforms       = "x11,wayland"
-shader-cache    = "enabled"
-shared-glapi    = "enabled"
-valgrind        = "disabled"
-vulkan-drivers  = "amd"
-xmlconfig       = "enabled"
-zstd            = "enabled"
+allow-kcmp              = "enabled"
+amd-use-llvm            = false
+android-libbacktrace    = "disabled"
+android-libperfetto     = "disabled"
+build-tests             = false
+egl                     = "enabled"
+expat                   = "enabled"
+gallium-drivers         = "radeonsi,softpipe"
+gallium-mediafoundation = "disabled"
+gallium-va              = "disabled"
+gbm                     = "enabled"
+gles1                   = "disabled"
+gles2                   = "enabled"
+glvnd                   = "disabled"
+intel-rt                = "disabled"
+libunwind               = "disabled"
+llvm                    = "disabled"
+lmsensors               = "disabled"
+microsoft-clc           = "disabled"
+platforms               = "x11,wayland"
+shader-cache            = "enabled"
+shared-glapi            = "enabled"
+spirv-tools             = "disabled"
+valgrind                = "disabled"
+vulkan-drivers          = "amd"
+xmlconfig               = "enabled"
+zstd                    = "enabled"

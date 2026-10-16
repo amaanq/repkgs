@@ -2,6 +2,16 @@ tag     = "{version}"
 track   = "gitlab:pipewire/pipewire?repository_url=https://gitlab.freedesktop.org"
 fetch   = { url = "https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/{version}/pipewire-{version}.tar.gz" }
 with    = [ "meson" ]
+deps    = [
+  "alsa-lib",
+  "glib",
+  "libusb",
+  "libx11",
+  "libxfixes",
+  "openssl",
+  "readline",
+  "systemd",
+]
 patches = [ "relocatable.patch" ]
 
 [only]
@@ -12,16 +22,48 @@ bin     = [ "pipewire" ]
 version = "--version"
 
 [meson.defs]
-dbus             = "disabled"
-examples         = "disabled"
-flatpak          = "disabled"
-legacy-rtkit     = false
-pipewire-jack    = "disabled"
-pipewire-v4l2    = "disabled"
-rlimits-install  = false
-session-managers = ""
-sysconfdir       = "/etc"
-tests            = "enabled"
+avahi                     = "disabled"
+bluez5                    = "disabled"
+bluez5-codec-aac          = "disabled"
+bluez5-codec-aptx         = "disabled"
+bluez5-codec-g722         = "disabled"
+bluez5-codec-lc3          = "disabled"
+bluez5-codec-lc3plus      = "disabled"
+bluez5-codec-ldac         = "disabled"
+bluez5-codec-ldac-dec     = "disabled"
+bluez5-codec-opus         = "disabled"
+bluez5-plc-spandsp        = "disabled"
+dbus                      = "disabled"
+ebur128                   = "disabled"
+echo-cancel-webrtc        = "disabled"
+examples                  = "disabled"
+fftw                      = "disabled"
+flatpak                   = "disabled"
+gsettings-pulse-schema    = "disabled"
+gstreamer                 = "disabled"
+gstreamer-device-provider = "disabled"
+jack                      = "disabled"
+legacy-rtkit              = false
+libcamera                 = "disabled"
+libcanberra               = "disabled"
+libffado                  = "disabled"
+libmysofa                 = "disabled"
+libpulse                  = "disabled"
+lv2                       = "disabled"
+onnxruntime               = "disabled"
+opus                      = "disabled"
+pipewire-jack             = "disabled"
+pipewire-v4l2             = "disabled"
+pw-cat                    = "disabled"
+rlimits-install           = false
+roc                       = "disabled"
+sdl2                      = "disabled"
+selinux                   = "disabled"
+session-managers          = ""
+snap                      = "disabled"
+sndfile                   = "disabled"
+sysconfdir                = "/etc"
+tests                     = "enabled"
 
 [bindings]
 cargo = [ "libspa-sys", "pipewire-sys" ]

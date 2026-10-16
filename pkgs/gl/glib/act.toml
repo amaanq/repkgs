@@ -23,15 +23,18 @@ separate = true
 "meson.test" = [ "glib.test" ]
 
 [on.linux]
+deps  = [ "elfutils" ]
 tools = [ "gettext" ]
 
 [on.linux.meson.defs]
-nls = "enabled"
+libelf = "enabled"
+nls    = "enabled"
 
 [meson.defs]
 documentation = false
 dtrace        = "disabled"
 introspection = "disabled"
+libelf        = "disabled"
 libmount      = "disabled"
 localstatedir = "/var"
 man-pages     = "disabled"

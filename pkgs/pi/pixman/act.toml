@@ -7,5 +7,32 @@ deps  = [ "libpng" ]
 separate = true
 
 [meson.defs]
-libpng = "enabled"
-tests  = "enabled"
+a64-neon     = "disabled"
+arm-simd     = "disabled"
+demos        = "disabled"
+gtk          = "disabled"
+libpng       = "enabled"
+loongson-mmi = "disabled"
+mips-dspr2   = "disabled"
+mmx          = "disabled"
+neon         = "disabled"
+openmp       = "disabled"
+rvv          = "disabled"
+sse2         = "disabled"
+ssse3        = "disabled"
+tests        = "enabled"
+vmx          = "disabled"
+
+[on.aarch64.meson.defs]
+a64-neon = "enabled"
+
+[on.powerpc64le.meson.defs]
+vmx = "enabled"
+
+[on.riscv64.meson.defs]
+rvv = "enabled"
+
+[on.x86_64.meson.defs]
+mmx   = "enabled"
+sse2  = "enabled"
+ssse3 = "enabled"

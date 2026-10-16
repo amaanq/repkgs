@@ -2,6 +2,7 @@ track   = 'generic:seatd?url=https://git.sr.ht/~kennylevinsen/seatd/refs&regex=/
 fetch   = { url = "https://git.sr.ht/~kennylevinsen/seatd/archive/{version}.tar.gz" }
 with    = [ "meson" ]
 deps    = [ "systemd" ]
+tools   = [ "scdoc" ]
 patches = [ "relocatable.patch" ]
 
 [only]

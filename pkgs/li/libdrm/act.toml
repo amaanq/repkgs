@@ -12,6 +12,10 @@ install-test-programs = true
 radeon                = "enabled"
 amdgpu                = "enabled"
 nouveau               = "enabled"
+cairo-tests           = "disabled"
+intel                 = "disabled"
+man-pages             = "disabled"
+valgrind              = "disabled"
 
 [on.x86_64]
 deps = [ "libpciaccess" ]

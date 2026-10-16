@@ -1,7 +1,22 @@
 track = "generic:postgresql?url=https://ftp.postgresql.org/pub/source/&regex=v([0-9.]+)/"
 fetch = { url = "https://ftp.postgresql.org/pub/source/v{version}/postgresql-{version}.tar.bz2" }
 with  = [ "meson" ]
-deps  = [ "openssl", "zlib", "readline", "icu", "util-linux", "lz4", "zstd", "libxml2" ]
+deps  = [
+  "openssl",
+  "zlib",
+  "readline",
+  "icu",
+  "util-linux",
+  "lz4",
+  "zstd",
+  "libxml2",
+  "curl",
+  "krb5",
+  "libxslt",
+  "linux-pam",
+  "numactl",
+  "systemd",
+]
 tools = [ "bison", "flex", "perl", "tzdata", "gettext" ]
 test  = false
 
@@ -12,13 +27,24 @@ test  = false
 "meson.configure" = [ "postgresql.fixed-paths" ]
 
 [meson.defs]
-icu      = "enabled"
-libxml   = "enabled"
-lz4      = "enabled"
-nls      = "enabled"
-readline = "enabled"
-rpath    = false
-ssl      = "openssl"
-uuid     = "e2fs"
-zlib     = "enabled"
-zstd     = "enabled"
+bonjour   = "disabled"
+bsd_auth  = "disabled"
+docs      = "disabled"
+docs_pdf  = "disabled"
+icu       = "enabled"
+ldap      = "disabled"
+liburing  = "disabled"
+libxml    = "enabled"
+lz4       = "enabled"
+nls       = "enabled"
+plperl    = "disabled"
+plpython  = "disabled"
+pltcl     = "disabled"
+readline  = "enabled"
+rpath     = false
+selinux   = "disabled"
+ssl       = "openssl"
+tap_tests = "disabled"
+uuid      = "e2fs"
+zlib      = "enabled"
+zstd      = "enabled"

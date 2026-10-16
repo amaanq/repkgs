@@ -2,7 +2,7 @@ tag   = "{version}"
 track = "github:harfbuzz/harfbuzz"
 fetch = { asset = "harfbuzz-{version}.tar.xz" }
 with  = [ "meson" ]
-deps  = [ "freetype", "glib" ]
+deps  = [ "freetype", "glib", "libpng", "zlib" ]
 tools = [ "cpython314", "glib" ]
 
 [test]
@@ -14,6 +14,7 @@ chafa         = "disabled"
 docs          = "disabled"
 freetype      = "enabled"
 glib          = "enabled"
+gpu_demo      = "disabled"
 icu           = "disabled"
 introspection = "disabled"
 tests         = "enabled"
