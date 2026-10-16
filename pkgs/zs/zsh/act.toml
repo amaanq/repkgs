@@ -7,6 +7,7 @@ patches = [ "relocatable.patch", "setid-tests.patch" ]
 
 [test]
 bin = [ "zsh" ]
+fhs = true
 
 [on.glibc.test]
 deps = [ "glibc-bin" ]
