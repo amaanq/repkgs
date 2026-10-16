@@ -255,11 +255,20 @@ impl Driver {
       } else {
          "--start-no-unused-arguments".to_owned()
       }];
-      output.extend_from_slice(if fortran {
+      let picks_linker = user.iter().any(|arg| arg.starts_with("--ld-path="));
+      let flags = if fortran {
          &config.fflags
       } else {
          &config.flags
-      });
+      };
+      output.extend(
+         flags
+            .iter()
+            .filter(|flag| {
+               !(picks_linker && (flag.starts_with("-fuse-ld=") || flag.starts_with("--ld-path=")))
+            })
+            .cloned(),
+      );
 
       if !fortran {
          output.extend(
