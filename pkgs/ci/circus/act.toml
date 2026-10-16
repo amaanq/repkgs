@@ -13,3 +13,6 @@ dependencies = [ "cacert", "git", "nix" ]
 [cargo.cratePatches]
 evix             = [ "{file:evix/read-only-schema.patch}" ]
 nix-bindings-sys = [ "{file:../../ev/evix/nix-bindings-sys-fromattrs.patch}" ]
+
+[steps.after]
+"cargo.install" = [ "circus.bundle-assets" ]
