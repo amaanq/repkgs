@@ -4,4 +4,5 @@ tag     = "v2.3"
 hash    = "sha256-C7Dwqp5ewtBhuIyfNZmjhGSCBod3xM9KfUXZgHmvIB0="
 
 [patches]
+"https://github.com/gnustep/libobjc2/commit/0e027650d960626b2119efabaebde20bb003a3db.patch" = "0e027650d960.patch"
 "https://github.com/gnustep/libobjc2/commit/129c5ba8bd5df8aa1c9d3aaafde6068e796d80eb.patch" = "129c5ba8bd5d.patch"
