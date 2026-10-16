@@ -13,6 +13,9 @@ deps = [
 tools = [ "python-cffi", "python-cython", "python-setuptools", "pkgconf" ]
 env = { GEVENTSETUP_EMBED = "0" }
 
+[test]
+deps = [ "python-objgraph", "python-psutil" ]
+
 [steps.after]
 "python.test" = [ "python-gevent.test" ]
 
