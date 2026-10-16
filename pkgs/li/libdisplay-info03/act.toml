@@ -1,0 +1,15 @@
+fetch = { url = "https://gitlab.freedesktop.org/emersion/libdisplay-info/-/releases/{version}/downloads/libdisplay-info-{version}.tar.xz" }
+with  = [ "meson" ]
+deps  = [ "hwdata" ]
+tools = [ "cpython314" ]
+
+[track]
+from  = "gitlab:emersion/libdisplay-info?repository_url=https://gitlab.freedesktop.org"
+allow = "==0.3.*"
+
+[only]
+os = [ "linux" ]
+
+[test]
+bin     = [ "di-edid-decode" ]
+version = false
