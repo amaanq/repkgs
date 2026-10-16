@@ -37,15 +37,24 @@ os = [ "linux" ]
 version = false
 
 [meson.defs]
+allow-kcmp      = "enabled"
 amd-use-llvm    = false
 build-tests     = false
-gallium-drivers = "radeonsi"
+egl             = "enabled"
+expat           = "enabled"
+gallium-drivers = "radeonsi,softpipe"
 gallium-va      = "disabled"
+gbm             = "enabled"
 gles1           = "disabled"
+gles2           = "enabled"
 glvnd           = "disabled"
 libunwind       = "disabled"
 llvm            = "disabled"
 lmsensors       = "disabled"
 platforms       = "x11,wayland"
+shader-cache    = "enabled"
+shared-glapi    = "enabled"
 valgrind        = "disabled"
 vulkan-drivers  = "amd"
+xmlconfig       = "enabled"
+zstd            = "enabled"
