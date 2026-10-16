@@ -37,4 +37,6 @@ flags = [
 ]
 
 [env]
+# configure links with -s whenever LDFLAGS is unset
+LDFLAGS     = ""
 PCRE_CONFIG = "{pkg:pcre2}/bin/pcre2-config"
