@@ -1,0 +1,56 @@
+Discard .note.gnu.build-id input sections as lld does, so an object from ld -r --build-id
+does not overflow the single build ID note the linker writes and panic it.
+
+--- a/libwild/src/elf.rs
++++ b/libwild/src/elf.rs
+@@ -2841,7 +2841,8 @@
+             | secnames::SYMTAB_SECTION_NAME
+             | secnames::SHSTRTAB_SECTION_NAME
+             | secnames::SYMTAB_SHNDX_SECTION_NAME
+-            | secnames::GROUP_SECTION_NAME => {
++            | secnames::GROUP_SECTION_NAME
++            | secnames::NOTE_GNU_BUILD_ID_SECTION_NAME => {
+                 return SectionRuleOutcome::Discard;
+             }
+             secnames::RISCV_ATTRIBUTES_SECTION_NAME => return SectionRuleOutcome::RiscVAttribute,
+@@ -6465,10 +6466,6 @@
+         secnames::NOTE_ABI_TAG_SECTION_NAME,
+         output_section_id::NOTE_ABI_TAG,
+     ),
+-    SectionRule::exact_section(
+-        secnames::NOTE_GNU_BUILD_ID_SECTION_NAME,
+-        output_section_id::NOTE_GNU_BUILD_ID,
+-    ),
+     SectionRule::prefix_section(secnames::RODATA_SECTION_NAME, output_section_id::RODATA),
+     SectionRule::prefix_section(secnames::TEXT_SECTION_NAME, output_section_id::TEXT),
+     SectionRule::prefix_section(
+@@ -6508,6 +6505,10 @@
+     SectionRule::exact(secnames::SYMTAB_SECTION_NAME, SectionRuleOutcome::Discard),
+     SectionRule::exact(secnames::SHSTRTAB_SECTION_NAME, SectionRuleOutcome::Discard),
+     SectionRule::exact(secnames::GROUP_SECTION_NAME, SectionRuleOutcome::Discard),
++    SectionRule::exact(
++        secnames::NOTE_GNU_BUILD_ID_SECTION_NAME,
++        SectionRuleOutcome::Discard,
++    ),
+     SectionRule::exact(secnames::EH_FRAME_SECTION_NAME, SectionRuleOutcome::EhFrame),
+     SectionRule::exact(
+         secnames::NOTE_GNU_PROPERTY_SECTION_NAME,
+--- a/libwild/src/layout_rules.rs
++++ b/libwild/src/layout_rules.rs
+@@ -564,16 +564,6 @@
+         pattern.matches(name_str)
+     }
+ 
+-    pub(crate) const fn exact_section(
+-        name: &'data [u8],
+-        section_id: OutputSectionId,
+-    ) -> SectionRule<'data> {
+-        Self::exact(
+-            name,
+-            SectionRuleOutcome::Section(SectionOutputInfo::regular(section_id)),
+-        )
+-    }
+-
+     pub(crate) const fn exact_section_keep(
+         name: &'data [u8],
+         section_id: OutputSectionId,
