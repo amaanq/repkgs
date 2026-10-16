@@ -4,7 +4,11 @@ with  = [ "python" ]
 tools = [ "python-uv-build" ]
 
 [test]
-deps = [ "python-pytest" ]
+deps = [ "python-pytest", "python-idna", "iana-etc" ]
+etc  = true
+
+[steps.before]
+"python.test" = [ "python-dnspython.etc" ]
 
 [python]
 module = "dns"
