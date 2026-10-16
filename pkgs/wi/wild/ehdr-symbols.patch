@@ -1,0 +1,31 @@
+Leave __ehdr_start and __executable_start out of the symbol table unless something
+references them, as GNU ld and lld do. Their values lie outside the sections they are
+attached to, which eu-elflint reports for every executable.
+
+--- a/libwild/src/layout.rs
++++ b/libwild/src/layout.rs
+@@ -3350,13 +3350,17 @@
+                 // using a debugger. In partial-link mode, skip symbols that point to internal
+                 // metadata sections (file header, program headers, section headers, symtab, strtab)
+                 // since those are not meaningful in a relocatable object.
+-                should_emit |= def_info.section_id().is_some_and(|sec_id| {
+-                    if symbol_db.args.should_output_partial_object() {
+-                        output_sections.will_emit_section_symbol_for_partial_objects(sec_id)
+-                    } else {
+-                        output_sections.will_emit_section(sec_id)
+-                    }
+-                });
++                let outside_sections =
++                    matches!(def_info.placement, SymbolPlacement::LoadBaseAddress)
++                        || def_info.section_id() == Some(crate::output_section_id::FILE_HEADER);
++                should_emit |= !outside_sections
++                    && def_info.section_id().is_some_and(|sec_id| {
++                        if symbol_db.args.should_output_partial_object() {
++                            output_sections.will_emit_section_symbol_for_partial_objects(sec_id)
++                        } else {
++                            output_sections.will_emit_section(sec_id)
++                        }
++                    });
+ 
+                 if should_emit {
+                     // Mark the symbol as referenced so that we later generate a resolution for

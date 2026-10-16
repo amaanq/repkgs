@@ -17,6 +17,7 @@ patches = [
   "undef-ifunc-type.patch",
   "null-section-flags.patch",
   "note-alignment.patch",
+  "ehdr-symbols.patch",
 ]
 
 [test]
