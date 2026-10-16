@@ -1,0 +1,34 @@
+diff -ruN a/git-instaweb.sh b/git-instaweb.sh
+--- a/git-instaweb.sh
++++ b/git-instaweb.sh
+@@ -38,8 +38,8 @@
+ # if installed, it doesn't need further configuration (module_path)
+ test -z "$httpd" && httpd='lighttpd -f'
+ 
+-# Default is @GITWEBDIR@
+-test -z "$root" && root='@GITWEBDIR@'
++# Default is share/gitweb in the git installation
++test -z "$root" && root="$(git --exec-path)/../../share/gitweb"
+ 
+ # any untaken local port will do...
+ test -z "$port" && port=1234
+diff -ruN a/gitweb/gitweb.perl b/gitweb/gitweb.perl
+--- a/gitweb/gitweb.perl
++++ b/gitweb/gitweb.perl
+@@ -19,6 +19,7 @@
+ use Fcntl ':mode';
+ use File::Find qw();
+ use File::Basename qw(basename);
++use FindBin qw($RealBin);
+ use Time::HiRes qw(gettimeofday tv_interval);
+ use Digest::MD5 qw(md5_hex);
+ 
+@@ -80,7 +81,7 @@
+ 
+ # core git executable to use
+ # this can just be "git" if your webserver has a sensible PATH
+-our $GIT = "@GIT_BINDIR@/git";
++our $GIT = "$RealBin/../../bin/git";
+ 
+ # absolute fs-path which will be prepended to the project path
+ #our $projectroot = "/pub/scm";

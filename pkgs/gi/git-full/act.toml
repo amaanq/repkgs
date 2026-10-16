@@ -1,7 +1,7 @@
 fetch   = { from = "git" }
 with    = [ "autotools", "cargo" ]
 deps    = [ "zlib", "curl", "expat", "pcre2", "openssl", "perl" ]
-patches = [ "../git/relocatable.patch", "../git/sandbox-setgid-tests.patch" ]
+patches = [ "../git/relocatable.patch", "gitweb-relocatable.patch", "../git/sandbox-setgid-tests.patch" ]
 
 [test]
 deps = [ "perl" ]
