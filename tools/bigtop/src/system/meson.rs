@@ -254,8 +254,8 @@ impl Meson {
       }
    }
 
-   /// buildtype plain because cc brings -O2 -g itself, `auto_features` disabled
-   /// so packages enable what they declare.
+   /// buildtype plain because cc brings -O2 -g itself, `auto_features` enabled
+   /// so a package must disable each optional feature it lacks.
    fn configure(ctx: &Ctx, options: &Options) -> io::Result<()> {
       let platform = ctx.platform()?;
       let mut defs = vec![
@@ -265,7 +265,7 @@ impl Meson {
          ("buildtype".to_owned(), Def::Text("plain".to_owned())),
          ("default_library".to_owned(), Def::Text("shared".to_owned())),
          ("wrap_mode".to_owned(), Def::Text("nodownload".to_owned())),
-         ("auto_features".to_owned(), Def::Text("disabled".to_owned())),
+         ("auto_features".to_owned(), Def::Text("enabled".to_owned())),
       ];
       for (name, value) in &options.defs {
          upsert(&mut defs, name, value.clone());
