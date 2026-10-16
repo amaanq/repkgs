@@ -12,7 +12,11 @@ use std::{
    },
    io::{
       self,
+      BufRead as _,
+      BufReader,
+      Read as _,
       Write as _,
+      pipe,
    },
    os::unix::fs::{
       PermissionsExt as _,
@@ -24,7 +28,7 @@ use std::{
    },
    process::{
       Command,
-      Output,
+      ExitStatus,
    },
    str::FromStr,
    sync::{
@@ -88,11 +92,12 @@ impl FromStr for Unit {
 
 /// One autotest suite as `make check` ran it, in `cwd` with `args`.
 struct Suite {
-   cwd:    PathBuf,
-   script: PathBuf,
-   args:   Vec<String>,
-   single: Vec<String>,
-   tag:    String,
+   cwd:     PathBuf,
+   script:  PathBuf,
+   args:    Vec<String>,
+   single:  Vec<String>,
+   tag:     String,
+   startup: Mutex<()>,
 }
 
 struct Group<'suite> {
@@ -282,6 +287,7 @@ fn recorded(home: &Path, flags: &[String]) -> io::Result<Vec<Suite>> {
          args: fields,
          single,
          tag,
+         startup: Mutex::new(()),
       });
    }
    if suites.is_empty() {
@@ -393,13 +399,8 @@ fn groups_run(ctx: &Ctx, home: &Path, shell: &str, groups: &[Group<'_>]) -> io::
                let Some(group) = pending.lock().ok().and_then(|mut next| next.next()) else {
                   return;
                };
-               let ran = Command::new(shell)
-                  .arg(links.join(group.name()))
-                  .args(&group.suite.single)
-                  .arg(group.number.to_string())
-                  .current_dir(&group.suite.cwd)
-                  .output();
-               let passed = ran.as_ref().is_ok_and(|output| output.status.success());
+               let ran = group_run(shell, &links.join(group.name()), group);
+               let passed = ran.as_ref().is_ok_and(|&(status, _)| status.success());
                report(group, &ran, passed);
                if !passed && let Ok(mut list) = failed.lock() {
                   list.push(group.name());
@@ -420,15 +421,45 @@ fn groups_run(ctx: &Ctx, home: &Path, shell: &str, groups: &[Group<'_>]) -> io::
    )))
 }
 
+/// autotest sources `atlocal` in the suite's directory in every process, and
+/// bison's writes and removes `conftest.*` there, so a group starts only once
+/// the one before it printed the banner that follows the sourcing.
+fn group_run(shell: &str, link: &Path, group: &Group<'_>) -> io::Result<(ExitStatus, Vec<u8>)> {
+   let (pipe_end, writer) = pipe()?;
+   let mut reader = BufReader::new(pipe_end);
+   let mut output = Vec::new();
+   let mut child = {
+      let _turn = group
+         .suite
+         .startup
+         .lock()
+         .map_err(|_poisoned| io::Error::other("an autotest runner panicked"))?;
+      let child = Command::new(shell)
+         .arg(link)
+         .args(&group.suite.single)
+         .arg(group.number.to_string())
+         .current_dir(&group.suite.cwd)
+         .stdout(writer.try_clone()?)
+         .stderr(writer)
+         .spawn()?;
+      loop {
+         let start = output.len();
+         if reader.read_until(b'\n', &mut output)? == 0 || output[start..].starts_with(b"## -") {
+            break;
+         }
+      }
+      child
+   };
+   reader.read_to_end(&mut output)?;
+   Ok((child.wait()?, output))
+}
+
 /// A group's output in one piece, and on failure the log autotest keeps in
 /// the group's directory, named after the script like the suite's.
-fn report(group: &Group<'_>, ran: &io::Result<Output>, passed: bool) {
+fn report(group: &Group<'_>, ran: &io::Result<(ExitStatus, Vec<u8>)>, passed: bool) {
    let mut out = io::stdout().lock();
    match *ran {
-      Ok(ref output) => {
-         drop(out.write_all(&output.stdout));
-         drop(out.write_all(&output.stderr));
-      },
+      Ok((_status, ref output)) => drop(out.write_all(output)),
       Err(ref error) => drop(writeln!(out, "{}: {error}", group.name())),
    }
    if passed {
