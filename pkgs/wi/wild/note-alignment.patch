@@ -1,0 +1,144 @@
+Start a new PT_NOTE segment wherever the note alignment changes, as lld does, and raise
+each note section's alignment to that of its contents. A single PT_NOTE that held the 8-byte
+.note.gnu.property and the 4-byte ABI tag and build ID notes made readers that walk notes by
+the segment's alignment misparse them.
+
+--- a/libwild/src/elf.rs
++++ b/libwild/src/elf.rs
+@@ -5406,6 +5406,10 @@
+         self.segment_type == pt::GNU_RELRO
+     }
+ 
++    fn splits_on_alignment_change(self) -> bool {
++        self.segment_type == pt::NOTE
++    }
++
+     fn from_linker_script(ptype: u32, flags: u32) -> Self {
+         Self {
+             segment_type: SegmentType(ptype),
+--- a/libwild/src/layout.rs
++++ b/libwild/src/layout.rs
+@@ -206,6 +206,7 @@
+     let non_addressable_counts = apply_non_addressable_indexes(&mut group_states, &symbol_db)?;
+ 
+     propagate_section_attributes(&group_states, &mut output_sections);
++    raise_note_alignments_to_contents(&group_states, &mut output_sections);
+ 
+     let linker_scripts: Vec<&SequencedLinkerScript<P>> = symbol_db
+         .groups
+@@ -2180,6 +2181,34 @@
+     }
+ }
+ 
++fn raise_note_alignments_to_contents<'data, P: Platform>(
++    group_states: &[GroupState<'data, P>],
++    output_sections: &mut OutputSections<P>,
++) {
++    let mut raised = Vec::new();
++    for group_state in group_states {
++        let sizes = &group_state.common.mem_sizes;
++        for raw in crate::part_id::regular_part_base::<P>().as_usize()..sizes.num_parts() {
++            let part_id = PartId::from_usize(raw);
++            if *sizes.get(part_id) != 0 {
++                raised.push((
++                    part_id.output_section_id::<P>(),
++                    part_id.alignment(output_sections),
++                ));
++            }
++        }
++    }
++    for (section_id, alignment) in raised {
++        let splits_segment = P::program_segment_defs().iter().any(|def| {
++            def.splits_on_alignment_change()
++                && output_sections.should_include_in_segment(section_id, *def)
++        });
++        if splits_segment {
++            output_sections.bump_min_alignment(section_id, alignment);
++        }
++    }
++}
++
+ /// This is similar to computing start addresses, but is used for things that aren't addressable,
+ /// but which need to be unique. It's non parallel. It could potentially be run in parallel with
+ /// some of the stages that run after it, that don't need access to the file states.
+--- a/libwild/src/output_section_id.rs
++++ b/libwild/src/output_section_id.rs
+@@ -137,6 +137,7 @@
+     /// Indexes correspond to elements of `PROGRAM_SEGMENT_DEFS`.
+     active_segment_kinds: Vec<Option<ProgramSegmentId>>,
+     active_segment_regions: Vec<Option<&'data [u8]>>,
++    active_segment_alignments: Vec<Option<Alignment>>,
+ 
+     output_sections: &'scope OutputSections<'data, P>,
+     secondary: &'scope OutputSectionMap<Vec<OutputSectionId>>,
+@@ -160,6 +161,7 @@
+             output_sections,
+             active_segment_kinds: vec![None; P::program_segment_defs().len()],
+             active_segment_regions: vec![None; P::program_segment_defs().len()],
++            active_segment_alignments: vec![None; P::program_segment_defs().len()],
+             secondary,
+             output_kind,
+             has_custom_phdrs,
+@@ -338,12 +340,14 @@
+         }
+ 
+         let section_region = section_info.region_name;
++        let section_alignment = section_info.min_alignment;
+         multizip((
+             P::program_segment_defs(),
+             self.active_segment_kinds.iter_mut(),
+             self.active_segment_regions.iter_mut(),
++            self.active_segment_alignments.iter_mut(),
+         ))
+-        .for_each(|(segment_def, active_id, active_region)| {
++        .for_each(|(segment_def, active_id, active_region, active_alignment)| {
+             let should_be_active = self
+                 .output_sections
+                 .should_include_in_segment(section_id, *segment_def);
+@@ -354,12 +358,16 @@
+ 
+                 // Remain active
+                 (Some(segment_id), true) => {
+-                    if *active_region != section_region {
++                    if *active_region != section_region
++                        || (segment_def.splits_on_alignment_change()
++                            && *active_alignment != Some(section_alignment))
++                    {
+                         stop.push(*segment_id);
+                         let new_segment_id = self.program_segments.add_segment(*segment_def);
+                         start.push(new_segment_id);
+                         *active_id = Some(new_segment_id);
+                         *active_region = section_region;
++                        *active_alignment = Some(section_alignment);
+                     }
+                 }
+                 // Start segment
+@@ -368,6 +376,7 @@
+                     start.push(segment_id);
+                     *active_id = Some(segment_id);
+                     *active_region = section_region;
++                    *active_alignment = Some(section_alignment);
+                 }
+ 
+                 // End segment
+@@ -375,6 +384,7 @@
+                     stop.push(*segment_id);
+                     *active_id = None;
+                     *active_region = None;
++                    *active_alignment = None;
+                 }
+             }
+         });
+--- a/libwild/src/platform.rs
++++ b/libwild/src/platform.rs
+@@ -1391,6 +1391,10 @@
+         false
+     }
+ 
++    fn splits_on_alignment_change(self) -> bool {
++        false
++    }
++
+     fn from_linker_script(_ptype: u32, _flags: u32) -> Self {
+         unreachable!("This function is only called from platforms that support linker scripts.");
+     }

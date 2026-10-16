@@ -16,6 +16,7 @@ patches = [
   "https://github.com/wild-linker/wild/commit/9ff20eaac96b17d87ae38cc6c06d3f8082f6bda5.patch",
   "undef-ifunc-type.patch",
   "null-section-flags.patch",
+  "note-alignment.patch",
 ]
 
 [test]
