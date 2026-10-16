@@ -45,6 +45,7 @@ use crate::bootstrap::{
 struct Attrs {
    zstd:         PathBuf,
    zlib:         PathBuf,
+   binutils:     PathBuf,
    #[serde(rename = "LLVM_TARGETS_TO_BUILD")]
    targets:      String,
    #[serde(rename = "LLVM_EXPERIMENTAL_TARGETS_TO_BUILD")]
@@ -263,6 +264,10 @@ impl Llvm {
             .arg(format!("-DCMAKE_AR={}", tool("llvm-ar")?.display()))
             .arg(format!("-DCMAKE_RANLIB={}", tool("llvm-ranlib")?.display()))
             .arg(format!("-DCMAKE_PREFIX_PATH={}", compression.display()))
+            .arg(format!(
+               "-DLLVM_BINUTILS_INCDIR={}",
+               attrs.binutils.join("include").display()
+            ))
             .arg(format!(
                "-DPython3_EXECUTABLE={}",
                tool("python3")?.display()

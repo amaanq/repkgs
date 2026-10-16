@@ -37,6 +37,7 @@ let
     inherit (built) mummer;
     inputs = import ./inputs.nix {
       inherit pkg source;
+      fetch = name: key: (reader (pkg name)).fetch key;
       prebuiltShim = built.mummer;
     };
   };

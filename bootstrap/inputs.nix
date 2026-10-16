@@ -3,6 +3,7 @@
 {
   pkg,
   source,
+  fetch,
   prebuiltShim,
 }:
 let
@@ -25,6 +26,7 @@ in
     src = llvm;
     zstd = source "zstd";
     zlib = source "zlib";
+    binutils = fetch "llvm" "binutils";
     patches = [
       (pkg "llvm" + "/upstream-x86-vastart-stack-probe.patch")
       (pkg "llvm" + "/mummer-absent-log.patch")

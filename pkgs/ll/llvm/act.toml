@@ -1,5 +1,4 @@
 tag = "llvmorg-{version}"
-fetch = { asset = "llvm-project-{version}.src.tar.xz" }
 with = [ "cmake" ]
 deps = [ "zlib", "zstd" ]
 tools = [ "cpython" ]
@@ -9,6 +8,12 @@ patches = [
   "sandbox-setid-tests.patch",
   "lit-test-marks.patch",
 ]
+
+[fetch.default]
+asset = "llvm-project-{version}.src.tar.xz"
+
+[fetch.binutils]
+url = "https://ftp.gnu.org/gnu/binutils/binutils-{binutils}.tar.xz"
 
 [track]
 from  = "github:llvm/llvm-project"
