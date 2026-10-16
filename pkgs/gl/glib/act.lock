@@ -1,2 +1,5 @@
 version = "2.88.3"
 hash    = "sha256-rGcq5QW/oiAHKfmc0Ce1xY2a+cAGhbeZXM43G5LFtHY="
+
+[patches]
+"https://gitlab.gnome.org/GNOME/glib/-/commit/1567250294e9666747ee63f5c6364bbceadd300b.patch" = "1567250294e9.patch"
