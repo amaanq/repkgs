@@ -1,0 +1,11 @@
+--- a/src/gevent/tests/test__core_timer.py
++++ b/src/gevent/tests/test__core_timer.py
+@@ -105,6 +105,8 @@
+         import socket
+         s = socket.socket()
+         self._close_on_teardown(s)
++        s.bind(('127.0.0.1', 0))
++        s.listen()
+         fd = s.fileno()
+ 
+         ran_at_least_once = False
