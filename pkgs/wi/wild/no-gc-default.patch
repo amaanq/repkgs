@@ -1,0 +1,21 @@
+Keep unreferenced sections unless --gc-sections is given, as GNU ld and lld do. Collecting
+by default dropped unreferenced .data and .bss along with their symbols, which elfutils'
+test-nlist looks up.
+
+--- a/libwild/src/args/elf.rs
++++ b/libwild/src/args/elf.rs
+@@ -280,13 +280,7 @@
+             should_output_partial_object: false,
+             dynamic_linker: None,
+             strip: Strip::Nothing,
+-            // For now, we default to --gc-sections. This is different to other linkers, but other
+-            // than being different, there doesn't seem to be any downside to doing
+-            // this. We don't currently do any less work if we're not GCing sections,
+-            // but do end up writing more, so --no-gc-sections will almost always be as
+-            // slow or slower than --gc-sections. For that reason, the latter is
+-            // probably a good default.
+-            gc_sections: true,
++            gc_sections: false,
+             merge_sections: true,
+             copy_relocations: CopyRelocations::Allowed,
+             version_script_path: None,

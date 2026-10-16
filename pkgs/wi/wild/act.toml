@@ -18,6 +18,7 @@ patches = [
   "null-section-flags.patch",
   "note-alignment.patch",
   "ehdr-symbols.patch",
+  "no-gc-default.patch",
 ]
 
 [test]
