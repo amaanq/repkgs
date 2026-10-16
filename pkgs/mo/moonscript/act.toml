@@ -10,7 +10,7 @@ from = "github:leafo/moonscript"
 luarocks = "."
 
 [test]
-version = true
+bin = [ "moon", "moonc" ]
 
 [only]
 posix = true
