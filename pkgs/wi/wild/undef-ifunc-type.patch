@@ -1,0 +1,19 @@
+Write undefined dynamic symbols that bind to an IFUNC as STT_FUNC, as GNU ld and lld do.
+The IFUNC type only means something on a definition, and eu-elflint rejects it on an
+undefined symbol, e.g. a reference to glibc's memcpy.
+
+--- a/libwild/src/elf_writer.rs
++++ b/libwild/src/elf_writer.rs
+@@ -5909,7 +5909,11 @@
+                 // Note, we copy st_info, but not st_other since we don't want to copy the
+                 // visibility. We want to emit the symbol with default visibility, otherwise the
+                 // runtime loader may ignore dynamic relocations that reference the symbol.
+-                entry.set_info(symbol.st_info());
++                if symbol.st_type() == object::elf::STT_GNU_IFUNC {
++                    entry.set_binding_and_type(symbol.st_bind(), object::elf::STT_FUNC);
++                } else {
++                    entry.set_info(symbol.st_info());
++                }
+ 
+                 if let Some(versym) = table_writer.version_writer.versym.as_mut() {
+                     copy_symbol_version(
