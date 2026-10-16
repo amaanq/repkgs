@@ -1,0 +1,11 @@
+--- a/cabal.project
++++ b/cabal.project
+@@ -9,7 +9,7 @@
+ 
+ 
+ package pandoc
+-  flags: +embed_data_files +http
++  flags: +embed_data_files
+ 
+ if arch(wasm32)
+   tests: False
