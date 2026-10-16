@@ -43,7 +43,7 @@ json-schema-checks = false
 "nix:mimalloc"     = "enabled"
 
 [test]
-deps     = [ "git", "jq", "openssh", "sqlite", "util-linux" ]
+deps     = [ "bash", "bzip2", "git", "gnutar", "grep-full", "jq", "openssh", "openssl", "sqlite", "util-linux", "xz" ]
 separate = true
 
 [steps.after]
