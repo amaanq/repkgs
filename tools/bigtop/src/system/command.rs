@@ -165,3 +165,18 @@ pub fn upsert<Value>(defs: &mut Vec<(String, Value)>, name: &str, value: Value) 
 pub fn unknown(name: &str, verb: &str) -> io::Error {
    io::Error::other(format!("{name} has no {verb} phase"))
 }
+
+pub fn shell() -> io::Result<String> {
+   let bash = on_path("bash");
+   let shell = if bash.is_absolute() {
+      bash
+   } else {
+      tool("sh")?
+   };
+   Ok(utf8(&shell)?.to_owned())
+}
+
+pub fn shell_env() -> io::Result<Env> {
+   let shell = shell()?;
+   Ok([("CONFIG_SHELL", shell.clone()), ("SHELL", shell)].into())
+}

@@ -55,6 +55,7 @@ use crate::{
       command::{
          Env,
          run,
+         shell_env,
          strs,
          unknown,
       },
@@ -64,7 +65,6 @@ use crate::{
          AutomakeTest,
          Scripts,
          TestScripts,
-         shell,
       },
    },
    trace::Tests,
@@ -145,7 +145,7 @@ impl System for Autotools {
    }
 
    fn setup(&self, _ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      Ok(shell()?.into())
+      shell_env()
    }
 
    fn tests(&self) -> Option<&'static dyn Tests> {

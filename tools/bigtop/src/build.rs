@@ -123,6 +123,7 @@ use crate::{
    ring::Announced,
    system::{
       command::{
+         self,
          Env,
          export,
       },
@@ -229,15 +230,13 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
    let spec = attrs.spec()?;
    let etc = spec.tests.etc == Some(true);
    let fhs = spec.tests.fhs == Some(true);
-   if etc || fhs {
-      if var_os(PRIVATE).is_none() {
-         match private(etc, fhs)? {}
-      }
-      let mut cleared = Env::default();
-      cleared.unset(PRIVATE);
-      cleared.apply();
-      clear_ambient_capability_set()?;
+   if var_os(PRIVATE).is_none() {
+      match private(etc, fhs)? {}
    }
+   let mut cleared = Env::default();
+   cleared.unset(PRIVATE);
+   cleared.apply();
+   clear_ambient_capability_set()?;
    let started = Instant::now();
    let cached = !tests && from_tree.is_none();
    if cached && output::restore(&attrs)? {
@@ -252,6 +251,7 @@ pub fn run(tests: bool, from_tree: Option<&Path>, socket: &Path) -> io::Result<(
       from_tree.map_or(Source::Unpack, Source::Archive),
       socket,
    )?;
+   own_shell()?;
    let mut timings = vec![format!("prepare {:.1}s", started.elapsed().as_secs_f64())];
    let serving = registry::start(spec.tests.registry.as_ref(), &mut ctx.test_env)?;
    let mut writable = false;
@@ -411,6 +411,57 @@ fn private_etc(entries: Vec<(PathBuf, Held)>) -> io::Result<()> {
    etc_access(false)
 }
 
+/// Links /bin/sh to the build's shell once PATH names it, since busybox, the
+/// usual sandbox-shell, execs `sh -c` with SIGQUIT ignored. A link, not a bind,
+/// because `crt_interp` finds the interpreter beside /proc/self/exe.
+fn own_shell() -> io::Result<()> {
+   let bin = Path::new("/bin");
+   if symlink_metadata(bin.join("sh")).is_err() {
+      return Ok(());
+   }
+   let shell = command::shell()?;
+   let mut kept = Vec::new();
+   for listing in read_dir(bin)? {
+      let entry = listing?;
+      let name = entry.file_name();
+      if name == "sh" {
+         continue;
+      }
+      let path = entry.path();
+      let held = if entry.file_type()?.is_symlink() {
+         Err(read_link(&path)?)
+      } else {
+         Ok(OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_PATH)
+            .open(&path)?)
+      };
+      kept.push((name, held));
+   }
+   mount(
+      "tmpfs",
+      bin,
+      "tmpfs",
+      MountFlags::NOSUID | MountFlags::NODEV,
+      c"mode=0755",
+   )?;
+   for (name, held) in kept {
+      let placed = bin.join(&name);
+      match held {
+         Err(target) => symlink(target, &placed)?,
+         Ok(file) => {
+            if file.metadata()?.is_dir() {
+               create_dir_all(&placed)?;
+            } else {
+               write(&placed, [])?;
+            }
+            mount_bind_recursive(format!("/proc/self/fd/{}", file.as_raw_fd()), &placed)?;
+         },
+      }
+   }
+   symlink(shell, bin.join("sh"))
+}
+
 /// The sandbox's root is not writable, so a tmpfs over /bin becomes the root,
 /// every other top-level entry bound into it. The sandbox has no /usr, so the
 /// new root gets an empty one for `furnish` to fill.
@@ -460,13 +511,13 @@ fn private_root() -> io::Result<()> {
 }
 
 /// Links every program on PATH into /bin and /usr/bin, for tests that name
-/// them there, or takes the links away again.
+/// them there, or takes the links away again. /bin/sh belongs to `own_shell`.
 fn furnish(on: bool) -> io::Result<()> {
    const BINS: [&str; 2] = ["/bin", "/usr/bin"];
    for bin in BINS {
       for entry in read_dir(bin)? {
          let path = entry?.path();
-         if symlink_metadata(&path)?.is_symlink() {
+         if path != Path::new("/bin/sh") && symlink_metadata(&path)?.is_symlink() {
             remove_file(&path)?;
          }
       }

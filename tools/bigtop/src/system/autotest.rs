@@ -59,6 +59,7 @@ use crate::{
    },
    system::{
       command::{
+         self,
          run,
          strs,
       },
@@ -155,7 +156,7 @@ pub fn state(path: &Path) -> bool {
 
 pub fn test(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
    let home = home_dir()?;
-   let shell = shell()?;
+   let shell = command::shell()?;
    let shim = prepare(home, &shell)?;
    let mut shimmed = flags.to_vec();
    shimmed.push(format!("TESTSUITE={}", utf8(&shim)?));
@@ -201,11 +202,6 @@ pub fn test(ctx: &Ctx, flags: &[String], targets: &[String]) -> io::Result<()> {
       .filter(|group| chosen.contains(&group.name()))
       .collect::<Vec<_>>();
    groups_run(ctx, home, &shell, &picked)
-}
-
-fn shell() -> io::Result<String> {
-   let [(_config, path), _make] = make::shell()?;
-   Ok(path)
 }
 
 /// A fresh shim `make check` runs as `$(TESTSUITE)`, recording where and

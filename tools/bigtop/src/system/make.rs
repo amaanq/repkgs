@@ -30,10 +30,7 @@ use mummer::{
       glob,
       utf8,
    },
-   store::{
-      normalize,
-      on_path,
-   },
+   store::normalize,
 };
 use serde::Deserialize;
 
@@ -48,8 +45,8 @@ use crate::{
       command::{
          Env,
          run,
+         shell_env,
          strs,
-         tool,
          unknown,
       },
       dispatch::System,
@@ -175,7 +172,7 @@ impl System for Make {
    }
 
    fn setup(&self, _ctx: &Ctx, _attrs: &Attrs, _socket: &Path) -> io::Result<Env> {
-      Ok(shell()?.into())
+      shell_env()
    }
 
    fn tests(&self) -> Option<&'static dyn Tests> {
@@ -243,17 +240,6 @@ impl Tests for Make {
       static SCRIPTS: OnceLock<Option<Scripts>> = OnceLock::new();
       Scripts::of(&SCRIPTS, "make")?.unit(args, cwd)
    }
-}
-
-pub fn shell() -> io::Result<[(&'static str, String); 2]> {
-   let bash = on_path("bash");
-   let shell = if bash.is_absolute() {
-      bash
-   } else {
-      tool("sh")?
-   };
-   let text = utf8(&shell)?.to_owned();
-   Ok([("CONFIG_SHELL", text.clone()), ("SHELL", text)])
 }
 
 fn with_programs(
