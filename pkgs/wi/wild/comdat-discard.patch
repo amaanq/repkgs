@@ -1,0 +1,170 @@
+Leave sections of a COMDAT group unloaded unless referenced when another object defines the
+group's signature symbol. They were loaded under --no-gc-sections and through SHF_GNU_RETAIN,
+so libobjc2 ran .objcv2_load_function once per object and its legacy ABI tests aborted.
+
+--- a/libwild/src/platform.rs
++++ b/libwild/src/platform.rs
+@@ -1111,6 +1111,13 @@
+         out: &mut [u8],
+     ) -> Result;
+ 
++    fn discarded_comdat_sections(
++        &self,
++        _is_lost: impl Fn(object::SymbolIndex) -> bool,
++    ) -> Result<Vec<bool>> {
++        Ok(Vec::new())
++    }
++
+     /// Returns the contents of a section as a Cow. Will heap-allocate if the section is compressed.
+     fn section_data_cow(
+         &self,
+--- a/libwild/src/elf.rs
++++ b/libwild/src/elf.rs
+@@ -3135,6 +3135,42 @@
+         Ok(section.data(LittleEndian, self.data)?)
+     }
+ 
++    fn discarded_comdat_sections(
++        &self,
++        is_lost: impl Fn(object::SymbolIndex) -> bool,
++    ) -> Result<Vec<bool>> {
++        let mut discarded = Vec::new();
++
++        for section in self.sections.iter() {
++            let Some((flags, members)) = section.group(LittleEndian, self.data)? else {
++                continue;
++            };
++
++            if !flags.contains(object::elf::GRP_COMDAT) {
++                continue;
++            }
++
++            let signature = object::SymbolIndex(section.sh_info(LittleEndian) as usize);
++            let symbol = self.symbols.symbol(signature)?;
++
++            if symbol.is_local() || symbol.is_undefined() || !is_lost(signature) {
++                continue;
++            }
++
++            discarded.resize(self.sections.len(), false);
++
++            for member in members {
++                let index = member.get(LittleEndian) as usize;
++                let Some(slot) = discarded.get_mut(index) else {
++                    bail!("COMDAT group member section index {index} is out of range");
++                };
++                *slot = true;
++            }
++        }
++
++        Ok(discarded)
++    }
++
+     fn section_data(
+         &self,
+         section: &SectionHeader<C>,
+--- a/libwild/src/resolution.rs
++++ b/libwild/src/resolution.rs
+@@ -10,6 +10,7 @@
+ use crate::error::Error;
+ use crate::error::Result;
+ use crate::grouping::Group;
++use crate::grouping::SequencedInput;
+ use crate::grouping::SequencedInputObject;
+ use crate::hash::PassThroughHashMap;
+ use crate::hash::PreHashed;
+@@ -475,7 +476,7 @@
+                         ResolvedFile::Object(obj) => {
+                             let (sections, part_ids) = resolve_sections_for_object(
+                                 &mut *obj,
+-                                symbol_db.args,
++                                symbol_db,
+                                 allocator,
+                                 &loaded_metrics,
+                                 &layout_rules.section_rules,
+@@ -731,6 +732,8 @@
+     pub(crate) start_stop_eligible: bool,
+ 
+     pub(crate) needs_sorting: bool,
++
++    pub(crate) comdat_discarded: bool,
+ }
+ 
+ impl UnloadedSection {
+@@ -739,6 +742,7 @@
+             last_frame_index: None,
+             start_stop_eligible: false,
+             needs_sorting: false,
++            comdat_discarded: false,
+         }
+     }
+ }
+@@ -1256,7 +1260,7 @@
+ 
+ fn resolve_sections_for_object<'data, P: Platform>(
+     obj: &mut ResolvedObject<'data, P>,
+-    args: &P::Args,
++    symbol_db: &SymbolDb<'data, P>,
+     allocator: &bumpalo_herd::Member<'data>,
+     loaded_metrics: &LoadedMetrics,
+     rules: &SectionRules,
+@@ -1267,6 +1271,17 @@
+     let mut sections = Vec::with_capacity(obj.common.object.num_sections());
+     let mut section_part_ids = Vec::with_capacity(obj.common.object.num_sections());
+     let mut executable_bytes: u64 = 0;
++
++    let discarded_comdat = obj.common.object.discarded_comdat_sections(|signature| {
++        let symbol_id = obj.common.symbol_id_range.input_to_id(signature);
++        let definition = symbol_db.definition(symbol_id);
++        definition != symbol_id
++            && matches!(
++                symbol_db.file(symbol_db.file_id_for_symbol(definition)),
++                SequencedInput::Object(object) if !object.is_dynamic()
++            )
++    })?;
++
+     for (input_section_index, input_section) in obj.common.object.enumerate_sections() {
+         let section_size = obj.common.object.section_size(input_section).unwrap_or(0);
+         if input_section.is_executable() {
+@@ -1275,8 +1290,12 @@
+         let (slot, part_id) = resolve_section(
+             input_section_index,
+             input_section,
++            discarded_comdat
++                .get(input_section_index.0)
++                .copied()
++                .unwrap_or(false),
+             obj,
+-            args,
++            symbol_db.args,
+             allocator,
+             loaded_metrics,
+             rules,
+@@ -1292,6 +1311,7 @@
+ fn resolve_section<'data, P: Platform>(
+     input_section_index: SectionIndex,
+     input_section: &'data P::SectionHeader,
++    in_discarded_comdat: bool,
+     obj: &mut ResolvedObject<'data, P>,
+     args: &P::Args,
+     allocator: &bumpalo_herd::Member<'data>,
+@@ -1451,6 +1471,9 @@
+         SectionSlot::MergeStrings(StringMergeSectionSlot::new())
+     } else if is_debug_info {
+         SectionSlot::UnloadedDebugInfo
++    } else if in_discarded_comdat {
++        unloaded_section.comdat_discarded = true;
++        SectionSlot::Unloaded(unloaded_section)
+     } else if must_load {
+         SectionSlot::MustLoad(unloaded_section)
+     } else {
+--- a/libwild/src/layout.rs
++++ b/libwild/src/layout.rs
+@@ -4109,6 +4109,7 @@
+                             object::SectionIndex(i),
+                         )));
+                 }
++                SectionSlot::Unloaded(sec) if sec.comdat_discarded => {}
+                 SectionSlot::Unloaded(sec) => {
+                     if no_gc {
+                         queue
