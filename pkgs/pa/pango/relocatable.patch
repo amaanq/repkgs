@@ -1,0 +1,19 @@
+--- a/pango/pango-utils.c
++++ b/pango/pango-utils.c
+@@ -20,6 +20,7 @@
+  */
+ 
+ #include "config.h"
++#include "reloc.h"
+ #include <errno.h>
+ #include <string.h>
+ #include <stdlib.h>
+@@ -638,7 +639,7 @@
+       if (libdir != NULL)
+ 	tmp_result = g_build_filename (libdir, "pango", NULL);
+       else
+-	tmp_result = LIBDIR "/pango";
++	tmp_result = RELOC ("pango");
+       g_once_init_leave(&result, tmp_result);
+     }
+   return result;
