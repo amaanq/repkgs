@@ -1,0 +1,70 @@
+From b9c0dd643196aa628cd92ca34b93a3d177e5f526 Mon Sep 17 00:00:00 2001
+From: David Lattimore <dvdlttmr@gmail.com>
+Date: Tue, 18 Aug 2026 09:39:40 +1000
+Subject: [PATCH] feat: Support alignment up to 2^21 (#2409)
+
+---
+ libwild/src/alignment.rs                     | 2 +-
+ libwild/src/output_section_part_map.rs       | 8 ++++----
+ wild/tests/sources/elf/alignment/alignment.c | 2 +-
+ 3 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/libwild/src/alignment.rs b/libwild/src/alignment.rs
+index fd5151e98..b99509a3f 100644
+--- a/libwild/src/alignment.rs
++++ b/libwild/src/alignment.rs
+@@ -10,7 +10,7 @@ pub(crate) struct Alignment {
+ }
+ 
+ /// The maximum supported alignment exponent.
+-const MAX_ALIGNMENT_EXPONENT: u8 = 16;
++const MAX_ALIGNMENT_EXPONENT: u8 = 21;
+ 
+ pub(crate) const NUM_ALIGNMENTS: usize = MAX_ALIGNMENT_EXPONENT as usize + 1;
+ 
+diff --git a/libwild/src/output_section_part_map.rs b/libwild/src/output_section_part_map.rs
+index 3a6b286cd..83befad63 100644
+--- a/libwild/src/output_section_part_map.rs
++++ b/libwild/src/output_section_part_map.rs
+@@ -225,7 +225,7 @@ fn test_merge_parts() {
+     );
+ 
+     let num_regular_sections = output_sections.num_regular_sections();
+-    let mut num_sections_with_17 = 0;
++    let mut num_sections_with_all_alignments = 0;
+ 
+     let mut sum_of_1s = output_sections.new_section_map::<u32>();
+     sum_of_1s.for_each_mut(|section_id, sum| {
+@@ -241,8 +241,8 @@ fn test_merge_parts() {
+     let mut sum_of_sums = 0;
+     sum_of_1s.for_each(|section_id, sum| {
+         sum_of_sums += *sum;
+-        if *sum == 17 {
+-            num_sections_with_17 += 1;
++        if *sum == crate::alignment::NUM_ALIGNMENTS as u32 {
++            num_sections_with_all_alignments += 1;
+         }
+         let unsupported_single_part = !section_id.is_regular::<Elf64>()
+             && <Elf64 as crate::platform::Platform>::single_part_id(section_id).is_none();
+@@ -252,7 +252,7 @@ fn test_merge_parts() {
+             assert!(*sum > 0, "Expected non-zero sum for section {section_id:?}");
+         }
+     });
+-    assert_eq!(num_regular_sections, num_sections_with_17);
++    assert_eq!(num_regular_sections, num_sections_with_all_alignments);
+     assert_eq!(sum_of_sums, expected_sum_of_sums);
+ 
+     let mut headers_only = output_sections.new_part_map::<u32>();
+diff --git a/wild/tests/sources/elf/alignment/alignment.c b/wild/tests/sources/elf/alignment/alignment.c
+index 4f014689b..5362e4028 100644
+--- a/wild/tests/sources/elf/alignment/alignment.c
++++ b/wild/tests/sources/elf/alignment/alignment.c
+@@ -3,7 +3,7 @@
+ 
+ #include "../common/runtime.h"
+ 
+-#define ALIGNMENT 65536
++#define ALIGNMENT 0x200000
+ 
+ struct __attribute__((aligned(ALIGNMENT))) S {
+   short f[3];

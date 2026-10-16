@@ -2,3 +2,6 @@ version = "0.10.0"
 date    = "2026-08-04"
 sys     = [ "zstd" ]
 hash    = "sha256-jIkeR68C41jn0A3DjEpbrEYCwuqIS3n0bRed2K6c5iY="
+
+[patches]
+"https://github.com/wild-linker/wild/commit/b9c0dd643196aa628cd92ca34b93a3d177e5f526.patch" = "b9c0dd643196.patch"
