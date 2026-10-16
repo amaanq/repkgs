@@ -1,0 +1,8 @@
+fetch = { from = "dash" }
+with  = [ "autotools" ]
+
+[test]
+version = false
+
+[autotools]
+flags = [ "--enable-static" ]

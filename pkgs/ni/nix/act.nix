@@ -18,6 +18,10 @@
   })
   (when (platform.os == "linux") {
     meson.defs."libstore:seccomp-sandboxing" = "enabled";
-    deps = [ "libseccomp" ];
+    meson.defs."libstore:sandbox-shell" = "${pkgs.dash-static}/bin/dash";
+    deps = [
+      "dash-static"
+      "libseccomp"
+    ];
   })
 ]
