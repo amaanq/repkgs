@@ -2,7 +2,7 @@ fetch   = { url = "https://download.gnome.org/sources/pango/{major}.{minor}/pang
 with    = [ "meson" ]
 deps    = [ "cairo", "fontconfig", "freetype", "fribidi", "glib", "harfbuzz" ]
 tools   = [ "glib", "cpython314" ]
-patches = [ "inherit-fontconfig-file.patch" ]
+patches = [ "inherit-fontconfig-file.patch", "testboundaries-dead-globals.patch" ]
 
 [track]
 from = "generic:pango"
