@@ -9,7 +9,6 @@ patches = [
   "tests-locale-probe.patch",
   "printf-precision-overflow.patch",
   "trap-order.patch",
-  "help-columns.patch",
   "run-test-uid.patch",
 ]
 
