@@ -14,6 +14,7 @@ GIGET_STARTER     = "{source:starter}"
 GIGET_STARTER_REF = "v{major}.{minor}"
 
 [test]
+deps    = [ "nodejs" ]
 version = true
 
 [steps.before]
