@@ -1,0 +1,325 @@
+Accept -b and --format, and wrap each file read with --format=binary in an ELF object
+whose .data holds its bytes and whose _binary_<path>_start, _end and _size symbols mark it,
+as GNU ld and lld do. As in lld, the wrapper objects take no part in merging e_flags, so
+riscv64 and loongarch64 links don't reject their zero flags. glib links its test resources
+with -r -Wl,-b,binary.
+
+--- a/libwild/src/arch.rs
++++ b/libwild/src/arch.rs
+@@ -47,6 +47,17 @@
+ }
+ 
+ impl Architecture {
++    pub(crate) fn elf_machine(self) -> Result<object::elf::Machine> {
++        match self {
++            Architecture::X86_64 => Ok(EM_X86_64),
++            Architecture::AArch64 => Ok(EM_AARCH64),
++            Architecture::RiscV64 => Ok(EM_RISCV),
++            Architecture::LoongArch64 => Ok(EM_LOONGARCH),
++            Architecture::Ppc64 => Ok(EM_PPC64),
++            Architecture::Unsupported => bail!("Binary input needs a known output architecture"),
++        }
++    }
++
+     pub(crate) fn parse_output_format(format: &[u8]) -> Self {
+         let Some(format) = format.strip_prefix(b"elf64-") else {
+             return Self::Unsupported;
+--- a/libwild/src/args/elf.rs
++++ b/libwild/src/args/elf.rs
+@@ -1697,6 +1697,21 @@
+         });
+ 
+     parser
++        .declare_with_param()
++        .long("format")
++        .short("b")
++        .help("Set the format of the input files that follow")
++        .execute(|_args, modifier_stack, value| {
++            modifier_stack.last_mut().unwrap().binary = match value {
++                "binary" => true,
++                "default" => false,
++                value if value.starts_with("elf") => false,
++                value => bail!("Unknown --format value `{value}`"),
++            };
++            Ok(())
++        });
++
++    parser
+         .declare()
+         .short("EL")
+         .help("Select the little-endian format in the OUTPUT_FORMAT command")
+--- a/libwild/src/args.rs
++++ b/libwild/src/args.rs
+@@ -564,6 +564,8 @@
+     /// stored in the layout file if written so that linker-diff knows not to error if the file
+     /// is missing.
+     pub(crate) temporary: bool,
++
++    pub(crate) binary: bool,
+ }
+ 
+ impl Default for Modifiers {
+@@ -574,6 +576,7 @@
+             whole_archive: false,
+             archive_semantics: false,
+             temporary: false,
++            binary: false,
+         }
+     }
+ }
+--- a/libwild/src/elf.rs
++++ b/libwild/src/elf.rs
+@@ -126,6 +126,7 @@
+ use linker_utils::utils::read_string;
+ use linker_utils::utils::read_u32;
+ use linker_utils::utils::read_uleb128;
++use linker_utils::utils::slice_from_all_bytes_mut;
+ use object::LittleEndian;
+ use object::read::elf::CompressionHeader;
+ use object::read::elf::Crel;
+@@ -143,6 +144,7 @@
+ use std::num::NonZeroU32;
+ use std::num::NonZeroU64;
+ use std::ops::Range;
++use std::path::Path;
+ use std::sync::atomic;
+ use std::sync::atomic::AtomicBool;
+ use std::sync::atomic::Ordering;
+@@ -511,7 +513,7 @@
+     pub(crate) verneed: Option<(VerneedIterator<'data, C>, object::SectionIndex)>,
+ 
+     /// e_flags from the header.
+-    pub(crate) eflags: object::elf::FileFlags,
++    pub(crate) eflags: Option<object::elf::FileFlags>,
+ 
+     pub(crate) dynamic_tag_values: Option<DynamicTagValues<'data>>,
+ }
+@@ -647,6 +649,110 @@
+     raw_name
+ }
+ 
++fn binary_object<C: ElfClass>(
++    architecture: Architecture,
++    path: &Path,
++    contents: &[u8],
++) -> Result<Vec<u8>> {
++    const SECTION_NAMES: &[u8] = b"\0.data\0.symtab\0.strtab\0.shstrtab\0";
++
++    let mangled = path
++        .as_os_str()
++        .as_encoded_bytes()
++        .iter()
++        .map(|&byte| {
++            if byte.is_ascii_alphanumeric() {
++                byte
++            } else {
++                b'_'
++            }
++        })
++        .collect_vec();
++    let mut names = vec![0];
++    let mut name_offsets = [0; 3];
++    for (offset, suffix) in name_offsets.iter_mut().zip(["_start", "_end", "_size"]) {
++        *offset = u32::try_from(names.len())?;
++        names.extend_from_slice(b"_binary_");
++        names.extend_from_slice(&mangled);
++        names.extend_from_slice(suffix.as_bytes());
++        names.push(0);
++    }
++
++    let header_size = usize::from(C::FILE_HEADER_SIZE);
++    let symbol_size = C::SYMTAB_ENTRY_SIZE as usize;
++    let section_header_size = usize::from(C::SECTION_HEADER_SIZE);
++    let symbols_offset = (header_size + contents.len()).next_multiple_of(8);
++    let names_offset = symbols_offset + 4 * symbol_size;
++    let section_names_offset = names_offset + names.len();
++    let sections_offset = (section_names_offset + SECTION_NAMES.len()).next_multiple_of(8);
++    let mut out = vec![0; sections_offset + 5 * section_header_size];
++
++    let header = object::from_bytes_mut::<FileHeader<C>>(&mut out)
++        .map_err(|()| error!("Invalid binary object header"))?
++        .0;
++    let ident = header.ident_mut();
++    ident.magic = object::elf::ELFMAG;
++    ident.class = FileHeader::<C>::CLASS;
++    ident.data = object::elf::ELFDATA2LSB;
++    ident.version = object::elf::EV_CURRENT;
++    header.set_type(object::elf::ET_REL);
++    header.set_machine(architecture.elf_machine()?);
++    header.set_version(object::elf::EV_CURRENT.0.into());
++    header.set_section_header_offset(sections_offset as u64)?;
++    header.set_header_size(C::FILE_HEADER_SIZE);
++    header.set_section_header_entry_size(C::SECTION_HEADER_SIZE);
++    header.set_section_header_count(5);
++    header.set_section_name_table_index(object::elf::SymbolSection(4));
++
++    out[header_size..header_size + contents.len()].copy_from_slice(contents);
++    out[names_offset..section_names_offset].copy_from_slice(&names);
++    out[section_names_offset..section_names_offset + SECTION_NAMES.len()]
++        .copy_from_slice(SECTION_NAMES);
++
++    let symbols = slice_from_all_bytes_mut::<SymtabEntry<C>>(
++        &mut out[symbols_offset..symbols_offset + 4 * symbol_size],
++    );
++    let values = [
++        (object::elf::SymbolSection(1), 0),
++        (object::elf::SymbolSection(1), contents.len() as u64),
++        (object::elf::SHN_ABS, contents.len() as u64),
++    ];
++    for ((symbol, name), (section, value)) in symbols[1..].iter_mut().zip(name_offsets).zip(values)
++    {
++        symbol.set_name(name);
++        symbol.set_binding_and_type(object::elf::STB_GLOBAL, object::elf::STT_OBJECT);
++        symbol.set_section(section);
++        symbol.set_value(value)?;
++    }
++
++    let sections = slice_from_all_bytes_mut::<SectionHeader<C>>(&mut out[sections_offset..]);
++    let layout = [
++        (1, sht::PROGBITS, header_size, contents.len(), 8),
++        (7, sht::SYMTAB, symbols_offset, 4 * symbol_size, 8),
++        (15, sht::STRTAB, names_offset, names.len(), 1),
++        (
++            23,
++            sht::STRTAB,
++            section_names_offset,
++            SECTION_NAMES.len(),
++            1,
++        ),
++    ];
++    for (section, (name, kind, offset, size, alignment)) in sections[1..].iter_mut().zip(layout) {
++        section.set_name(name);
++        section.set_type(kind);
++        section.set_offset(offset as u64)?;
++        section.set_size(size as u64)?;
++        section.set_alignment(alignment)?;
++    }
++    sections[1].set_flags(shf::ALLOC | shf::WRITE)?;
++    sections[2].set_link(3);
++    sections[2].set_info(1);
++    sections[2].set_entry_size(symbol_size as u64)?;
++
++    Ok(out)
++}
++
+ impl<C: ElfClass> platform::Platform for Elf<C> {
+     const NUM_SINGLE_PART_SECTIONS: u32 = ELF_NUM_SINGLE_PART_SECTIONS;
+     const NUM_BUILT_IN_REGULAR_SECTIONS: usize = ELF_NUM_BUILT_IN_REGULAR_SECTIONS;
+@@ -2839,6 +2945,10 @@
+         kind == FileKind::ElfObject
+     }
+ 
++    fn binary_object(args: &Self::Args, path: &Path, contents: &[u8]) -> Result<Vec<u8>> {
++        binary_object::<C>(args.arch, path, contents)
++    }
++
+     fn section_identity<'data>(
+         name: SectionName<'data>,
+         _section: &Self::SectionHeader,
+@@ -2920,7 +3030,7 @@
+         let endian = header.endian()?;
+         let architecture = header.e_machine(endian).try_into()?;
+         let sections = header.sections(endian, data)?;
+-        let eflags = header.e_flags(endian);
++        let eflags = Some(header.e_flags(endian));
+ 
+         let mut symbols = SymbolTable::<C>::default();
+         let mut versym: &[Versym] = &[];
+@@ -2978,7 +3088,7 @@
+     fn parse(input: &InputBytes<'data>, args: &ElfArgs) -> Result<Self> {
+         let is_dynamic = input.kind == FileKind::ElfDynamic;
+ 
+-        let file = Self::parse_bytes(input.data, is_dynamic)?;
++        let mut file = Self::parse_bytes(input.data, is_dynamic)?;
+ 
+         if file.arch != args.arch {
+             bail!(
+@@ -2989,6 +3099,10 @@
+             )
+         }
+ 
++        if input.modifiers.binary {
++            file.eflags = None;
++        }
++
+         Ok(file)
+     }
+ 
+@@ -4331,7 +4445,7 @@
+ ) -> Result<object::elf::FileFlags> {
+     timing_phase!("Merge e_flags");
+ 
+-    A::merge_eflags(objects.map(|object| object.eflags))
++    A::merge_eflags(objects.filter_map(|object| object.eflags))
+ }
+ 
+ fn merge_riscv_attributes<'groups, 'data: 'groups, C: ElfClass, A: Arch>(
+--- a/libwild/src/input_data.rs
++++ b/libwild/src/input_data.rs
+@@ -102,6 +102,8 @@
+     pub(crate) modifiers: Modifiers,
+ 
+     data: Option<D>,
++
++    binary_object: Option<Vec<u8>>,
+ }
+ 
+ // A type used for Type-erasure reasons.
+@@ -125,6 +127,9 @@
+ 
+ impl<I: InputFileData> InputFile<I> {
+     fn data(&self) -> &[u8] {
++        if let Some(object) = &self.binary_object {
++            return object;
++        }
+         self.data.as_ref().map_or(&[], InputFileData::bytes)
+     }
+ 
+@@ -566,6 +571,7 @@
+                         ..input_file.modifiers
+                     },
+                     data: Some(input),
++                    binary_object: None,
+                 };
+ 
+                 let input_file = &*state.inputs_arena.alloc(input_file);
+@@ -653,11 +659,18 @@
+             None => result,
+         }?;
+ 
++        let binary_object = request
++            .modifiers
++            .binary
++            .then(|| P::binary_object(self.args, &request.paths.original, data.bytes()))
++            .transpose()?;
++
+         let input_file = self.inputs_arena.alloc(InputFile {
+             filename: absolute_path.to_owned(),
+             original_filename: request.paths.original,
+             modifiers: request.modifiers,
+             data: Some(data),
++            binary_object,
+         });
+ 
+         let input_ref = InputRef {
+@@ -855,6 +868,7 @@
+         original_filename: path.to_owned(),
+         modifiers: Default::default(),
+         data: Some(input),
++        binary_object: None,
+     });
+ 
+     Ok(ScriptData { raw: file.data() })
+--- a/libwild/src/platform.rs
++++ b/libwild/src/platform.rs
+@@ -421,6 +421,10 @@
+         false
+     }
+ 
++    fn binary_object(_args: &Self::Args, _path: &Path, _contents: &[u8]) -> Result<Vec<u8>> {
++        bail!("Binary input files are not supported for this output format")
++    }
++
+     /// Returns attributes of the supplied section. This is type+flags and doesn't include other
+     /// information like name, size etc.
+     fn section_attributes(header: &Self::SectionHeader) -> Self::SectionAttributes;
