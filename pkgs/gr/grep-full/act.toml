@@ -1,0 +1,14 @@
+fetch  = { from = "grep" }
+with   = [ "autotools" ]
+deps   = [ "pcre2" ]
+tools  = [ "perl" ]
+remove = [ "bin/egrep", "bin/fgrep" ]
+
+[test]
+deps = [ "git", "glibc-bin", "gzip" ]
+
+[steps.before]
+"autotools.configure" = [ "grep-full.locales" ]
+
+[autotools]
+flags = [ "--enable-perl-regexp" ]
